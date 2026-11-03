@@ -143,6 +143,7 @@ function Match.resign(self: Match, seat: number): (boolean, string?)
 		winners = { if seat == 1 then 2 else 1 },
 		isDraw = false,
 		reason = `{self.seats[seat].name} resigned`,
+		resignedSeat = seat, -- resigning earns nothing (EconomyService)
 	}
 	self.moveNumber += 1 -- cancels pending bot and turn timers
 	return true

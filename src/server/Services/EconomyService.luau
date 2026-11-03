@@ -136,7 +136,7 @@ end
 -- games that run outside MatchService can call it directly.
 function EconomyService.recordMatch(
 	player: Player,
-	result: { gameId: string, won: boolean, isDraw: boolean?, minutes: number, moves: number, humanOpponents: { number } }
+	result: { gameId: string, won: boolean, isDraw: boolean?, resigned: boolean?, minutes: number, moves: number, humanOpponents: { number } }
 ): Rewards.Payout?
 	local data = DataService.get(player)
 	local entry = GameCatalog.get(result.gameId)
@@ -155,6 +155,7 @@ function EconomyService.recordMatch(
 		moves = result.moves,
 		won = result.won,
 		isDraw = result.isDraw == true,
+		resigned = result.resigned == true,
 		humanOpponents = result.humanOpponents,
 		vip = isVip(player),
 	})
@@ -186,6 +187,7 @@ function EconomyService.onMatchFinished(summary: any)
 			gameId = summary.gameId,
 			won = table.find(summary.result.winners, index) ~= nil,
 			isDraw = summary.result.isDraw,
+			resigned = summary.result.resignedSeat == index,
 			minutes = summary.minutes,
 			moves = summary.moves,
 			humanOpponents = opponents,

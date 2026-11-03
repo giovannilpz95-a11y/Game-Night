@@ -22,6 +22,7 @@ export type MatchContext = {
 	moves: number, -- moves made by everyone
 	won: boolean,
 	isDraw: boolean,
+	resigned: boolean?, -- this player gave up: no Coins, Gems, XP or challenge progress
 	humanOpponents: { number }, -- user ids of the other humans at the table
 	vip: boolean,
 }
@@ -90,6 +91,10 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 	end
 	data.winStreak[ctx.coinKey] = streak
 
+	if ctx.resigned then
+		table.insert(payout.notes, "Resigned games don't earn rewards")
+		return payout
+	end
 	if ctx.minutes < ctx.minMinutes or ctx.moves < ctx.minMoves then
 		table.insert(payout.notes, "Too short for rewards")
 		return payout
