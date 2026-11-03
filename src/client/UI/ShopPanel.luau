@@ -146,6 +146,13 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			Kit.button("Studio test: free Gems and Coins", function()
 				sendEconomy({ action = "studioGrant" })
 			end, { LayoutOrder = 50, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = content })
+			-- Passes can't be bought before they exist in the Creator Hub, so test their perks here.
+			for i, key in { "vip", "partyHost" } do
+				local on = wallet.passes and wallet.passes[key]
+				Kit.button(`Studio test: {Economy.Passes[key].name} {if on then "ON" else "off"}`, function()
+					sendEconomy({ action = "studioPass", key = key })
+				end, { LayoutOrder = 50 + i, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = content })
+			end
 		end
 	end
 

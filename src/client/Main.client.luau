@@ -13,6 +13,8 @@ local MatchView = require(script.Parent.UI.MatchView)
 local Popups = require(script.Parent.UI.Popups)
 local WalletBar = require(script.Parent.UI.WalletBar)
 local ShopPanel = require(script.Parent.UI.ShopPanel)
+local TableList = require(script.Parent.UI.TableList)
+local HostPanel = require(script.Parent.UI.HostPanel)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 
@@ -22,6 +24,7 @@ local partyRequest = Net.event(Net.Names.PartyRequest)
 local matchRequest = Net.event(Net.Names.MatchRequest)
 local economyRequest = Net.event(Net.Names.EconomyRequest)
 local purchaseRequest = Net.event(Net.Names.PurchaseRequest)
+local hostRequest = Net.event(Net.Names.HostRequest)
 
 local function sendParty(request: any)
 	partyRequest:FireServer(request)
@@ -50,12 +53,29 @@ local lobby = Kit.new("Frame", {
 
 local currentParty: any = nil
 
-local partyPanel = PartyPanel.create(lobby, sendParty)
-local gamePicker = GamePicker.create(lobby, sendMatch)
+-- Party Host perks: anything locked explains itself and offers the pass.
+local popups: any = nil
+local hostHooks = {}
+function hostHooks.needHost(reason: string?)
+	if reason and popups then
+		popups.toast(reason)
+	end
+	purchaseRequest:FireServer({ action = "buyPass", key = "partyHost" })
+end
+
+local tableList = TableList.create(screen, sendParty)
+local hostPanel = HostPanel.create(screen, function(request)
+	hostRequest:FireServer(request)
+end, hostHooks)
+hostHooks.openTables = tableList.open
+hostHooks.openHostTools = hostPanel.open
+
+local partyPanel = PartyPanel.create(lobby, sendParty, hostHooks)
+local gamePicker = GamePicker.create(lobby, sendMatch, hostHooks)
 local matchView = MatchView.create(screen, sendMatch, function()
 	return currentParty ~= nil and currentParty.leaderId == localPlayer.UserId
 end)
-local popups = Popups.create(screen, sendParty)
+popups = Popups.create(screen, sendParty)
 local shopPanel = ShopPanel.create(screen, function(request)
 	economyRequest:FireServer(request)
 end, function(request)
@@ -74,10 +94,25 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
+local wasHost: boolean? = nil
 Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
 	walletBar.setWallet(state)
 	shopPanel.setWallet(state)
+	local isHost = state.passes ~= nil and state.passes.partyHost == true
+	if isHost ~= wasHost then
+		wasHost = isHost
+		partyPanel.setHost(isHost)
+		gamePicker.setHost(isHost)
+		hostPanel.setHost(isHost)
+	end
 end)
+
+Net.event(Net.Names.HostState).OnClientEvent:Connect(function(state)
+	hostPanel.setSaved(state)
+	gamePicker.setHostSaved(state)
+end)
+
+Net.event(Net.Names.PartyList).OnClientEvent:Connect(tableList.setRows)
 
 Net.event(Net.Names.Reward).OnClientEvent:Connect(function(reward)
 	if reward.title == "Rewards" and matchView.showReward(reward.lines) then
@@ -98,6 +133,9 @@ TextChatService.OnIncomingMessage = function(message: TextChatMessage)
 end
 
 Net.event(Net.Names.PartyState).OnClientEvent:Connect(function(party)
+	if currentParty and party and party.id ~= currentParty.id then
+		tableList.close() -- joined (or left for) another table
+	end
 	currentParty = party
 	partyPanel.setParty(party)
 	gamePicker.setParty(party)
@@ -114,3 +152,4 @@ end)
 sendParty({ action = "sync" })
 sendMatch({ action = "sync" })
 economyRequest:FireServer({ action = "sync" })
+hostRequest:FireServer({ action = "sync" })

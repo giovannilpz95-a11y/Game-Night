@@ -17,6 +17,9 @@ Net.Names = {
 	PurchaseRequest = "PurchaseRequest", -- client -> server: { action = "buyGems" | "buyStarter" | "buyPass", key }
 	WalletState = "WalletState", -- server -> client: balances, owned items, daily progress
 	Reward = "Reward", -- server -> client: { title, lines } after a match or daily login
+	PartyList = "PartyList", -- server -> client: tables you can join (friends-only and password)
+	HostRequest = "HostRequest", -- client -> server: { action = "sync" | "save" | "delete", kind, slot, ... }
+	HostState = "HostState", -- server -> client: your saved word lists and quiz decks
 }
 
 local FOLDER_NAME = "Remotes"

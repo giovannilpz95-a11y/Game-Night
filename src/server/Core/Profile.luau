@@ -51,6 +51,12 @@ export type Data = {
 	looks: { any },
 	lookSlots: number, -- extra slots bought with Gems, on top of the free ones
 	currentLook: any?,
+	-- Party Host word lists and quiz decks, keyed by slot ("1".."3"). Stored as the host
+	-- typed them; filtered every time a match uses them. See shared/CustomContent.luau.
+	custom: {
+		words: { [string]: { name: string, words: { string } } },
+		decks: { [string]: { name: string, questions: { { q: string, a: { string } } } } },
+	},
 }
 
 local function newDaily(day: number): Daily
@@ -77,6 +83,7 @@ function Profile.new(now: number): Data
 		looks = {},
 		lookSlots = 0,
 		currentLook = nil,
+		custom = { words = {}, decks = {} },
 	}
 end
 

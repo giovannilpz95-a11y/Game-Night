@@ -10,7 +10,9 @@ local TextService = game:GetService("TextService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
+local HouseRules = require(ReplicatedStorage.Shared.HouseRules)
 local Match = require(script.Parent.Parent.Core.Match)
+local HostService = require(script.Parent.HostService)
 
 local MatchService = {}
 
@@ -196,6 +198,26 @@ local function startMatch(leader: Player, request: any)
 		return notify(leader, "That game isn't available yet")
 	end
 
+	-- House rules and the host's own word lists / quiz decks (Party Host perks).
+	local ruleValues, customRules = HouseRules.resolve(catalogEntry, request.rules)
+	local customSlot = if catalogEntry.custom and type(request.custom) == "number" then request.custom else nil
+	if (customRules or customSlot) and not HostService.isHost(leader) then
+		return notify(leader, "House rules and custom decks come with the Party Host pass")
+	end
+	local customContent = nil
+	if customSlot then
+		local content, err = HostService.prepare(leader, catalogEntry.custom :: string, customSlot) -- yields
+		if not content then
+			return notify(leader, err :: string)
+		end
+		customContent = content
+		-- Things may have changed while the text was being filtered.
+		party = partyService.getParty(leader.UserId)
+		if not party or party.leaderId ~= leader.UserId or party.matchId or not leader.Parent then
+			return
+		end
+	end
+
 	local memberCount = #party.members
 	local seatCount = if type(request.seats) == "number" then math.floor(request.seats) else memberCount
 	seatCount = math.max(seatCount, memberCount)
@@ -227,7 +249,12 @@ local function startMatch(leader: Player, request: any)
 	end
 
 	-- Only pass options we've checked; never forward the client's table as-is.
-	local options: any = { botLevel = Config.DefaultBotLevel, bots = {} }
+	local options: any = { botLevel = Config.DefaultBotLevel, bots = {}, rules = ruleValues }
+	if catalogEntry.custom == "words" then
+		options.customWords = customContent
+	elseif catalogEntry.custom == "quiz" then
+		options.customQuestions = customContent
+	end
 	if type(request.botLevel) == "string" and table.find(Config.BotLevels, request.botLevel) then
 		options.botLevel = request.botLevel
 	end
@@ -243,7 +270,7 @@ local function startMatch(leader: Player, request: any)
 		partyId = party.id,
 		ended = false,
 		turnEndsAt = nil,
-		turnSeconds = catalogEntry.turnSeconds or Config.TurnSeconds,
+		turnSeconds = HouseRules.turnSeconds(catalogEntry, ruleValues) or Config.TurnSeconds,
 		startedAt = os.clock(),
 		timerId = nil,
 		botPending = {},
@@ -255,6 +282,19 @@ local function startMatch(leader: Player, request: any)
 	partyService.setMatch(party.id, matchId)
 	scheduleTurn(entry)
 	broadcast(entry)
+
+	local lines = HouseRules.describe(catalogEntry, ruleValues)
+	if customContent then
+		table.insert(lines, 1, if catalogEntry.custom == "words" then "the host's own words" else "the host's own questions")
+	end
+	if #lines > 0 then
+		for _, userId in party.members do
+			local member = Players:GetPlayerByUserId(userId)
+			if member then
+				notify(member, `House rules: {table.concat(lines, ", ")}`)
+			end
+		end
+	end
 end
 
 local function entryFor(player: Player): Entry?

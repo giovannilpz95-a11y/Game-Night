@@ -285,6 +285,17 @@ function handlers.studioGrant(player: Player, _request: any)
 	EconomyService.push(player)
 end
 
+-- Studio only: turn a pass on or off, so VIP and Party Host perks can be tested before the
+-- passes exist in the Creator Hub.
+function handlers.studioPass(player: Player, request: any)
+	if not RunService:IsStudio() or type(request.key) ~= "string" or not Economy.Passes[request.key] then
+		return
+	end
+	local owned = not EconomyService.hasPass(player, request.key)
+	EconomyService.setPass(player, request.key, owned)
+	notify(player, `Studio test: {Economy.Passes[request.key].name} {if owned then "on" else "off"}`)
+end
+
 function EconomyService.handleRequest(player: Player, request: any)
 	if type(request) ~= "table" or type(request.action) ~= "string" then
 		return

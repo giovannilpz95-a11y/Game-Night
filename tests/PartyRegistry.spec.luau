@@ -111,4 +111,81 @@ return function(T)
 		r:removePlayer(2)
 		T.eq(r:getPartyById(pid), nil)
 	end)
+
+	-- Table privacy (Party Host) ---------------------------------------------------
+
+	T.test("tables start invite only and aren't listed", function()
+		local r = fresh()
+		T.eq(r:getParty(1).privacy, "invite")
+		T.eq(#r:listJoinable(2), 0)
+		T.eq((r:joinTable(2, r:getParty(1).id, nil, true)), false)
+	end)
+
+	T.test("private and password tables need the pass and the leader", function()
+		local r = fresh()
+		local ok, err = r:setPrivacy(1, "friends", false)
+		T.eq(ok, false)
+		T.ok(string.find(err :: string, "Party Host") ~= nil)
+		T.ok(r:invite(1, 2) and r:acceptInvite(2, r:getParty(1).id))
+		T.eq((r:setPrivacy(2, "friends", true)), false, "not the leader")
+		T.eq((r:setPrivacy(1, "password", true, "12a4")), false, "bad code")
+		T.eq((r:setPrivacy(1, "public", true)), false, "unknown setting")
+		T.ok(r:setPrivacy(1, "password", true, "0427"))
+		T.eq(r:getParty(1).code, "0427")
+		T.ok(r:setPrivacy(1, "invite", false), "anyone can go back to invite only")
+		T.eq(r:getParty(1).code, nil)
+	end)
+
+	T.test("friends-only tables let friends in without an invite", function()
+		local r = fresh()
+		T.ok(r:setPrivacy(1, "friends", true))
+		local id = r:getParty(1).id
+		T.eq(#r:listJoinable(2), 1)
+		T.eq(#r:listJoinable(1), 0, "your own table isn't in your list")
+		local ok, err = r:joinTable(2, id, nil, false)
+		T.eq(ok, false)
+		T.ok(string.find(err :: string, "friends") ~= nil)
+		T.ok(r:joinTable(2, id, nil, true))
+		T.eq(#r:getParty(1).members, 2)
+		T.eq(r:getParty(2).id, id)
+	end)
+
+	T.test("password tables need the right code, with limited tries", function()
+		local r = fresh()
+		T.ok(r:setPrivacy(1, "password", true, "1234"))
+		local id = r:getParty(1).id
+		for _ = 1, PartyRegistry.CodeTries do
+			T.eq((r:joinTable(3, id, "0000", false)), false)
+		end
+		local ok, err = r:joinTable(3, id, "1234", false)
+		T.eq(ok, false, "locked out after too many wrong codes")
+		T.ok(string.find(err :: string, "Too many") ~= nil)
+		now += PartyRegistry.CodeTrySeconds + 1
+		T.ok(r:joinTable(3, id, "1234", false))
+		T.eq(r:getParty(3).id, id)
+	end)
+
+	T.test("full or busy tables can't be joined", function()
+		local r = fresh(2)
+		T.ok(r:setPrivacy(1, "password", true, "1111"))
+		local id = r:getParty(1).id
+		T.ok(r:joinTable(2, id, "1111", false))
+		T.eq((r:joinTable(3, id, "1111", false)), false, "full")
+		local r2 = fresh()
+		T.ok(r2:setPrivacy(1, "password", true, "1111"))
+		r2:setMatch(r2:getParty(1).id, "m1")
+		T.eq((r2:joinTable(2, r2:getParty(1).id, "1111", false)), false, "mid-game")
+	end)
+
+	T.test("a new leader puts the table back to invite only", function()
+		local r = fresh()
+		T.ok(r:setPrivacy(1, "password", true, "4321"))
+		local id = r:getParty(1).id
+		T.ok(r:joinTable(2, id, "4321", false))
+		r:removePlayer(1)
+		local party = r:getPartyById(id) :: any
+		T.eq(party.leaderId, 2)
+		T.eq(party.privacy, "invite")
+		T.eq(party.code, nil)
+	end)
 end
