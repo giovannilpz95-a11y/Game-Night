@@ -73,6 +73,7 @@ export type Result = {
 	winners: { number },
 	isDraw: boolean,
 	reason: string?,
+	resignedSeat: number?, -- set by Match.resign, never by games
 }
 
 -- Picks a bot move: the game's own bot if it has one, else a random legal move.

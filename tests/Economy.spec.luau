@@ -175,6 +175,32 @@ return function(T)
 		T.eq(data.daily.firstWin, false)
 	end)
 
+	T.test("resigning earns no Coins, Gems, XP or challenge progress", function()
+		local data = fresh()
+		for _ = 1, 5 do
+			local payout = Rewards.applyMatch(data, chessMatch({ resigned = true }))
+			T.eq(payout.coins + payout.gems + payout.xp, 0)
+			T.eq(#payout.challenges + #payout.levelUps, 0)
+		end
+		T.eq(data.gems, 0)
+		T.eq(data.xp, 0)
+		for _, challenge in data.daily.challenges do
+			T.eq(challenge.progress, 0, challenge.text)
+		end
+		T.eq(data.stats.games.Chess.played, 5, "still counted as played")
+	end)
+
+	T.test("matches under the minimum don't count toward challenges or XP", function()
+		local data = fresh()
+		for _ = 1, 5 do
+			Rewards.applyMatch(data, chessMatch({ minutes = 0.5 }))
+		end
+		T.eq(data.xp, 0)
+		for _, challenge in data.daily.challenges do
+			T.eq(challenge.progress, 0, challenge.text)
+		end
+	end)
+
 	T.test("beating the same human more than 3 times a day stops paying", function()
 		local data = fresh()
 		for _ = 1, Economy.WinsVsSameHumanPerDay do
