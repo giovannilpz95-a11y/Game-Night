@@ -57,6 +57,14 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	-- 3D view: the board on the real table, seen from your seat. Phones start in the
 	-- flat view (it's easier to tap); everyone can switch with the button.
 	local want3D = not (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
+	-- Watch-only tables (card games, big boards, party screens) start in the 2D view,
+	-- where you play; "Table view" looks up at the table.
+	local wantScene = false
+	local snapshot: any = nil
+	local function wanted(): boolean
+		local info = snapshot and snapshot.table
+		return if info and not info.board3D then wantScene else want3D
+	end
 	local viewButton: TextButton
 	local applyMode: () -> ()
 	local table3D = Table3D.create(parent :: ScreenGui, function(move: any)
@@ -103,14 +111,17 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local closeButton: TextButton
 
 
-	local snapshot: any = nil
 	local renderer: any = nil
 	local rendererGameId: string? = nil
 
 	viewButton = Kit.button("2D view", function()
-		want3D = not want3D
+		if snapshot and snapshot.table and not snapshot.table.board3D then
+			wantScene = not wantScene
+		else
+			want3D = not want3D
+		end
 		if snapshot then
-			table3D.setSnapshot(snapshot, want3D)
+			table3D.setSnapshot(snapshot, wanted())
 		end
 		applyMode()
 	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 100, 0, 36), Position = UDim2.new(1, -520, 0, 2), Visible = false, Parent = header })
@@ -123,7 +134,14 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		seatsPanel.Size = if in3D then UDim2.new(0, 220, 0, 0) else UDim2.new(0, 220, 1, -178)
 		seatsPanel.AutomaticSize = if in3D then Enum.AutomaticSize.Y else Enum.AutomaticSize.None
 		viewButton.Visible = table3D.available() and snapshot ~= nil and not (snapshot.result or snapshot.aborted)
-		viewButton.Text = if in3D then "2D view" else "3D view"
+		if table3D.playable() then
+			viewButton.Text = if in3D then "2D view" else "3D view"
+		else
+			viewButton.Text = if in3D then "Back to game" else "Table view"
+		end
+		-- Watching the table: the seat list is enough; the header keeps the turn and buttons.
+		viewButton.Size = UDim2.new(0, if table3D.playable() then 100 else 130, 0, 36)
+		viewButton.Position = UDim2.new(1, if table3D.playable() then -520 else -550, 0, 2)
 	end
 
 	local function nameOf(seat: number): string
@@ -226,7 +244,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		snapshot = nil
 		root.Visible = false
 		resultOverlay.Visible = false
-		table3D.setSnapshot(nil, want3D)
+		table3D.setSnapshot(nil, false)
 	end, { Size = UDim2.new(1, 0, 0, 40), Position = UDim2.new(0, 0, 1, -40), ZIndex = 11, Parent = resultOverlay })
 
 	RunService.Heartbeat:Connect(function()
@@ -243,7 +261,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				if snapshot and not (snapshot.result or snapshot.aborted) then
 					snapshot = nil
 					root.Visible = false
-					table3D.setSnapshot(nil, want3D)
+					table3D.setSnapshot(nil, false)
 				end
 				return
 			end
@@ -281,7 +299,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				renderer.update(snapshot)
 			end
 			renderResult()
-			table3D.setSnapshot(snapshot, want3D)
+			table3D.setSnapshot(snapshot, wanted())
 			applyMode()
 		end,
 		isOpen = function(): boolean

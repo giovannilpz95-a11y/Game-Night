@@ -16,6 +16,7 @@ local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 
 local Controller = {}
 
+local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true }
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
 
 local function findTable(id: string): Model?
@@ -104,10 +105,18 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			toSeat = Vector3.zAxis
 		end
 		local upright = snapshot.gameId == "FourInARow" -- the frame stands up: look at it more level
+		local screen = PARTY_SCREEN[snapshot.gameId] == true -- look up at the screen over the table
 		-- Aim a little above the board so the players across the table stay below the
-		-- header instead of behind it.
-		local back, up = if upright then 9.5 else 7.5, if upright then 5 else 8
-		local focus = anchor + Vector3.new(0, if upright then 2.4 else 1.2, 0) - toSeat.Unit * 0.6
+		-- header instead of behind it. Watch-only scenes are bigger: sit further back.
+		local back, up, lift = 7.5, 8, 1.2
+		if upright then
+			back, up, lift = 9.5, 5, 2.4
+		elseif screen then
+			back, up, lift = 9, 4.5, 4.4
+		elseif not snapshot.table.board3D then
+			back, up, lift = 8.5, 9, 0.8
+		end
+		local focus = anchor + Vector3.new(0, lift, 0) - toSeat.Unit * 0.6
 		camera.CFrame = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
 		camera.FieldOfView = 55
 	end
@@ -164,15 +173,22 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		}
 	end
 
-	-- Finds the table and board (they may still be streaming in) and builds the input
-	-- handler for this game.
+	-- Finds the table and board (they may still be streaming in) and, for games played
+	-- on the table, builds the input handler. Watch-only scenes get just the camera.
 	local function tryAttach(): boolean
-		if not (snapshot and snapshot.table and snapshot.table.board3D) then
+		if not (snapshot and snapshot.table and (snapshot.table.board3D or snapshot.table.scene)) then
 			return false
 		end
 		tableModel = findTable(snapshot.table.id)
 		board = tableModel and tableModel:FindFirstChild("GameBoard") :: Model?
-		if not (board and board:FindFirstChild("Cells")) then
+		if not board then
+			return false
+		end
+		if not snapshot.table.board3D then
+			dropHandler()
+			return true
+		end
+		if not board:FindFirstChild("Cells") then
 			return false
 		end
 		local key = `{snapshot.matchId}`
@@ -197,7 +213,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		if tryAttach() then
 			setActive(true)
 			placeCamera()
-			handler.update(snapshot)
+			if handler then
+				handler.update(snapshot)
+			end
 		else
 			setActive(false)
 		end
@@ -244,7 +262,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		setSnapshot = function(newSnapshot: any, use3D: boolean)
 			local newMatch = newSnapshot == nil or snapshot == nil or newSnapshot.matchId ~= snapshot.matchId
 			snapshot = newSnapshot
-			local possible = snapshot ~= nil and snapshot.table ~= nil and snapshot.table.board3D == true
+			local possible = snapshot ~= nil and snapshot.table ~= nil and (snapshot.table.board3D == true or snapshot.table.scene == true)
 			if newMatch then
 				waitingSince = os.clock()
 				if not snapshot then
@@ -259,6 +277,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			refresh()
 		end,
 		available = function(): boolean
+			return snapshot ~= nil and snapshot.table ~= nil and (snapshot.table.board3D == true or snapshot.table.scene == true)
+		end,
+		-- true when you play by tapping the table; false for watch-only scenes.
+		playable = function(): boolean
 			return snapshot ~= nil and snapshot.table ~= nil and snapshot.table.board3D == true
 		end,
 		isActive = function(): boolean

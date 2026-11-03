@@ -2,7 +2,19 @@
 
 Back to [[Home]] · see [[Architecture]].
 
-When a match starts, the party is moved to a free table in the room and everyone sits down: players in real `Seat`s, bots as seated R15 rigs with their name over their head. Games with a 3D board (Chess, Checkers, Four in a Row, Tic-Tac-Toe) get it built on the table, and each player's camera looks at it from their own seat. Every other game still seats everyone at the table, but is played in the 2D view.
+When a match starts, the party is moved to a free table in the room and everyone sits down: players in real `Seat`s, bots as seated R15 rigs with their name over their head. Every game shows up on the table, in one of two ways:
+- **Played on the table** (`Config.Boards3D`: Chess, Checkers, Four in a Row, Tic-Tac-Toe): the 3D board is the game. Your camera looks at it from your seat and you tap pieces and squares.
+- **Shown on the table** (`Config.TableScenes`: every other game): the game is built in the world for the whole room to watch, and seated players play in the 2D view. **Table view** looks up from the 2D view at the table.
+
+| Game | What's on the table |
+|---|---|
+| Color Clash, Go Fish, Speed, War, Spoons | Everyone's hand face down in front of them (count shown on big hands), draw piles, and the face-up cards: discard top in the current color, Speed's center piles, War's flipped cards, Go Fish books and the pond, Spoons' spoons |
+| Property Party | The 40-space loop with street colors, owner markers (dim when mortgaged), houses and hotels, every pawn, the dice |
+| Hexlands | The 19-hex island with number tokens, roads, camps, towns, the Bandit, the dice |
+| Conquest Isles | The map as region-colored lands with borders and sea lanes, an army stack with its count on every territory |
+| Whodunit | The 3x3 mansion with room names, each suspect's pawn (seat N's color) and the items, plus the case file |
+| Word Tiles | The board with premium squares, every tile laid, and each player's rack |
+| Trivia Night, Sketch & Guess | A four-sided screen over the table: the question and answers (right one lit at the reveal), or the live drawing with the hint |
 
 ## Where the code lives
 | File | What it does |
@@ -12,14 +24,15 @@ When a match starts, the party is moved to a free table in the room and everyone
 | `server/Tables/Builder.luau` | Finds or builds the tables (see below). |
 | `server/Tables/Bots.luau` | Seated bodies for bots (HumanoidDescription colors picked from the bot's name). |
 | `server/Tables/Pieces.luau` | Clones piece models from `ReplicatedStorage.Assets`, scales a whole set by one factor, places them on cells. |
-| `server/Tables/Boards/<module>.luau` | One 3D board per game, built from the **spectator** view so nothing hidden is in the world. |
+| `server/Tables/Boards/<module>.luau` | One board or scene per game, built from the **spectator** view so nothing hidden (hands, the secret word, answers) is in the world. |
+| `server/Tables/Scene.luau` | Building blocks for scenes: text on parts, cards, piles, hands in front of seats, pawns, the party screen. |
 | `client/Table3D/Controller.luau` | Camera from your seat, taps on the board turned into cell clicks, your own highlights. |
 | `client/Table3D/<module>.luau` | Per-game input (select a piece, pick a target), same logic as the 2D renderer. |
 
 ## Where tables come from
 In this order:
 1. **Tables placed in Studio:** any Model in Workspace tagged `GameTable` (CollectionService). Give it attributes `TableId` (e.g. `Quick-1`) and `Zone` (`Quick`, `Strategy`, `Cards`, `Party`, matching `GameCatalog.category`), `Seat` parts, and a `BoardAnchor` (Attachment or part) at the center of the table top. Seats are renamed `Seat1..N` in order around the table, starting from the +Z side.
-2. **A template from Assets:** if nothing is tagged, a Model under `ReplicatedStorage.Assets` whose name has "Square" or "Round" in it (and "Table" in its name or its folder's) is cloned for each entry in `Config.DefaultTables`, in a row at `Config.TableOrigin`. Seats are added around it if it has none, and the anchor goes on top of its bounding box.
+2. **A template from Assets:** if nothing is tagged, a Model under `ReplicatedStorage.Assets` whose name has "Square" or "Round" in it (and "Table" in its name or its folder's) is cloned for each entry in `Config.DefaultTables` (13 tables: 4-seat and 8-seat, one zone per catalog category), in rows of `Config.TableColumns` from `Config.TableOrigin`. Seats are added around it if it has none, and the anchor goes on top of its bounding box.
 3. **Plain tables built in code**, same layout, so 3D play works before any art exists.
 
 `Config.TableOrigin` is a guess (60 studs behind the spawn). Once the lobby room exists, tag its tables and the code-built ones go away.
@@ -39,10 +52,11 @@ In this order:
 
 Cells are parts in the board's `Cells` folder with `Row`/`Col` attributes (Four in a Row: one invisible part per column with `Col`). The client raycasts only against that folder, so pieces never get in the way.
 
-## Adding a 3D board for a game
-1. `server/Tables/Boards/<module>.luau`: `create(boardCF, parent)` returning `{ update(view), destroy() }`. The model must be named `GameBoard` and have a `Cells` folder. Use `Boards/Square.luau` for square grids and `Pieces` for models.
-2. `client/Table3D/<module>.luau`: `create(ctx)` returning `{ update(snapshot), click(cellPart), destroy? }`.
-3. Add the game id to `Config.Boards3D`.
+## Adding a game to the tables
+`tests/TableCoverage.spec.luau` fails until every ready game has one of these.
+- **Shown on the table:** `server/Tables/Boards/<module>.luau` with `create(boardCF, parent, layout)` returning `{ model, update(view, snapshot), destroy() }`. Name the model `GameBoard`. `layout.seats[seat]` says where each seat is (see `Scene.seatSpot`). Add the id to `Config.TableScenes`.
+- **Played on the table:** the same, plus a `Cells` folder of clickable parts with `Row`/`Col` attributes (`Boards/Square.luau` does this for grids), and `client/Table3D/<module>.luau` with `create(ctx)` returning `{ update(snapshot), click(cellPart), destroy? }`. Add the id to `Config.Boards3D`.
+- Pieces are built from parts. Chess, Checkers and Four in a Row use the models in `ReplicatedStorage.Assets` when they exist (`Pieces.find`); other games can do the same for showcase models later.
 
 ## Not in this version
 From the lobby design, still to build: walking up and sitting to claim a table, the "Join?" toast and fade, spectator camera and Watch button, emotes and seat animations, avatar headshots in the 2D view, the rematch / another game card at the table, and the 60 s party hold.
