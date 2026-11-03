@@ -138,7 +138,7 @@ function scheduleTurn(entry: Entry)
 		if entry.timerId ~= timer.id then
 			local timerId = timer.id
 			entry.timerId = timerId
-			entry.turnEndsAt = workspace:GetServerTimeNow() + timer.seconds
+			entry.turnEndsAt = workspace:GetServerTimeNow() + (timer.displaySeconds or timer.seconds)
 			task.delay(timer.seconds, function()
 				if entry.ended or entry.timerId ~= timerId then
 					return

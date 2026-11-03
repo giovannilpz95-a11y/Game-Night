@@ -100,7 +100,7 @@ function Match.submitMove(self: Match, seat: number, move: any): (boolean, strin
 end
 
 -- The game's phase clock, if it has one (see getTimer in GameModule).
-function Match.getTimer(self: Match): { id: number, seconds: number }?
+function Match.getTimer(self: Match): { id: number, seconds: number, displaySeconds: number? }?
 	if self:isOver() or not self.rules.getTimer then
 		return nil
 	end

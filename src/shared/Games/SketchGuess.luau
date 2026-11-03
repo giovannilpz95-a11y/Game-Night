@@ -485,7 +485,12 @@ function SketchGuess.getTimer(state): { id: number, seconds: number }?
 	if state.phase == "choose" then
 		return { id = state.timerId, seconds = CHOOSE_SECONDS }
 	elseif state.phase == "draw" then
-		return { id = state.timerId, seconds = DRAW_SEGMENT }
+		-- The clock ticks per hint, but players see the time left for the whole drawing.
+		return {
+			id = state.timerId,
+			seconds = DRAW_SEGMENT,
+			displaySeconds = DRAW_SEGMENT * (DRAW_SEGMENTS - state.segment),
+		}
 	elseif state.phase == "reveal" then
 		return { id = state.timerId, seconds = REVEAL_SECONDS }
 	end
@@ -602,7 +607,10 @@ function SketchGuess.chooseBotMove(state, seat: number, rng: Random): any?
 	if rng:NextNumber() < 0.3 then
 		return nil -- just watching for now
 	end
-	local chance = (GUESS_CHANCE[state.botLevel] or 0.15) + 0.12 * state.segment
+	-- Bots only get it right once there's something to look at: no chance on an empty
+	-- canvas, full chance from about 150 points of drawing.
+	local drawn = math.clamp((state.pointCount - 20) / 130, 0, 1)
+	local chance = ((GUESS_CHANCE[state.botLevel] or 0.15) + 0.12 * state.segment) * drawn
 	if rng:NextNumber() < chance then
 		return { kind = "guess", text = state.word, shown = state.word }
 	end

@@ -206,7 +206,7 @@ function TriviaNight.getSeatInfo(state): { [number]: string }
 		if state.phase == "question" and state.answers[seat] ~= nil then
 			tag = "  ✓ answered"
 		elseif state.phase == "reveal" then
-			tag = if state.answers[seat] == state.correct then `  +{state.lastPoints[seat] or 0}` else "  ✗"
+			tag = if state.answers[seat] == state.correct then `  +{state.lastPoints[seat] or 0}` else "  +0"
 		end
 		info[seat] = `{state.scores[seat]} pts{tag}`
 	end

@@ -52,13 +52,14 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end
 	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 100, 0, 36), Position = UDim2.new(1, -410, 0, 2), Parent = header })
 
-	local seatsPanel = Kit.panel({ Size = UDim2.new(0, 220, 1, -124), Position = UDim2.new(0, 20, 0, 104), Parent = root })
+	local seatsPanel = Kit.panel({ Size = UDim2.new(0, 220, 1, -178), Position = UDim2.new(0, 20, 0, 104), Parent = root })
 	Kit.list(6).Parent = seatsPanel
 
 	local board = Kit.new("Frame", {
 		Name = "Board",
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -280, 1, -124),
+		-- 54px gap at the bottom: the wallet bar sits bottom-left while at a table.
+		Size = UDim2.new(1, -280, 1, -178),
 		Position = UDim2.new(0, 260, 0, 104),
 		Parent = root,
 	})

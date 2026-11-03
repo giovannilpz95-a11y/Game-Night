@@ -37,11 +37,12 @@
 
 	Optional extras for party games (timed rounds, everyone moving at once, typed text):
 
-	  getTimer(state) -> nil | { id = number, seconds = number }
+	  getTimer(state) -> nil | { id = number, seconds = number, displaySeconds = number? }
 	      A phase clock (a round, a question, a reveal). While it returns a timer the
 	      server runs it instead of the per-turn AFK clock, and calls onTimeout(state)
 	      when it runs out. Change `id` whenever the phase changes; moves that keep the
-	      same id (drawing strokes, guesses) don't restart the clock.
+	      same id (drawing strokes, guesses) don't restart the clock. displaySeconds
+	      (optional) is the countdown players see, when it differs from `seconds`.
 
 	  onTimeout(state)
 	      Pure, like applyMove: go to the next phase.

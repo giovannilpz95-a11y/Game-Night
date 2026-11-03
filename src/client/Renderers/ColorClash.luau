@@ -107,6 +107,7 @@ end
 function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local shownTop: number? = nil
+	local topVisual: GuiObject? = nil
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 
@@ -142,7 +143,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	})
 
 	local directionLabel = Kit.label("", {
-		TextSize = 34,
+		TextSize = 18,
 		Font = Theme.FontBold,
 		TextColor3 = Color3.new(1, 1, 1),
 		TextTransparency = 0.3,
@@ -211,8 +212,10 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		ScrollBarThickness = 6,
 		Parent = root,
 	})
-	local handList = Kit.list(-18, true) -- cards overlap a little, like a fan
-	handList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	-- Cards overlap a little, like a fan. Left-aligned: a centered list wider than the
+	-- frame would push cards off the left edge, where scrolling can't reach them.
+	local handList = Kit.list(-18, true)
+	handList.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	handList.VerticalAlignment = Enum.VerticalAlignment.Bottom
 	handList.Parent = hand
 	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 24), PaddingTop = UDim.new(0, 4), Parent = hand })
@@ -286,8 +289,12 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		-- Discard pile: animate a new top card dropping in.
 		if shownTop ~= view.topCard then
 			shownTop = view.topCard
-			Kit.clear(discardSlot)
+			-- Replace only the card (Kit.clear would also drop the slot's aspect constraint).
+			if topVisual then
+				topVisual:Destroy()
+			end
 			local top = cardVisual(view.topCard)
+			topVisual = top
 			top.Parent = discardSlot
 			top.Rotation = (view.topCard % 7) * 3 - 9
 			top.Position = UDim2.fromScale(0, -0.25)
@@ -297,7 +304,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		colorRing.Color = COLORS[view.color] or Theme.Accent
 		colorLabel.Text = Rules.colorNames[view.color] or ""
 		colorLabel.TextColor3 = COLORS[view.color] or Theme.Text
-		directionLabel.Text = if view.direction == 1 then "↻" else "↺"
+		directionLabel.Text = if view.direction == 1 then "Normal order" else "⇄ Reversed"
 		lastLabel.Text = describe(view.lastAction)
 		pendingLabel.Text = if view.pendingDraw > 0 then `+{view.pendingDraw} waiting! Stack a draw card or take them.` else ""
 

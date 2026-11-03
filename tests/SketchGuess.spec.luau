@@ -183,6 +183,37 @@ return function(T)
 		T.eq(s.phase, "reveal")
 	end)
 
+	T.test("bots can't guess right on an empty canvas", function()
+		local s = SketchGuess.new(3, { botLevel = "hard", bots = { 2, 3 } }, T.Random.new(3))
+		apply(s, s.drawer, { kind = "choose", index = 1 })
+		s.segment = 3
+		local rng = T.Random.new(8)
+		for _ = 1, 200 do
+			local move = SketchGuess.chooseBotMove(s, 2, rng)
+			if move then
+				T.ok(not table.find(s.answers, SketchGuess.normalize(move.text)), "guessed a blank canvas")
+			end
+		end
+		-- With a real drawing they do get it sometimes.
+		s.pointCount = 400
+		local right = 0
+		for _ = 1, 200 do
+			local move = SketchGuess.chooseBotMove(s, 2, rng)
+			if move and table.find(s.answers, SketchGuess.normalize(move.text)) then
+				right += 1
+			end
+		end
+		T.ok(right > 0)
+	end)
+
+	T.test("the countdown shows the whole drawing, not one hint", function()
+		local s = drawing("tree")
+		T.eq(SketchGuess.getTimer(s).displaySeconds, 80)
+		SketchGuess.onTimeout(s)
+		T.eq(SketchGuess.getTimer(s).displaySeconds, 60)
+		T.eq(SketchGuess.getTimer(s).seconds, 20)
+	end)
+
 	T.test("a full match with bots and timers ends with a winner", function()
 		local seats = {
 			{ kind = "player", userId = 1, name = "Gio" },

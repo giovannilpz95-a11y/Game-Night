@@ -6,7 +6,6 @@
 -- Guessers: type guesses in the box. Near misses get a private "close!" note. Anyone can
 -- hide the drawing on their own screen, or vote to skip it (moderation).
 
-local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -122,9 +121,10 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	end
 	for i, rgb in Rules.palette do
 		local b = Kit.new("TextButton", {
-			Text = if i == 2 then "⌫" else "",
-			TextColor3 = Color3.fromRGB(120, 120, 130),
-			TextSize = 18,
+			Text = if i == 2 then "ERASE" else "",
+			TextColor3 = Color3.fromRGB(110, 110, 120),
+			TextSize = 8,
+			Font = Theme.FontBold,
 			BackgroundColor3 = toColor(rgb),
 			BorderSizePixel = 0,
 			Size = UDim2.new(0, 32, 0, 32),
@@ -274,6 +274,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 
 	-- Drawer's own lines that the server hasn't echoed yet.
 	local previewChunks: { Frame } = {}
+	local previewSentAt: { number } = {}
 	local livePoints: { number } = {} -- the chunk being drawn now (not sent yet)
 	local liveFrame: Frame? = nil
 	local liveCont = false
@@ -283,6 +284,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	local function clearPreview()
 		previewLayer:ClearAllChildren()
 		table.clear(previewChunks)
+		table.clear(previewSentAt)
 		liveFrame = nil
 	end
 
@@ -317,8 +319,17 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			end
 			-- The server now has one of our chunks: drop its preview copy.
 			local oldest = table.remove(previewChunks, 1)
+			table.remove(previewSentAt, 1)
 			if oldest then
 				oldest:Destroy()
+			end
+		end
+		-- A chunk the server never took (rate limited or rejected) shouldn't linger.
+		while previewSentAt[1] and os.clock() - previewSentAt[1] > 3 do
+			table.remove(previewSentAt, 1)
+			local stale = table.remove(previewChunks, 1)
+			if stale then
+				stale:Destroy()
 			end
 		end
 		rendered = #strokes
@@ -359,6 +370,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			cont = liveCont,
 		})
 		table.insert(previewChunks, liveFrame)
+		table.insert(previewSentAt, os.clock())
 		-- The next chunk of the same line starts where this one ended.
 		liveCont = true
 		livePoints = { pts[#pts - 1], pts[#pts] }
@@ -390,13 +402,17 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- The ScreenGui ignores the GUI inset, so input positions and AbsolutePosition
+	-- already share one space.
 	local function screenPos(input: InputObject): Vector2
-		local inset = GuiService:GetGuiInset()
-		return Vector2.new(input.Position.X, input.Position.Y) + inset
+		return Vector2.new(input.Position.X, input.Position.Y)
 	end
 
+	local drawOpenedAt = 0 -- when this client last saw the drawing phase start
+
 	canvas.InputBegan:Connect(function(input)
-		if not isDrawer() then
+		-- Ignore a click that picked the word, or arrives just as the canvas opens.
+		if not isDrawer() or overlay.Visible or os.clock() - drawOpenedAt < 0.4 then
 			return
 		end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -494,6 +510,9 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		overlayKey = key
+		if view.phase == "draw" then
+			drawOpenedAt = os.clock()
+		end
 		Kit.clear(overlayBody)
 		local me = snapshot.yourSeat
 		if view.phase == "choose" then
