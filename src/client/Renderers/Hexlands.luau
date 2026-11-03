@@ -759,7 +759,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 						Size = UDim2.new(0.7, -6, 1, 0),
 						Parent = line,
 					})
-					if kind ~= "monument" then
+					if kind ~= "monument" and view.phase ~= "over" then
 						button(line, if ready[kind] then "Play" else "Next turn", function()
 							if kind == "harvest" or kind == "hoard" then
 								picker = { card = kind, picks = {} }
