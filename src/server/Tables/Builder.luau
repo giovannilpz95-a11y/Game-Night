@@ -1,0 +1,216 @@
+-- Finds or builds the game tables in Workspace.
+--
+-- A table is a Model tagged Config.TableTag with attributes TableId, Zone and Shape,
+-- `Seat1`..`SeatN` Seat parts in order around the table, and a `BoardAnchor` (an
+-- Attachment or a part) at the center of the table top. In that order of preference:
+--   1. Tables already in Workspace with the tag (placed by hand in Studio).
+--   2. A table model from ReplicatedStorage.Assets whose name has "Square" or "Round"
+--      in it, cloned along Config.TableOrigin. Seats and an anchor are added if missing.
+--   3. Plain tables built from parts, so 3D play works before any art exists.
+
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Pieces = require(script.Parent.Pieces)
+
+local Builder = {}
+
+local SEATS = { Square4 = 4, Round8 = 8 }
+local WOOD = Color3.fromRGB(122, 84, 56)
+local FELT = Color3.fromRGB(46, 104, 74)
+
+local function newSeat(name: string, cf: CFrame, parent: Instance): Seat
+	local seat = Instance.new("Seat")
+	seat.Name = name
+	seat.Size = Vector3.new(2, 1, 2)
+	seat.CFrame = cf
+	seat.Anchored = true
+	seat.Color = WOOD
+	seat.Material = Enum.Material.Wood
+	seat.TopSurface = Enum.SurfaceType.Smooth
+	seat.Parent = parent
+	return seat
+end
+
+-- Seats `count` seats around `center` at `radius`, each facing the middle. Seat 1 is on
+-- the +Z side, then they go around.
+local function addSeats(model: Model, center: Vector3, radius: number, count: number, seatY: number)
+	for i = 1, count do
+		local angle = (i - 1) / count * math.pi * 2
+		local pos = Vector3.new(center.X + math.sin(angle) * radius, seatY, center.Z + math.cos(angle) * radius)
+		local cf = CFrame.lookAt(pos, Vector3.new(center.X, seatY, center.Z))
+		newSeat(`Seat{i}`, cf, model)
+	end
+end
+
+local function addAnchor(model: Model, cf: CFrame)
+	local part = Pieces.part({
+		Name = "BoardAnchor",
+		Size = Vector3.new(0.2, 0.2, 0.2),
+		CFrame = cf,
+		Transparency = 1,
+		CanQuery = false,
+		Parent = model,
+	})
+	return part
+end
+
+local function buildPlain(shape: string, at: Vector3): Model
+	local model = Instance.new("Model")
+	model.Name = `Table_{shape}`
+	local topY = at.Y + 3.4
+	if shape == "Round8" then
+		Pieces.part({ Name = "Top", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 13, 13), CFrame = CFrame.new(at.X, topY - 0.2, at.Z) * CFrame.Angles(0, 0, math.rad(90)), Color = WOOD, Material = Enum.Material.Wood, CanCollide = true, Parent = model })
+		Pieces.part({ Name = "Felt", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.05, 11.4, 11.4), CFrame = CFrame.new(at.X, topY + 0.02, at.Z) * CFrame.Angles(0, 0, math.rad(90)), Color = FELT, Material = Enum.Material.Fabric, Parent = model })
+		Pieces.part({ Name = "Leg", Size = Vector3.new(1.4, 3, 1.4), CFrame = CFrame.new(at.X, at.Y + 1.6, at.Z), Color = WOOD, Material = Enum.Material.Wood, CanCollide = true, Parent = model })
+		addSeats(model, Vector3.new(at.X, 0, at.Z), 8.2, 8, at.Y + 1.5)
+	else
+		Pieces.part({ Name = "Top", Size = Vector3.new(9, 0.4, 9), CFrame = CFrame.new(at.X, topY - 0.2, at.Z), Color = WOOD, Material = Enum.Material.Wood, CanCollide = true, Parent = model })
+		Pieces.part({ Name = "Felt", Size = Vector3.new(8, 0.05, 8), CFrame = CFrame.new(at.X, topY + 0.02, at.Z), Color = FELT, Material = Enum.Material.Fabric, Parent = model })
+		for _, offset in { Vector3.new(3.8, 0, 3.8), Vector3.new(-3.8, 0, 3.8), Vector3.new(3.8, 0, -3.8), Vector3.new(-3.8, 0, -3.8) } do
+			Pieces.part({ Name = "Leg", Size = Vector3.new(0.6, 3, 0.6), CFrame = CFrame.new(at + offset + Vector3.new(0, 1.6, 0)), Color = WOOD, Material = Enum.Material.Wood, CanCollide = true, Parent = model })
+		end
+		addSeats(model, Vector3.new(at.X, 0, at.Z), 6.2, 4, at.Y + 1.5)
+	end
+	addAnchor(model, CFrame.new(at.X, topY + 0.05, at.Z))
+	return model
+end
+
+local function findTemplate(shape: string): Model?
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	if not assets then
+		return nil
+	end
+	local word = if shape == "Round8" then "round" else "square"
+	for _, d in assets:GetDescendants() do
+		if d:IsA("Model") then
+			local name = string.lower(d.Name)
+			local parentName = string.lower(d.Parent and d.Parent.Name or "")
+			if string.find(name, word, 1, true) and (string.find(name, "table", 1, true) or string.find(parentName, "table", 1, true)) then
+				return d
+			end
+		end
+	end
+	return nil
+end
+
+-- Seats in a model, renamed Seat1..SeatN in order around the table (seat 1 on +Z).
+local function orderSeats(model: Model, center: Vector3)
+	local seats = {}
+	for _, d in model:GetDescendants() do
+		if d:IsA("Seat") then
+			table.insert(seats, d)
+		end
+	end
+	local function angleOf(seat: Seat): number
+		local offset = seat.Position - center
+		local a = math.atan2(offset.X, offset.Z)
+		return if a < -1e-6 then a + math.pi * 2 else a
+	end
+	table.sort(seats, function(a, b)
+		return angleOf(a) < angleOf(b)
+	end)
+	for i, seat in seats do
+		seat.Name = `Seat{i}`
+	end
+	return #seats
+end
+
+local function fromTemplate(template: Model, shape: string, at: Vector3): Model
+	local model = template:Clone()
+	local _, size = model:GetBoundingBox()
+	-- Stand it on the floor at `at`.
+	local boxCF = model:GetBoundingBox()
+	model:PivotTo(model:GetPivot() + (at + Vector3.new(0, size.Y / 2, 0) - boxCF.Position))
+	local center, top = at, at.Y + size.Y
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+		end
+	end
+	local count = orderSeats(model, center)
+	if count == 0 then
+		local radius = math.max(size.X, size.Z) / 2 + 1.6
+		addSeats(model, center, radius, SEATS[shape], at.Y + 1.5)
+	end
+	local anchor = model:FindFirstChild("BoardAnchor", true)
+	if not anchor then
+		addAnchor(model, CFrame.new(center.X, top + 0.05, center.Z))
+	end
+	return model
+end
+
+-- World CFrame of a table's board anchor (position only matters; Y up).
+function Builder.anchorPosition(model: Model): Vector3
+	local anchor = model:FindFirstChild("BoardAnchor", true)
+	if anchor and anchor:IsA("Attachment") then
+		return anchor.WorldPosition
+	elseif anchor and anchor:IsA("BasePart") then
+		return anchor.Position
+	end
+	local cf, size = model:GetBoundingBox()
+	return cf.Position + Vector3.new(0, size.Y / 2, 0)
+end
+
+function Builder.seat(model: Model, index: number): Seat?
+	local seat = model:FindFirstChild(`Seat{index}`, true)
+	return if seat and seat:IsA("Seat") then seat else nil
+end
+
+function Builder.seatCount(model: Model): number
+	local count = 0
+	while Builder.seat(model, count + 1) do
+		count += 1
+	end
+	return count
+end
+
+-- Returns every table model, building them if the place has none.
+function Builder.getTables(): { Model }
+	local tagged = {}
+	for _, inst in CollectionService:GetTagged(Config.TableTag) do
+		if inst:IsA("Model") and inst:IsDescendantOf(workspace) then
+			table.insert(tagged, inst)
+		end
+	end
+	if #tagged > 0 then
+		for i, model in tagged do
+			if not model:GetAttribute("TableId") then
+				model:SetAttribute("TableId", `Table-{i}`)
+			end
+			if not model:GetAttribute("Zone") then
+				model:SetAttribute("Zone", "Quick")
+			end
+			orderSeats(model, Builder.anchorPosition(model))
+		end
+		return tagged
+	end
+
+	local lobby = workspace:FindFirstChild("Lobby") or Instance.new("Folder")
+	lobby.Name = "Lobby"
+	lobby.Parent = workspace
+	local folder = lobby:FindFirstChild("Tables") or Instance.new("Folder")
+	folder.Name = "Tables"
+	folder.Parent = lobby
+
+	local built = {}
+	local counts: { [string]: number } = {}
+	for i, spec in Config.DefaultTables do
+		local at = Config.TableOrigin + Vector3.new((i - (#Config.DefaultTables + 1) / 2) * Config.TableSpacing, 0, 0)
+		local template = findTemplate(spec.shape)
+		local model = if template then fromTemplate(template, spec.shape, at) else buildPlain(spec.shape, at)
+		counts[spec.zone] = (counts[spec.zone] or 0) + 1
+		local id = `{spec.zone}-{counts[spec.zone]}`
+		model.Name = id
+		model:SetAttribute("TableId", id)
+		model:SetAttribute("Zone", spec.zone)
+		model:SetAttribute("Shape", spec.shape)
+		model.Parent = folder
+		CollectionService:AddTag(model, Config.TableTag)
+		table.insert(built, model)
+	end
+	return built
+end
+
+return Builder

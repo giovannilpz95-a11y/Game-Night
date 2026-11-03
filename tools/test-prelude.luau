@@ -66,6 +66,13 @@ Color3 = {
 	end,
 }
 
+-- Config also holds a Vector3 (where code-built tables go).
+Vector3 = {
+	new = function(x, y, z)
+		return { X = x, Y = y, Z = z }
+	end,
+}
+
 -- Deterministic stand-in for Roblox's Random.
 Random = {}
 Random.__index = Random

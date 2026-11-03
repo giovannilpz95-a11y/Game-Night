@@ -24,6 +24,9 @@ When the leader starts a game, `MatchService` builds the seats: party members fi
 
 `server/Core/Match.luau` holds one game's state and has no timers, so it's unit tested.
 
+## 3D tables
+Each match is played at a table in the room when one is free: players and bots sit around it and games with a 3D board get it built on the table. `TableService` handles it; no free table means the 2D view. See [[Tables]].
+
 ## Party games: phase clocks and typed text
 Party games (Sketch & Guess, Trivia Night) let several seats move at once and run on a clock instead of turns:
 - A game with `getTimer` returns `{ id, seconds }` for the current phase. `MatchService` runs that timer (instead of the AFK turn timer) and calls `onTimeout` when it runs out. Changing `id` starts a new timer; moves that keep the id (strokes, guesses) don't reset it. Clients get `turnEndsAt` and `timed = true` to draw a countdown.
