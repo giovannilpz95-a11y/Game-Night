@@ -189,6 +189,21 @@ local entries: { Entry } = {
 		minMinutes = 3,
 		minMoves = 30,
 	},
+	{
+		id = "Hexlands",
+		name = "Hexlands",
+		module = "Hexlands",
+		category = "Board",
+		description = "Settle a hex island: roll for resources, build roads and towns, trade with friends.",
+		minSeats = 2,
+		maxSeats = 4,
+		turnSeconds = 45,
+		status = "ready",
+		coin = "hexlands",
+		typicalMinutes = 20,
+		minMinutes = 3,
+		minMoves = 40,
+	},
 }
 
 local GameCatalog = {}
