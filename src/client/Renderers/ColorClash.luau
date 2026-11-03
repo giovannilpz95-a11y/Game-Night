@@ -207,7 +207,6 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		Position = UDim2.new(0, 0, 0.6, 48),
 		Size = UDim2.new(1, 0, 0.4, -48),
 		CanvasSize = UDim2.new(),
-		AutomaticCanvasSize = Enum.AutomaticSize.X,
 		ScrollingDirection = Enum.ScrollingDirection.X,
 		ScrollBarThickness = 6,
 		Parent = root,
@@ -218,6 +217,13 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	handList.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	handList.VerticalAlignment = Enum.VerticalAlignment.Bottom
 	handList.Parent = hand
+	-- Size the canvas ourselves: AutomaticCanvasSize doesn't grow with the overlapping
+	-- (negative padding) list, so the right end of a big hand couldn't be scrolled to.
+	local function fitHand()
+		hand.CanvasSize = UDim2.fromOffset(handList.AbsoluteContentSize.X + 48, 0)
+	end
+	handList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitHand)
+	fitHand()
 	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 24), PaddingTop = UDim.new(0, 4), Parent = hand })
 
 	-- Wild color picker.
