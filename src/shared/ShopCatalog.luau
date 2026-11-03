@@ -1,7 +1,7 @@
 -- Every item for sale. Items are data; the server prices and checks them with Core/Shop.
 --
 --   shop       "hub" (Gems only, works everywhere) or a coin key from Economy.Coins
---   slot       what it replaces: pieces, cards, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
+--   slot       what it replaces: pieces, cards, dice, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
 --   tier       Common | Rare | Epic | Legendary
 --   coins      price in that shop's Coins (nil = not sold for Coins)
 --   gems       Gem price. If nil and coins is set, the Gem price is coins / Economy.CoinsPerGem.
@@ -71,6 +71,14 @@ local items: { Item } = {
 	{ id = "party_spotlight_podium", name = "Spotlight Podium", shop = "party", slot = "board", tier = "Rare", coins = 1200 },
 	{ id = "party_paint_splat", name = "Paint Splat Win", shop = "party", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "party_quizmaster_title", name = "Title: Quizmaster", shop = "party", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
+
+	-- Property Party shop
+	{ id = "property_rubber_duck", name = "Rubber Duck Token", shop = "property", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "property_gold_dice", name = "Golden Dice", shop = "property", slot = "dice", tier = "Rare", coins = 1500 },
+	{ id = "property_candy_town", name = "Candy Town Board", shop = "property", slot = "board", tier = "Rare", coins = 2000 },
+	{ id = "property_neon_hotels", name = "Neon Hotels", shop = "property", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "property_money_rain", name = "Money Rain Win", shop = "property", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "property_tycoon_title", name = "Title: Tycoon", shop = "property", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}
