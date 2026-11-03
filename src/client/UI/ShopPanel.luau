@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
 local Kit = require(script.Parent.Kit)
+local Analytics = require(script.Parent.Parent.Analytics)
 local Theme = Kit.Theme
 
 local ShopPanel = {}
@@ -259,6 +260,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			local selected = t.key == tab
 			Kit.button(t.name, function()
 				tab = t.key
+				Analytics.shop("ViewedTab", tab)
 				render()
 			end, {
 				BackgroundColor3 = if selected then Theme.Accent else Theme.PanelLight,
@@ -304,6 +306,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		open = function(coinKey: string?)
 			tab = if coinKey and #ShopCatalog.forShop(coinKey) > 0 then coinKey else "wallet"
 			root.Visible = true
+			Analytics.shop("Opened", tab)
 			render()
 		end,
 		setWallet = function(state: any)

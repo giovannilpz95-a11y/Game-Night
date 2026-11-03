@@ -15,6 +15,7 @@ local Profile = require(script.Parent.Parent.Core.Profile)
 local Shop = require(script.Parent.Parent.Core.Shop)
 local DataService = require(script.Parent.DataService)
 local EconomyService = require(script.Parent.EconomyService)
+local AnalyticsService = require(script.Parent.AnalyticsService)
 
 local PurchaseService = {}
 
@@ -55,6 +56,7 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 		-- Kept in memory with the receipt recorded, so a retry won't grant it twice.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
+	AnalyticsService.robuxPurchase(player, product.key, data, product.gems)
 	notify(player, if kind == "starter" then "Starter Pack unlocked! Thanks for supporting Game Night." else `+{product.gems} Gems. Thanks!`)
 	EconomyService.push(player)
 	return Enum.ProductPurchaseDecision.PurchaseGranted
@@ -71,6 +73,7 @@ function PurchaseService.handleRequest(player: Player, request: any)
 				if pack.productId == 0 then
 					return notify(player, "Gem packs aren't set up yet")
 				end
+				AnalyticsService.robuxPrompt(player, pack.key)
 				return MarketplaceService:PromptProductPurchase(player, pack.productId)
 			end
 		end
@@ -81,6 +84,7 @@ function PurchaseService.handleRequest(player: Player, request: any)
 		if not EconomyService.isStarterAvailable(player) then
 			return notify(player, "The Starter Pack is only for your first 3 days")
 		end
+		AnalyticsService.robuxPrompt(player, Economy.StarterPack.key)
 		MarketplaceService:PromptProductPurchase(player, Economy.StarterPack.productId)
 	elseif request.action == "buyPass" then
 		local pass = if type(request.key) == "string" then Economy.Passes[request.key] else nil
@@ -93,6 +97,7 @@ function PurchaseService.handleRequest(player: Player, request: any)
 		if EconomyService.hasPass(player, request.key) then
 			return notify(player, `You already have {pass.name}`)
 		end
+		AnalyticsService.robuxPrompt(player, `pass:{request.key}`, request.key)
 		MarketplaceService:PromptGamePassPurchase(player, pass.gamePassId)
 	end
 end
@@ -105,6 +110,7 @@ function PurchaseService.init()
 		local key = Economy.passByGamePassId(gamePassId)
 		if purchased and key then
 			EconomyService.setPass(player, key, true)
+			AnalyticsService.robuxPurchase(player, `pass:{key}`)
 			notify(player, `{Economy.Passes[key].name} unlocked. Thanks for supporting Game Night!`)
 		end
 	end)

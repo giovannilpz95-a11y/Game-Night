@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
 local PartyRegistry = require(script.Parent.Parent.Core.PartyRegistry)
+local AnalyticsService = require(script.Parent.AnalyticsService)
 
 local PartyService = {}
 
@@ -93,6 +94,7 @@ function handlers.invite(player: Player, request: any)
 		expiresIn = Config.InviteSeconds,
 	})
 	notify(player, `Invited {target.DisplayName}`)
+	AnalyticsService.inviteSent(player)
 end
 
 function handlers.accept(player: Player, request: any)
@@ -103,6 +105,8 @@ function handlers.accept(player: Player, request: any)
 	if not ok then
 		return notify(player, err :: string)
 	end
+	local party = registry:getParty(player.UserId)
+	AnalyticsService.inviteAccepted(player, if party then #party.members else 1)
 	flush()
 end
 
@@ -115,7 +119,7 @@ end
 function handlers.leave(player: Player, _request: any)
 	local party = registry:getParty(player.UserId)
 	if party and party.matchId and matchService then
-		matchService.leaveMatch(player)
+		matchService.leaveMatch(player, "leftParty")
 	end
 	local ok, err = registry:leave(player.UserId)
 	if not ok then
@@ -136,7 +140,7 @@ function handlers.kick(player: Player, request: any)
 	local target = Players:GetPlayerByUserId(request.userId)
 	if target then
 		if party and party.matchId and matchService then
-			matchService.leaveMatch(target)
+			matchService.leaveMatch(target, "kicked")
 		end
 		notify(target, "You were removed from the party")
 	end
@@ -170,7 +174,7 @@ function PartyService.init(matchServiceRef: any)
 
 	Players.PlayerRemoving:Connect(function(player)
 		if matchService then
-			matchService.leaveMatch(player)
+			matchService.leaveMatch(player, "leftServer")
 		end
 		registry:removePlayer(player.UserId)
 		flush()

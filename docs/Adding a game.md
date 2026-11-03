@@ -8,3 +8,4 @@ Back to [[Home]] · see [[Architecture]].
 4. **Catalog:** in `shared/GameCatalog.luau`, set `module = "<Name>"`, `turnSeconds`, and `status = "ready"`. For rewards, set `coin`, `typicalMinutes`, `minMinutes` and `minMoves` (see [[Economy]]). Don't hand out currency from the game itself.
 5. **Tests:** add `tests/<Name>.spec.luau`. At minimum: illegal moves are rejected, a win is detected, and bot-vs-bot games always finish.
 6. **Notes:** add a technical page in `docs/Games/` (where the code lives, bot strategy). Design and research notes go in the Obsidian vault.
+7. **Analytics:** nothing to do. Matches are tracked from MatchService (see [[Analytics]]). If the game hands out a bonus, use `EconomyService.award`, which logs it.

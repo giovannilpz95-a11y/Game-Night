@@ -22,6 +22,7 @@ local Daily = require(script.Parent.Parent.Core.Daily)
 local Rewards = require(script.Parent.Parent.Core.Rewards)
 local Shop = require(script.Parent.Parent.Core.Shop)
 local DataService = require(script.Parent.DataService)
+local AnalyticsService = require(script.Parent.AnalyticsService)
 
 local EconomyService = {}
 
@@ -104,6 +105,7 @@ local function checkDay(player: Player, data: Profile.Data)
 	local gems, streakDay = Daily.login(data, day, isVip(player))
 	if gems > 0 then
 		sendReward(player, "Daily reward", { `Day {streakDay} login: +{gems} {Economy.GemsName}` })
+		AnalyticsService.dailyLogin(player, data, gems)
 	end
 end
 
@@ -114,6 +116,7 @@ function EconomyService.award(player: Player, grant: { coins: number?, coinKey: 
 	if not data then
 		return
 	end
+	local before = AnalyticsService.snapshot(data)
 	local multiplier = if isVip(player) then 1 + Economy.VipPlayBonus else 1
 	local lines = {}
 	local coins = math.floor((grant.coins or 0) * multiplier + 0.5)
@@ -129,6 +132,7 @@ function EconomyService.award(player: Player, grant: { coins: number?, coinKey: 
 		table.insert(lines, `+{gems} {Economy.GemsName}`)
 	end
 	sendReward(player, grant.reason or "Reward", lines)
+	AnalyticsService.logChange(player, data, before, "Gameplay", grant.reason)
 	EconomyService.push(player)
 end
 
@@ -159,6 +163,7 @@ function EconomyService.recordMatch(
 		vip = isVip(player),
 	})
 	sendReward(player, "Rewards", Rewards.describe(payout))
+	AnalyticsService.matchPayout(player, data, payout)
 	EconomyService.push(player)
 	return payout
 end
@@ -248,7 +253,9 @@ function handlers.buy(player: Player, request: any)
 	if not data then
 		return
 	end
+	local before = AnalyticsService.snapshot(data)
 	local ok, err = Shop.buy(data, request.itemId, request.currency, isVip(player))
+	AnalyticsService.shopBuy(player, data, before, request.itemId, ok)
 	if not ok then
 		return notify(player, err :: string)
 	end

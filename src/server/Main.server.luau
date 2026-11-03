@@ -42,3 +42,7 @@ Net.event(Net.Names.PurchaseRequest).OnServerEvent:Connect(guarded(PurchaseServi
 Players.PlayerRemoving:Connect(function(player)
 	limiter:forget(player.UserId)
 end)
+
+-- Analytics only listens to the services above, so it starts last.
+local AnalyticsService = require(script.Parent.Services.AnalyticsService)
+AnalyticsService.init(MatchService)

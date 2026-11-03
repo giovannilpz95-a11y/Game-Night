@@ -13,6 +13,7 @@ Net.Names = {
 	MatchRequest = "MatchRequest", -- client -> server: { action = "...", ... }
 	MatchState = "MatchState", -- server -> client: your view of the match (or nil)
 	Notify = "Notify", -- server -> client: short message to show as a toast
+	AnalyticsRequest = "AnalyticsRequest", -- client -> server: { kind = "onboarding" | "shop", step, tab? }
 	EconomyRequest = "EconomyRequest", -- client -> server: { action = "buy" | "equip" | "sync", ... }
 	PurchaseRequest = "PurchaseRequest", -- client -> server: { action = "buyGems" | "buyStarter" | "buyPass", key }
 	WalletState = "WalletState", -- server -> client: balances, owned items, daily progress
