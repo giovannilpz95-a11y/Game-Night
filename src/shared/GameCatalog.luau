@@ -108,7 +108,9 @@ local entries: { Entry } = {
 		description = "One draws, everyone guesses. Best with friends: bots guess but don't draw.",
 		minSeats = 3,
 		maxSeats = 8,
-		status = "ready",
+		-- Held from launch: freehand drawing counts as "free-form user creation", which
+		-- Roblox limits to 16+ for the whole experience. See docs/Launch.md.
+		status = "soon",
 		coin = "party",
 		typicalMinutes = 10,
 		minMinutes = 2,
