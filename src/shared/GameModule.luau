@@ -5,7 +5,8 @@
 
 	A rules module returns a table with:
 
-	  id, displayName, minSeats, maxSeats
+	  id, minSeats, maxSeats
+	      (The name players see lives only in GameCatalog.luau.)
 
 	  new(seatCount, options, rng) -> state
 	      Fresh game state. Seats are numbered 1..seatCount.

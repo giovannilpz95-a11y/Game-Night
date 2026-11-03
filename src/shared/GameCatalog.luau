@@ -2,7 +2,9 @@
 -- Shared/Games/<module> and a renderer in the client's Renderers/<module>.
 -- "soon" games show as "Coming soon" so players can see what's next.
 --
--- Names for games inspired by trademarked board games are our own working titles.
+-- `name` is the ONLY place a game's display name is set. The lobby, table header and
+-- results all read it from here, so renaming a game means changing just that line.
+-- `id` and `module` are internal and should not change once a game ships.
 
 export type Entry = {
 	id: string,

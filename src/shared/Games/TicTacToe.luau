@@ -6,7 +6,6 @@ local GameModule = require(script.Parent.Parent.GameModule)
 local TicTacToe = {}
 
 TicTacToe.id = "TicTacToe"
-TicTacToe.displayName = "Tic-Tac-Toe"
 TicTacToe.minSeats = 2
 TicTacToe.maxSeats = 2
 TicTacToe.marks = { "X", "O" }
