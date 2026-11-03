@@ -56,6 +56,10 @@ Economy.VipGemDiscount = 0.10 -- 10% off Gem prices
 -- Dressing Room saved looks
 Economy.FreeLookSlots = 3
 Economy.VipLookSlots = 20
+Economy.LookSlotGems = 100 -- one more saved look (VIP discount applies)
+Economy.MaxLookSlots = 30 -- cap on free + VIP + bought slots
+-- Roblox catalog items are only ever bought with Robux, never Gems or Coins. On every sale
+-- inside Game Night the experience gets 40% as commission (held 30 days by Roblox).
 
 -- Robux products. Create them in the Creator Hub (Monetization > Developer Products / Passes)
 -- and paste each ID here. An ID of 0 means "not set up yet" and the shop greys it out.

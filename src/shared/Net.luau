@@ -17,6 +17,8 @@ Net.Names = {
 	PurchaseRequest = "PurchaseRequest", -- client -> server: { action = "buyGems" | "buyStarter" | "buyPass", key }
 	WalletState = "WalletState", -- server -> client: balances, owned items, daily progress
 	Reward = "Reward", -- server -> client: { title, lines } after a match or daily login
+	DressingRoomRequest = "DressingRoomRequest", -- client -> server: { action = "tryOn" | "takeOff" | "buy" | ..., ... }
+	DressingRoomState = "DressingRoomState", -- server -> client: current look, saved looks, slots
 }
 
 local FOLDER_NAME = "Remotes"

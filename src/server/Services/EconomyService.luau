@@ -21,6 +21,7 @@ local Profile = require(script.Parent.Parent.Core.Profile)
 local Daily = require(script.Parent.Parent.Core.Daily)
 local Rewards = require(script.Parent.Parent.Core.Rewards)
 local Shop = require(script.Parent.Parent.Core.Shop)
+local Looks = require(script.Parent.Parent.Core.Looks)
 local DataService = require(script.Parent.DataService)
 
 local EconomyService = {}
@@ -85,7 +86,7 @@ function EconomyService.push(player: Player)
 		challenges = data.daily.challenges,
 		starterAvailable = starter,
 		starterEndsAt = starterEndsAt,
-		lookSlots = (if vip then Economy.VipLookSlots else Economy.FreeLookSlots) + data.lookSlots,
+		lookSlots = Looks.slotCount(data, vip),
 		saving = DataService.isPersistent(player),
 		studio = RunService:IsStudio(),
 	})

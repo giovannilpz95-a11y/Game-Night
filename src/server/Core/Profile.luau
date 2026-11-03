@@ -48,9 +48,10 @@ export type Data = {
 	receipts: { string },
 	grants: { [string]: boolean }, -- one-time grants already given (e.g. starter)
 	-- Dressing Room (see vault "03 Design/Avatar Designer.md")
-	looks: { any },
+	looks: { any }, -- saved looks, { name, base, items } (see Core/Looks)
 	lookSlots: number, -- extra slots bought with Gems, on top of the free ones
-	currentLook: any?,
+	currentLook: any?, -- the look worn everywhere in Game Night, or nil for the player's own avatar
+	catalog: { purchases: number, robux: number }, -- Roblox catalog items bought in the Dressing Room
 }
 
 local function newDaily(day: number): Daily
@@ -77,6 +78,7 @@ function Profile.new(now: number): Data
 		looks = {},
 		lookSlots = 0,
 		currentLook = nil,
+		catalog = { purchases = 0, robux = 0 },
 	}
 end
 

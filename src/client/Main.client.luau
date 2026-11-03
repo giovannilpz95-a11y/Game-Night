@@ -13,6 +13,7 @@ local MatchView = require(script.Parent.UI.MatchView)
 local Popups = require(script.Parent.UI.Popups)
 local WalletBar = require(script.Parent.UI.WalletBar)
 local ShopPanel = require(script.Parent.UI.ShopPanel)
+local DressingRoomPanel = require(script.Parent.UI.DressingRoomPanel)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 
@@ -22,6 +23,7 @@ local partyRequest = Net.event(Net.Names.PartyRequest)
 local matchRequest = Net.event(Net.Names.MatchRequest)
 local economyRequest = Net.event(Net.Names.EconomyRequest)
 local purchaseRequest = Net.event(Net.Names.PurchaseRequest)
+local dressingRequest = Net.event(Net.Names.DressingRoomRequest)
 
 local function sendParty(request: any)
 	partyRequest:FireServer(request)
@@ -61,7 +63,19 @@ local shopPanel = ShopPanel.create(screen, function(request)
 end, function(request)
 	purchaseRequest:FireServer(request)
 end)
-local walletBar = WalletBar.create(screen, shopPanel.open)
+local dressingRoom = DressingRoomPanel.create(screen, function(request)
+	dressingRequest:FireServer(request)
+end)
+-- One big window at a time.
+local walletBar = WalletBar.create(screen, function(coinKey)
+	dressingRoom.close()
+	shopPanel.open(coinKey)
+end, function()
+	shopPanel.root.Visible = false
+	dressingRoom.open()
+end)
+
+Net.event(Net.Names.DressingRoomState).OnClientEvent:Connect(dressingRoom.setState)
 
 -- At a table the wallet shows that game's Coins too.
 local shownGameId: string? = nil
@@ -71,6 +85,9 @@ RunService.RenderStepped:Connect(function()
 		shownGameId = gameId
 		local entry = gameId and GameCatalog.get(gameId)
 		walletBar.setContext(if entry then entry.coin or Economy.DefaultCoin else nil, gameId ~= nil)
+		if gameId then
+			dressingRoom.close() -- a game started: get out of the way
+		end
 	end
 end)
 
@@ -114,3 +131,4 @@ end)
 sendParty({ action = "sync" })
 sendMatch({ action = "sync" })
 economyRequest:FireServer({ action = "sync" })
+dressingRequest:FireServer({ action = "sync" })
