@@ -1,0 +1,15 @@
+# Studio files (the source of truth is src/)
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+*.rbxm
+*.rbxmx
+sourcemap.json
+
+# Test runner
+node_modules/
+
+# Obsidian per-device settings
+docs/.obsidian/workspace*.json
+.DS_Store
