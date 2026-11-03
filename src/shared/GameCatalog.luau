@@ -160,6 +160,21 @@ local entries: { Entry } = {
 		minMinutes = 3,
 		minMoves = 30,
 	},
+	{
+		id = "WordTiles",
+		name = "Word Tiles",
+		module = "WordTiles",
+		category = "Word",
+		description = "Build crossing words from your letter tiles. Big words on bright squares score big.",
+		minSeats = 2,
+		maxSeats = 4,
+		turnSeconds = 90,
+		status = "ready",
+		coin = "wordtiles",
+		typicalMinutes = 15,
+		minMinutes = 0.5, -- bot turns are quick, so gate on moves rather than time
+		minMoves = 12,
+	},
 }
 
 local GameCatalog = {}

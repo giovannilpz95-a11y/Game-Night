@@ -86,6 +86,15 @@ local items: { Item } = {
 	{ id = "property_neon_hotels", name = "Neon Hotels", shop = "property", slot = "effect", tier = "Rare", coins = 1200 },
 	{ id = "property_money_rain", name = "Money Rain Win", shop = "property", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "property_tycoon_title", name = "Title: Tycoon", shop = "property", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Word Tiles shop
+	{ id = "wordtiles_maple_tiles", name = "Maple Tiles", shop = "wordtiles", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "wordtiles_chalk_board", name = "Chalkboard Board", shop = "wordtiles", slot = "board", tier = "Common", coins = 350 },
+	{ id = "wordtiles_marble_tiles", name = "Marble Tiles", shop = "wordtiles", slot = "pieces", tier = "Rare", coins = 1500 },
+	{ id = "wordtiles_neon_tiles", name = "Neon Tiles", shop = "wordtiles", slot = "pieces", tier = "Rare", coins = 1800 },
+	{ id = "wordtiles_score_pop", name = "Big Score Pop", shop = "wordtiles", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "wordtiles_all_seven_party", name = "All-Seven Party", shop = "wordtiles", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "wordtiles_wordsmith_title", name = "Title: Wordsmith", shop = "wordtiles", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}

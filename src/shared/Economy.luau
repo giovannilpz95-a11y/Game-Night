@@ -18,6 +18,7 @@ Economy.Coins = {
 	party = { name = "Party Coins", color = Color3.fromRGB(153, 102, 255), order = 5 },
 	whodunit = { name = "Whodunit Coins", color = Color3.fromRGB(214, 168, 96), order = 6 },
 	property = { name = "Property Coins", color = Color3.fromRGB(88, 204, 120), order = 7 },
+	wordtiles = { name = "Word Tiles Coins", color = Color3.fromRGB(232, 180, 96), order = 8 },
 }
 Economy.DefaultCoin = "arcade"
 
