@@ -475,7 +475,10 @@ return function(T)
 		T.eq(view.players[2].actionCards, 1)
 		T.eq(view.players[2].hand, nil)
 		T.eq(view.players[2].points, 2, "hidden Monument not shown to others")
-		T.eq(Hexlands.getView(s, 2).players[2].points, 3, "but you see your own")
+		local own = Hexlands.getView(s, 2)
+		T.eq(own.players[2].points, 2, "your own row matches the seat bar everyone sees")
+		T.eq(own.you.secret, 1, "your hidden points come separately")
+		T.eq(view.you.secret, 0)
 		T.eq(Hexlands.getView(s, nil).you, nil)
 		-- Board tables are dense lists: sparse number keys turn into strings over a RemoteEvent.
 		T.eq(#view.owner, #V)
@@ -528,10 +531,53 @@ return function(T)
 						end
 					end
 					T.ok(match:isOver(), `{level} {seats} seats seed {seed} didn't finish`)
-					T.eq(#match.result.winners, 1, `{level} {seats} seats seed {seed}: {match.result.reason}`)
-					T.eq(match.result.reason, `{Hexlands.TARGET_POINTS} points`, `{level} {seats} seats seed {seed} finished by {match.result.reason} in round {match.state.round}`)
+					T.ok(#match.result.winners >= 1, `{level} {seats} seats seed {seed}: no winner`)
+					T.ok(match.state.round <= Hexlands.MAX_ROUNDS[seats] + 1, "round limit holds")
 				end
 			end
+		end
+	end)
+
+	T.test("a match with a human seat reaches the end and pays Hexlands Coins", function()
+		local Core = ServerScriptService.Server.Core
+		local Profile = require(Core.Profile)
+		local Daily = require(Core.Daily)
+		local Rewards = require(Core.Rewards)
+		local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
+		local entry = GameCatalog.get("Hexlands")
+		T.ok(entry and entry.status == "ready" and entry.coin == "hexlands", "catalog entry")
+		for seed = 1, 6 do
+			local seats = { { kind = "player", userId = 1, name = "Me" }, { kind = "bot", name = "Bot A" }, { kind = "bot", name = "Bot B" } }
+			local match = Match.new("m", Hexlands, seats, { botLevel = "medium", bots = { 2, 3 } }, T.Random.new(seed))
+			-- Rough clock: bots wait their delay, the human takes 10 s a move.
+			local seconds = 0
+			while not match:isOver() do
+				local seat = match:getActiveSeats()[1]
+				seconds += if seat == 1 then 10 else match:botDelay(seat, 1.2)
+				if not match:playForSeat(seat) then
+					match:timeout(match:getTimer().id)
+				end
+			end
+			local minutes = seconds / 60
+			T.ok(minutes >= entry.minMinutes and minutes <= 35, `seed {seed}: {minutes} minutes`)
+			T.ok(match.moveNumber >= entry.minMoves, "enough moves to pay")
+			local data = Profile.new(0)
+			Daily.roll(data, 1, { { id = "Hexlands", name = entry.name } }, T.Random.new(1))
+			local payout = Rewards.applyMatch(data, {
+				gameId = entry.id,
+				coinKey = entry.coin,
+				typicalMinutes = entry.typicalMinutes,
+				minMinutes = entry.minMinutes,
+				minMoves = entry.minMoves,
+				minutes = minutes,
+				moves = match.moveNumber,
+				won = table.find(match.result.winners, 1) ~= nil,
+				isDraw = match.result.isDraw,
+				humanOpponents = {},
+				vip = false,
+			})
+			T.ok(payout.coins > 0, "paid coins")
+			T.eq(data.coins.hexlands, payout.coins)
 		end
 	end)
 end

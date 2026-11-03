@@ -20,7 +20,8 @@
 -- One action card a turn, not one bought this turn. Longest Road (5+) and Biggest Guard
 -- (3+ Guards played) are worth 2 points each.
 --
--- First to Hexlands.TARGET_POINTS on their own turn wins. After MAX_ROUNDS the most points wins.
+-- First to Hexlands.TARGET_POINTS on their own turn wins. After MAX_ROUNDS (by seat count)
+-- the most points wins.
 --
 -- Moves (all tables, checked field by field in validateMove):
 --   { kind = "place", vertex = v }             { kind = "road", edge = e }   (setup / Road Crew / build)
@@ -43,8 +44,11 @@ Hexlands.id = "Hexlands"
 Hexlands.minSeats = 2
 Hexlands.maxSeats = 4
 
-Hexlands.TARGET_POINTS = 10
-Hexlands.MAX_ROUNDS = 60 -- safety valve: the most points wins after this many rounds
+Hexlands.TARGET_POINTS = 8
+-- Round limit by seat count, to keep a match around 20-30 minutes. Most games end on
+-- points first (bot tests: about 16 rounds with 4 seats, 26 with 2); otherwise the most
+-- points wins when the limit is reached.
+Hexlands.MAX_ROUNDS = { [2] = 30, [3] = 24, [4] = 20 }
 Hexlands.BANK_EACH = 19
 Hexlands.HAND_LIMIT = 7 -- more than this when a 7 is rolled: discard half
 Hexlands.TRADES_PER_TURN = 3
@@ -398,6 +402,7 @@ function Hexlands.new(seatCount: number, options: any, rng: any)
 		turn = 1,
 		turnNumber = 0, -- counts every turn after setup (for "bought this turn")
 		round = 1,
+		maxRounds = Hexlands.MAX_ROUNDS[seatCount] or 20,
 		dice = nil,
 		discards = {}, -- [seat] = cards still to discard
 		banditReturn = "main",
@@ -706,7 +711,7 @@ local function nextTurn(state: any)
 	state.cardPlayed = false
 	state.tradesThisTurn = 0
 	state.botOffered = false
-	if state.round > Hexlands.MAX_ROUNDS then
+	if state.round > state.maxRounds then
 		local best, winners = -1, {}
 		for seat = 1, state.seatCount do
 			local p = points(state, seat)
@@ -1349,7 +1354,9 @@ function Hexlands.getView(state: any, seat: number?): any
 			camps = p.camps,
 			towns = p.towns,
 		}
-		if s == seat or state.phase == "over" then
+		-- Monuments stay hidden from everyone (yourself included, see you.secret) until the
+		-- end, so this matches the seat bar, which everyone sees.
+		if state.phase == "over" then
 			entry.points = points(state, s)
 		end
 		players[s] = entry
@@ -1365,7 +1372,7 @@ function Hexlands.getView(state: any, seat: number?): any
 		for _, r in RES do
 			rates[r] = Hexlands.rate(state, seat, r)
 		end
-		you = { hand = table.clone(p.hand), cards = cards, rates = rates }
+		you = { hand = table.clone(p.hand), cards = cards, rates = rates, secret = if state.phase == "over" then 0 else monuments(state, seat) }
 	end
 	local trade = nil
 	if state.trade then
@@ -1390,7 +1397,7 @@ function Hexlands.getView(state: any, seat: number?): any
 		setupStep = state.setupStep,
 		turn = currentSeat(state),
 		round = state.round,
-		maxRounds = Hexlands.MAX_ROUNDS,
+		maxRounds = state.maxRounds,
 		target = Hexlands.TARGET_POINTS,
 		tiles = GameModule.copy(state.tiles),
 		harbors = GameModule.copy(state.harbors),
@@ -1456,9 +1463,11 @@ end
 
 function Hexlands.getBotDelay(state: any, seat: number, rng: any): number
 	if state.phase == "trade" then
-		return 1.5
+		return 1.2 -- time to read the offer
+	elseif state.phase == "roll" or state.phase == "bandit" then
+		return 0.8 + rng:NextNumber() * 0.3
 	end
-	return 0.7 + rng:NextNumber() * 0.6
+	return 0.35 + rng:NextNumber() * 0.25 -- builds and trades in a quick sequence
 end
 
 -- Bots -------------------------------------------------------------------------------

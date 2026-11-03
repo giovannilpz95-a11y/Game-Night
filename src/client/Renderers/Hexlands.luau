@@ -153,8 +153,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		})
 		local token = circle({
 			BackgroundColor3 = TOKEN,
-			Position = UDim2.fromScale(0.5, 0.55),
-			Size = UDim2.fromScale(0.44, 0.38),
+			Position = UDim2.fromScale(0.5, 0.53),
+			Size = UDim2.fromScale(0.38, 0.33),
 			ZIndex = 3,
 			Parent = holder,
 		})
@@ -181,8 +181,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		})
 		local bandit = circle({
 			BackgroundColor3 = Color3.fromRGB(25, 22, 30),
-			Position = UDim2.fromScale(0.5, 0.55),
-			Size = UDim2.fromScale(0.5, 0.44),
+			Position = UDim2.fromScale(0.5, 0.53),
+			Size = UDim2.fromScale(0.42, 0.37),
 			ZIndex = 6,
 			Visible = false,
 			Parent = holder,
@@ -261,7 +261,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		local label = circle({
 			BackgroundColor3 = Color3.fromRGB(245, 235, 210),
 			Position = at(mx + ox, my + oy),
-			Size = UDim2.fromScale(0.065, 0.065),
+			Size = UDim2.fromScale(0.085, 0.085),
 			ZIndex = 2,
 			Parent = board,
 		})
@@ -269,12 +269,14 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		harborLabels[i] = Kit.label("", {
 			Font = Theme.FontBold,
 			TextScaled = false,
-			TextSize = 11,
+			TextSize = 17,
+			RichText = true,
+			LineHeight = 0.9,
 			TextYAlignment = Enum.TextYAlignment.Center,
 			TextColor3 = DARK,
 			TextXAlignment = Enum.TextXAlignment.Center,
-			Position = UDim2.fromScale(0.1, 0.1),
-			Size = UDim2.fromScale(0.8, 0.8),
+			Position = UDim2.fromScale(0, 0),
+			Size = UDim2.fromScale(1, 1),
 			ZIndex = 3,
 			Parent = label,
 		})
@@ -813,7 +815,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			if view.biggestGuard == seat then
 				table.insert(badges, "🛡 Biggest Guard")
 			end
-			Kit.label(`<b>{nameOf(seat)}</b>  {p.points} pts  ·  {p.cards} cards  ·  {p.actionCards} action`, {
+			Kit.label(`<b>{nameOf(seat)}</b>  {p.points} pts{if seat == me and view.you and view.you.secret > 0 then ` (+{view.you.secret} secret)` else ""}  ·  {p.cards} cards  ·  {p.actionCards} action`, {
 				TextSize = 14,
 				RichText = true,
 				Position = UDim2.fromOffset(12, 0),
@@ -883,7 +885,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		for i, harbor in view.harbors do
-			harborLabels[i].Text = if harbor.kind == "any" then "3:1" else `2:1\n{info[harbor.kind].icon}`
+			harborLabels[i].Text = if harbor.kind == "any" then "3:1" else `2:1\n<font size="22">{info[harbor.kind].icon}</font>`
 		end
 
 		-- Roads and highlights.
@@ -948,7 +950,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 		order = 0
 		heading(statusText(view, me), Theme.Accent)
-		note(`First to {view.target} points wins · round {view.round}`)
+		note(`First to {view.target} points wins · round {math.min(view.round, view.maxRounds)} of {view.maxRounds}`)
 		if view.steal and view.steal.res then
 			local s = view.steal
 			if s.to == me then

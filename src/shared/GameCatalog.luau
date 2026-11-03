@@ -139,7 +139,7 @@ local entries: { Entry } = {
 		turnSeconds = 45,
 		status = "ready",
 		coin = "hexlands",
-		typicalMinutes = 25,
+		typicalMinutes = 20,
 		minMinutes = 3,
 		minMoves = 40,
 	},
