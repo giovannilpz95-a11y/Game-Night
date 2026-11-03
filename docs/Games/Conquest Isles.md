@@ -1,0 +1,17 @@
+# Conquest Isles
+
+Back to [[Home]].
+
+A world-conquest strategy game for 2-6 seats on our own map, the Shattered Isles. The display name is set only in `shared/GameCatalog.luau`; the internal id and module are `Conquest`, so a rename never touches code.
+
+- Rules: `src/shared/Games/Conquest.luau`. The map is data at the top of the file: 6 regions (Frostreach +2, Sunspire Sands +3, Heartwood +3, Ironcoast +2, Coral Keys +2, Emberfall +2), 24 territories with x/y positions, and the borders (two are sea lanes). A new map is a content swap.
+- Setup: territories are dealt at random and every seat gets the same number of armies (30 for 2 players down to 15 for 6), spread at random. No placement phase.
+- Turn: `reinforce` (income is territories / 3, at least 3, plus whole-region bonuses; place with `place`), then `attack` (`attack` with `blitz` to roll until it's decided), `occupy` after a conquest when there's a choice of how many to move in, then `endTurn` or one `fortify` move through your own land (which also ends the turn).
+- Dice: attacker up to 3 (one less than the armies there), defender up to 2, highest pairs compared, ties to the defender.
+- Cards: 8 Swords, 8 Shields, 8 Crowns, 2 Wilds. One card for a turn with a conquest. Fixed set values: 3 Swords 4, 3 Shields 6, 3 Crowns 8, one of each 10. Holding 5+ forces a trade before placing. Knocking a player out takes their cards; holding more than 5 after that drops you back into `reinforce` to trade and place before attacking on.
+- Speed: one clock per turn (`Conquest.TURN_SECONDS` = 90, via `getTimer`). When it runs out, the turn finishes itself: forced trades, leftover armies to the most threatened border, end turn. The game is scored after `Conquest.roundsFor(seats)` rounds (20 for 2 players, 16, 14, 11, 9 for 6): most territories wins, then most armies; a full tie is a draw.
+- Table: `src/client/Renderers/Conquest.luau`. The map is drawn in code: region patches, border lines, round markers in the owner's seat color with the army count, ringed in the region color. Tap your territory to select it: red rings are attack targets, green rings are where you can move armies. The side panel has the actions (place +1 / +3 / All, Roll, Blitz, move counter, End turn), your cards (pick 3 or trade the best set), the last battle's dice, who holds each region, and the news feed.
+- Bot: easy places at random and attacks at even odds or better 60% of the time. Medium picks a focus region (the one it holds most of), stacks one border next to it, attacks at 1.5x odds or better, takes one fair fight a turn to earn a card, and moves stuck armies to the most threatened border. Hard attacks at 1.25x, guards regions it holds, goes after other players' whole regions, and hunts players with 1-2 territories for their cards. Bots always blitz.
+- Coins: Conquest Coins (`coin = "conquest"`) with their own shop tab in `shared/ShopCatalog.luau`. Rewards come from `MatchService.onMatchFinished` like every game.
+- Tests: `tests/Conquest.spec.luau` (map is connected, setup, income, card sets, dice, occupy, blitz, fortify paths, forced trades, knock-outs, round limit, the turn clock, hidden hands, and bot-only games at every level that check no army or card is lost). Bot-only games take 110-340 moves.
+- Not yet: 3D table and army models (`Assets.Conquest`), dice and army cosmetics drawn in game, more maps, house rules for Party Host (secret missions, fog of war, no round limit).

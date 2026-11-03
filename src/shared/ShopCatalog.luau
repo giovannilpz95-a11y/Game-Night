@@ -1,7 +1,7 @@
 -- Every item for sale. Items are data; the server prices and checks them with Core/Shop.
 --
 --   shop       "hub" (Gems only, works everywhere) or a coin key from Economy.Coins
---   slot       what it replaces: pieces, cards, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
+--   slot       what it replaces: pieces, cards, dice, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
 --   tier       Common | Rare | Epic | Legendary
 --   coins      price in that shop's Coins (nil = not sold for Coins)
 --   gems       Gem price. If nil and coins is set, the Gem price is coins / Economy.CoinsPerGem.
@@ -71,6 +71,14 @@ local items: { Item } = {
 	{ id = "party_spotlight_podium", name = "Spotlight Podium", shop = "party", slot = "board", tier = "Rare", coins = 1200 },
 	{ id = "party_paint_splat", name = "Paint Splat Win", shop = "party", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "party_quizmaster_title", name = "Title: Quizmaster", shop = "party", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
+
+	-- Conquest Isles shop
+	{ id = "conquest_toy_soldiers", name = "Toy Soldier Armies", shop = "conquest", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "conquest_battle_dice", name = "Battle-Worn Dice", shop = "conquest", slot = "dice", tier = "Common", coins = 500 },
+	{ id = "conquest_parchment_map", name = "Parchment Map", shop = "conquest", slot = "board", tier = "Rare", coins = 1500 },
+	{ id = "conquest_banner_flags", name = "Banner Flags", shop = "conquest", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "conquest_victory_cannons", name = "Victory Cannons", shop = "conquest", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "conquest_warlord_title", name = "Title: Warlord", shop = "conquest", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}
