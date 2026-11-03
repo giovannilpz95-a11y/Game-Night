@@ -665,7 +665,7 @@ end
 -- letter while walking the dictionary trie, so only real words are ever tried. Crossing
 -- words are handled with precomputed "which letters fit here" masks.
 --   easy:   a random lower-scoring play, short words preferred
---   medium: usually the best score, sometimes one of the next few
+--   medium: words of 6 letters or fewer, never all 7 tiles, picked from the top 8-30% of what it finds
 --   hard:   best score plus a bonus for keeping a good rack (blanks, an S, no clunky Q)
 
 local ALL_LETTERS = 2 ^ 26 - 1
@@ -1042,14 +1042,23 @@ function WordTiles.chooseBotMove(state, seat: number, rng: Random)
 			end
 		end
 	else
-		table.sort(plays, function(a, b)
+		-- A decent casual player: everyday-length words (up to 6 letters, never all 7
+		-- tiles), and a solid play rather than the very best one.
+		local pool = {}
+		for _, play in plays do
+			if play.length <= 6 and #play.tiles < RACK_SIZE then
+				table.insert(pool, play)
+			end
+		end
+		if #pool == 0 then
+			pool = plays
+		end
+		table.sort(pool, function(a, b)
 			return a.score > b.score
 		end)
-		if rng:NextNumber() < 0.6 then
-			choice = plays[1]
-		else
-			choice = plays[rng:NextInteger(1, math.min(6, #plays))]
-		end
+		local from = math.max(1, math.ceil(#pool * 0.08))
+		local to = math.max(from, math.ceil(#pool * 0.3))
+		choice = pool[rng:NextInteger(from, to)]
 	end
 	return { kind = "place", tiles = choice.tiles }
 end
