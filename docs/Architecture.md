@@ -28,4 +28,7 @@ When the leader starts a game, `MatchService` builds the seats: party members fi
 Every game is a pure module in `shared/Games`. The full contract is at the top of `shared/GameModule.luau`. In short: `new`, `getActiveSeats`, `getLegalMoves`, `validateMove`, `applyMove`, `getResult`, `getView` and an optional `chooseBotMove`. `getView` is where hidden information (card hands, the secret word) is hidden from each seat.
 
 ## Remotes
-Defined once in `shared/Net.luau`: PartyRequest, PartyState, PartyInvite, MatchRequest, MatchState, Notify. Requests are rate limited per player.
+Defined once in `shared/Net.luau`: PartyRequest, PartyState, PartyInvite, MatchRequest, MatchState, Notify, EconomyRequest, PurchaseRequest, WalletState, Reward. Requests are rate limited per player.
+
+## Economy and saving
+Gems, Coins, saved profiles and the shop: see [[Economy]]. When a match ends, `MatchService.onMatchFinished` hands a summary to `EconomyService`, which pays every human still at the table.

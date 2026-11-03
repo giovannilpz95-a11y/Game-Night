@@ -8,10 +8,17 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local RateLimiter = require(script.Parent.Core.RateLimiter)
 local PartyService = require(script.Parent.Services.PartyService)
 local MatchService = require(script.Parent.Services.MatchService)
+local DataService = require(script.Parent.Services.DataService)
+local EconomyService = require(script.Parent.Services.EconomyService)
+local PurchaseService = require(script.Parent.Services.PurchaseService)
 
 Net.init()
 MatchService.init(PartyService)
 PartyService.init(MatchService)
+EconomyService.init()
+PurchaseService.init()
+DataService.init() -- last, so every onLoaded listener is in place before profiles load
+MatchService.onMatchFinished(EconomyService.onMatchFinished)
 
 local limiter = RateLimiter.new(Config.RequestsPerWindow, Config.RequestWindowSeconds)
 
@@ -29,6 +36,8 @@ end
 
 Net.event(Net.Names.PartyRequest).OnServerEvent:Connect(guarded(PartyService.handleRequest))
 Net.event(Net.Names.MatchRequest).OnServerEvent:Connect(guarded(MatchService.handleRequest))
+Net.event(Net.Names.EconomyRequest).OnServerEvent:Connect(guarded(EconomyService.handleRequest))
+Net.event(Net.Names.PurchaseRequest).OnServerEvent:Connect(guarded(PurchaseService.handleRequest))
 
 Players.PlayerRemoving:Connect(function(player)
 	limiter:forget(player.UserId)
