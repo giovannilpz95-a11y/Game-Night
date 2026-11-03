@@ -16,6 +16,8 @@ Economy.Coins = {
 	checkers = { name = "Checkers Coins", color = Color3.fromRGB(235, 87, 87), order = 3 },
 	colorclash = { name = "Color Clash Coins", color = Color3.fromRGB(54, 162, 235), order = 4 },
 	party = { name = "Party Coins", color = Color3.fromRGB(153, 102, 255), order = 5 },
+	-- Shared by the classic 52-card games: Speed, Spoons, Go Fish, War.
+	cards = { name = "Card Coins", color = Color3.fromRGB(46, 160, 100), order = 6 },
 }
 Economy.DefaultCoin = "arcade"
 

@@ -71,6 +71,15 @@ local items: { Item } = {
 	{ id = "party_spotlight_podium", name = "Spotlight Podium", shop = "party", slot = "board", tier = "Rare", coins = 1200 },
 	{ id = "party_paint_splat", name = "Paint Splat Win", shop = "party", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "party_quizmaster_title", name = "Title: Quizmaster", shop = "party", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
+
+	-- Card shop (Speed, Spoons, Go Fish, War)
+	{ id = "cards_ruby_backs", name = "Ruby Card Backs", shop = "cards", slot = "cards", tier = "Common", coins = 300 },
+	{ id = "cards_blue_felt", name = "Blue Felt Table", shop = "cards", slot = "board", tier = "Common", coins = 350 },
+	{ id = "cards_golden_spoons", name = "Golden Spoons", shop = "cards", slot = "pieces", tier = "Rare", coins = 1200 },
+	{ id = "cards_shuffle_flourish", name = "Shuffle Flourish", shop = "cards", slot = "effect", tier = "Rare", coins = 1000 },
+	{ id = "cards_starry_backs", name = "Starry Night Backs", shop = "cards", slot = "cards", tier = "Rare", coins = 1500 },
+	{ id = "cards_card_fountain", name = "Card Fountain Win", shop = "cards", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "cards_speed_demon_title", name = "Title: Speed Demon", shop = "cards", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}
