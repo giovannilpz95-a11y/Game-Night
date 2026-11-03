@@ -22,7 +22,12 @@ export type Entry = {
 	typicalMinutes: number?, -- usual match length
 	minMinutes: number?, -- matches shorter than this pay nothing
 	minMoves: number?, -- matches with fewer moves than this pay nothing
+	-- Party Host (see shared/HouseRules.luau and shared/CustomContent.luau)
+	houseRules: { any }?, -- this game's own house rules; turn games also get the Turn timer
+	custom: string?, -- "words" or "quiz": the host's own word lists or quiz decks work here
 }
+
+local Toggle = require(script.Parent.HouseRules).Toggle
 
 local entries: { Entry } = {
 	{
@@ -39,6 +44,9 @@ local entries: { Entry } = {
 		typicalMinutes = 1,
 		minMinutes = 0.1,
 		minMoves = 5,
+		houseRules = {
+			{ key = "misere", name = "Upside down", hint = "Making three in a row loses.", choices = Toggle, default = 1 },
+		},
 	},
 	{
 		id = "Chess",
@@ -54,6 +62,9 @@ local entries: { Entry } = {
 		typicalMinutes = 15,
 		minMinutes = 1,
 		minMoves = 10,
+		houseRules = {
+			{ key = "kingOfTheHill", name = "King of the hill", hint = "Also win by walking your king to one of the four center squares.", choices = Toggle, default = 1 },
+		},
 	},
 	{
 		id = "Checkers",
@@ -69,6 +80,9 @@ local entries: { Entry } = {
 		typicalMinutes = 10,
 		minMinutes = 1,
 		minMoves = 16,
+		houseRules = {
+			{ key = "forcedCaptures", name = "Must jump", hint = "Off: jumping is a choice, not a must.", choices = Toggle, default = 2 },
+		},
 	},
 	{
 		id = "FourInARow",
@@ -99,6 +113,16 @@ local entries: { Entry } = {
 		typicalMinutes = 8,
 		minMinutes = 1,
 		minMoves = 10,
+		houseRules = {
+			{ key = "stacking", name = "Stack draw cards", hint = "Answer a Draw Two or Draw Four with another one.", choices = Toggle, default = 2 },
+			{ key = "drawUntilPlayable", name = "Draw until you can play", hint = "Keep drawing until you get a card that fits.", choices = Toggle, default = 1 },
+			{
+				key = "handSize",
+				name = "Starting hand",
+				choices = { { label = "5 cards", value = 5 }, { label = "7 cards", value = 7 }, { label = "10 cards", value = 10 } },
+				default = 2,
+			},
+		},
 	},
 	{
 		id = "SketchGuess",
@@ -115,6 +139,22 @@ local entries: { Entry } = {
 		typicalMinutes = 10,
 		minMinutes = 2,
 		minMoves = 1,
+		houseRules = {
+			{
+				key = "rounds",
+				name = "Rounds",
+				hint = "How many times each player draws.",
+				choices = { { label = "1", value = 1 }, { label = "2", value = 2 }, { label = "3", value = 3 } },
+				default = 2,
+			},
+			{
+				key = "drawSeconds",
+				name = "Drawing time",
+				choices = { { label = "60 s", value = 60 }, { label = "80 s", value = 80 }, { label = "120 s", value = 120 } },
+				default = 2,
+			},
+		},
+		custom = "words",
 	},
 	{
 		id = "TriviaNight",
@@ -129,6 +169,21 @@ local entries: { Entry } = {
 		typicalMinutes = 8,
 		minMinutes = 1,
 		minMoves = 5,
+		houseRules = {
+			{
+				key = "questions",
+				name = "Questions",
+				choices = { { label = "5", value = 5 }, { label = "10", value = 10 }, { label = "15", value = 15 }, { label = "20", value = 20 } },
+				default = 2,
+			},
+			{
+				key = "answerSeconds",
+				name = "Time to answer",
+				choices = { { label = "10 s", value = 10 }, { label = "15 s", value = 15 }, { label = "25 s", value = 25 } },
+				default = 2,
+			},
+		},
+		custom = "quiz",
 	},
 	{
 		id = "Whodunit",
@@ -188,6 +243,15 @@ local entries: { Entry } = {
 		typicalMinutes = 20,
 		minMinutes = 3,
 		minMoves = 30,
+		houseRules = {
+			{
+				key = "turnLength",
+				name = "Turn length",
+				hint = "Time for a whole turn: reinforce, attack and fortify.",
+				choices = { { label = "60 s", value = 60 }, { label = "90 s", value = 90 }, { label = "150 s", value = 150 } },
+				default = 2,
+			},
+		},
 	},
 	{
 		id = "Hexlands",

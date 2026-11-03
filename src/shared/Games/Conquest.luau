@@ -30,7 +30,7 @@ Conquest.id = "Conquest"
 Conquest.minSeats = 2
 Conquest.maxSeats = 6
 
-Conquest.TURN_SECONDS = 90 -- the whole turn, not each move
+Conquest.TURN_SECONDS = 90 -- the whole turn, not each move (house rule "turnLength" can change it)
 Conquest.HAND_LIMIT = 5 -- holding this many cards forces a trade
 Conquest.LOG_SIZE = 8
 
@@ -334,9 +334,15 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 	options = options or {}
 	local random = rng or Random.new()
 	local level = if type(options.botLevel) == "string" then options.botLevel else "medium"
+	local rules = if type(options.rules) == "table" then options.rules else {}
+	local turnSeconds = Conquest.TURN_SECONDS
+	if type(rules.turnLength) == "number" and rules.turnLength > 0 then
+		turnSeconds = rules.turnLength
+	end
 
 	local state = {
 		seats = seatCount,
+		turnSeconds = turnSeconds,
 		rng = random,
 		botLevel = level,
 		owner = table.create(TERRITORY_COUNT, 0),
@@ -760,7 +766,7 @@ function Conquest.getTimer(state)
 	if state.result then
 		return nil
 	end
-	return { id = state.turnId, seconds = Conquest.TURN_SECONDS }
+	return { id = state.turnId, seconds = state.turnSeconds or Conquest.TURN_SECONDS }
 end
 
 -- Where leftover armies go when nobody chose: the most threatened border.

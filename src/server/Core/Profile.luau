@@ -52,6 +52,12 @@ export type Data = {
 	lookSlots: number, -- extra slots bought with Gems, on top of the free ones
 	currentLook: any?, -- the look worn everywhere in Game Night, or nil for the player's own avatar
 	catalog: { purchases: number, robux: number }, -- Roblox catalog items bought in the Dressing Room
+	-- Party Host word lists and quiz decks, keyed by slot ("1".."3"). Stored as the host
+	-- typed them; filtered every time a match uses them. See shared/CustomContent.luau.
+	custom: {
+		words: { [string]: { name: string, words: { string } } },
+		decks: { [string]: { name: string, questions: { { q: string, a: { string } } } } },
+	},
 }
 
 local function newDaily(day: number): Daily
@@ -79,6 +85,7 @@ function Profile.new(now: number): Data
 		lookSlots = 0,
 		currentLook = nil,
 		catalog = { purchases = 0, robux = 0 },
+		custom = { words = {}, decks = {} },
 	}
 end
 

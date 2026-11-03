@@ -7,5 +7,6 @@ Back to [[Home]] · see [[Architecture]].
 3. **Renderer:** add `src/client/Renderers/<Name>.luau` with `create(container, sendMove)` returning `{ update(snapshot), destroy() }`. For square boards, use `UI/BoardGrid`. Draw pieces with `UI/PieceView`, so models in `ReplicatedStorage.Assets.<Game>` show up automatically. Put the seat's legal moves in `getView` so the board can highlight them.
 4. **3D board (optional):** for a board game, add a 3D board and its input handler (see [[Tables]]) and list it in `Config.Boards3D`. Without one, players still sit at the table and play in the 2D view.
 5. **Catalog:** in `shared/GameCatalog.luau`, set `module = "<Name>"`, `turnSeconds`, and `status = "ready"`. For rewards, set `coin`, `typicalMinutes`, `minMinutes` and `minMoves` (see [[Economy]]). Don't hand out currency from the game itself.
-6. **Tests:** add `tests/<Name>.spec.luau`. At minimum: illegal moves are rejected, a win is detected, and bot-vs-bot games always finish.
-7. **Notes:** add a technical page in `docs/Games/` (where the code lives, bot strategy). Design and research notes go in the Obsidian vault.
+6. **House rules:** list at least one in `houseRules` in `GameCatalog` and read it from `options.rules` in `new` (games with `turnSeconds` get Turn timer for free). Party Host leaders can change them. See [[Party Host]].
+7. **Tests:** add `tests/<Name>.spec.luau`. At minimum: illegal moves are rejected, a win is detected, and bot-vs-bot games always finish.
+8. **Notes:** add a technical page in `docs/Games/` (where the code lives, bot strategy). Design and research notes go in the Obsidian vault.

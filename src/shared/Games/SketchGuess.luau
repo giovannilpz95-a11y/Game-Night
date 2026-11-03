@@ -7,6 +7,9 @@
 --   reveal  the word is shown to all for a few seconds, then the next drawer goes.
 -- Bots can't draw, so only seats that start as players take a drawing turn (bots guess).
 -- Each drawer draws ROUNDS times (more when there are only one or two drawers).
+-- House rules (options.rules): rounds = 1..3, drawSeconds = 60 | 80 | 120.
+-- options.customWords: a Party Host's word list (already filtered by the server). When
+-- set, every choice comes from it instead of our list.
 --
 -- Scoring: a correct guess earns more the earlier it comes (fewer hints shown, fewer
 -- people ahead of you). The drawer earns DRAWER_POINTS per correct guesser.
@@ -172,7 +175,17 @@ function SketchGuess.new(seatCount: number, options: any?, rng: Random?)
 	if #drawers == 0 then
 		drawers = { 1 }
 	end
-	local rounds = if #drawers <= 2 then ROUNDS + 1 else ROUNDS
+	local rules = (options and options.rules) or {}
+	local baseRounds = if type(rules.rounds) == "number" then math.clamp(math.floor(rules.rounds), 1, 3) else ROUNDS
+	local rounds = if #drawers <= 2 then baseRounds + 1 else baseRounds
+	local drawSegments = DRAW_SEGMENTS
+	if type(rules.drawSeconds) == "number" then
+		drawSegments = math.clamp(math.floor(rules.drawSeconds / DRAW_SEGMENT + 0.5), 2, 6)
+	end
+	local customWords = nil
+	if options and type(options.customWords) == "table" and #options.customWords >= 3 then
+		customWords = table.clone(options.customWords)
+	end
 	local state = {
 		seatCount = seatCount,
 		rng = random,
@@ -198,6 +211,8 @@ function SketchGuess.new(seatCount: number, options: any?, rng: Random?)
 		lastPoints = {}, -- points each seat won this turn, shown at the reveal
 		feed = {},
 		usedWords = {},
+		drawSegments = drawSegments,
+		customWords = customWords, -- nil = our built-in list
 		endReason = nil,
 		finished = false,
 	}
@@ -226,11 +241,27 @@ function SketchGuess._startTurn(state)
 	end
 	state.drawer = state.drawers[(state.turnNumber - 1) % #state.drawers + 1]
 	state.phase = "choose"
-	state.choices = {
-		pickWord(Words.easy, state.usedWords, state.rng),
-		pickWord(Words.medium, state.usedWords, state.rng),
-		pickWord(Words.hard, state.usedWords, state.rng),
-	}
+	if state.customWords then
+		-- Three different words from the host's list.
+		local choices = {}
+		for _ = 1, 3 do
+			local entry
+			for _ = 1, 10 do
+				entry = pickWord(state.customWords, state.usedWords, state.rng)
+				if not table.find(choices, entry) then
+					break
+				end
+			end
+			table.insert(choices, entry)
+		end
+		state.choices = choices
+	else
+		state.choices = {
+			pickWord(Words.easy, state.usedWords, state.rng),
+			pickWord(Words.medium, state.usedWords, state.rng),
+			pickWord(Words.hard, state.usedWords, state.rng),
+		}
+	end
 	state.word = nil
 	state.answers = {}
 	state.revealed = {}
@@ -457,7 +488,7 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 	if table.find(state.answers, guess) then
 		state.guessedCount += 1
 		state.guessed[seat] = state.guessedCount
-		local hintsLeft = DRAW_SEGMENTS - state.segment
+		local hintsLeft = math.max(0, DRAW_SEGMENTS - state.segment)
 		local points = 100 + 50 * hintsLeft + math.max(0, 200 - 40 * (state.guessedCount - 1))
 		state.scores[seat] += points
 		state.lastPoints[seat] = (state.lastPoints[seat] or 0) + points
@@ -489,7 +520,7 @@ function SketchGuess.getTimer(state): { id: number, seconds: number }?
 		return {
 			id = state.timerId,
 			seconds = DRAW_SEGMENT,
-			displaySeconds = DRAW_SEGMENT * (DRAW_SEGMENTS - state.segment),
+			displaySeconds = DRAW_SEGMENT * (state.drawSegments - state.segment),
 		}
 	elseif state.phase == "reveal" then
 		return { id = state.timerId, seconds = REVEAL_SECONDS }
@@ -502,7 +533,7 @@ function SketchGuess.onTimeout(state)
 		chooseWord(state, 1)
 	elseif state.phase == "draw" then
 		state.segment += 1
-		if state.segment >= DRAW_SEGMENTS then
+		if state.segment >= state.drawSegments then
 			endDrawing(state, "Time's up!")
 		else
 			revealLetter(state)

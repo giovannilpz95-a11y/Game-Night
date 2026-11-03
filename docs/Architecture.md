@@ -20,7 +20,7 @@ When the leader starts a game, `MatchService` builds the seats: party members fi
 - If a player leaves, a bot takes their seat. If every player leaves, the game ends.
 - In two-player games, either player can resign.
 - The leader picks the bot difficulty (easy, medium or hard). The server checks it before passing it to the game. Never forward the client's options table as-is.
-- Each game sets its own turn time with `turnSeconds` in the catalog.
+- Each game sets its own turn time with `turnSeconds` in the catalog. A Party Host can halve or double it with the Turn timer house rule.
 
 `server/Core/Match.luau` holds one game's state and has no timers, so it's unit tested.
 
@@ -38,7 +38,10 @@ Party games (Sketch & Guess, Trivia Night) let several seats move at once and ru
 Every game is a pure module in `shared/Games`. The full contract is at the top of `shared/GameModule.luau`. In short: `new`, `getActiveSeats`, `getLegalMoves`, `validateMove`, `applyMove`, `getResult`, `getView` and an optional `chooseBotMove`. `getView` is where hidden information (card hands, the secret word) is hidden from each seat.
 
 ## Remotes
-Defined once in `shared/Net.luau`: PartyRequest, PartyState, PartyInvite, MatchRequest, MatchState, Notify, EconomyRequest, PurchaseRequest, WalletState, Reward, DressingRoomRequest, DressingRoomState. Requests are rate limited per player.
+Defined once in `shared/Net.luau`: PartyRequest, PartyState, PartyInvite, PartyList, MatchRequest, MatchState, Notify, EconomyRequest, PurchaseRequest, WalletState, Reward, DressingRoomRequest, DressingRoomState, HostRequest, HostState. Requests are rate limited per player.
+
+## Party Host perks
+Private and password tables, house rules and custom word lists / quiz decks: see [[Party Host]].
 
 ## Economy and saving
 Gems, Coins, saved profiles and the shop: see [[Economy]]. When a match ends, `MatchService.onMatchFinished` hands a summary to `EconomyService`, which pays every human still at the table.
