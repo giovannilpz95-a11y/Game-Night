@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Config = require(ReplicatedStorage.Shared.Config)
 local Kit = require(script.Parent.Kit)
+local Analytics = require(script.Parent.Parent.Analytics)
 local Theme = Kit.Theme
 
 local GamePicker = {}
@@ -134,6 +135,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> ())
 			if ready and isLeader then
 				card.Activated:Connect(function()
 					chosen = entry
+					Analytics.step("PickedGame")
 					seats = math.max(entry.minSeats, if party then #party.members else 1)
 					clampSeats()
 					render()
@@ -167,6 +169,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> ())
 		root = root,
 		setParty = function(newParty: any)
 			party = newParty
+			Analytics.step("SawLobby") -- the picker is up and showing games
 			clampSeats()
 			render()
 		end,

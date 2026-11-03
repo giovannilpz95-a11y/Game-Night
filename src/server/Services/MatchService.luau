@@ -104,6 +104,20 @@ function MatchService.onMatchFinished(callback: (any) -> ())
 	table.insert(finishedCallbacks, callback)
 end
 
+-- Runs `callback(name, event)` for things that happen during a match (AnalyticsService
+-- listens). "started": matchId, gameId, seats, botLevel. "moved": player, matchId, gameId.
+-- "left": player, matchId, gameId, minutes, reason, humansLeft.
+local eventCallbacks: { (string, any) -> () } = {}
+function MatchService.onEvent(callback: (string, any) -> ())
+	table.insert(eventCallbacks, callback)
+end
+
+local function emit(name: string, event: any)
+	for _, callback in eventCallbacks do
+		task.spawn(callback, name, event)
+	end
+end
+
 local scheduleTurn: (Entry) -> ()
 
 local function afterMove(entry: Entry)
@@ -276,6 +290,7 @@ local function startMatch(leader: Player, request: any)
 	end
 	scheduleTurn(entry)
 	broadcast(entry)
+	emit("started", { matchId = matchId, gameId = catalogEntry.id, seats = seats, botLevel = options.botLevel })
 end
 
 local function entryFor(player: Player): Entry?
@@ -283,8 +298,9 @@ local function entryFor(player: Player): Entry?
 	return if matchId then matches[matchId] else nil
 end
 
--- Called when a player leaves the match, their party, or the server.
-function MatchService.leaveMatch(player: Player)
+-- Called when a player leaves the match, their party, or the server. `reason` is for
+-- analytics: "left" (default), "leftParty", "kicked" or "leftServer".
+function MatchService.leaveMatch(player: Player, reason: string?)
 	local entry = entryFor(player)
 	matchOfUser[player.UserId] = nil
 	matchStateRemote:FireClient(player, nil)
@@ -296,6 +312,10 @@ function MatchService.leaveMatch(player: Player)
 	TableService.unseat(match.id, player.UserId)
 	if seat then
 		match:replaceWithBot(seat)
+	end
+	if seat and not entry.ended then
+		local minutes = (os.clock() - entry.startedAt) / 60
+		emit("left", { player = player, matchId = match.id, gameId = match.gameId, minutes = minutes, reason = reason or "left", humansLeft = match:humanCount() })
 	end
 	if match:humanCount() == 0 then
 		match:abort()
@@ -350,6 +370,7 @@ function handlers.move(player: Player, request: any)
 		return notify(player, err :: string)
 	end
 	afterMove(entry)
+	emit("moved", { player = player, matchId = entry.match.id, gameId = entry.match.gameId })
 end
 
 function handlers.resign(player: Player, _request: any)

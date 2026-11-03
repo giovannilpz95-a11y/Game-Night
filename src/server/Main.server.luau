@@ -54,3 +54,7 @@ Net.event(Net.Names.DressingRoomRequest).OnServerEvent:Connect(guarded(DressingR
 Players.PlayerRemoving:Connect(function(player)
 	limiter:forget(player.UserId)
 end)
+
+-- Analytics only listens to the services above, so it starts last.
+local AnalyticsService = require(script.Parent.Services.AnalyticsService)
+AnalyticsService.init(MatchService)
