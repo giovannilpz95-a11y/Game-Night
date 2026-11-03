@@ -16,7 +16,7 @@ local localPlayer = Players.LocalPlayer
 function GamePicker.create(parent: Instance, sendMatch: (any) -> ())
 	local root = Kit.panel({
 		Name = "GamePicker",
-		Size = UDim2.new(1, -340, 1, -40),
+		Size = UDim2.new(1, -340, 1, -124), -- leaves room for the voice server bar below
 		Position = UDim2.new(0, 300, 0, 20),
 		Parent = parent,
 	})

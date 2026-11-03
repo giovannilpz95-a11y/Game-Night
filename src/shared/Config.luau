@@ -18,6 +18,23 @@ local Config = {
 	ProfileLockRetryDelay = 5, -- ...this many seconds apart, then asks the player to rejoin
 	SaveInStudio = true, -- false = Studio play sessions start fresh and never save
 
+	-- Voice servers: reserved servers where everyone can use voice chat (see docs/VoiceServers.md)
+	Voice = {
+		Enabled = true,
+		PlaceId = 0, -- 0 = voice servers are reserved copies of this place; or a second place's id
+		LobbyPlaceId = 0, -- 0 = this place. Only set it if you use a second place for voice
+		Capacity = 20, -- players per voice server; keep at or under the place's Max Players
+		HeartbeatSeconds = 10, -- how often a voice server reports its player count
+		ServerTtlSeconds = 45, -- a server that stops reporting this long is skipped
+		HoldSeconds = 60, -- seats saved for a party while it teleports in
+		TransferTtlSeconds = 300, -- how long a party's transfer record lives
+		EligibilityCacheSeconds = 60,
+		TeleportRetries = 3,
+		StudioActsAsVoiceServer = false, -- true = Studio play tests show the voice server UI
+	},
+	TeleportLockRetries = 15, -- after a teleport the old server may still be saving...
+	TeleportLockRetryDelay = 2, -- ...so retry the profile lock faster than a normal join
+
 	-- Anti-spam: requests allowed per player per window
 	RequestsPerWindow = 20,
 	RequestWindowSeconds = 2,

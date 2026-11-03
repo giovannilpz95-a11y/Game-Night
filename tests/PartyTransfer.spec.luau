@@ -1,0 +1,66 @@
+local ServerScriptService = game:GetService("ServerScriptService")
+local PartyTransfer = require(ServerScriptService.Server.Core.PartyTransfer)
+local PartyRegistry = require(ServerScriptService.Server.Core.PartyRegistry)
+
+return function(T)
+	T.test("record always includes the leader", function()
+		local r = PartyTransfer.newRecord("voice", 9, { 1, 2 }, "key", 100)
+		T.eq(r.members[1], 9)
+		T.eq(#r.members, 3)
+		T.eq(r.serverKey, "key")
+	end)
+
+	T.test("teleport data round-trips and junk is ignored", function()
+		local token, notice = PartyTransfer.read(PartyTransfer.teleportData("abc", "voiceDenied"))
+		T.eq(token, "abc")
+		T.eq(notice, "voiceDenied")
+		T.eq(PartyTransfer.read(nil), nil)
+		T.eq(PartyTransfer.read({ gn = { token = 5 } }), nil)
+		T.eq(PartyTransfer.read({ gn = { token = string.rep("x", 200) } }), nil, "too long")
+	end)
+
+	T.test("validate checks roster, mode and age", function()
+		local r = PartyTransfer.newRecord("lobby", 1, { 1, 2 }, nil, 100)
+		T.ok(PartyTransfer.validate(r, 2, 150, 300))
+		T.ok(not PartyTransfer.validate(r, 3, 150, 300), "not on the roster")
+		T.ok(not PartyTransfer.validate(r, 2, 500, 300), "too old")
+		T.ok(not PartyTransfer.validate({ mode = "hack", members = { 2 }, created = 100 }, 2, 150, 300))
+		T.ok(not PartyTransfer.validate("junk", 2, 150, 300))
+	end)
+
+	T.test("splitEligible treats unknown as not eligible", function()
+		local yes, no = PartyTransfer.splitEligible({ 1, 2, 3 }, { [1] = true, [2] = false })
+		T.eq(#yes, 1)
+		T.eq(yes[1], 1)
+		T.eq(#no, 2)
+	end)
+
+	T.test("registry: arriving members rejoin the party and the leader gets the crown", function()
+		local r = PartyRegistry.new(8, 30)
+		for userId = 1, 3 do
+			r:ensureParty(userId)
+		end
+		local party = r:getParty(2) -- member 2 arrived first
+		T.ok(r:addMember(party.id, 3))
+		T.ok(r:addMember(party.id, 1))
+		T.ok(r:setLeader(party.id, 1))
+		T.eq(#party.members, 3)
+		T.eq(r:getParty(1), party)
+		T.eq(party.leaderId, 1)
+		T.ok(r:addMember(party.id, 1), "adding twice is harmless")
+		T.eq(#party.members, 3)
+		T.ok(not r:setLeader(party.id, 99), "only members can lead")
+	end)
+
+	T.test("registry: addMember respects the size cap", function()
+		local r = PartyRegistry.new(2, 30)
+		for userId = 1, 3 do
+			r:ensureParty(userId)
+		end
+		local party = r:getParty(1)
+		T.ok(r:addMember(party.id, 2))
+		local ok = r:addMember(party.id, 3)
+		T.ok(not ok)
+		T.eq(#r:getParty(3).members, 1, "player 3 keeps their own party")
+	end)
+end

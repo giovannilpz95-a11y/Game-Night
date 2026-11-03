@@ -68,6 +68,45 @@ function PartyService.setMatch(partyId: string, matchId: string?)
 	flush()
 end
 
+-- Parties rebuilt after a server hop (voice servers): transfer token -> local party id.
+local transferParties: { [string]: string } = {}
+
+-- Puts a player who just arrived from another server back with their party.
+-- VoiceService has already checked the transfer record lists them.
+function PartyService.rejoinTransferred(token: string, leaderId: number, player: Player)
+	local partyId = transferParties[token]
+	local party = partyId and registry:getPartyById(partyId)
+	if party then
+		local ok = registry:addMember(party.id, player.UserId)
+		if not ok then
+			registry:ensureParty(player.UserId)
+		end
+	else
+		-- First of the party to land: their solo party becomes the party.
+		party = registry:ensureParty(player.UserId)
+		if #party.members > 1 then
+			-- Already in someone else's party here; start fresh so we don't merge strangers.
+			registry:leave(player.UserId)
+			party = registry:ensureParty(player.UserId)
+		end
+		transferParties[token] = party.id
+	end
+	if player.UserId == leaderId then
+		registry:setLeader(transferParties[token], player.UserId)
+	end
+	flush()
+end
+
+-- Takes a player out of their party into a party of their own (left behind when the rest
+-- of the party goes to a voice server).
+function PartyService.split(userId: number)
+	local party = registry:getParty(userId)
+	if party and #party.members > 1 then
+		registry:leave(userId)
+		flush()
+	end
+end
+
 local handlers = {}
 
 function handlers.sync(player: Player, _request: any)

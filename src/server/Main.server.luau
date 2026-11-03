@@ -11,12 +11,14 @@ local MatchService = require(script.Parent.Services.MatchService)
 local DataService = require(script.Parent.Services.DataService)
 local EconomyService = require(script.Parent.Services.EconomyService)
 local PurchaseService = require(script.Parent.Services.PurchaseService)
+local VoiceService = require(script.Parent.Services.VoiceService)
 
 Net.init()
 MatchService.init(PartyService)
 PartyService.init(MatchService)
 EconomyService.init()
 PurchaseService.init()
+VoiceService.init(PartyService)
 DataService.init() -- last, so every onLoaded listener is in place before profiles load
 MatchService.onMatchFinished(EconomyService.onMatchFinished)
 
@@ -38,6 +40,7 @@ Net.event(Net.Names.PartyRequest).OnServerEvent:Connect(guarded(PartyService.han
 Net.event(Net.Names.MatchRequest).OnServerEvent:Connect(guarded(MatchService.handleRequest))
 Net.event(Net.Names.EconomyRequest).OnServerEvent:Connect(guarded(EconomyService.handleRequest))
 Net.event(Net.Names.PurchaseRequest).OnServerEvent:Connect(guarded(PurchaseService.handleRequest))
+Net.event(Net.Names.VoiceRequest).OnServerEvent:Connect(guarded(VoiceService.handleRequest))
 
 Players.PlayerRemoving:Connect(function(player)
 	limiter:forget(player.UserId)
