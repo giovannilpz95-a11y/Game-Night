@@ -213,8 +213,6 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	})
 	-- Cards overlap a little, like a fan. Left-aligned: a centered list wider than the
 	-- frame would push cards off the left edge, where scrolling can't reach them.
-	-- Keep the cards clear of the scroll bar along the bottom.
-	Kit.new("UIPadding", { PaddingBottom = UDim.new(0, 10), Parent = hand })
 	local handList = Kit.list(-18, true)
 	handList.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	handList.VerticalAlignment = Enum.VerticalAlignment.Bottom
@@ -226,7 +224,9 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	end
 	handList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitHand)
 	fitHand()
-	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 24), PaddingTop = UDim.new(0, 4), Parent = hand })
+	-- One padding for the hand (a second UIPadding would be ignored). The bottom keeps
+	-- the cards clear of the scroll bar.
+	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 24), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 10), Parent = hand })
 
 	-- Wild color picker.
 	local picker = Kit.panel({

@@ -59,8 +59,45 @@ function Checkers.create(ctx: any)
 		end
 	end
 
+	local function setHidden(piece: Instance, hidden: boolean)
+		local list = piece:GetDescendants()
+		table.insert(list, piece)
+		for _, d in list do
+			if d:IsA("BasePart") then
+				d.LocalTransparencyModifier = if hidden then 1 else 0
+			end
+		end
+	end
+
+	-- Mid-jump, show the piece where it has got to (only on your screen), like the 2D view.
+	local function showJumpingPiece()
+		local pieces = ctx.board:FindFirstChild("Pieces")
+		if not pieces then
+			return
+		end
+		for _, piece in pieces:GetChildren() do
+			setHidden(piece, false)
+		end
+		if not selected or #partial == 0 then
+			return
+		end
+		local from = ctx.cell(selected[1], selected[2])
+		local to = ctx.cell(partial[#partial][1], partial[#partial][2])
+		for _, piece in pieces:GetChildren() do
+			if piece:GetAttribute("Row") == selected[1] and piece:GetAttribute("Col") == selected[2] and from and to then
+				setHidden(piece, true)
+				local ghost = piece:Clone()
+				setHidden(ghost, false)
+				ghost:PivotTo((ghost :: any):GetPivot() + (to.Position - from.Position))
+				ctx.addLocal(ghost)
+				return
+			end
+		end
+	end
+
 	local function render()
 		ctx.clearMarks()
+		showJumpingPiece()
 		if selected then
 			markCell(selected[1], selected[2], SELECTED, "fill")
 			for _, sq in partial do

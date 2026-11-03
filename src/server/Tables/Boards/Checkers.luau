@@ -58,6 +58,9 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 							local piece = if template
 								then Pieces.stand(template, factor, board.surface(r, c))
 								else fallbackPiece(v, board.surface(r, c), board.cellSize)
+							-- The client finds a piece by square to slide it along a multi-jump.
+							piece:SetAttribute("Row", r)
+							piece:SetAttribute("Col", c)
 							piece.Parent = board.pieces
 							shown[key] = piece
 						end

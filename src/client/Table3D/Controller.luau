@@ -47,6 +47,7 @@ export type Context = {
 	mark: (cell: BasePart, color: Color3, style: "fill" | "dot" | "ring" | "ball") -> (),
 	clearMarks: () -> (),
 	gui: ScreenGui, -- for small pickers (chess promotion)
+	addLocal: (instance: Instance) -> (), -- shown only to you, removed by clearMarks
 }
 
 function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChanged: (boolean) -> ())
@@ -157,6 +158,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 				marks:ClearAllChildren()
 			end,
 			gui = gui,
+			addLocal = function(instance)
+				instance.Parent = marks
+			end,
 		}
 	end
 

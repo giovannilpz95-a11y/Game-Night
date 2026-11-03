@@ -81,13 +81,16 @@ function Chess.create(ctx: any)
 		layout.Padding = UDim.new(0, 8)
 		layout.Parent = frame
 		local white = snapshot.yourSeat == 1
-		for _, choice in { { "q", "♕", "♛" }, { "r", "♖", "♜" }, { "b", "♗", "♝" }, { "n", "♘", "♞" } } do
+		for _, choice in { { "q", "Q" }, { "r", "R" }, { "b", "B" }, { "n", "N" } } do
 			local button = Instance.new("TextButton")
 			button.Size = UDim2.fromOffset(52, 56)
 			button.BackgroundColor3 = Color3.fromRGB(240, 222, 190)
-			button.Text = if white then choice[2] else choice[3]
+			-- Plain letters: Roblox fonts have no chess glyphs.
+			button.Text = choice[2]
+			button.Font = Enum.Font.GothamBlack
 			button.TextScaled = true
-			button.TextColor3 = Color3.fromRGB(30, 24, 20)
+			button.BackgroundColor3 = if white then Color3.fromRGB(250, 246, 236) else Color3.fromRGB(40, 36, 44)
+			button.TextColor3 = if white then Color3.fromRGB(40, 36, 44) else Color3.fromRGB(250, 246, 236)
 			Instance.new("UICorner").Parent = button
 			button.Parent = frame
 			button.Activated:Connect(function()

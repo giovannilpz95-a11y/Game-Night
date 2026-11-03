@@ -194,7 +194,7 @@ local function makeTag(seat: Seat, color: Color3): BillboardGui
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "TurnTag"
 	gui.Adornee = seat
-	gui.Size = UDim2.fromOffset(120, 28)
+	gui.Size = UDim2.fromOffset(180, 28)
 	gui.StudsOffset = Vector3.new(0, 6.2, 0)
 	gui.AlwaysOnTop = true
 	gui.MaxDistance = 80
@@ -306,7 +306,8 @@ function TableService.update(matchId: string, snapshot: any)
 		tag.Enabled = active
 		local label = tag:FindFirstChild("Label") :: TextLabel?
 		if label and s then
-			label.Text = if s.kind == "bot" then "Thinking..." else "Their turn"
+			-- Everyone sees the same tag, so it names the player instead of saying "your".
+			label.Text = if s.kind == "bot" then `{s.name} is thinking...` else `{s.name}'s turn`
 		end
 	end
 end
