@@ -140,7 +140,7 @@ local entries: { Entry } = {
 		status = "ready",
 		coin = "hexlands",
 		typicalMinutes = 20,
-		minMinutes = 3,
+		minMinutes = 1, -- a finished game always lasts longer than this; moves are the real gate
 		minMoves = 40,
 	},
 }

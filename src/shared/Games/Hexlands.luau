@@ -48,7 +48,7 @@ Hexlands.TARGET_POINTS = 8
 -- Round limit by seat count, to keep a match around 20-30 minutes. Most games end on
 -- points first (bot tests: about 16 rounds with 4 seats, 26 with 2); otherwise the most
 -- points wins when the limit is reached.
-Hexlands.MAX_ROUNDS = { [2] = 30, [3] = 24, [4] = 20 }
+Hexlands.MAX_ROUNDS = { [2] = 40, [3] = 27, [4] = 20 } -- about the same number of turns each
 Hexlands.BANK_EACH = 19
 Hexlands.HAND_LIMIT = 7 -- more than this when a 7 is rolled: discard half
 Hexlands.TRADES_PER_TURN = 3
@@ -1710,7 +1710,7 @@ local function chooseMain(state: any, seat: number, rng: any): any
 				return { kind = "play", card = "harvest", res = want }
 			end
 		end
-		if playableCard(state, seat, "roadcrew") and p.roads >= 2 and #legalVertices(state, seat, Hexlands.canCamp) == 0 then
+		if playableCard(state, seat, "roadcrew") and p.roads >= 1 and #legalEdges(state, seat) > 0 then
 			return { kind = "play", card = "roadcrew" }
 		end
 		if playableCard(state, seat, "guard") then
@@ -1720,7 +1720,8 @@ local function chooseMain(state: any, seat: number, rng: any): any
 					onUs = true
 				end
 			end
-			if onUs or (level ~= "easy" and p.guards >= 2) then
+			-- Guards are free tempo: chase Biggest Guard (Easy only when it's on us).
+			if onUs or level ~= "easy" or rng:NextNumber() < 0.4 then
 				return { kind = "play", card = "guard" }
 			end
 		end
@@ -1799,10 +1800,11 @@ local function chooseMain(state: any, seat: number, rng: any): any
 		end
 	end
 
-	-- Roads when there's nowhere to camp (or chasing Longest Road), then cards.
+	-- Roads to reach new camp spots (keep two open spots ahead), or chasing Longest Road.
 	if p.roads > 0 and canPay(hand, Hexlands.costs.road) then
-		local chase = level == "hard" and state.longestRoad ~= seat and p.roadLength >= 3 and p.roads > 4
-		if #campSpots == 0 or chase then
+		local chase = level ~= "easy" and state.longestRoad ~= seat and p.roadLength >= 3 and p.roads > 4
+		local wantSpots = p.camps > 0 and #campSpots < (if level == "easy" then 1 else 2)
+		if wantSpots or chase then
 			local e = bestRoad(state, seat, legalEdges(state, seat), rng)
 			if e then
 				return { kind = "road", edge = e }

@@ -580,4 +580,38 @@ return function(T)
 			T.eq(data.coins.hexlands, payout.coins)
 		end
 	end)
+
+	T.test("medium and hard bots usually win on points, even against a player who never builds", function()
+		for _, level in { "medium", "hard" } do
+			for seats = 2, 4 do
+				local byPoints = 0
+				for seed = 1, 10 do
+					local bots = {}
+					for i = 2, seats do
+						table.insert(bots, i)
+					end
+					local s = Hexlands.new(seats, { botLevel = level, bots = bots }, T.Random.new(seed * 5 + seats))
+					local rng = T.Random.new(seed)
+					while s.phase ~= "over" do
+						local seat = Hexlands.getActiveSeats(s)[1]
+						local move
+						if seat == 1 and s.phase ~= "setup" then
+							-- A passive human: rolls, ends the turn, turns down trades.
+							move = if s.phase == "roll" then { kind = "roll" }
+								elseif s.phase == "main" then { kind = "endTurn" }
+								elseif s.phase == "trade" then { kind = "reject" }
+								else Hexlands.getLegalMoves(s, 1)[1]
+						else
+							move = GameModule.chooseBotMove(Hexlands, s, seat, rng)
+						end
+						play(s, seat, move)
+					end
+					if s.endReason == `{Hexlands.TARGET_POINTS} points` then
+						byPoints += 1
+					end
+				end
+				T.ok(byPoints >= 7, `{level} {seats} seats: only {byPoints}/10 games reached {Hexlands.TARGET_POINTS} points`)
+			end
+		end
+	end)
 end
