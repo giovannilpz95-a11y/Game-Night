@@ -370,14 +370,19 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				smallButton(`Move {moveCount} and end turn`, actions, 1, function()
 					sendMove({ kind = "fortify", from = selected, to = target, count = moveCount })
 				end, Theme.Good, 4)
+			elseif view.conquestsLeft == 0 then
+				hint("That's all the territories you can take this turn. More open up in later rounds.", actions, 2, Theme.Accent)
+				if selected then
+					hint(`{territories[selected].name} selected. Tap a green territory to move armies there, or end your turn.`, actions, 3)
+				else
+					hint("Tap one of your territories with 2+ armies to move armies from it, or end your turn.", actions, 3)
+				end
 			elseif selected then
 				hint(`{territories[selected].name} selected. Tap a red neighbour to attack, or a green territory to move armies there.`, actions, 2)
 			else
 				hint("Tap one of your territories with 2+ armies to attack from it.", actions, 2)
 			end
-			if view.conquestsLeft == 0 then
-				hint("That's all the territories you can take this turn. More open up in later rounds.", actions, 2, Theme.Accent)
-			elseif view.round <= 5 then
+			if view.conquestsLeft > 0 and view.round <= 5 then
 				local n = view.conquestsLeft
 				hint(`You can take {n} more {if n == 1 then "territory" else "territories"} this turn.`, actions, 2)
 			end
