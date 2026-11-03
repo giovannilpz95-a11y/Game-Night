@@ -71,6 +71,14 @@ local items: { Item } = {
 	{ id = "party_spotlight_podium", name = "Spotlight Podium", shop = "party", slot = "board", tier = "Rare", coins = 1200 },
 	{ id = "party_paint_splat", name = "Paint Splat Win", shop = "party", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "party_quizmaster_title", name = "Title: Quizmaster", shop = "party", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
+
+	-- Hexlands shop
+	{ id = "hexlands_log_cabins", name = "Log Cabin Camps", shop = "hexlands", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "hexlands_snow_isle", name = "Snowy Isle", shop = "hexlands", slot = "board", tier = "Rare", coins = 2000 },
+	{ id = "hexlands_candy_isle", name = "Candy Isle", shop = "hexlands", slot = "board", tier = "Epic", coins = 3500, gems = 350 },
+	{ id = "hexlands_pirate_bandit", name = "Pirate Bandit", shop = "hexlands", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "hexlands_fireworks", name = "Harbor Fireworks Win", shop = "hexlands", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "hexlands_founder_title", name = "Title: Island Founder", shop = "hexlands", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}
