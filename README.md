@@ -2,7 +2,7 @@
 
 A Roblox experience where friends join one party and play many board, card and party games together without leaving. Bots fill empty seats, so you can play with 1 to 8 people.
 
-Design notes, roadmap and the game list live in [`docs/`](docs/Home.md), which is also an Obsidian vault.
+Technical notes live in [`docs/`](docs/Home.md). Planning, game research and the dev log live in the project's Obsidian vault.
 
 ## Getting the code into Studio
 
@@ -37,6 +37,6 @@ npm test
 | `src/server` | ServerScriptService.Server | Party and match services |
 | `src/client` | StarterPlayerScripts.Client | Lobby UI and board renderers |
 | `tests` | (not synced) | Unit tests |
-| `docs` | (not synced) | Design notes / Obsidian vault |
+| `docs` | (not synced) | Technical notes |
 
 To add a game, follow [docs/Adding a game.md](docs/Adding%20a%20game.md).

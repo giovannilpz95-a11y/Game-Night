@@ -1,6 +1,6 @@
 # Tic-Tac-Toe
 
-Back to [[Game list]].
+Back to [[Home]].
 
 The first game, used to prove parties, tables, turns and bots work end to end.
 
