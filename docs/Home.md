@@ -8,4 +8,4 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Economy]]: Gems, Coins, saving, the shop and Robux products
 - [[Launch]]: store page, art briefs, maturity questionnaire, products, soft launch, analytics and the pre-publish checklist
 - [[Dressing Room]]: trying on and buying Roblox catalog items, saved looks
-- Per-game technical notes: [[Tic-Tac-Toe]], [[Chess]], [[Checkers]], [[Four-in-a-Row]], [[Color Clash]], [[Sketch & Guess]], [[Trivia Night]], [[Whodunit]]
+- Per-game technical notes: [[Tic-Tac-Toe]], [[Chess]], [[Checkers]], [[Four-in-a-Row]], [[Color Clash]], [[Sketch & Guess]], [[Trivia Night]], [[Whodunit]], [[Property Party]]

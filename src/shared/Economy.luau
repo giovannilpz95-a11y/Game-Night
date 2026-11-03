@@ -17,6 +17,7 @@ Economy.Coins = {
 	colorclash = { name = "Color Clash Coins", color = Color3.fromRGB(54, 162, 235), order = 4 },
 	party = { name = "Party Coins", color = Color3.fromRGB(153, 102, 255), order = 5 },
 	whodunit = { name = "Whodunit Coins", color = Color3.fromRGB(214, 168, 96), order = 6 },
+	property = { name = "Property Coins", color = Color3.fromRGB(88, 204, 120), order = 7 },
 }
 Economy.DefaultCoin = "arcade"
 

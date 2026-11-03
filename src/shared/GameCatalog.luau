@@ -145,6 +145,21 @@ local entries: { Entry } = {
 		minMinutes = 1,
 		minMoves = 8,
 	},
+	{
+		id = "Estates",
+		name = "Property Party",
+		module = "Estates",
+		category = "Board",
+		description = "Buy streets, build hotels, trade deals and bankrupt your friends.",
+		minSeats = 2,
+		maxSeats = 8,
+		turnSeconds = 25,
+		status = "ready",
+		coin = "property",
+		typicalMinutes = 25,
+		minMinutes = 3,
+		minMoves = 30,
+	},
 }
 
 local GameCatalog = {}
