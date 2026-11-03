@@ -372,6 +372,79 @@ return function(T)
 		T.eq(Estates.chooseBotMove(s, 2, T.Random.new(1)).kind, "accept", "a 100 street for 50 is a good deal")
 	end)
 
+	T.test("bots turn down lopsided gifts", function()
+		local s = newGame(2)
+		play(s, 1, { kind = "offer", to = 2, give = { cash = 500 }, get = {} })
+		T.eq(Estates.chooseBotMove(s, 2, T.Random.new(1)).kind, "reject", "free cash")
+		play(s, 2, { kind = "reject" })
+		local diamond = posOf("Diamond Point")
+		s.owner[diamond] = 1
+		play(s, 1, { kind = "offer", to = 2, give = { props = { diamond } }, get = { cash = 20 } })
+		T.eq(Estates.chooseBotMove(s, 2, T.Random.new(1)).kind, "reject", "a $400 deed for $20")
+	end)
+
+	T.test("a bot offers cash for the street that finishes its set, and a human can answer", function()
+		local s = Estates.new(2, { botLevel = "hard" }, T.Random.new(1))
+		local maple, willow, birch = posOf("Maple Row"), posOf("Willow Way"), posOf("Birch Avenue")
+		s.owner[maple], s.owner[willow] = 1, 1
+		s.owner[birch] = 2
+		local move = Estates.chooseBotMove(s, 1, T.Random.new(1))
+		T.eq(move.kind, "offer")
+		T.eq(move.to, 2)
+		T.eq(move.get.props[1], birch)
+		T.eq(move.give.cash, 216, "hard bots pay 1.8x")
+		play(s, 1, move)
+		T.eq(Estates.getActiveSeats(s)[1], 2)
+		play(s, 2, { kind = "accept" })
+		T.eq(s.owner[birch], 1)
+		T.eq(s.phase, "turn")
+		local again = Estates.chooseBotMove(s, 1, T.Random.new(1))
+		T.eq(again.kind, "build", "with the set done it builds")
+	end)
+
+	T.test("bots build evenly up to hotels with spare cash", function()
+		local s = Estates.new(2, { botLevel = "medium" }, T.Random.new(1))
+		local skyline, diamond = posOf("Skyline Tower"), posOf("Diamond Point")
+		s.owner[skyline], s.owner[diamond] = 1, 1
+		s.players[1].cash = 5000
+		for _ = 1, 10 do
+			local move = Estates.chooseBotMove(s, 1, T.Random.new(1))
+			T.eq(move.kind, "build")
+			play(s, 1, move)
+		end
+		T.eq(s.houses[skyline], 5)
+		T.eq(s.houses[diamond], 5)
+		T.eq(s.hotelsLeft, 10)
+		T.eq(s.housesLeft, 32)
+		T.eq(Estates.chooseBotMove(s, 1, T.Random.new(1)).kind, "roll")
+		T.eq(Estates.rentFor(s, diamond, 7), 2000)
+	end)
+
+	T.test("rent shows in the news only once it's paid", function()
+		local s = newGame(2, { 2, 3 })
+		local birch = posOf("Birch Avenue")
+		local diamond = posOf("Diamond Point")
+		s.owner[birch] = 2
+		s.houses[birch] = 5
+		s.owner[diamond] = 1
+		s.players[1].pos = 5
+		s.players[1].cash = 450
+		play(s, 1, { kind = "roll" })
+		local function newsHas(word)
+			for _, entry in s.log do
+				if string.find(entry.text, word, 1, true) then
+					return true
+				end
+			end
+			return false
+		end
+		T.eq(newsHas("paid $600 rent"), false)
+		T.ok(newsHas("owes $600"))
+		play(s, 1, { kind = "mortgage", pos = diamond })
+		play(s, 1, { kind = "payDebt" })
+		T.ok(newsHas("paid $600 (rent for Birch Avenue)"))
+	end)
+
 	T.test("only a few trade offers a turn", function()
 		local s = newGame(2)
 		for _ = 1, Estates.TRADES_PER_TURN do

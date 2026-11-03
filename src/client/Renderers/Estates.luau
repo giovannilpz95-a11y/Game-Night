@@ -174,16 +174,17 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			Parent = tile,
 		})
 		Kit.new("UITextSizeConstraint", { MaxTextSize = 11, Parent = price })
-		-- Tokens sit along the bottom of the tile.
+		-- Tokens sit along the bottom of the tile, in the price's row: the price hides
+		-- while someone stands there (tap the tile to see it).
 		local tokens = Kit.new("Frame", {
 			BackgroundTransparency = 1,
-			Position = UDim2.fromScale(0.04, if CORNER_KINDS[space.kind] then 0.62 else 0.8),
-			Size = UDim2.fromScale(0.92, if CORNER_KINDS[space.kind] then 0.34 else 0.19),
+			Position = UDim2.fromScale(0.04, if CORNER_KINDS[space.kind] then 0.62 else 0.66),
+			Size = UDim2.fromScale(0.92, if CORNER_KINDS[space.kind] then 0.34 else 0.32),
 			ZIndex = 4,
 			Parent = tile,
 		})
 		Kit.new("UIGridLayout", {
-			CellSize = UDim2.fromScale(0.23, if CORNER_KINDS[space.kind] then 0.45 else 0.95),
+			CellSize = UDim2.fromScale(0.23, 0.45),
 			CellPadding = UDim2.fromScale(0.02, 0.05),
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
@@ -195,7 +196,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 				rerender()
 			end
 		end)
-		tiles[pos] = { frame = tile, stroke = stroke, bar = bar, houses = houses, tokens = tokens }
+		tiles[pos] = { frame = tile, stroke = stroke, bar = bar, houses = houses, tokens = tokens, price = price }
 	end
 
 	-- Middle of the board: title, dice, news.
@@ -278,10 +279,17 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		TextSize = 17,
 		Font = Theme.FontBold,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		Size = UDim2.new(1, 0, 0.45, 0),
+		Size = UDim2.new(1, 0, 1, -92),
 		Parent = actionPanel,
 	})
-	local actionButtons = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromScale(0, 0.47), Size = UDim2.fromScale(1, 0.53), Parent = actionPanel })
+	-- Two rows of buttons pinned to the bottom of the panel, so they never float.
+	local actionButtons = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 84),
+		Parent = actionPanel,
+	})
 	Kit.new("UIGridLayout", {
 		CellSize = UDim2.new(0.5, -4, 0, 38),
 		CellPadding = UDim2.fromOffset(8, 8),
@@ -290,7 +298,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	})
 
 	local detailPanel = Kit.panel({ Position = UDim2.fromScale(0, 0.42), Size = UDim2.new(1, 0, 0.58, 0), Parent = side })
-	local detailBar = Kit.new("Frame", { BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 8), Parent = detailPanel }, { Kit.corner(4) })
+	local detailBar = Kit.new("Frame", { BorderSizePixel = 0, Visible = false, Size = UDim2.new(1, 0, 0, 8), Parent = detailPanel }, { Kit.corner(4) })
 	local detailTitle = Kit.label("", { TextSize = 20, Font = Theme.FontBold, Position = UDim2.new(0, 0, 0, 12), Parent = detailPanel })
 	local detailBody = Kit.label("", {
 		TextSize = 14,
@@ -313,11 +321,11 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	local trade = Kit.panel({
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.94, 0.94),
+		Size = UDim2.fromScale(0.98, 0.98),
 		BackgroundColor3 = Theme.PanelLight,
 		Visible = false,
 		ZIndex = 20,
-		Parent = root,
+		Parent = boardArea, -- over the board, so the action panel stays visible
 	})
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(640, 520), Parent = trade })
 	Kit.label("Trade", { TextSize = 22, Font = Theme.FontBold, ZIndex = 21, Parent = trade })
@@ -388,7 +396,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		return { props = props, cash = cash, cards = cards }
 	end
 
-	Kit.button("Send offer", function()
+	local sendButton = Kit.button("Send offer", function()
 		if not tradeDraft.partner then
 			return
 		end
@@ -504,6 +512,11 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		fill(giveCol, me, tradeDraft.give, tradeDraft.giveCards)
 		fill(getCol, tradeDraft.partner, tradeDraft.get, tradeDraft.getCards)
 		getCol.heading.Text = if tradeDraft.partner then `You get from {nameOf(tradeDraft.partner)}` else "Pick a player above"
+		-- Send offer stays grey until there's someone to send it to.
+		local ready = tradeDraft.partner ~= nil
+		sendButton.AutoButtonColor = ready
+		sendButton.BackgroundColor3 = if ready then Theme.Accent else Theme.Panel
+		sendButton.TextColor3 = if ready then Theme.AccentText else Theme.SubText
 	end
 
 	local function openTrade()
@@ -532,11 +545,19 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		return if #parts > 0 then table.concat(parts, ", ") else "nothing"
 	end
 
-	local function addButton(text: string, onClick: () -> (), color: Color3?, order: number?)
-		Kit.button(text, onClick, {
-			BackgroundColor3 = color or Theme.Accent,
-			TextColor3 = if color then Theme.Text else Theme.AccentText,
-			TextScaled = true,
+	-- `enabled = false` draws a greyed button that does nothing, so a slot keeps its place.
+	local function addButton(text: string, onClick: () -> (), color: Color3?, order: number?, enabled: boolean?)
+		local on = enabled ~= false
+		Kit.button(text, function()
+			if on then
+				onClick()
+			end
+		end, {
+			BackgroundColor3 = if not on then Theme.Panel elseif color then color else Theme.Accent,
+			TextColor3 = if not on then Theme.SubText elseif color then Theme.Text else Theme.AccentText,
+			AutoButtonColor = on,
+			TextSize = 15,
+			TextWrapped = true,
 			LayoutOrder = order or 0,
 			Parent = actionButtons,
 		})
@@ -620,14 +641,11 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		elseif view.phase == "debt" then
 			local d = view.debt
 			actionText.Text = `You owe {money(d.amount)} ({d.why}). Tap your deeds to sell houses or mortgage, then pay.`
-			if myPlayer.cash >= d.amount then
-				addButton(`Pay {money(d.amount)}`, function()
-					sendMove({ kind = "payDebt" })
-				end, Theme.Good, 1)
-			end
-			if canTrade then
-				addButton("Trade", openTrade, Theme.PanelLight, 2)
-			end
+			-- Fixed slots: Pay, Trade, Go bankrupt never change places under a tap.
+			addButton(`Pay {money(d.amount)}`, function()
+				sendMove({ kind = "payDebt" })
+			end, Theme.Good, 1, myPlayer.cash >= d.amount)
+			addButton("Trade", openTrade, Theme.PanelLight, 2, canTrade)
 			addButton(if bankruptConfirm then "Sure? Tap again" else "Go bankrupt", function()
 				if bankruptConfirm then
 					bankruptConfirm = false
@@ -678,13 +696,14 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	local function renderDetail(view: any, me: number?)
 		Kit.clear(detailButtons)
 		if not selected then
-			detailBar.BackgroundColor3 = Theme.PanelLight
+			detailBar.Visible = false
 			detailTitle.Text = "Deeds"
 			detailBody.Text = "Tap any street, station or utility on the board to see its rents. Tap your own to build, sell or mortgage."
 			return
 		end
 		local pos = selected
 		local space = spaces[pos]
+		detailBar.Visible = true
 		detailBar.BackgroundColor3 = if space.group then Rules.groups[space.group].color else Theme.SubText
 		detailTitle.Text = space.name
 		local lines = {}
@@ -730,7 +749,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			if ok then
 				Kit.button(label, function()
 					sendMove({ kind = kind, pos = pos })
-				end, { TextScaled = true, LayoutOrder = order, Parent = detailButtons })
+				end, { TextSize = 14, TextWrapped = true, LayoutOrder = order, Parent = detailButtons })
 			end
 		end
 		if space.kind == "street" then
@@ -763,9 +782,11 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			local h = view.houses[pos]
 			t.houses.Text = if view.mortgaged[pos] then "MORTGAGED" elseif h == 5 then "HOTEL" elseif h > 0 then string.rep("■", h) else ""
 			Kit.clear(t.tokens)
+			t.price.Visible = true
 		end
 		for seat, p in view.players do
 			if not p.bankrupt then
+				tiles[p.pos].price.Visible = false
 				local token = Kit.new("Frame", {
 					BackgroundColor3 = Theme.Seat[seat] or Theme.Text,
 					BorderSizePixel = 0,
@@ -817,9 +838,14 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		Kit.clear(logFrame)
 		for i, entry in view.log do
 			local who = if entry.seat then nameOf(entry.seat) .. " " else ""
-			local line = Kit.label(`{who}{entry.text}`, {
+			local text = entry.text
+			if entry.seat ~= nil and entry.seat == me then
+				text = string.gsub(text, "^owes ", "owe ") -- "You owe", not "You owes"
+			end
+			local line = Kit.label(`{who}{text}`, {
 				TextScaled = true,
-				TextColor3 = if entry.seat then (Theme.Seat[entry.seat] or TILE_TEXT):Lerp(Color3.new(0, 0, 0), 0.45) else TILE_TEXT,
+				-- Seat colors darkened a lot so they read on the pale board.
+				TextColor3 = if entry.seat then (Theme.Seat[entry.seat] or TILE_TEXT):Lerp(Color3.new(0, 0, 0), 0.65) else TILE_TEXT,
 				TextXAlignment = Enum.TextXAlignment.Center,
 				Size = UDim2.new(1, 0, 1 / 8, -2),
 				LayoutOrder = i,

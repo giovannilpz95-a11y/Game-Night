@@ -526,7 +526,8 @@ end
 -- Seat owes `amount` to `to` (a seat, or nil for the bank). Pays at once if it can;
 -- otherwise the turn waits in the "debt" phase (or they go bankrupt if they can't
 -- possibly raise it). Returns true if it was paid now.
-local function charge(state, seat: number, amount: number, to: number?, why: string): boolean
+-- `paidText` goes in the news only once the money has actually been paid.
+local function charge(state, seat: number, amount: number, to: number?, why: string, paidText: string): boolean
 	if amount <= 0 then
 		return true
 	end
@@ -536,6 +537,7 @@ local function charge(state, seat: number, amount: number, to: number?, why: str
 		if to then
 			state.players[to].cash += amount
 		end
+		log(state, seat, paidText)
 		return true
 	end
 	if Estates.liquidValue(state, seat) < amount then
@@ -599,7 +601,7 @@ local function drawCard(state, seat: number, deckKey: string)
 	if card.kind == "collect" then
 		p.cash += card.amount :: number
 	elseif card.kind == "pay" then
-		charge(state, seat, card.amount :: number, nil, "card")
+		charge(state, seat, card.amount :: number, nil, "card", `paid {money(card.amount :: number)}`)
 	elseif card.kind == "repairs" then
 		local cost = 0
 		for pos = 1, #spaces do
@@ -608,7 +610,7 @@ local function drawCard(state, seat: number, deckKey: string)
 				cost += if h == 5 then card.perHotel :: number else h * (card.perHouse :: number)
 			end
 		end
-		charge(state, seat, cost, nil, "repairs")
+		charge(state, seat, cost, nil, "repairs", `paid {money(cost)} for repairs`)
 	elseif card.kind == "advance" then
 		moveTo(state, seat, card.to :: number, nil)
 	elseif card.kind == "back" then
@@ -636,8 +638,7 @@ function resolveSpace(state, seat: number, special: string?)
 	if space.kind == "gotojail" then
 		sendToJail(state, seat)
 	elseif space.kind == "tax" then
-		log(state, seat, `paid {money(space.amount :: number)} {space.name}`)
-		charge(state, seat, space.amount :: number, nil, space.name)
+		charge(state, seat, space.amount :: number, nil, space.name, `paid {money(space.amount :: number)} {space.name}`)
 	elseif space.kind == "lucky" or space.kind == "mail" then
 		drawCard(state, seat, space.kind)
 	elseif isDeed(pos) then
@@ -654,8 +655,7 @@ function resolveSpace(state, seat: number, special: string?)
 			if state.mortgaged[pos] then
 				log(state, seat, `landed on {space.name} (mortgaged, no rent)`)
 			elseif rent > 0 then
-				log(state, seat, `paid {money(rent)} rent for {space.name}`)
-				charge(state, seat, rent, owner, `rent for {space.name}`)
+				charge(state, seat, rent, owner, `rent for {space.name}`, `paid {money(rent)} rent for {space.name}`)
 			end
 		end
 	end
@@ -1050,8 +1050,8 @@ function Estates.applyMove(state, seat: number, move: any)
 				if p.jailTries >= 3 then
 					p.inJail = false
 					p.jailTries = 0
-					log(state, seat, `rolled {a}+{b}. Third try: paid {money(Estates.JAIL_FEE)} to leave Jail`)
-					if charge(state, seat, Estates.JAIL_FEE, nil, "Jail fee") then
+					log(state, seat, `rolled {a}+{b}. Third try, so they must pay to leave Jail`)
+					if charge(state, seat, Estates.JAIL_FEE, nil, "Jail fee", `paid {money(Estates.JAIL_FEE)} to leave Jail`) then
 						moveBy(state, seat, a + b)
 					elseif state.phase == "debt" then
 						state.debt.thenMove = a + b
@@ -1120,7 +1120,7 @@ function Estates.applyMove(state, seat: number, move: any)
 			state.players[d.to].cash += d.amount
 		end
 		state.phase = "turn"
-		log(state, seat, `paid off {money(d.amount)}`)
+		log(state, seat, `paid {money(d.amount)} ({d.why})`)
 		if d.thenMove then
 			settle(state)
 		else
@@ -1397,6 +1397,18 @@ local function shouldAccept(state, seat: number, rng: Random): boolean
 	after += 50 * (t.give.cards - t.get.cards)
 	local gain = after - before
 	if state.players[seat].cash + t.give.cash - t.get.cash < 0 then
+		return false
+	end
+	-- No lopsided gifts: a player could pour everything into a bot to end a game early
+	-- (or farm wins). A deal in the bot's favor is fine, a giveaway is not.
+	local received, given = t.give.cash + 50 * t.give.cards, t.get.cash + 50 * t.get.cards
+	for _, pos in t.give.props do
+		received += spaces[pos].price :: number
+	end
+	for _, pos in t.get.props do
+		given += spaces[pos].price :: number
+	end
+	if received > given * 1.5 + 100 then
 		return false
 	end
 	-- Never hand someone a new color set unless we get one too (or a huge payday).
