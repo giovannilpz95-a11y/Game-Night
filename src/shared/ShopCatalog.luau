@@ -71,6 +71,13 @@ local items: { Item } = {
 	{ id = "party_spotlight_podium", name = "Spotlight Podium", shop = "party", slot = "board", tier = "Rare", coins = 1200 },
 	{ id = "party_paint_splat", name = "Paint Splat Win", shop = "party", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "party_quizmaster_title", name = "Title: Quizmaster", shop = "party", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
+
+	-- Whodunit shop
+	{ id = "whodunit_haunted_manor", name = "Haunted Manor Board", shop = "whodunit", slot = "board", tier = "Rare", coins = 1500 },
+	{ id = "whodunit_detective_hat", name = "Detective Pawn Hat", shop = "whodunit", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "whodunit_parchment_notes", name = "Parchment Notepad", shop = "whodunit", slot = "theme", tier = "Common", coins = 350 },
+	{ id = "whodunit_spotlight_reveal", name = "Spotlight Reveal", shop = "whodunit", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "whodunit_master_sleuth", name = "Title: Master Sleuth", shop = "whodunit", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}
