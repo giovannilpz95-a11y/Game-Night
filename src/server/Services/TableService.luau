@@ -295,7 +295,11 @@ function TableService.update(matchId: string, snapshot: any)
 			warn(`[GameNight] board update failed: {err}`)
 		end
 	end
-	reconcile(t, snapshot.seats)
+	-- Once the game is over, nobody new sits down: a player who just left stays standing
+	-- and no bot body takes their seat during the hold.
+	if not (snapshot.result or snapshot.aborted) then
+		reconcile(t, snapshot.seats)
+	end
 	for matchSeat, tag in t.tags do
 		local active = table.find(snapshot.activeSeats, matchSeat) ~= nil
 		local s = snapshot.seats[matchSeat]

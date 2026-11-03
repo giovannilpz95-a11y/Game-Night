@@ -44,7 +44,7 @@ export type Context = {
 	sendMove: (any) -> (),
 	cell: (row: number, col: number) -> BasePart?,
 	-- Draws a local highlight on a cell: "fill" covers it, "dot" is a small marker.
-	mark: (cell: BasePart, color: Color3, style: "fill" | "dot" | "ring") -> (),
+	mark: (cell: BasePart, color: Color3, style: "fill" | "dot" | "ring" | "ball") -> (),
 	clearMarks: () -> (),
 	gui: ScreenGui, -- for small pickers (chess promotion)
 }
@@ -103,8 +103,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			toSeat = Vector3.zAxis
 		end
 		local upright = snapshot.gameId == "FourInARow" -- the frame stands up: look at it more level
-		local back, up = if upright then 9 else 6.5, if upright then 5 else 8.5
-		local focus = anchor + Vector3.new(0, if upright then 2.4 else 0.3, 0)
+		-- Aim a little above the board so the players across the table stay below the
+		-- header instead of behind it.
+		local back, up = if upright then 9.5 else 7.5, if upright then 5 else 8
+		local focus = anchor + Vector3.new(0, if upright then 2.4 else 1.2, 0) - toSeat.Unit * 0.6
 		camera.CFrame = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
 		camera.FieldOfView = 55
 	end
@@ -127,7 +129,15 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 				part.CastShadow = false
 				part.Material = Enum.Material.Neon
 				part.Color = color
-				if style == "fill" then
+				if style == "ball" then
+					-- A floating ball centered on `cell` (reads well from any angle).
+					part.Shape = Enum.PartType.Ball
+					part.Size = Vector3.one * cell.Size.X
+					part.Transparency = 0.2
+					part.CFrame = CFrame.new(cell.Position)
+					part.Parent = marks
+					return
+				elseif style == "fill" then
 					part.Size = Vector3.new(cell.Size.X * 0.96, 0.04, cell.Size.Z * 0.96)
 					part.Transparency = 0.45
 				elseif style == "ring" then
@@ -216,7 +226,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			return
 		end
 		raycastParams.FilterDescendantsInstances = { cells }
-		local ray = camera:ViewportPointToRay(input.Position.X, input.Position.Y)
+		-- input.Position is in screen space (below the top bar inset); ScreenPointToRay
+		-- accounts for that, ViewportPointToRay doesn't.
+		local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
 		local hit = workspace:Raycast(ray.Origin, ray.Direction * 200, raycastParams)
 		if hit and hit.Instance then
 			handler.click(hit.Instance)

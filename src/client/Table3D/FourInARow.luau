@@ -23,11 +23,13 @@ function FourInARow.create(ctx: any)
 				for _, column in ctx.cells:GetChildren() do
 					local c = column:GetAttribute("Col")
 					if c and snapshot.view.heights[c] < Rules.rows and column:IsA("BasePart") then
-						-- A little marker floating just above the column.
+						-- A small ball just above the frame. The click part reaches one cell
+						-- above the top row, so its top minus half a cell is right there.
+						local cell = column.Size.X
 						local top = Instance.new("Part")
-						top.Size = Vector3.new(column.Size.X * 0.5, 0.05, column.Size.X * 0.5)
-						top.CFrame = column.CFrame * CFrame.new(0, column.Size.Y / 2 + 0.1, 0)
-						ctx.mark(top, MARK, "dot")
+						top.Size = Vector3.one * (cell * 0.4)
+						top.CFrame = column.CFrame * CFrame.new(0, column.Size.Y / 2 - cell * 0.5, 0)
+						ctx.mark(top, MARK, "ball")
 						top:Destroy()
 					end
 				end
