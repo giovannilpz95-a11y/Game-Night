@@ -111,6 +111,15 @@ local items: { Item } = {
 	{ id = "hexlands_pirate_bandit", name = "Pirate Bandit", shop = "hexlands", slot = "effect", tier = "Rare", coins = 1200 },
 	{ id = "hexlands_fireworks", name = "Harbor Fireworks Win", shop = "hexlands", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "hexlands_founder_title", name = "Title: Island Founder", shop = "hexlands", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Card shop (Speed, Spoons, Go Fish, War)
+	{ id = "cards_ruby_backs", name = "Ruby Card Backs", shop = "cards", slot = "cards", tier = "Common", coins = 300 },
+	{ id = "cards_blue_felt", name = "Blue Felt Table", shop = "cards", slot = "board", tier = "Common", coins = 350 },
+	{ id = "cards_golden_spoons", name = "Golden Spoons", shop = "cards", slot = "pieces", tier = "Rare", coins = 1200 },
+	{ id = "cards_shuffle_flourish", name = "Shuffle Flourish", shop = "cards", slot = "effect", tier = "Rare", coins = 1000 },
+	{ id = "cards_starry_backs", name = "Starry Night Backs", shop = "cards", slot = "cards", tier = "Rare", coins = 1500 },
+	{ id = "cards_card_fountain", name = "Card Fountain Win", shop = "cards", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "cards_speed_demon_title", name = "Title: Speed Demon", shop = "cards", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}
