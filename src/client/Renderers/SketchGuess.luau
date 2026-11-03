@@ -123,11 +123,11 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		local b = Kit.new("TextButton", {
 			Text = if i == 2 then "ERASE" else "",
 			TextColor3 = Color3.fromRGB(110, 110, 120),
-			TextSize = 8,
+			TextSize = 12,
 			Font = Theme.FontBold,
 			BackgroundColor3 = toColor(rgb),
 			BorderSizePixel = 0,
-			Size = UDim2.new(0, 32, 0, 32),
+			Size = UDim2.new(0, if i == 2 then 56 else 32, 0, 32),
 			LayoutOrder = i,
 			Parent = swatches,
 		}, { Kit.corner(16), Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }) })
