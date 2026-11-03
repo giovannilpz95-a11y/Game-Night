@@ -16,7 +16,23 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 		Parent = parent,
 	}, { Kit.list(8) })
 
+	-- The same message again (say, retrying a move the server keeps refusing) restarts
+	-- the visible toast instead of stacking a copy.
+	local showing: { [string]: { frame: Frame, token: number } } = {}
+
 	local function toast(message: string)
+		local current = showing[message]
+		if current and current.frame.Parent then
+			current.token += 1
+			local token = current.token
+			task.delay(3, function()
+				if showing[message] == current and current.token == token then
+					showing[message] = nil
+					current.frame:Destroy()
+				end
+			end)
+			return
+		end
 		local frame = Kit.panel({
 			BackgroundColor3 = Theme.PanelLight,
 			Size = UDim2.new(1, 0, 0, 0),
@@ -25,8 +41,13 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 			Parent = stack,
 		})
 		Kit.label(message, { AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 51, Parent = frame })
+		local entry = { frame = frame, token = 0 }
+		showing[message] = entry
 		task.delay(3, function()
-			frame:Destroy()
+			if showing[message] == entry and entry.token == 0 then
+				showing[message] = nil
+				frame:Destroy()
+			end
 		end)
 	end
 
