@@ -78,16 +78,21 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 	local tab = "wallet"
 
 	local tabs = { { key = "wallet", name = "Wallet & daily" }, { key = "robux", name = "Gems & passes" }, { key = "hub", name = "Hub shop" } }
+	-- Every coin kind, for the wallet list; only kinds with items get a shop tab.
 	local coinKeys = {}
 	for key in Economy.Coins do
-		if #ShopCatalog.forShop(key) > 0 then
-			table.insert(coinKeys, key)
-		end
+		table.insert(coinKeys, key)
 	end
 	table.sort(coinKeys, function(a, b)
 		return Economy.Coins[a].order < Economy.Coins[b].order
 	end)
+	local shopKeys = {}
 	for _, key in coinKeys do
+		if #ShopCatalog.forShop(key) > 0 then
+			table.insert(shopKeys, key)
+		end
+	end
+	for _, key in shopKeys do
 		table.insert(tabs, { key = key, name = `{(string.gsub(Economy.coinName(key), " Coins$", ""))} shop` })
 	end
 

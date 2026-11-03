@@ -1,7 +1,7 @@
 -- Every item for sale. Items are data; the server prices and checks them with Core/Shop.
 --
 --   shop       "hub" (Gems only, works everywhere) or a coin key from Economy.Coins
---   slot       what it replaces: pieces, board, effect, celebration, theme, chair, trail, title, nameplate
+--   slot       what it replaces: pieces, cards, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
 --   tier       Common | Rare | Epic | Legendary
 --   coins      price in that shop's Coins (nil = not sold for Coins)
 --   gems       Gem price. If nil and coins is set, the Gem price is coins / Economy.CoinsPerGem.
@@ -56,6 +56,21 @@ local items: { Item } = {
 	{ id = "arcade_drop_splash", name = "Drop Splash", shop = "arcade", slot = "effect", tier = "Rare", coins = 1000 },
 	{ id = "arcade_fireworks", name = "Fireworks Win", shop = "arcade", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "arcade_retro_cabinet", name = "Retro Cabinet Board", shop = "arcade", slot = "board", tier = "Rare", coins = 1500, earnedOnly = true },
+
+	-- Color Clash shop
+	{ id = "colorclash_sunset_cards", name = "Sunset Card Backs", shop = "colorclash", slot = "cards", tier = "Common", coins = 400 },
+	{ id = "colorclash_felt_table", name = "Green Felt Table", shop = "colorclash", slot = "board", tier = "Common", coins = 350 },
+	{ id = "colorclash_neon_cards", name = "Neon Card Backs", shop = "colorclash", slot = "cards", tier = "Rare", coins = 1500 },
+	{ id = "colorclash_wild_swirl", name = "Wild Card Swirl", shop = "colorclash", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "colorclash_rainbow_burst", name = "Rainbow Burst Win", shop = "colorclash", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "colorclash_holo_cards", name = "Holo Card Backs", shop = "colorclash", slot = "cards", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Party shop (Sketch & Guess, Trivia Night)
+	{ id = "party_crayon_brushes", name = "Crayon Brushes", shop = "party", slot = "brush", tier = "Common", coins = 300 },
+	{ id = "party_buzzer_sounds", name = "Game Show Buzzer", shop = "party", slot = "sound", tier = "Common", coins = 450 },
+	{ id = "party_spotlight_podium", name = "Spotlight Podium", shop = "party", slot = "board", tier = "Rare", coins = 1200 },
+	{ id = "party_paint_splat", name = "Paint Splat Win", shop = "party", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "party_quizmaster_title", name = "Title: Quizmaster", shop = "party", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}

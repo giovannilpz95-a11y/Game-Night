@@ -279,6 +279,13 @@ return function(T)
 		end
 	end)
 
+	T.test("every coin a game pays has a shop with items", function()
+		for _, entry in GameCatalog.entries do
+			local coin = entry.coin or Economy.DefaultCoin
+			T.ok(#ShopCatalog.forShop(coin) > 0, `{entry.id} pays {coin} but that shop is empty`)
+		end
+	end)
+
 	-- Session lock --------------------------------------------------------------------
 
 	T.test("a server can claim a free profile and another server can't take it", function()
