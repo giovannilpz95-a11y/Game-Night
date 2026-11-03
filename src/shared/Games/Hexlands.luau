@@ -57,7 +57,7 @@ Hexlands.resources = {
 	{ key = "clay", name = "Clay", land = "Clay Pits", icon = "🧱", color = Color3.fromRGB(196, 98, 58) },
 	{ key = "wool", name = "Wool", land = "Meadow", icon = "🐑", color = Color3.fromRGB(150, 210, 100) },
 	{ key = "grain", name = "Grain", land = "Fields", icon = "🌾", color = Color3.fromRGB(236, 196, 70) },
-	{ key = "stone", name = "Stone", land = "Quarry", icon = "🪨", color = Color3.fromRGB(140, 140, 155) },
+	{ key = "stone", name = "Stone", land = "Quarry", icon = "⛏", color = Color3.fromRGB(140, 140, 155) },
 }
 Hexlands.DUNES = { name = "Dunes", icon = "🏜", color = Color3.fromRGB(226, 208, 150) }
 local RES: { string } = {}
@@ -235,8 +235,9 @@ local function shuffle(list: { any }, rng: any)
 	end
 end
 
-local function log(state: any, seat: number?, text: string)
-	table.insert(state.log, { seat = seat, text = text })
+-- `target` is a second seat the client names after the text ("took a card from Ava").
+local function log(state: any, seat: number?, text: string, target: number?)
+	table.insert(state.log, { seat = seat, text = text, target = target })
 	while #state.log > 8 do
 		table.remove(state.log, 1)
 	end
@@ -1000,9 +1001,6 @@ function Hexlands.validateMove(state: any, seat: number, move: any): (boolean, s
 		if not canPay(p.hand, give) then
 			return false, "You don't have those cards"
 		end
-		if not canPay(state.players[to].hand, get) then
-			return false, "They don't have those cards"
-		end
 		return true
 	end
 	return false, "You can't do that now"
@@ -1076,7 +1074,7 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 			local r = pool[state.rng:NextInteger(1, #pool)]
 			hand[r] -= 1
 			p.hand[r] += 1
-			log(state, seat, `moved the Bandit and took a card from Seat {victim}`)
+			log(state, seat, "moved the Bandit and took a card from", victim)
 			state.lastSteal = { from = victim, to = seat, res = r, n = state.moves }
 		else
 			log(state, seat, "moved the Bandit")
@@ -1177,7 +1175,7 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 		state.tradeId += 1
 		state.trade = { from = seat, to = move.to, give = readCards(move.give), get = readCards(move.get) }
 		state.phase = "trade"
-		log(state, seat, `offered Seat {move.to} a trade`)
+		log(state, seat, "offered a trade to", move.to)
 	elseif kind == "accept" then
 		local t = state.trade
 		local from = state.players[t.from]
@@ -1330,6 +1328,14 @@ end
 
 -- Views ----------------------------------------------------------------------------
 
+local function dense(map: { [number]: any }, size: number, empty: any): { any }
+	local out = table.create(size, empty)
+	for k, v in map do
+		out[k] = v
+	end
+	return out
+end
+
 function Hexlands.getView(state: any, seat: number?): any
 	local players = {}
 	for s, p in state.players do
@@ -1389,14 +1395,16 @@ function Hexlands.getView(state: any, seat: number?): any
 		tiles = GameModule.copy(state.tiles),
 		harbors = GameModule.copy(state.harbors),
 		bandit = state.bandit,
-		owner = table.clone(state.owner),
-		town = table.clone(state.town),
-		road = table.clone(state.road),
+		-- Dense lists (0 / false for empty): sparse number keys turn into strings on
+		-- the way through a RemoteEvent.
+		owner = dense(state.owner, #vertices, 0),
+		town = dense(state.town, #vertices, false),
+		road = dense(state.road, #edges, 0),
 		players = players,
 		bank = table.clone(state.bank),
 		deckLeft = #state.deck,
 		dice = state.dice and table.clone(state.dice),
-		discards = table.clone(state.discards),
+		discards = dense(state.discards, state.seatCount, 0),
 		trade = trade,
 		tradesLeft = Hexlands.TRADES_PER_TURN - state.tradesThisTurn,
 		freeRoads = state.freeRoads,

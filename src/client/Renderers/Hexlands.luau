@@ -100,7 +100,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		local victims = {}
 		for _, v in Rules.hexVertices[h] do
 			local owner = view.owner[v]
-			if owner and owner ~= me and not table.find(victims, owner) and view.players[owner].cards > 0 then
+			if owner ~= 0 and owner ~= me and not table.find(victims, owner) and view.players[owner].cards > 0 then
 				table.insert(victims, owner)
 			end
 		end
@@ -188,13 +188,24 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			Parent = holder,
 		})
 		Kit.new("UIStroke", { Thickness = 2, Color = Color3.fromRGB(200, 60, 60), Parent = bandit })
-		Kit.label("⚑", {
+		-- Drawn, not an emoji, so it shows on every device: a dark token with a mask band.
+		Kit.new("Frame", {
+			BackgroundColor3 = Color3.fromRGB(200, 60, 60),
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.36),
+			Size = UDim2.fromScale(0.8, 0.16),
+			ZIndex = 7,
+			Parent = bandit,
+		}, { Kit.corner(3) })
+		Kit.label("B", {
 			Font = Theme.FontBold,
 			TextScaled = true,
 			TextColor3 = Color3.fromRGB(240, 230, 230),
 			TextXAlignment = Enum.TextXAlignment.Center,
-			Size = UDim2.fromScale(1, 1),
-			ZIndex = 7,
+			Position = UDim2.fromScale(0.2, 0.46),
+			Size = UDim2.fromScale(0.6, 0.46),
+			ZIndex = 8,
 			Parent = bandit,
 		})
 		local button = circle({
@@ -257,7 +268,9 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		Kit.new("UIStroke", { Thickness = 1, Color = Color3.fromRGB(150, 110, 70), Parent = label })
 		harborLabels[i] = Kit.label("", {
 			Font = Theme.FontBold,
-			TextScaled = true,
+			TextScaled = false,
+			TextSize = 11,
+			TextYAlignment = Enum.TextYAlignment.Center,
 			TextColor3 = DARK,
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Position = UDim2.fromScale(0.1, 0.1),
@@ -537,7 +550,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		elseif phase == "roll" then
 			return if mine then "Your turn: roll the dice" else `{turnName} is about to roll`
 		elseif phase == "discard" then
-			if me and view.discards[me] then
+			if me and view.discards[me] > 0 then
 				return `A 7! Discard {view.discards[me]} cards`
 			end
 			return "A 7! Waiting for big hands to discard"
@@ -585,7 +598,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 
-		if phase == "discard" and me and view.discards[me] and you then
+		if phase == "discard" and me and view.discards[me] > 0 and you then
 			local need = view.discards[me]
 			counterRows(discard, function(res)
 				return you.hand[res]
@@ -685,6 +698,9 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 					end, 1 / #others, true, Theme.Seat[seat])
 				end
 				local ready = offer.to ~= nil and total(offer.give) > 0 and total(offer.get) > 0
+				if not ready then
+					note(if offer.to == nil then "Pick a player, and cards on both sides, to send an offer." else "Add cards on both sides to send an offer.")
+				end
 				local sendRow = row(34)
 				button(sendRow, "Send offer", function()
 					sendMove({ kind = "offer", to = offer.to, give = clean(offer.give), get = clean(offer.get) })
@@ -819,7 +835,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		for i = #view.log, 1, -1 do
 			local entry = view.log[i]
 			local who = if entry.seat then nameOf(entry.seat) .. " " else ""
-			note(`{who}{entry.text}`, if entry.seat then Theme.Seat[entry.seat] else Theme.SubText)
+			local target = if entry.target then " " .. nameOf(entry.target) else ""
+			note(`{who}{entry.text}{target}`, if entry.seat then Theme.Seat[entry.seat] else Theme.SubText)
 		end
 	end
 
@@ -880,8 +897,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 		for e, ev in edgeViews do
 			local owner = view.road[e]
-			ev.bar.Visible = owner ~= nil
-			if owner then
+			ev.bar.Visible = owner ~= 0
+			if owner ~= 0 then
 				ev.bar.BackgroundColor3 = Theme.Seat[owner] or Theme.Text
 			end
 			ev.dot.Visible = edgeSet[e] == true
@@ -899,8 +916,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 		for v, vv in vertexViews do
 			local owner = view.owner[v]
-			vv.piece.Visible = owner ~= nil
-			if owner then
+			vv.piece.Visible = owner ~= 0
+			if owner ~= 0 then
 				vv.piece.BackgroundColor3 = Theme.Seat[owner] or Theme.Text
 				local town = view.town[v] == true
 				vv.piece.Size = UDim2.fromScale(if town then 0.056 else 0.04, if town then 0.056 else 0.04)
@@ -940,8 +957,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				note(`{nameOf(s.to)} took your {info[s.res].icon} {info[s.res].name}`)
 			end
 		end
-		renderActions(view, me)
 		renderCards(view, me)
+		renderActions(view, me)
 		renderPlayers(view, me)
 		renderLog(view)
 	end

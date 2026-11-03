@@ -300,7 +300,6 @@ return function(T)
 		s.players[1].hand.lumber = 2
 		s.players[2].hand.stone = 1
 		rejects(s, 1, { kind = "offer", to = 2, give = { lumber = 3 }, get = { stone = 1 } }, "don't have 3")
-		rejects(s, 1, { kind = "offer", to = 2, give = { lumber = 1 }, get = { stone = 2 } }, "they don't have 2")
 		rejects(s, 1, { kind = "offer", to = 1, give = { lumber = 1 }, get = { stone = 1 } }, "can't trade with yourself")
 		rejects(s, 1, { kind = "offer", to = 2, give = {}, get = { stone = 1 } }, "empty side")
 		play(s, 1, { kind = "offer", to = 2, give = { lumber = 2 }, get = { stone = 1 } })
@@ -312,7 +311,9 @@ return function(T)
 		T.eq(s.players[2].hand.lumber, 2)
 		T.eq(s.phase, "main")
 
-		play(s, 1, { kind = "offer", to = 2, give = { stone = 1 }, get = { lumber = 1 } })
+		-- Offers don't reveal the target's hand; they just can't accept what they lack.
+		play(s, 1, { kind = "offer", to = 2, give = { stone = 1 }, get = { wool = 1 } })
+		rejects(s, 2, { kind = "accept" }, "no wool to give")
 		play(s, 2, { kind = "reject" })
 		T.eq(s.players[1].hand.stone, 1)
 		play(s, 1, { kind = "offer", to = 2, give = { stone = 1 }, get = { lumber = 1 } })
@@ -321,6 +322,7 @@ return function(T)
 		Hexlands.onTimeout(s)
 		T.eq(s.phase, "main")
 		rejects(s, 1, { kind = "offer", to = 2, give = { stone = 1 }, get = { lumber = 1 } }, "3 offers a turn")
+		T.eq(s.log[#s.log - 1].target, 2, "log names the trade target by seat, for the client")
 	end)
 
 	T.test("action cards: can't play the turn you buy, one per turn, Guard moves the Bandit", function()
@@ -475,6 +477,14 @@ return function(T)
 		T.eq(view.players[2].points, 2, "hidden Monument not shown to others")
 		T.eq(Hexlands.getView(s, 2).players[2].points, 3, "but you see your own")
 		T.eq(Hexlands.getView(s, nil).you, nil)
+		-- Board tables are dense lists: sparse number keys turn into strings over a RemoteEvent.
+		T.eq(#view.owner, #V)
+		T.eq(#view.town, #V)
+		T.eq(#view.road, #E)
+		T.eq(#view.discards, 3)
+		for v = 1, #V do
+			T.eq(view.owner[v], s.owner[v] or 0)
+		end
 	end)
 
 	T.test("legal moves are all valid", function()
