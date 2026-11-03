@@ -47,7 +47,7 @@ local function pieceVisual(code: number): GuiObject
 			token.Size = UDim2.fromScale(0.5, 0.5)
 		end
 		return token
-	end, yaw)
+	end, { yaw = yaw })
 end
 
 function Chess.create(container: Frame, sendMove: (any) -> ())

@@ -18,8 +18,8 @@ function BoardGrid.create(container: GuiObject, size: number, onClick: (row: num
 		Name = "Grid",
 		BackgroundColor3 = Color3.fromRGB(70, 48, 36),
 		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.fromScale(0, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1),
 		Parent = container,
 	}, {

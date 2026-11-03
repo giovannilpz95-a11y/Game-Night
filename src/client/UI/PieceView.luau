@@ -30,8 +30,14 @@ function PieceView.hasModel(folderName: string, name: string): boolean
 	return findModel(folderName, name) ~= nil
 end
 
+export type Options = {
+	yaw: number?, -- degrees to turn the model around Y before framing it
+	faceOn: boolean?, -- look straight at the model's flattest side (discs, tiles, cards)
+}
+
 -- Returns a GuiObject filling its parent. `fallback` builds the plain version.
-function PieceView.create(folderName: string, name: string, fallback: () -> GuiObject, yawDegrees: number?): GuiObject
+function PieceView.create(folderName: string, name: string, fallback: () -> GuiObject, options: Options?): GuiObject
+	local yawDegrees = options and options.yaw
 	local model = findModel(folderName, name)
 	if not model then
 		return fallback()
@@ -53,9 +59,29 @@ function PieceView.create(folderName: string, name: string, fallback: () -> GuiO
 	local cf, size = clone:GetBoundingBox()
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = 30
-	local distance = (size.Magnitude / 2) / math.tan(math.rad(camera.FieldOfView / 2)) * 1.05
-	local eye = cf.Position + Vector3.new(0, size.Y * 0.35, 0) + Vector3.new(0, 0.55, 1).Unit * distance
-	camera.CFrame = CFrame.lookAt(eye, cf.Position)
+	local tanHalf = math.tan(math.rad(camera.FieldOfView / 2))
+	if options and options.faceOn then
+		-- Look along the thinnest axis so a flat piece fills the cell.
+		local axis, across
+		if size.X <= size.Y and size.X <= size.Z then
+			axis, across = cf.RightVector, math.max(size.Y, size.Z)
+		elseif size.Y <= size.Z then
+			axis, across = cf.UpVector, math.max(size.X, size.Z)
+		else
+			axis, across = cf.LookVector, math.max(size.X, size.Y)
+		end
+		if axis:Dot(Vector3.new(0, 0, 1)) < 0 and axis:Dot(Vector3.yAxis) < 0.9 then
+			axis = -axis
+		end
+		local distance = (across / 2) / tanHalf * 1.02
+		local up = if math.abs(axis:Dot(Vector3.yAxis)) > 0.9 then Vector3.zAxis else Vector3.yAxis
+		camera.CFrame = CFrame.lookAt(cf.Position + axis * distance, cf.Position, up)
+	else
+		-- Three-quarter view from the front and slightly above, framed by the bounding box.
+		local distance = (size.Magnitude / 2) / tanHalf * 1.05
+		local eye = cf.Position + Vector3.new(0, size.Y * 0.35, 0) + Vector3.new(0, 0.55, 1).Unit * distance
+		camera.CFrame = CFrame.lookAt(eye, cf.Position)
+	end
 	camera.Parent = viewport
 	viewport.CurrentCamera = camera
 

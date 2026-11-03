@@ -25,7 +25,7 @@ local function discVisual(seat: number): GuiObject
 			Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
 			Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.6, Thickness = 2 }),
 		})
-	end)
+	end, { faceOn = true })
 end
 
 function FourInARow.create(container: Frame, sendMove: (any) -> ())
@@ -63,7 +63,7 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 				BorderSizePixel = 0,
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale((c - 0.5) / COLS, 1 - (r - 0.5) / ROWS),
-				Size = UDim2.fromScale(0.8 / COLS, 0.8 / ROWS),
+				Size = UDim2.fromScale(0.88 / COLS, 0.88 / ROWS),
 				ClipsDescendants = false,
 				Parent = board,
 			}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
