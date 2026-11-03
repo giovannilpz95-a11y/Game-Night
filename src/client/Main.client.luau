@@ -66,6 +66,8 @@ local walletBar = WalletBar.create(screen, shopPanel.open)
 -- At a table the wallet shows that game's Coins too.
 local shownGameId: string? = nil
 RunService.RenderStepped:Connect(function()
+	-- The lobby menu hides while at a table, so the 3D view shows the room.
+	lobby.Visible = not matchView.isOpen()
 	local gameId = matchView.gameId()
 	if gameId ~= shownGameId then
 		shownGameId = gameId

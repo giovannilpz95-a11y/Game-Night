@@ -11,6 +11,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Match = require(script.Parent.Parent.Core.Match)
+local TableService = require(script.Parent.TableService)
 
 local MatchService = {}
 
@@ -23,6 +24,7 @@ type Entry = {
 	startedAt: number,
 	timerId: number?, -- the game's phase clock that is currently running
 	botPending: { [number]: boolean }, -- bot seats that already have a move scheduled
+	table: any?, -- the 3D table it's played at: { id, seats, board3D }; nil = 2D overflow
 }
 
 local partyService: any = nil
@@ -46,6 +48,8 @@ local function loadRules(entry: GameCatalog.Entry): any?
 end
 
 local function broadcast(entry: Entry)
+	-- The table shows the spectator view, so nothing hidden ends up in the world.
+	TableService.update(entry.match.id, entry.match:getSnapshot(nil))
 	for index, seat in entry.match.seats do
 		if seat.kind == "player" and seat.userId then
 			local player = Players:GetPlayerByUserId(seat.userId)
@@ -53,6 +57,7 @@ local function broadcast(entry: Entry)
 				local snapshot = entry.match:getSnapshot(index)
 				snapshot.turnEndsAt = entry.turnEndsAt
 				snapshot.timed = entry.timerId ~= nil
+				snapshot.table = entry.table
 				matchStateRemote:FireClient(player, snapshot)
 			end
 		end
@@ -67,6 +72,7 @@ local function finish(entry: Entry)
 	entry.turnEndsAt = nil
 	entry.timerId = nil
 	broadcast(entry) -- clients keep showing the final board and result
+	TableService.release(entry.match.id)
 	matches[entry.match.id] = nil
 	for userId, matchId in matchOfUser do
 		if matchId == entry.match.id then
@@ -247,12 +253,27 @@ local function startMatch(leader: Player, request: any)
 		startedAt = os.clock(),
 		timerId = nil,
 		botPending = {},
+		table = nil,
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
 		matchOfUser[userId] = matchId
 	end
 	partyService.setMatch(party.id, matchId)
+	-- Seat everyone at a free table (this can yield while bot bodies load).
+	local ok, tableInfo = pcall(TableService.claim, matchId, party.id, catalogEntry, seats)
+	if not ok then
+		warn(`[GameNight] couldn't seat the match at a table: {tableInfo}`)
+		tableInfo = nil
+	end
+	if entry.ended then
+		TableService.release(matchId)
+		return
+	end
+	entry.table = tableInfo
+	if not tableInfo then
+		notify(leader, "All tables are busy, so this one is on screen. Try a table next game!")
+	end
 	scheduleTurn(entry)
 	broadcast(entry)
 end
@@ -272,6 +293,7 @@ function MatchService.leaveMatch(player: Player)
 	end
 	local match = entry.match
 	local seat = match:seatOf(player.UserId)
+	TableService.unseat(match.id, player.UserId)
 	if seat then
 		match:replaceWithBot(seat)
 	end
@@ -368,6 +390,7 @@ function handlers.sync(player: Player, _request: any)
 		local snapshot = entry.match:getSnapshot(seat)
 		snapshot.turnEndsAt = entry.turnEndsAt
 		snapshot.timed = entry.timerId ~= nil
+		snapshot.table = entry.table
 		matchStateRemote:FireClient(player, snapshot)
 	else
 		matchStateRemote:FireClient(player, nil)
