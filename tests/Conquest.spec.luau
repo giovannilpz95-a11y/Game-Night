@@ -104,20 +104,30 @@ return function(T)
 
 	T.test("income: territories / 3 (min 3) plus whole regions", function()
 		local owner = table.create(N, 2)
-		T.eq(Conquest.income(owner, 1), 3)
-		for _, t in Conquest.regionMembers[2] do
-			owner[t] = 1
+		for t = 1, 12 do
+			owner[t] = 3
 		end
-		-- 5 territories -> 3, plus Sunspire Sands
-		T.eq(Conquest.income(owner, 1), 3 + Conquest.regions[2].bonus)
+		owner[13] = 1
+		-- 1 territory (well under the average of 8): 3, plus the catch-up rally
+		T.ok(Conquest.isRallying(owner, 1))
+		T.eq(Conquest.income(owner, 1), 3 + Conquest.RALLY_ARMIES)
+		-- 12 of 24 with two players: no rally, 12 / 3 = 4
+		T.eq(Conquest.isRallying(owner, 3), false)
+		T.eq(Conquest.income(owner, 3), 4 + Conquest.regions[1].bonus + Conquest.regions[2].bonus)
+		local two = table.create(N, 2)
+		for t = 1, 12 do
+			two[t] = 1
+		end
+		T.eq(Conquest.income(two, 1), 4 + Conquest.regions[1].bonus + Conquest.regions[2].bonus, "even split, no rally")
 	end)
 
 	T.test("card sets", function()
-		T.eq(Conquest.setValue({ "sword", "sword", "sword" }), 4)
-		T.eq(Conquest.setValue({ "crown", "crown", "crown" }), 8)
-		T.eq(Conquest.setValue({ "sword", "shield", "crown" }), 10)
-		T.eq(Conquest.setValue({ "sword", "wild", "crown" }), 10)
-		T.eq(Conquest.setValue({ "crown", "crown", "wild" }), 8)
+		local v = Conquest.setValues
+		T.eq(Conquest.setValue({ "sword", "sword", "sword" }), v.sword)
+		T.eq(Conquest.setValue({ "crown", "crown", "crown" }), v.crown)
+		T.eq(Conquest.setValue({ "sword", "shield", "crown" }), v.mixed)
+		T.eq(Conquest.setValue({ "sword", "wild", "crown" }), v.mixed)
+		T.eq(Conquest.setValue({ "crown", "crown", "wild" }), v.crown, "two of a kind plus a wild is three of a kind")
 		T.eq(Conquest.setValue({ "sword", "sword", "crown" }), nil)
 		T.eq(Conquest.setValue({ "sword", "sword" }), nil)
 		T.eq(Conquest.setValue({ "sword", "sword", "bogus" }), nil)
@@ -226,7 +236,7 @@ return function(T)
 		rejects(s, 1, { kind = "trade", cards = { 1, 1, 3 } }, "same card twice")
 		local before = s.reinforcements
 		play(s, 1, { kind = "trade", cards = { 1, 3, 4 } })
-		T.eq(s.reinforcements, before + 10)
+		T.eq(s.reinforcements, before + Conquest.setValues.mixed)
 		T.eq(#s.hands[1], 2)
 		play(s, 1, { kind = "place", territory = mine, count = s.reinforcements })
 		T.eq(s.phase, "attack")

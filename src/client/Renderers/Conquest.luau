@@ -19,6 +19,7 @@ local SEA = Color3.fromRGB(46, 92, 140)
 local SEA_LIGHT = Color3.fromRGB(70, 122, 170)
 local LAND_LINE = Color3.fromRGB(226, 220, 200)
 local NODE_SIZE = 0.064 -- of the map's width
+local LAND_SIZE = 0.12 -- land patch under each territory, of the map's width
 local MAP_ASPECT = 1.5
 local CARD_COLORS = {
 	sword = Color3.fromRGB(235, 87, 87),
@@ -64,39 +65,22 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		Parent = mapArea,
 	}, { Kit.corner(14), Kit.new("UIAspectRatioConstraint", { AspectRatio = MAP_ASPECT }) })
 
-	-- Soft land patches behind each region, so the regions read as islands.
-	for r, region in Rules.regions do
-		local sumX, sumY, minX, maxX, minY, maxY = 0, 0, 1, 0, 1, 0
-		local members = Rules.regionMembers[r]
-		for _, t in members do
-			local p = territories[t]
-			sumX += p.x
-			sumY += p.y
-			minX, maxX = math.min(minX, p.x), math.max(maxX, p.x)
-			minY, maxY = math.min(minY, p.y), math.max(maxY, p.y)
-		end
+	-- A round patch of land in the region's color under each territory. Patches of the
+	-- same region overlap into islands; different regions never touch (the closest
+	-- neighbours across a border are further apart than LAND_SIZE), so the regions read
+	-- as separate lands joined by the border lines. Region names and bonuses are in the
+	-- side panel.
+	for _, territory in territories do
 		Kit.new("Frame", {
-			BackgroundColor3 = region.color,
-			BackgroundTransparency = 0.55,
+			BackgroundColor3 = Rules.regions[territory.region].color,
+			BackgroundTransparency = 0.45,
 			BorderSizePixel = 0,
-			Position = UDim2.fromScale(minX - 0.06, minY - 0.09),
-			Size = UDim2.fromScale(maxX - minX + 0.12, maxY - minY + 0.18),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(territory.x, territory.y),
+			Size = UDim2.fromScale(LAND_SIZE, LAND_SIZE * MAP_ASPECT),
 			ZIndex = 1,
 			Parent = map,
-		}, { Kit.corner(40) })
-		local label = Kit.label(`{region.name} +{region.bonus}`, {
-			Font = Theme.FontBold,
-			TextScaled = true,
-			TextColor3 = region.color:Lerp(Color3.new(1, 1, 1), 0.5),
-			TextTransparency = 0.15,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.fromScale(sumX / #members, math.max(0, minY - 0.085)),
-			Size = UDim2.fromScale(0.2, 0.035),
-			ZIndex = 2,
-			Parent = map,
-		})
-		Kit.new("UITextSizeConstraint", { MaxTextSize = 14, Parent = label })
+		}, { Kit.corner(1000) })
 	end
 
 	local lines = {}
@@ -131,7 +115,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	for t, territory in territories do
 		local node = Kit.new("TextButton", {
 			Text = "",
-			AutoButtonColor = true,
+			AutoButtonColor = false, -- a darker press tint looked like a change of owner
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(territory.x, territory.y),
 			Size = UDim2.fromScale(NODE_SIZE, NODE_SIZE * MAP_ASPECT),
@@ -530,7 +514,16 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				end)
 			end
 			if entry.seat then
-				text = `{nameOf(entry.seat)} {text}`
+				local who = nameOf(entry.seat)
+				if who == "You" then
+					-- "is knocked out" -> "are knocked out", "was held off" -> "were held off"
+					if string.sub(text, 1, 3) == "is " then
+						text = "are " .. string.sub(text, 4)
+					elseif string.sub(text, 1, 4) == "was " then
+						text = "were " .. string.sub(text, 5)
+					end
+				end
+				text = `{who} {text}`
 			end
 			hint(text, logSection, count - i + 2, if entry.seat then Theme.Seat[entry.seat] else nil)
 		end
@@ -558,9 +551,6 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			else
 				stroke.Color, stroke.Thickness = Rules.regions[territories[t].region].color, 3
 			end
-			local b = view.lastBattle
-			local involved = b and (t == b.from or t == b.to)
-			node.button.BackgroundTransparency = if involved and not myTurn() then 0.25 else 0
 		end
 	end
 

@@ -49,12 +49,12 @@ local STARTING_ARMIES = { [2] = 30, [3] = 24, [4] = 20, [5] = 17, [6] = 15 }
 Conquest.mapName = "The Shattered Isles"
 
 Conquest.regions = {
-	{ name = "Frostreach", bonus = 2, color = Color3.fromRGB(172, 214, 240) },
-	{ name = "Sunspire Sands", bonus = 3, color = Color3.fromRGB(236, 204, 120) },
-	{ name = "Heartwood", bonus = 3, color = Color3.fromRGB(116, 184, 104) },
-	{ name = "Ironcoast", bonus = 2, color = Color3.fromRGB(156, 156, 172) },
-	{ name = "Coral Keys", bonus = 2, color = Color3.fromRGB(122, 214, 204) },
-	{ name = "Emberfall", bonus = 2, color = Color3.fromRGB(226, 116, 84) },
+	{ name = "Frostreach", bonus = 1, color = Color3.fromRGB(172, 214, 240) },
+	{ name = "Sunspire Sands", bonus = 2, color = Color3.fromRGB(236, 204, 120) },
+	{ name = "Heartwood", bonus = 2, color = Color3.fromRGB(116, 184, 104) },
+	{ name = "Ironcoast", bonus = 1, color = Color3.fromRGB(156, 156, 172) },
+	{ name = "Coral Keys", bonus = 1, color = Color3.fromRGB(122, 214, 204) },
+	{ name = "Emberfall", bonus = 1, color = Color3.fromRGB(226, 116, 84) },
 }
 
 Conquest.territories = {
@@ -140,7 +140,7 @@ end
 
 Conquest.cardKinds = { "sword", "shield", "crown" }
 Conquest.cardNames = { sword = "Sword", shield = "Shield", crown = "Crown", wild = "Wild" }
-Conquest.setValues = { sword = 4, shield = 6, crown = 8, mixed = 10 }
+Conquest.setValues = { sword = 3, shield = 4, crown = 5, mixed = 6 }
 local CARDS_PER_KIND = 8
 local WILD_CARDS = 2
 
@@ -220,12 +220,33 @@ function Conquest.regionOwner(owner: { number }, region: number): number?
 	return first
 end
 
+-- Catch-up: holding fewer territories than the average player still in the game.
+Conquest.RALLY_ARMIES = 2
+
+function Conquest.isRallying(owner: { number }, seat: number): boolean
+	local counts = {}
+	local players = 0
+	for t = 1, TERRITORY_COUNT do
+		local o = owner[t]
+		if counts[o] == nil then
+			counts[o] = 0
+			players += 1
+		end
+		counts[o] += 1
+	end
+	local mine = counts[seat] or 0
+	return mine > 0 and mine * players < TERRITORY_COUNT
+end
+
 function Conquest.income(owner: { number }, seat: number): number
 	local armies = math.max(3, Conquest.countOwned(owner, seat) // 3)
 	for r, region in Conquest.regions do
 		if Conquest.regionOwner(owner, r) == seat then
 			armies += region.bonus
 		end
+	end
+	if Conquest.isRallying(owner, seat) then
+		armies += Conquest.RALLY_ARMIES
 	end
 	return armies
 end
