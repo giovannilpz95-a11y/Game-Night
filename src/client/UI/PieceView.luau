@@ -8,7 +8,9 @@
 --   Assets.Chess.<King|Queen|Rook|Bishop|Knight|Pawn>_<White|Black>
 --   Assets.Checkers.<Man|King>_<Dark|Light>
 --   Assets.FourInARow.Disc_<1|2>
--- Each one is a Model; the camera frames its bounding box from slightly above.
+-- Each one is a Model; the camera frames its bounding box from slightly above, looking
+-- toward -Z. Models keep their real 3D-table orientation (White faces -Z, Black +Z), so
+-- callers can pass `yawDegrees` to turn a piece for the 2D view without editing the model.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -29,7 +31,7 @@ function PieceView.hasModel(folderName: string, name: string): boolean
 end
 
 -- Returns a GuiObject filling its parent. `fallback` builds the plain version.
-function PieceView.create(folderName: string, name: string, fallback: () -> GuiObject): GuiObject
+function PieceView.create(folderName: string, name: string, fallback: () -> GuiObject, yawDegrees: number?): GuiObject
 	local model = findModel(folderName, name)
 	if not model then
 		return fallback()
@@ -43,6 +45,9 @@ function PieceView.create(folderName: string, name: string, fallback: () -> GuiO
 	viewport.LightDirection = Vector3.new(-1, -2, -1)
 
 	local clone = model:Clone()
+	if yawDegrees and yawDegrees ~= 0 then
+		clone:PivotTo(clone:GetPivot() * CFrame.Angles(0, math.rad(yawDegrees), 0))
+	end
 	clone.Parent = viewport
 
 	local cf, size = clone:GetBoundingBox()

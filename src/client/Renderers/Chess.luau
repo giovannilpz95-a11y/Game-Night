@@ -29,10 +29,16 @@ local function cellOf(square: string): (number, number)
 	return 8 - sq // 8, sq % 8 + 1
 end
 
+-- White models face -Z (away from the 2D camera) and Black face +Z. Turn knights so both
+-- show the same three-quarter profile; other pieces look the same from any side.
+local KNIGHT_YAW = { White = -120, Black = 60 }
+
 local function pieceVisual(code: number): GuiObject
 	local kind = math.abs(code)
 	local white = code > 0
-	local name = `{NAMES[kind]}_{if white then "White" else "Black"}`
+	local color = if white then "White" else "Black"
+	local name = `{NAMES[kind]}_{color}`
+	local yaw = if kind == 2 then KNIGHT_YAW[color] else nil
 	return PieceView.create("Chess", name, function()
 		local fill = if white then Color3.fromRGB(250, 248, 240) else Color3.fromRGB(40, 36, 44)
 		local stroke = if white then Color3.fromRGB(60, 50, 40) else Color3.fromRGB(230, 220, 200)
@@ -41,7 +47,7 @@ local function pieceVisual(code: number): GuiObject
 			token.Size = UDim2.fromScale(0.5, 0.5)
 		end
 		return token
-	end)
+	end, yaw)
 end
 
 function Chess.create(container: Frame, sendMove: (any) -> ())
