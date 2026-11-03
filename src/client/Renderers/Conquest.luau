@@ -18,8 +18,8 @@ local territories = Rules.territories
 local SEA = Color3.fromRGB(46, 92, 140)
 local SEA_LIGHT = Color3.fromRGB(70, 122, 170)
 local LAND_LINE = Color3.fromRGB(226, 220, 200)
-local NODE_SIZE = 0.064 -- of the map's width
-local LAND_SIZE = 0.12 -- land patch under each territory, of the map's width
+local NODE_SIZE = 0.058 -- of the map's width
+local LAND_SIZE = 0.10 -- land patch under each territory, of the map's width
 local MAP_ASPECT = 1.5
 local CARD_COLORS = {
 	sword = Color3.fromRGB(235, 87, 87),
@@ -68,8 +68,8 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	-- A round patch of land in the region's color under each territory. Patches of the
 	-- same region overlap into islands; different regions never touch (the closest
 	-- neighbours across a border are further apart than LAND_SIZE), so the regions read
-	-- as separate lands joined by the border lines. Region names and bonuses are in the
-	-- side panel.
+	-- as separate lands joined by the border lines. Each region's name and bonus sits in
+	-- open sea next to it (labelX/labelY in the map data).
 	for _, territory in territories do
 		Kit.new("Frame", {
 			BackgroundColor3 = Rules.regions[territory.region].color,
@@ -81,6 +81,21 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			ZIndex = 1,
 			Parent = map,
 		}, { Kit.corner(1000) })
+	end
+	for _, region in Rules.regions do
+		local label = Kit.label(`{region.name} +{region.bonus}`, {
+			Font = Theme.FontBold,
+			TextScaled = true,
+			TextColor3 = region.color:Lerp(Color3.new(1, 1, 1), 0.35),
+			TextStrokeTransparency = 0.6,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(region.labelX, region.labelY),
+			Size = UDim2.fromScale(0.17, 0.034),
+			ZIndex = 2,
+			Parent = map,
+		})
+		Kit.new("UITextSizeConstraint", { MaxTextSize = 15, Parent = label })
 	end
 
 	local lines = {}
@@ -226,7 +241,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			return out
 		end
 		for _, n in Rules.neighbors[selected] do
-			if view.owner[n] ~= me then
+			if view.owner[n] ~= me and view.conquestsLeft > 0 then
 				out[n] = "attack"
 			end
 		end
@@ -286,6 +301,9 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				return
 			end
 			hint(`Place {view.reinforcements} armies: tap your territories.`, actions, 2, Theme.Text)
+			if view.rallying then
+				hint(`Includes +{Rules.RALLY_ARMIES} rally armies for holding fewer lands than average.`, actions, 2, Theme.Good)
+			end
 			local amounts = row(actions, 3)
 			for i, amount in { 1, 3, "all" } do
 				local chosen = placeAmount == amount
@@ -356,6 +374,12 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				hint(`{territories[selected].name} selected. Tap a red neighbour to attack, or a green territory to move armies there.`, actions, 2)
 			else
 				hint("Tap one of your territories with 2+ armies to attack from it.", actions, 2)
+			end
+			if view.conquestsLeft == 0 then
+				hint("That's all the territories you can take this turn. More open up in later rounds.", actions, 2, Theme.Accent)
+			elseif view.round <= 5 then
+				local n = view.conquestsLeft
+				hint(`You can take {n} more {if n == 1 then "territory" else "territories"} this turn.`, actions, 2)
 			end
 			if selected then
 				smallButton("Cancel", actions, 1, function()

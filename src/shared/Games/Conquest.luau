@@ -40,54 +40,66 @@ function Conquest.roundsFor(seats: number): number
 	return ROUNDS[seats] or 12
 end
 
+-- Most territories one player may take in a turn, by round. Stops an early runaway
+-- (one player sweeping half the map in the first rounds) so games reach the limit.
+function Conquest.conquestLimit(round: number): number
+	if round <= 2 then
+		return 1
+	elseif round <= 5 then
+		return 2
+	end
+	return 3
+end
+
 -- Starting armies per player (one goes on each territory, the rest are spread at random).
 local STARTING_ARMIES = { [2] = 30, [3] = 24, [4] = 20, [5] = 17, [6] = 15 }
 
 ---------------------------------------------------------------------------------------
--- The map: the Shattered Isles. x/y are 0..1 positions on a 3:2 map.
+-- The map: the Shattered Isles. x/y are 0..1 positions on a 3:2 map; labelX/labelY is
+-- where a region's name sits (in open sea next to it).
 
 Conquest.mapName = "The Shattered Isles"
 
 Conquest.regions = {
-	{ name = "Frostreach", bonus = 1, color = Color3.fromRGB(172, 214, 240) },
-	{ name = "Sunspire Sands", bonus = 2, color = Color3.fromRGB(236, 204, 120) },
-	{ name = "Heartwood", bonus = 2, color = Color3.fromRGB(116, 184, 104) },
-	{ name = "Ironcoast", bonus = 1, color = Color3.fromRGB(156, 156, 172) },
-	{ name = "Coral Keys", bonus = 1, color = Color3.fromRGB(122, 214, 204) },
-	{ name = "Emberfall", bonus = 1, color = Color3.fromRGB(226, 116, 84) },
+	{ name = "Frostreach", bonus = 1, color = Color3.fromRGB(172, 214, 240), labelX = 0.15, labelY = 0.11 },
+	{ name = "Sunspire Sands", bonus = 2, color = Color3.fromRGB(236, 204, 120), labelX = 0.63, labelY = 0.07 },
+	{ name = "Heartwood", bonus = 2, color = Color3.fromRGB(116, 184, 104), labelX = 0.43, labelY = 0.24 },
+	{ name = "Ironcoast", bonus = 1, color = Color3.fromRGB(156, 156, 172), labelX = 0.15, labelY = 0.91 },
+	{ name = "Coral Keys", bonus = 1, color = Color3.fromRGB(122, 214, 204), labelX = 0.56, labelY = 0.93 },
+	{ name = "Emberfall", bonus = 1, color = Color3.fromRGB(226, 116, 84), labelX = 0.87, labelY = 0.76 },
 }
 
 Conquest.territories = {
 	-- Frostreach
-	{ name = "Icefang", region = 1, x = 0.09, y = 0.13 },
-	{ name = "Snowmere", region = 1, x = 0.25, y = 0.09 },
-	{ name = "Glacier Gate", region = 1, x = 0.11, y = 0.33 },
-	{ name = "Whitepine", region = 1, x = 0.27, y = 0.27 },
+	{ name = "Icefang", region = 1, x = 0.147, y = 0.204 },
+	{ name = "Snowmere", region = 1, x = 0.285, y = 0.172 },
+	{ name = "Glacier Gate", region = 1, x = 0.165, y = 0.364 },
+	{ name = "Whitepine", region = 1, x = 0.302, y = 0.316 },
 	-- Sunspire Sands
-	{ name = "Oasis", region = 2, x = 0.57, y = 0.24 },
-	{ name = "Dunehold", region = 2, x = 0.65, y = 0.08 },
-	{ name = "Mirage Wells", region = 2, x = 0.81, y = 0.10 },
-	{ name = "Sandstone", region = 2, x = 0.91, y = 0.27 },
-	{ name = "Scorpion Pass", region = 2, x = 0.74, y = 0.31 },
+	{ name = "Oasis", region = 2, x = 0.560, y = 0.292 },
+	{ name = "Dunehold", region = 2, x = 0.629, y = 0.164 },
+	{ name = "Mirage Wells", region = 2, x = 0.767, y = 0.180 },
+	{ name = "Sandstone", region = 2, x = 0.853, y = 0.316 },
+	{ name = "Scorpion Pass", region = 2, x = 0.706, y = 0.348 },
 	-- Heartwood
-	{ name = "Elder Grove", region = 3, x = 0.42, y = 0.36 },
-	{ name = "Mossbrook", region = 3, x = 0.55, y = 0.46 },
-	{ name = "Thornwick", region = 3, x = 0.44, y = 0.59 },
-	{ name = "Fernhollow", region = 3, x = 0.31, y = 0.48 },
+	{ name = "Elder Grove", region = 3, x = 0.431, y = 0.388 },
+	{ name = "Mossbrook", region = 3, x = 0.543, y = 0.468 },
+	{ name = "Thornwick", region = 3, x = 0.448, y = 0.572 },
+	{ name = "Fernhollow", region = 3, x = 0.337, y = 0.484 },
 	-- Ironcoast
-	{ name = "Gullrock", region = 4, x = 0.17, y = 0.56 },
-	{ name = "Anchor Bay", region = 4, x = 0.06, y = 0.67 },
-	{ name = "Rustport", region = 4, x = 0.22, y = 0.76 },
-	{ name = "Saltcliff", region = 4, x = 0.09, y = 0.89 },
+	{ name = "Gullrock", region = 4, x = 0.216, y = 0.548 },
+	{ name = "Anchor Bay", region = 4, x = 0.122, y = 0.636 },
+	{ name = "Rustport", region = 4, x = 0.259, y = 0.708 },
+	{ name = "Saltcliff", region = 4, x = 0.147, y = 0.812 },
 	-- Coral Keys
-	{ name = "Turtle Key", region = 5, x = 0.36, y = 0.85 },
-	{ name = "Pearl Lagoon", region = 5, x = 0.49, y = 0.77 },
-	{ name = "Shellbeach", region = 5, x = 0.59, y = 0.91 },
+	{ name = "Turtle Key", region = 5, x = 0.380, y = 0.780 },
+	{ name = "Pearl Lagoon", region = 5, x = 0.491, y = 0.716 },
+	{ name = "Shellbeach", region = 5, x = 0.577, y = 0.828 },
 	-- Emberfall
-	{ name = "Obsidian Bay", region = 6, x = 0.67, y = 0.61 },
-	{ name = "Ashpeak", region = 6, x = 0.83, y = 0.50 },
-	{ name = "Cinder Vale", region = 6, x = 0.93, y = 0.71 },
-	{ name = "Lava Falls", region = 6, x = 0.77, y = 0.84 },
+	{ name = "Obsidian Bay", region = 6, x = 0.646, y = 0.588 },
+	{ name = "Ashpeak", region = 6, x = 0.784, y = 0.500 },
+	{ name = "Cinder Vale", region = 6, x = 0.870, y = 0.668 },
+	{ name = "Lava Falls", region = 6, x = 0.732, y = 0.772 },
 }
 
 -- Borders. `sea = true` marks a sea lane (drawn dashed-looking and thinner).
@@ -313,6 +325,7 @@ local function startTurn(state)
 	state.phase = "reinforce"
 	state.reinforcements = Conquest.income(state.owner, seat)
 	state.conqueredThisTurn = false
+	state.conquestsThisTurn = 0
 	state.occupy = nil
 	state.turnId += 1
 end
@@ -338,6 +351,7 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 		phase = "reinforce",
 		reinforcements = 0,
 		conqueredThisTurn = false,
+		conquestsThisTurn = 0,
 		occupy = nil,
 		lastBattle = nil,
 		turnId = 0,
@@ -553,6 +567,10 @@ function Conquest.validateMove(state, seat: number, move: any): (boolean, string
 		if state.armies[from] < 2 then
 			return false, "You need at least 2 armies to attack"
 		end
+		local limit = Conquest.conquestLimit(state.round)
+		if state.conquestsThisTurn >= limit then
+			return false, if limit == 1 then "You can take 1 territory a turn this round" else `You can take {limit} territories a turn this round`
+		end
 		if move.blitz ~= nil and type(move.blitz) ~= "boolean" then
 			return false, "Bad move"
 		end
@@ -621,6 +639,7 @@ local function finishConquest(state, from: number, to: number, dice: number)
 	state.owner[to] = seat
 	state.armies[to] = 0
 	state.conqueredThisTurn = true
+	state.conquestsThisTurn += 1
 	if Conquest.countOwned(state.owner, defender) == 0 then
 		eliminate(state, defender, seat)
 		if state.result then
@@ -816,8 +835,9 @@ function Conquest.getLegalMoves(state, seat: number): { any }
 		table.insert(moves, { kind = "occupy", count = state.occupy.min })
 		table.insert(moves, { kind = "occupy", count = state.occupy.max })
 	elseif phase == "attack" then
+		local canAttack = state.conquestsThisTurn < Conquest.conquestLimit(state.round)
 		for t = 1, TERRITORY_COUNT do
-			if state.owner[t] == seat and state.armies[t] >= 2 then
+			if canAttack and state.owner[t] == seat and state.armies[t] >= 2 then
 				for _, n in Conquest.neighbors[t] do
 					if state.owner[n] ~= seat then
 						table.insert(moves, { kind = "attack", from = t, to = n, blitz = true })
@@ -885,6 +905,8 @@ function Conquest.getView(state, seat: number?)
 		hand = if seat and state.hands[seat] then table.clone(state.hands[seat]) else nil,
 		mustTrade = if seat == state.turn then mustTrade(state, state.turn) else false,
 		turnId = state.turnId,
+		conquestsLeft = math.max(0, Conquest.conquestLimit(state.round) - state.conquestsThisTurn),
+		rallying = if seat then Conquest.isRallying(state.owner, seat) else false,
 		log = log,
 		status = seatStatus(state, seat),
 	}
@@ -995,6 +1017,9 @@ local function botPlace(state, seat: number, rng: Random): any
 end
 
 local function botAttack(state, seat: number, rng: Random): any?
+	if state.conquestsThisTurn >= Conquest.conquestLimit(state.round) then
+		return nil
+	end
 	local level = state.botLevel
 	local focus = if level ~= "easy" then focusRegion(state, seat) else nil
 	local threshold = if level == "hard" then 1.25 elseif level == "medium" then 1.5 else 1.0

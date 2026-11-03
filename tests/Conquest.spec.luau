@@ -253,7 +253,7 @@ return function(T)
 		s.owner[ice] = 3
 		s.armies[eg] = 4
 		s.hands[2] = { "sword", "shield" }
-		s.turn, s.phase = 1, "attack"
+		s.turn, s.phase, s.round = 1, "attack", 6
 		s.rng = scripted({ 6, 6, 6, 1 })
 		play(s, 1, { kind = "attack", from = eg, to = moss })
 		T.ok(s.eliminated[2])
@@ -269,6 +269,23 @@ return function(T)
 		T.ok(result ~= nil)
 		T.eq(result.winners[1], 1)
 		T.eq(#Conquest.getActiveSeats(s), 0)
+	end)
+
+	T.test("early rounds cap how many territories you can take a turn", function()
+		local s = fixedGame({ ["Elder Grove"] = 10 })
+		local eg, moss, thorn = idOf("Elder Grove"), idOf("Mossbrook"), idOf("Thornwick")
+		T.eq(s.round, 1)
+		T.eq(Conquest.conquestLimit(1), 1)
+		s.rng = scripted({ 6, 6, 6, 1 })
+		play(s, 1, { kind = "attack", from = eg, to = moss })
+		play(s, 1, { kind = "occupy", count = 3 })
+		rejects(s, 1, { kind = "attack", from = eg, to = thorn }, "one conquest a turn in round 1")
+		T.eq(Conquest.getView(s, 1).conquestsLeft, 0)
+		for _, move in Conquest.getLegalMoves(s, 1) do
+			T.ok(move.kind ~= "attack", "no attacks offered past the cap")
+		end
+		T.eq(Conquest.chooseBotMove(s, 1, T.Random.new(1)).kind ~= "attack", true)
+		T.ok(Conquest.conquestLimit(10) > Conquest.conquestLimit(1))
 	end)
 
 	T.test("eliminated seats are skipped", function()
