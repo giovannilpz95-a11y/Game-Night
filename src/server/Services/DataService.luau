@@ -21,6 +21,7 @@ type Session = {
 	persistent: boolean, -- false = DataStore unreachable, nothing is saved
 	lost: boolean, -- another server took the lock; stop saving
 	saving: boolean,
+	released: boolean, -- final save done and lock handed back; later saves are no-ops
 }
 
 local jobId = if game.JobId ~= "" then game.JobId else `studio-{HttpService:GenerateGUID(false)}`
@@ -74,20 +75,25 @@ end
 
 local function loadProfile(player: Player): Session?
 	local key = keyFor(player.UserId)
-	for _ = 1, Config.ProfileLockRetries do
+	for attempt = 1, Config.ProfileLockRetries do
+		-- Live: a lock younger than SessionLock.StaleSeconds belongs to a server that is
+		-- still saving (a fast rejoin), so we wait for it to let go. Studio: wait the same
+		-- way (the last Play session may still be writing), but on the last try take the
+		-- lock over instead of kicking, since a stopped Studio session never comes back.
+		local stale = if RunService:IsStudio() and attempt == Config.ProfileLockRetries then 0 else nil
 		local status = "locked"
 		local ok, record = update(key, function(old)
-			local claimed, result = SessionLock.claim(old, jobId, os.time(), if RunService:IsStudio() then 0 else nil)
+			local claimed, result = SessionLock.claim(old, jobId, os.time(), stale)
 			status = result
 			return claimed
 		end)
 		if not ok then
 			warn(`[GameNight] couldn't load {player.Name}'s profile, progress won't save this session: {record}`)
-			return { data = Profile.new(os.time()), persistent = false, lost = false, saving = false }
+			return { data = Profile.new(os.time()), persistent = false, lost = false, saving = false, released = false }
 		end
 		if status == "ok" then
 			local data = Profile.reconcile(record and record.profile, os.time())
-			return { data = data, persistent = true, lost = false, saving = false }
+			return { data = data, persistent = true, lost = false, saving = false, released = false }
 		end
 		-- Another server still owns it (they probably just hopped servers). Wait for it to save.
 		task.wait(Config.ProfileLockRetryDelay)
@@ -105,6 +111,11 @@ local function saveSession(userId: number, session: Session, release: boolean): 
 	while session.saving do
 		task.wait()
 	end
+	-- PlayerRemoving and BindToClose can both try the final save; the second one must
+	-- not run, or it finds the lock already released and wrongly reports it lost.
+	if session.released then
+		return true
+	end
 	session.saving = true
 	local status = "ok"
 	local ok, err = update(keyFor(userId), function(old)
@@ -121,6 +132,9 @@ local function saveSession(userId: number, session: Session, release: boolean): 
 		session.lost = true
 		warn(`[GameNight] profile {userId} is owned by another server; not saving here`)
 		return false
+	end
+	if release then
+		session.released = true
 	end
 	return true
 end
