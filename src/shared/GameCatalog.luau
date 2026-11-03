@@ -128,6 +128,21 @@ local entries: { Entry } = {
 		minMinutes = 1,
 		minMoves = 5,
 	},
+	{
+		id = "Whodunit",
+		name = "Whodunit",
+		module = "Whodunit",
+		category = "Strategy",
+		description = "Someone swiped the Golden Trophy. Find who, with what, and where.",
+		minSeats = 3,
+		maxSeats = 6,
+		turnSeconds = 45,
+		status = "ready",
+		coin = "whodunit",
+		typicalMinutes = 12,
+		minMinutes = 2,
+		minMoves = 12,
+	},
 }
 
 local GameCatalog = {}
