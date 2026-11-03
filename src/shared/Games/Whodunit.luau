@@ -390,7 +390,7 @@ function Whodunit.applyMove(state, seat: number, move: any)
 		state.lastAction = { kind = "accuse", seat = seat, correct = correct }
 		if correct then
 			state.winner = seat
-			state.reason = `Solved it: {cards[suspectCard(sol.suspect)].name} with the {cards[itemCard(sol.item)].name} in the {cards[roomCard(sol.room)].name}`
+			state.reason = `Solved it: {cards[suspectCard(sol.suspect)].name}, {cards[itemCard(sol.item)].name}, {cards[roomCard(sol.room)].name}`
 			return
 		end
 		state.eliminated[seat] = true

@@ -65,15 +65,16 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	})
 
 	local resultOverlay = Kit.panel({
-		Size = UDim2.new(0, 360, 0, 250),
-		Position = UDim2.new(0.5, -180, 0.5, -125),
+		Size = UDim2.new(0, 360, 0, 270),
+		Position = UDim2.new(0.5, -180, 0.5, -135),
 		BackgroundColor3 = Theme.PanelLight,
 		Visible = false,
 		ZIndex = 10,
 		Parent = root,
 	})
 	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 56), ZIndex = 11, Parent = resultOverlay })
-	local reasonLabel = Kit.label("", { TextSize = 16, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 56), ZIndex = 11, Parent = resultOverlay })
+	-- Two lines, so longer reasons (a Whodunit solution) wrap instead of being cut off.
+	local reasonLabel = Kit.label("", { TextSize = 16, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.new(0, 0, 0, 56), Size = UDim2.new(1, 0, 0, 40), ZIndex = 11, Parent = resultOverlay })
 	-- What you earned, filled in by showReward a moment after the result arrives.
 	local rewardLabel = Kit.label("", {
 		TextSize = 15,
@@ -81,8 +82,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Font = Theme.FontBold,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		Position = UDim2.new(0, 0, 0, 84),
-		Size = UDim2.new(1, 0, 0, 110),
+		Position = UDim2.new(0, 0, 0, 100),
+		Size = UDim2.new(1, 0, 0, 94),
 		ZIndex = 11,
 		Parent = resultOverlay,
 	})

@@ -24,8 +24,8 @@ local ROOM_COLORS = {
 	Color3.fromRGB(70, 74, 82), -- Garage
 	Color3.fromRGB(88, 60, 44), -- Library
 }
-local ITEM_ICONS = { "🐔", "⚓", "🦋", "🧲", "☂", "🎣" }
-local MARKS = { "", "✗", "?", "✓" }
+local ITEM_ICONS = { "🐔", "🧗", "🦋", "🧲", "☂️", "🎣" }
+local MARKS = { "·", "✗", "?", "✓" }
 local MARK_COLORS = { Theme.SubText, Theme.Bad, Theme.Accent, Theme.Good }
 
 local function suspectColor(i: number): Color3
@@ -84,7 +84,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		ScrollBarThickness = 4,
 		Parent = bottom,
 	})
-	Kit.list(2).Parent = notes
+	Kit.list(4).Parent = notes
 	local logList = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -129,23 +129,32 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	local accuseBox = Kit.panel({
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(0.9, 0, 0.94, 0),
+		Size = UDim2.new(0.94, 0, 0.98, 0),
 		BackgroundColor3 = Theme.PanelLight,
 		ZIndex = 21,
 		Parent = accuseOverlay,
 	})
-	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(560, 520), Parent = accuseBox })
+	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(720, 900), Parent = accuseBox })
+	-- Accuse / Cancel stay pinned at the bottom; the choices scroll above them.
+	local accuseFooter = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 0, 1, -40),
+		Size = UDim2.new(1, 0, 0, 40),
+		ZIndex = 21,
+		Parent = accuseBox,
+	})
 	local accuseScroll = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
+		Size = UDim2.new(1, 0, 1, -48),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollBarThickness = 4,
 		ZIndex = 21,
 		Parent = accuseBox,
 	})
-	Kit.list(8).Parent = accuseScroll
+	Kit.list(6).Parent = accuseScroll
+	Kit.new("UIPadding", { PaddingRight = UDim.new(0, 12), Parent = accuseScroll }) -- room for the scrollbar
 
 	-- Helpers -----------------------------------------------------------------------
 
@@ -182,7 +191,8 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	-- A titled grid of choice buttons. colors[i] adds a color stripe.
-	local function chips(parent: Instance, order: number, names: { string }, selected: number?, onPick: (number) -> (), colors: { Color3 }?, zIndex: number?)
+	local function chips(parent: Instance, order: number, names: { string }, selected: number?, onPick: (number) -> (), colors: { Color3 }?, zIndex: number?, columns: number?)
+		local perRow = columns or 2
 		local grid = Kit.new("Frame", {
 			BackgroundTransparency = 1,
 			AutomaticSize = Enum.AutomaticSize.Y,
@@ -191,7 +201,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			Parent = parent,
 		})
 		Kit.new("UIGridLayout", {
-			CellSize = UDim2.new(0.5, -4, 0, 30),
+			CellSize = UDim2.new(1 / perRow, -6, 0, 30),
 			CellPadding = UDim2.fromOffset(8, 6),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = grid,
@@ -203,7 +213,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			end, {
 				TextSize = 13,
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				BackgroundColor3 = if isOn then Theme.Accent else Theme.Panel,
+				BackgroundColor3 = if isOn then Theme.Accent else Color3.fromRGB(72, 66, 110),
 				TextColor3 = if isOn then Theme.AccentText else Theme.Text,
 				LayoutOrder = i,
 				ZIndex = zIndex or 1,
@@ -228,6 +238,11 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			(b :: any)[key] = v
 		end
 		return b
+	end
+
+	local itemNames = {}
+	for i, name in theme.items do
+		itemNames[i] = `{ITEM_ICONS[i]} {name}`
 	end
 
 	local suspectColors = {}
@@ -284,13 +299,23 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			end
 			local passage = Rules.passages[room]
 			if passage then
-				Kit.label(`⤡ passage to {theme.rooms[passage]}`, {
-					TextSize = 11,
+				Kit.new("Frame", {
+					BackgroundColor3 = Color3.fromRGB(20, 16, 28),
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 8, 1, -19),
+					Size = UDim2.fromOffset(10, 14),
+					Parent = tile,
+				}, {
+					Kit.new("UICorner", { CornerRadius = UDim.new(0, 3) }),
+					Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 1 }),
+				})
+				Kit.label(`Secret passage: {theme.rooms[passage]}`, {
+					TextSize = 12,
 					TextColor3 = Color3.new(1, 1, 1),
-					TextTransparency = 0.4,
+					TextTransparency = 0.25,
 					TextTruncate = Enum.TextTruncate.AtEnd,
-					Position = UDim2.new(0, 8, 1, -18),
-					Size = UDim2.new(1, -16, 0, 16),
+					Position = UDim2.new(0, 24, 1, -20),
+					Size = UDim2.new(1, -32, 0, 16),
 					Parent = tile,
 				})
 			end
@@ -324,20 +349,27 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 					end
 				end
 			end
-			-- Items in this room.
-			local items = {}
+			-- Items in this room, each on a light chip so dark icons still read.
+			local itemRow = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 8, 0, 56),
+				Size = UDim2.new(1, -16, 0, 30),
+				Parent = tile,
+			})
+			Kit.list(4, true).Parent = itemRow
 			for item, where in view.itemRoom do
 				if where == room then
-					table.insert(items, ITEM_ICONS[item])
+					Kit.new("TextLabel", {
+						Text = ITEM_ICONS[item],
+						TextSize = 20,
+						Font = Theme.Font,
+						BackgroundColor3 = Color3.fromRGB(240, 236, 250),
+						BackgroundTransparency = 0.1,
+						Size = UDim2.fromOffset(30, 30),
+						LayoutOrder = item,
+						Parent = itemRow,
+					}, { Kit.corner(8) })
 				end
-			end
-			if #items > 0 then
-				Kit.label(table.concat(items, " "), {
-					TextSize = 18,
-					Position = UDim2.new(0, 8, 0, 54),
-					Size = UDim2.new(1, -16, 0, 22),
-					Parent = tile,
-				})
 			end
 			tile.Activated:Connect(function()
 				if isLegal then
@@ -361,56 +393,63 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			solution[Rules.itemCard(view.solution.item)] = true
 			solution[Rules.roomCard(view.solution.room)] = true
 		end
+		-- Two columns per section so all 21 cards fit; tap anywhere on a row to mark it.
 		local order = 0
 		for _, section in { { "suspect", "Who" }, { "item", "With what" }, { "room", "Where" } } do
 			order += 1
-			text(notes, section[2], order, { Font = Theme.FontBold, TextColor3 = Theme.Accent, TextSize = 14 })
-			for _, id in Rules.categoryCards[section[1]] do
-				order += 1
+			text(notes, section[2], order, { Font = Theme.FontBold, TextColor3 = Theme.Accent, TextSize = 13 })
+			order += 1
+			local grid = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, -6, 0, 0),
+				LayoutOrder = order,
+				Parent = notes,
+			})
+			Kit.new("UIGridLayout", {
+				CellSize = UDim2.new(0.5, -3, 0, 30),
+				CellPadding = UDim2.fromOffset(6, 4),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Parent = grid,
+			})
+			for index, id in Rules.categoryCards[section[1]] do
 				local by = known[id]
-				local row = Kit.new("Frame", {
+				local mark = marks[id] or 1
+				local row = Kit.new("TextButton", {
+					Text = "",
+					AutoButtonColor = by == nil,
 					BackgroundColor3 = if solution[id] then Theme.Accent else Theme.PanelLight,
-					BackgroundTransparency = if solution[id] then 0.3 else 0.6,
+					BackgroundTransparency = if solution[id] then 0.3 else 0.35,
 					BorderSizePixel = 0,
-					Size = UDim2.new(1, -6, 0, 26),
-					LayoutOrder = order,
-					Parent = notes,
+					LayoutOrder = index,
+					Parent = grid,
 				}, { Kit.corner(6) })
 				local card = Rules.cards[id]
 				local name = if card.category == "item" then `{ITEM_ICONS[card.index]} {card.name}` else card.name
 				Kit.label(name, {
-					TextSize = 14,
+					TextSize = 13,
 					TextTransparency = if by then 0.55 else 0,
 					TextTruncate = Enum.TextTruncate.AtEnd,
-					Position = UDim2.new(0, 8, 0, 2),
-					Size = UDim2.new(0.55, -8, 1, -4),
+					Position = UDim2.new(0, 6, 0, 0),
+					Size = UDim2.new(1, -60, 1, 0),
 					Parent = row,
 				})
-				if by then
-					Kit.label(if by == snapshot.yourSeat then "Your card" else `Seen · {nameOf(by)}`, {
-						TextSize = 12,
-						TextColor3 = Theme.Bad,
-						TextXAlignment = Enum.TextXAlignment.Right,
-						TextTruncate = Enum.TextTruncate.AtEnd,
-						Position = UDim2.new(0.55, 0, 0, 2),
-						Size = UDim2.new(0.45, -8, 1, -4),
-						Parent = row,
-					})
-				else
-					local mark = marks[id] or 1
-					Kit.button(if mark == 1 then "·" else MARKS[mark], function()
-						marks[id] = (marks[id] or 1) % #MARKS + 1
+				Kit.label(if by == snapshot.yourSeat then "Yours" elseif by then nameOf(by) else MARKS[mark], {
+					TextSize = if by then 11 else 16,
+					Font = Theme.FontBold,
+					TextColor3 = if by then Theme.Bad else MARK_COLORS[mark],
+					TextXAlignment = Enum.TextXAlignment.Right,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					Position = UDim2.new(1, -56, 0, 0),
+					Size = UDim2.new(0, 50, 1, 0),
+					Parent = row,
+				})
+				row.Activated:Connect(function()
+					if by == nil then
+						marks[id] = mark % #MARKS + 1
 						render()
-					end, {
-						TextSize = 16,
-						BackgroundColor3 = Theme.Panel,
-						TextColor3 = MARK_COLORS[mark],
-						AnchorPoint = Vector2.new(1, 0.5),
-						Position = UDim2.new(1, -4, 0.5, 0),
-						Size = UDim2.fromOffset(34, 22),
-						Parent = row,
-					})
-				end
+					end
+				end)
 			end
 		end
 	end
@@ -424,14 +463,14 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		local count = #view.log
 		for index, entry in view.log do
 			local line = `{nameOf(entry.seat)}: {suggestionText(entry)}.`
-			if entry.shower then
+			if view.phase == "show" and view.suggestion ~= nil and index == count then
+				line ..= ` Waiting for {nameOf(entry.shower)} to show a card...`
+			elseif entry.shower then
 				if entry.card then
 					line ..= if entry.shower == snapshot.yourSeat then ` You showed {cardName(entry.card)}.` else ` {nameOf(entry.shower)} showed {cardName(entry.card)}.`
 				else
 					line ..= ` {nameOf(entry.shower)} showed a card.`
 				end
-			elseif view.suggestion ~= nil and index == count and view.phase == "show" then
-				line ..= " Waiting for a card..."
 			else
 				line ..= " Nobody could disprove it!"
 			end
@@ -446,7 +485,8 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			text(logList, line, count - index + 1, { TextSize = 13, TextColor3 = if index == count then Theme.Text else Theme.SubText })
 		end
 		for index, a in view.accusations do
-			local verdict = if a.correct then "and solved it!" else "and was wrong. They're out."
+			local isMe = a.seat == snapshot.yourSeat
+			local verdict = if a.correct then "and solved it!" elseif isMe then "and were wrong. You're out." else "and was wrong. They're out."
 			text(logList, `⚖ {nameOf(a.seat)} accused {theme.suspects[a.suspect]} with the {theme.items[a.item]} in the {theme.rooms[a.room]} {verdict}`, -index, {
 				TextSize = 13,
 				TextColor3 = if a.correct then Theme.Good else Theme.Bad,
@@ -462,6 +502,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		Kit.clear(accuseScroll)
+		Kit.clear(accuseFooter)
 		local z = 22
 		text(accuseScroll, "Make an accusation", 1, { Font = Theme.FontBold, TextSize = 20, ZIndex = z })
 		text(accuseScroll, "Right, and you win. Wrong, and you're out of the game (you still show cards).", 2, { TextSize = 13, TextColor3 = Theme.SubText, ZIndex = z })
@@ -469,29 +510,29 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		chips(accuseScroll, 4, theme.suspects, accusePick.suspect, function(i)
 			accusePick.suspect = i
 			render()
-		end, suspectColors, z)
+		end, suspectColors, z, 3)
 		text(accuseScroll, "With what?", 5, { Font = Theme.FontBold, TextSize = 14, TextColor3 = Theme.Accent, ZIndex = z })
-		chips(accuseScroll, 6, theme.items, accusePick.item, function(i)
+		chips(accuseScroll, 6, itemNames, accusePick.item, function(i)
 			accusePick.item = i
 			render()
-		end, nil, z)
+		end, nil, z, 3)
 		text(accuseScroll, "Where?", 7, { Font = Theme.FontBold, TextSize = 14, TextColor3 = Theme.Accent, ZIndex = z })
 		chips(accuseScroll, 8, theme.rooms, accusePick.room, function(i)
 			accusePick.room = i
 			render()
-		end, nil, z)
+		end, nil, z, 3)
 		local ready = accusePick.suspect ~= nil and accusePick.item ~= nil and accusePick.room ~= nil
-		button(accuseScroll, if ready then "Accuse!" else "Pick one of each", 9, function()
+		button(accuseFooter, if ready then "Accuse!" else "Pick one of each", 1, function()
 			if accusePick.suspect and accusePick.item and accusePick.room then
 				sendMove({ kind = "accuse", suspect = accusePick.suspect, item = accusePick.item, room = accusePick.room })
 				accuseOpen = false
 				render()
 			end
-		end, { BackgroundColor3 = if ready then Theme.Bad else Theme.Panel, TextColor3 = Theme.Text, ZIndex = z })
-		button(accuseScroll, "Cancel", 10, function()
+		end, { BackgroundColor3 = if ready then Theme.Bad else Theme.Panel, TextColor3 = Theme.Text, ZIndex = z, Size = UDim2.new(0.62, -4, 1, 0) })
+		button(accuseFooter, "Cancel", 2, function()
 			accuseOpen = false
 			render()
-		end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.SubText, ZIndex = z })
+		end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.SubText, ZIndex = z, Size = UDim2.new(0.38, -4, 1, 0), Position = UDim2.new(0.62, 4, 0, 0) })
 	end
 
 	-- What to do now ------------------------------------------------------------------
@@ -602,10 +643,6 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			pickSuspect = i
 			render()
 		end, suspectColors)
-		local itemNames = {}
-		for i, name in theme.items do
-			itemNames[i] = `{ITEM_ICONS[i]} {name}`
-		end
 		chips(actions, 6, itemNames, pickItem, function(i)
 			pickItem = i
 			render()
