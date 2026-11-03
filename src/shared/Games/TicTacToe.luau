@@ -109,9 +109,9 @@ end
 
 function TicTacToe.getResult(state: State): GameModule.Result?
 	if state.winner then
-		return { winners = { state.winner }, isDraw = false }
+		return { winners = { state.winner }, isDraw = false, reason = "Three in a row" }
 	elseif state.isDraw then
-		return { winners = {}, isDraw = true }
+		return { winners = {}, isDraw = true, reason = "The board is full" }
 	end
 	return nil
 end

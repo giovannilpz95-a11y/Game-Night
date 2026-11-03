@@ -130,6 +130,24 @@ function Match.replaceWithBot(self: Match, seat: number)
 	end
 end
 
+-- Two-player games only: the other seat wins. (With more players, leaving hands the
+-- seat to a bot instead.)
+function Match.resign(self: Match, seat: number): (boolean, string?)
+	if self:isOver() then
+		return false, "The game is over"
+	end
+	if #self.seats ~= 2 or not self.seats[seat] then
+		return false, "You can't resign this game"
+	end
+	self.result = {
+		winners = { if seat == 1 then 2 else 1 },
+		isDraw = false,
+		reason = `{self.seats[seat].name} resigned`,
+	}
+	self.moveNumber += 1 -- cancels pending bot and turn timers
+	return true
+end
+
 function Match.abort(self: Match)
 	self.aborted = true
 end

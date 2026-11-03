@@ -1,0 +1,14 @@
+# Chess
+
+Back to [[Home]].
+
+- Rules: `src/shared/Games/Chess.luau`. All FIDE rules: castling, en passant, promotion (defaults to queen), checkmate, stalemate, threefold repetition, 50-move rule, insufficient material.
+- Board: `src/client/Renderers/Chess.luau`. Tap a piece, then a highlighted square. Includes a promotion picker, last-move and check highlights, captured pieces, and a move list in standard notation.
+- Tests: `tests/Chess.spec.luau`. Perft counts from 5 standard positions catch move-generation bugs.
+- Squares are 0..63 (a1 = 0). Pieces are numbers, positive for White (seat 1) and negative for Black (seat 2). Over the network a move is `{ from = "e2", to = "e4", promotion = "q"? }`.
+- Bot: negamax with alpha-beta, quiescence on captures, MVV-LVA ordering, iterative deepening, and material plus piece-square evaluation.
+  - Easy: 1 ply, picks any move within 1.2 pawns of the best.
+  - Medium: 3 ply, 0.5 s.
+  - Hard: up to 6 ply, 1 s.
+- Bot search runs on the server and doesn't yield. If many bot games run at once, move it to an Actor (Parallel Luau).
+- Models: `ReplicatedStorage.Assets.Chess.<Piece>_<White|Black>` (see `client/UI/PieceView.luau`).
