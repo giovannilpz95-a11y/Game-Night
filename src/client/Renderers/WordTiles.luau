@@ -3,7 +3,7 @@
 --
 -- Tap a rack tile, then tap a square to put it there (blanks ask which letter). Tap a tile
 -- you just placed to take it back. You can lay tiles out while others are playing; Play
--- only works on your turn. The preview checks shape and score here, and the server checks
+-- only works on your turn, and laid-out tiles go back to the rack whenever the board changes. The preview checks shape and score here, and the server checks
 -- the words. Premium squares use our own layout and colors.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -77,6 +77,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 
 	-- Your rack, with ids that stay put while you shuffle and place tiles.
 	local rackKey = ""
+	local rowsKey = ""
 	local rack: { { id: number, letter: string } } = {}
 	local order: { number } = {}
 	local placed: { [number]: { row: number, col: number, letter: string } } = {} -- by tile id
@@ -241,7 +242,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local function onCell(row: number, col: number)
-		if not snapshot or snapshot.yourSeat == nil or swapMode then
+		if not snapshot or snapshot.yourSeat == nil or swapMode or snapshot.result or snapshot.aborted then
 			return
 		end
 		local here = pendingAt(row, col)
@@ -355,11 +356,9 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		local turn = myTurn()
 		local over = snapshot.result ~= nil or snapshot.aborted == true
 
-		-- Drop laid-out tiles whose square got filled by someone else.
-		for id, p in placed do
-			if board[p.row][p.col] then
-				placed[id] = nil
-			end
+		if over then
+			recallAll()
+			swapMode = false
 		end
 
 		-- Board squares.
@@ -421,7 +420,9 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 				end
 			end
 			slot.Activated:Connect(function()
-				if swapMode then
+				if over then
+					return
+				elseif swapMode then
 					swapPick[id] = if swapPick[id] then nil else true
 				elseif placed[id] then
 					placed[id] = nil
@@ -434,7 +435,9 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 
 		-- Preview of what you've laid out.
 		local tiles = pendingTiles()
-		if swapMode then
+		if over then
+			previewLabel.Text = ""
+		elseif swapMode then
 			local n = 0
 			for _ in swapPick do
 				n += 1
@@ -455,13 +458,11 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 				previewLabel.Text = err or ""
 				previewLabel.TextColor3 = Theme.Bad
 			end
-		elseif over then
-			previewLabel.Text = ""
 		elseif turn then
 			previewLabel.Text = "Your turn! Tap a tile, then a square."
 			previewLabel.TextColor3 = Theme.Accent
 		else
-			previewLabel.Text = "You can lay out tiles while you wait."
+			previewLabel.Text = "You can lay out tiles while you wait. They come back if the board changes."
 			previewLabel.TextColor3 = Theme.SubText
 		end
 
@@ -473,12 +474,12 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		logLabel.Text = table.concat(lines, "\n")
 
 		local canAct = turn and not over and snapshot.yourSeat ~= nil
-		playButton.Visible = not swapMode
+		playButton.Visible = not swapMode and not over
 		playButton.Active = canAct and #tiles > 0
 		playButton.AutoButtonColor = playButton.Active
 		playButton.BackgroundTransparency = if playButton.Active then 0 else 0.5
-		recallButton.Visible = not swapMode
-		shuffleButton.Visible = not swapMode
+		recallButton.Visible = not swapMode and not over
+		shuffleButton.Visible = not swapMode and not over
 		swapButton.Visible = view.canExchange and canAct
 		swapButton.Text = if swapMode then "Swap now" else "Swap"
 		passButton.Visible = canAct
@@ -495,6 +496,13 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 				buildBoard(view.board)
 			end
 			board = Rules.boardFromRows(view.rows)
+			-- Someone played: take back any laid-out tiles, so the preview never mixes them
+			-- with new letters and no tile sits on a square that just got filled.
+			local key = table.concat(view.rows, "/")
+			if key ~= rowsKey then
+				rowsKey = key
+				recallAll()
+			end
 			syncRack(view)
 			if not myTurn() then
 				swapMode = false

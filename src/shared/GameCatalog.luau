@@ -140,8 +140,8 @@ local entries: { Entry } = {
 		status = "ready",
 		coin = "wordtiles",
 		typicalMinutes = 15,
-		minMinutes = 2,
-		minMoves = 6,
+		minMinutes = 0.5, -- bot turns are quick, so gate on moves rather than time
+		minMoves = 12,
 	},
 }
 
