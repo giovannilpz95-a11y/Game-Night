@@ -306,6 +306,39 @@ function PartyRegistry.kick(self: Registry, leaderId: number, targetId: number):
 	return true
 end
 
+-- Puts a player straight into a party, no invite needed. Only for parties that arrive from
+-- another server together (see PartyTransfer); the server has already checked the roster.
+function PartyRegistry.addMember(self: Registry, partyId: string, userId: number): (boolean, string?)
+	local target = self.parties[partyId]
+	if not target then
+		return false, "That party no longer exists"
+	end
+	if table.find(target.members, userId) then
+		return true
+	end
+	if #target.members >= self.maxSize then
+		return false, "That party is full"
+	end
+	self:_detach(userId)
+	table.insert(target.members, userId)
+	self.partyOf[userId] = target.id
+	self:_markChanged(target.id)
+	return true
+end
+
+-- Hands the crown to a member (used when the original leader arrives after the others).
+function PartyRegistry.setLeader(self: Registry, partyId: string, userId: number): boolean
+	local party = self.parties[partyId]
+	if not party or not table.find(party.members, userId) then
+		return false
+	end
+	if party.leaderId ~= userId then
+		party.leaderId = userId
+		self:_markChanged(partyId)
+	end
+	return true
+end
+
 -- The player left the server.
 function PartyRegistry.removePlayer(self: Registry, userId: number)
 	self:_detach(userId)

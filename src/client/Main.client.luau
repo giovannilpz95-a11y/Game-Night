@@ -16,6 +16,7 @@ local ShopPanel = require(script.Parent.UI.ShopPanel)
 local DressingRoomPanel = require(script.Parent.UI.DressingRoomPanel)
 local TableList = require(script.Parent.UI.TableList)
 local HostPanel = require(script.Parent.UI.HostPanel)
+local VoicePanel = require(script.Parent.UI.VoicePanel)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 
@@ -27,6 +28,7 @@ local economyRequest = Net.event(Net.Names.EconomyRequest)
 local purchaseRequest = Net.event(Net.Names.PurchaseRequest)
 local dressingRequest = Net.event(Net.Names.DressingRoomRequest)
 local hostRequest = Net.event(Net.Names.HostRequest)
+local voiceRequest = Net.event(Net.Names.VoiceRequest)
 
 local function sendParty(request: any)
 	partyRequest:FireServer(request)
@@ -94,6 +96,9 @@ end, function()
 	shopPanel.root.Visible = false
 	dressingRoom.open()
 end)
+local voicePanel = VoicePanel.create(lobby, screen, function(request)
+	voiceRequest:FireServer(request)
+end)
 
 Net.event(Net.Names.DressingRoomState).OnClientEvent:Connect(dressingRoom.setState)
 
@@ -158,7 +163,10 @@ Net.event(Net.Names.PartyState).OnClientEvent:Connect(function(party)
 	currentParty = party
 	partyPanel.setParty(party)
 	gamePicker.setParty(party)
+	voicePanel.setParty(party)
 end)
+
+Net.event(Net.Names.VoiceState).OnClientEvent:Connect(voicePanel.setState)
 
 Net.event(Net.Names.PartyInvite).OnClientEvent:Connect(popups.invite)
 Net.event(Net.Names.Notify).OnClientEvent:Connect(popups.toast)
@@ -173,3 +181,4 @@ sendMatch({ action = "sync" })
 economyRequest:FireServer({ action = "sync" })
 dressingRequest:FireServer({ action = "sync" })
 hostRequest:FireServer({ action = "sync" })
+voiceRequest:FireServer({ action = "sync" })

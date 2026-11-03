@@ -72,9 +72,19 @@ local function update(key: string, transform: (any) -> any): (boolean, any)
 	return false, lastErr
 end
 
+-- Players who just teleported in from another Game Night server: that server releases their
+-- profile a few seconds after they leave it, so we retry the lock more often.
+local function cameByTeleport(player: Player): boolean
+	local ok, joinData = pcall(player.GetJoinData, player)
+	return ok and type(joinData) == "table" and joinData.SourcePlaceId ~= nil
+end
+
 local function loadProfile(player: Player): Session?
 	local key = keyFor(player.UserId)
-	for _ = 1, Config.ProfileLockRetries do
+	local teleported = cameByTeleport(player)
+	local retries = if teleported then Config.TeleportLockRetries else Config.ProfileLockRetries
+	local retryDelay = if teleported then Config.TeleportLockRetryDelay else Config.ProfileLockRetryDelay
+	for _ = 1, retries do
 		local status = "locked"
 		local ok, record = update(key, function(old)
 			local claimed, result = SessionLock.claim(old, jobId, os.time(), if RunService:IsStudio() then 0 else nil)
@@ -90,7 +100,7 @@ local function loadProfile(player: Player): Session?
 			return { data = data, persistent = true, lost = false, saving = false }
 		end
 		-- Another server still owns it (they probably just hopped servers). Wait for it to save.
-		task.wait(Config.ProfileLockRetryDelay)
+		task.wait(retryDelay)
 		if not player.Parent then
 			return nil
 		end

@@ -23,6 +23,8 @@ Net.Names = {
 	PartyList = "PartyList", -- server -> client: tables you can join (friends-only and password)
 	HostRequest = "HostRequest", -- client -> server: { action = "sync" | "save" | "delete", kind, slot, ... }
 	HostState = "HostState", -- server -> client: your saved word lists and quiz decks
+	VoiceRequest = "VoiceRequest", -- client -> server: { action = "join" | "lobby" | "sync", force? }
+	VoiceState = "VoiceState", -- server -> client: voice server status, prompts, teleporting
 }
 
 local FOLDER_NAME = "Remotes"
