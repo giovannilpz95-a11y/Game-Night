@@ -79,7 +79,8 @@ if (typeof run === 'string') {
   process.exit(1)
 }
 try {
-  const failed = await run()
+  // luau-web returns a chunk's results as an array.
+  const [failed] = await run()
   process.exit(failed === 0 ? 0 : 1)
 } catch (err) {
   console.error(err)
