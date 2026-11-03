@@ -99,6 +99,40 @@ function Match.submitMove(self: Match, seat: number, move: any): (boolean, strin
 	return true
 end
 
+-- The game's phase clock, if it has one (see getTimer in GameModule).
+function Match.getTimer(self: Match): { id: number, seconds: number }?
+	if self:isOver() or not self.rules.getTimer then
+		return nil
+	end
+	return self.rules.getTimer(self.state)
+end
+
+-- The phase clock ran out. Ignored if the phase already moved on (a stale timer).
+function Match.timeout(self: Match, timerId: number): boolean
+	local timer = self:getTimer()
+	if not timer or timer.id ~= timerId or not self.rules.onTimeout then
+		return false
+	end
+	self.rules.onTimeout(self.state)
+	self.moveNumber += 1
+	self.result = self.rules.getResult(self.state)
+	return true
+end
+
+function Match.botDelay(self: Match, seat: number, default: number): number
+	if self.rules.getBotDelay then
+		local delay = self.rules.getBotDelay(self.state, seat, self.rng)
+		if type(delay) == "number" and delay >= 0 then
+			return delay
+		end
+	end
+	return default
+end
+
+function Match.getScores(self: Match): { [number]: number }?
+	return if self.rules.getScores then self.rules.getScores(self.state) else nil
+end
+
 -- Lets a bot (or the AFK timer) move for a seat. Returns true if a move was made.
 function Match.playForSeat(self: Match, seat: number): boolean
 	if not self:isSeatActive(seat) then
@@ -166,6 +200,7 @@ function Match.getSnapshot(self: Match, seat: number?): any
 		activeSeats = self:getActiveSeats(),
 		moveNumber = self.moveNumber,
 		view = self.rules.getView(self.state, seat),
+		seatInfo = if self.rules.getSeatInfo then self.rules.getSeatInfo(self.state) else nil,
 		result = self.result,
 		aborted = self.aborted,
 	}

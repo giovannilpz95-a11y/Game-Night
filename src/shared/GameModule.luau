@@ -35,6 +35,34 @@
 	  chooseBotMove(state, seat, rng) -> move      (optional)
 	      Smarter bot. Without it, bots play a random legal move.
 
+	Optional extras for party games (timed rounds, everyone moving at once, typed text):
+
+	  getTimer(state) -> nil | { id = number, seconds = number }
+	      A phase clock (a round, a question, a reveal). While it returns a timer the
+	      server runs it instead of the per-turn AFK clock, and calls onTimeout(state)
+	      when it runs out. Change `id` whenever the phase changes; moves that keep the
+	      same id (drawing strokes, guesses) don't restart the clock.
+
+	  onTimeout(state)
+	      Pure, like applyMove: go to the next phase.
+
+	  getBotDelay(state, seat, rng) -> seconds
+	      How long a bot waits before moving. Config.BotMoveDelay if missing.
+
+	  getSeatInfo(state) -> { [seat]: string }
+	      Short text shown under each seat in the table view ("5 cards", "1200 pts").
+
+	  getScores(state) -> { [seat]: number }
+	      Final scores, passed to the match-finished hook (payouts, stats).
+
+	  textField = "<field>"
+	      The move field that holds typed text (a guess). The server filters it with
+	      TextService and puts what others may see in move.shown, overwriting anything
+	      the client sent. Show other players only move.shown, never the raw text.
+	      Bot moves set `shown` themselves.
+
+	options.bots lists the seats that start as bots (set by the server, never the client).
+
 	rng is a Roblox Random object (rng:NextInteger(min, max), rng:NextNumber()).
 ]]
 

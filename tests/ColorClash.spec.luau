@@ -1,0 +1,208 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ColorClash = require(ReplicatedStorage.Shared.Games.ColorClash)
+local GameModule = require(ReplicatedStorage.Shared.GameModule)
+
+return function(T)
+	local cards = ColorClash.cards
+
+	-- Finds a card id matching a test.
+	local function find(pred): number
+		for id, card in cards do
+			if pred(card) then
+				return id
+			end
+		end
+		error("no such card")
+	end
+
+	-- A game with chosen hands and top card; the deck holds everything else.
+	local function setup(seatCount, hands, top, color)
+		local s = ColorClash.new(seatCount, { botLevel = "medium" }, T.Random.new(1))
+		local used = { [top] = true }
+		for seat = 1, seatCount do
+			s.hands[seat] = hands[seat] or {}
+			for _, id in s.hands[seat] do
+				used[id] = true
+			end
+		end
+		s.deck = {}
+		for id = 1, #cards do
+			if not used[id] then
+				table.insert(s.deck, id)
+			end
+		end
+		s.discard = { top }
+		s.color = color or cards[top].color
+		s.turn = 1
+		return s
+	end
+
+	local function play(s, seat, move)
+		local ok, err = ColorClash.validateMove(s, seat, move)
+		assert(ok, err)
+		ColorClash.applyMove(s, seat, move)
+	end
+
+	local coral5 = find(function(c) return c.color == 1 and c.value == 5 end)
+	local honey5 = find(function(c) return c.color == 2 and c.value == 5 end)
+	local honey7 = find(function(c) return c.color == 2 and c.value == 7 end)
+	local teal3 = find(function(c) return c.color == 3 and c.value == 3 end)
+	local coralSkip = find(function(c) return c.color == 1 and c.kind == "skip" end)
+	local coralReverse = find(function(c) return c.color == 1 and c.kind == "reverse" end)
+	local coralDraw2 = find(function(c) return c.color == 1 and c.kind == "draw2" end)
+	local tealDraw2 = find(function(c) return c.color == 3 and c.kind == "draw2" end)
+	local wild = find(function(c) return c.kind == "wild" end)
+	local wild4 = find(function(c) return c.kind == "wild4" end)
+
+	T.test("deck has 108 cards and everyone gets 7", function()
+		T.eq(ColorClash.deckSize, 108)
+		local s = ColorClash.new(4, nil, T.Random.new(3))
+		local total = #s.deck + #s.discard
+		for seat = 1, 4 do
+			T.eq(#s.hands[seat], 7)
+			total += #s.hands[seat]
+		end
+		T.eq(total, 108)
+		T.eq(cards[s.discard[1]].kind, "number", "starts on a number card")
+	end)
+
+	T.test("match by color or number, not neither", function()
+		local s = setup(3, { { honey5, honey7, teal3 } }, coral5)
+		T.ok(ColorClash.validateMove(s, 1, { kind = "play", card = honey5 }), "same number")
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = honey7 })), false)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = coral5 })), false, "not in hand")
+		T.eq((ColorClash.validateMove(s, 2, { kind = "play", card = honey5 })), false, "not your turn")
+		play(s, 1, { kind = "play", card = honey5 })
+		T.eq(s.color, 2)
+		T.eq(s.turn, 2)
+	end)
+
+	T.test("wild needs a color and sets it", function()
+		local s = setup(2, { { wild, teal3 }, { honey7 } }, coral5)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = wild })), false)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = wild, color = 9 })), false)
+		play(s, 1, { kind = "play", card = wild, color = 3 })
+		T.eq(s.color, 3)
+		T.eq(s.turn, 2)
+	end)
+
+	T.test("skip and reverse", function()
+		local s = setup(4, { { coralSkip, teal3 }, {}, {}, {} }, coral5)
+		play(s, 1, { kind = "play", card = coralSkip })
+		T.eq(s.turn, 3, "seat 2 skipped")
+		local r = setup(4, { { coralReverse, teal3 }, {}, {}, {} }, coral5)
+		play(r, 1, { kind = "play", card = coralReverse })
+		T.eq(r.direction, -1)
+		T.eq(r.turn, 4, "goes the other way")
+		local two = setup(2, { { coralReverse, teal3 }, { honey7 } }, coral5)
+		play(two, 1, { kind = "play", card = coralReverse })
+		T.eq(two.turn, 1, "with two players reverse is a skip")
+	end)
+
+	T.test("draw two stacks, then someone eats the pile", function()
+		local s = setup(3, { { coralDraw2, teal3 }, { tealDraw2, honey7 }, { honey5 } }, coral5)
+		play(s, 1, { kind = "play", card = coralDraw2 })
+		T.eq(s.pendingDraw, 2)
+		T.eq((ColorClash.validateMove(s, 2, { kind = "play", card = honey7 })), false, "must stack or draw")
+		play(s, 2, { kind = "play", card = tealDraw2 })
+		T.eq(s.pendingDraw, 4)
+		T.eq(s.turn, 3)
+		play(s, 3, { kind = "draw" })
+		T.eq(#s.hands[3], 5)
+		T.eq(s.pendingDraw, 0)
+		T.eq(s.turn, 1, "the player who drew is skipped")
+	end)
+
+	T.test("wild draw four stacks on a draw two", function()
+		local s = setup(2, { { coralDraw2, teal3 }, { wild4, honey7 } }, coral5)
+		play(s, 1, { kind = "play", card = coralDraw2 })
+		play(s, 2, { kind = "play", card = wild4, color = 2 })
+		T.eq(s.pendingDraw, 6)
+		play(s, 1, { kind = "draw" })
+		T.eq(#s.hands[1], 7)
+	end)
+
+	T.test("drawing a playable card lets you play it or pass", function()
+		local s = setup(2, { { teal3 }, { honey7 } }, coral5)
+		-- Put a playable card on top of the deck.
+		local i = table.find(s.deck, coralSkip) :: number
+		table.remove(s.deck, i)
+		table.insert(s.deck, coralSkip)
+		play(s, 1, { kind = "draw" })
+		T.eq(s.turn, 1, "still your turn")
+		T.eq(s.drawnCard, coralSkip)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = teal3 })), false, "only the drawn card")
+		T.eq((ColorClash.validateMove(s, 1, { kind = "draw" })), false, "one draw per turn")
+		play(s, 1, { kind = "pass" })
+		T.eq(s.turn, 2)
+	end)
+
+	T.test("empty deck reshuffles the discard pile", function()
+		local s = setup(2, { { teal3 }, { honey7 } }, coral5)
+		s.discard = {}
+		for _, id in s.deck do
+			table.insert(s.discard, id)
+		end
+		table.insert(s.discard, coral5)
+		s.deck = {}
+		play(s, 1, { kind = "draw" })
+		T.eq(#s.hands[1] >= 2, true)
+		T.eq(s.discard[#s.discard], coral5, "top card stays")
+	end)
+
+	T.test("emptying your hand wins", function()
+		local s = setup(2, { { honey5 }, { honey7 } }, coral5)
+		play(s, 1, { kind = "play", card = honey5 })
+		local result = ColorClash.getResult(s)
+		T.ok(result)
+		T.eq(result.winners[1], 1)
+		T.eq(#ColorClash.getActiveSeats(s), 0)
+	end)
+
+	T.test("views hide other hands", function()
+		local s = ColorClash.new(3, nil, T.Random.new(5))
+		local view = ColorClash.getView(s, 2)
+		T.eq(#view.hand, 7)
+		T.eq(view.handCounts[1], 7)
+		T.eq(view.drawnCard, nil)
+		T.eq(ColorClash.getView(s, nil).hand, nil, "spectators see no hand")
+	end)
+
+	T.test("rejects junk moves from the network", function()
+		local s = ColorClash.new(2, nil, T.Random.new(2))
+		T.eq((ColorClash.validateMove(s, 1, "x")), false)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = 0.5 })), false)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = 999 })), false)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = 0 / 0 })), false)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "pass" })), false)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "nope" })), false)
+	end)
+
+	T.test("bots finish legal games at every level and table size", function()
+		for _, level in { "easy", "medium", "hard" } do
+			for seats = 2, 8, 3 do
+				local rng = T.Random.new(seats * 10 + #level)
+				local s = ColorClash.new(seats, { botLevel = level }, rng)
+				local plies = 0
+				while not ColorClash.getResult(s) and plies < 2000 do
+					local seat = ColorClash.getActiveSeats(s)[1]
+					local move = GameModule.chooseBotMove(ColorClash, s, seat, rng)
+					T.ok(ColorClash.validateMove(s, seat, move), "bot made an illegal move")
+					ColorClash.applyMove(s, seat, move)
+					plies += 1
+				end
+				T.ok(ColorClash.getResult(s) ~= nil, `{level} {seats}-seat game should finish`)
+				-- No card was lost or duplicated.
+				local seen, total = {}, 0
+				for _, list in { s.deck, s.discard, table.unpack(s.hands) } do
+					for _, id in list do
+						T.ok(not seen[id], "duplicate card")
+						seen[id] = true
+						total += 1
+					end
+				end
+				T.eq(total, 108)
+			end
+		end
+	end)
+end

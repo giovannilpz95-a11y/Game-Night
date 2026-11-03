@@ -1,9 +1,11 @@
 -- Runs matches: the party leader picks a game and a table size, bots fill the empty seats,
 -- players take turns, bots think for a moment then move, and slow players get auto-moved.
+-- Party games can run on a phase clock instead (see getTimer in Shared/GameModule).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local TextService = game:GetService("TextService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
@@ -19,6 +21,8 @@ type Entry = {
 	turnEndsAt: number?,
 	turnSeconds: number,
 	startedAt: number,
+	timerId: number?, -- the game's phase clock that is currently running
+	botPending: { [number]: boolean }, -- bot seats that already have a move scheduled
 }
 
 local partyService: any = nil
@@ -48,6 +52,7 @@ local function broadcast(entry: Entry)
 			if player then
 				local snapshot = entry.match:getSnapshot(index)
 				snapshot.turnEndsAt = entry.turnEndsAt
+				snapshot.timed = entry.timerId ~= nil
 				matchStateRemote:FireClient(player, snapshot)
 			end
 		end
@@ -60,6 +65,7 @@ local function finish(entry: Entry)
 	end
 	entry.ended = true
 	entry.turnEndsAt = nil
+	entry.timerId = nil
 	broadcast(entry) -- clients keep showing the final board and result
 	matches[entry.match.id] = nil
 	for userId, matchId in matchOfUser do
@@ -78,6 +84,7 @@ local function finish(entry: Entry)
 		seats = match.seats,
 		minutes = (os.clock() - entry.startedAt) / 60,
 		moves = match.moveNumber,
+		scores = match:getScores(), -- party games: final points per seat (nil for others)
 	}
 	for _, callback in finishedCallbacks do
 		task.spawn(callback, summary)
@@ -85,7 +92,8 @@ local function finish(entry: Entry)
 end
 
 -- Runs `callback(summary)` after every match ends. summary has gameId, result, aborted,
--- seats (with userId and left), minutes and moves. EconomyService pays out from this.
+-- seats (with userId and left), minutes, moves and scores (party games only).
+-- EconomyService pays out from this.
 function MatchService.onMatchFinished(callback: (any) -> ())
 	table.insert(finishedCallbacks, callback)
 end
@@ -106,24 +114,52 @@ function scheduleTurn(entry: Entry)
 	if match:isOver() then
 		return
 	end
-	local token = match.moveNumber
-	local hasHumanTurn = false
 
+	-- Bots: one pending move per seat. Other moves (a stroke, someone's guess) don't
+	-- cancel it; when it fires the bot looks at the game as it is then.
 	for _, seat in match:getActiveSeats() do
-		if match:isBot(seat) then
-			task.delay(Config.BotMoveDelay, function()
-				if entry.ended or match.moveNumber ~= token then
+		if match:isBot(seat) and not entry.botPending[seat] then
+			entry.botPending[seat] = true
+			task.delay(match:botDelay(seat, Config.BotMoveDelay), function()
+				entry.botPending[seat] = nil
+				if entry.ended then
 					return
 				end
 				if match:playForSeat(seat) then
 					afterMove(entry)
 				end
 			end)
-		else
-			hasHumanTurn = true
 		end
 	end
 
+	-- Party games: the game's own phase clock.
+	local timer = match:getTimer()
+	if timer then
+		if entry.timerId ~= timer.id then
+			local timerId = timer.id
+			entry.timerId = timerId
+			entry.turnEndsAt = workspace:GetServerTimeNow() + timer.seconds
+			task.delay(timer.seconds, function()
+				if entry.ended or entry.timerId ~= timerId then
+					return
+				end
+				if match:timeout(timerId) then
+					afterMove(entry)
+				end
+			end)
+		end
+		return
+	end
+	entry.timerId = nil
+
+	-- Turn games: a player who takes too long has a bot move for them.
+	local token = match.moveNumber
+	local hasHumanTurn = false
+	for _, seat in match:getActiveSeats() do
+		if not match:isBot(seat) then
+			hasHumanTurn = true
+		end
+	end
 	if hasHumanTurn then
 		entry.turnEndsAt = workspace:GetServerTimeNow() + entry.turnSeconds
 		task.delay(entry.turnSeconds, function()
@@ -191,9 +227,14 @@ local function startMatch(leader: Player, request: any)
 	end
 
 	-- Only pass options we've checked; never forward the client's table as-is.
-	local options = { botLevel = Config.DefaultBotLevel }
+	local options: any = { botLevel = Config.DefaultBotLevel, bots = {} }
 	if type(request.botLevel) == "string" and table.find(Config.BotLevels, request.botLevel) then
 		options.botLevel = request.botLevel
+	end
+	for index, seat in seats do
+		if seat.kind == "bot" then
+			table.insert(options.bots, index)
+		end
 	end
 
 	local matchId = HttpService:GenerateGUID(false)
@@ -204,6 +245,8 @@ local function startMatch(leader: Player, request: any)
 		turnEndsAt = nil,
 		turnSeconds = catalogEntry.turnSeconds or Config.TurnSeconds,
 		startedAt = os.clock(),
+		timerId = nil,
+		botPending = {},
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
@@ -255,7 +298,32 @@ function handlers.move(player: Player, request: any)
 	if not seat then
 		return
 	end
-	local ok, err = entry.match:submitMove(seat, request.move)
+	local move = request.move
+	local textField = entry.match.rules.textField
+	if textField and type(move) == "table" then
+		-- Typed text (a guess) is filtered before anyone else can see it. `shown` is
+		-- always set here, so a client can't sneak its own version in.
+		move.shown = nil
+		local text = move[textField]
+		if type(text) == "string" then
+			if #text > Config.MaxTypedText then
+				return notify(player, "That's too long")
+			end
+			local filtered: string? = nil
+			local okFilter = pcall(function()
+				local result = TextService:FilterStringAsync(text, player.UserId)
+				filtered = result:GetNonChatStringForBroadcastAsync()
+			end)
+			if not okFilter or filtered == nil then
+				return notify(player, "Couldn't send that. Try again.")
+			end
+			move.shown = filtered
+			if entry.ended then
+				return
+			end
+		end
+	end
+	local ok, err = entry.match:submitMove(seat, move)
 	if not ok then
 		return notify(player, err :: string)
 	end
@@ -299,6 +367,7 @@ function handlers.sync(player: Player, _request: any)
 		local seat = entry.match:seatOf(player.UserId)
 		local snapshot = entry.match:getSnapshot(seat)
 		snapshot.turnEndsAt = entry.turnEndsAt
+		snapshot.timed = entry.timerId ~= nil
 		matchStateRemote:FireClient(player, snapshot)
 	else
 		matchStateRemote:FireClient(player, nil)
