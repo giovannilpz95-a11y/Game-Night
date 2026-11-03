@@ -11,6 +11,8 @@ local MatchService = require(script.Parent.Services.MatchService)
 local DataService = require(script.Parent.Services.DataService)
 local EconomyService = require(script.Parent.Services.EconomyService)
 local PurchaseService = require(script.Parent.Services.PurchaseService)
+local Dictionary = require(script.Parent.Core.Dictionary)
+local WordTiles = require(ReplicatedStorage.Shared.Games.WordTiles)
 
 Net.init()
 MatchService.init(PartyService)
@@ -19,6 +21,11 @@ EconomyService.init()
 PurchaseService.init()
 DataService.init() -- last, so every onLoaded listener is in place before profiles load
 MatchService.onMatchFinished(EconomyService.onMatchFinished)
+
+-- Word Tiles checks words against a big list that only the server has. Build it now, while
+-- nobody is playing yet, instead of on the first move.
+WordTiles.useDictionary(Dictionary.get)
+task.defer(Dictionary.get)
 
 local limiter = RateLimiter.new(Config.RequestsPerWindow, Config.RequestWindowSeconds)
 

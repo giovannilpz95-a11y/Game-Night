@@ -1,0 +1,17 @@
+# Word Tiles
+
+Back to [[Home]].
+
+A crossword tile game for 2-4 seats in the Scrabble family, with our own name, premium-square layout and colors. The display name is set only in `shared/GameCatalog.luau`.
+
+- Rules: `src/shared/Games/WordTiles.luau`. Lay 1-7 tiles from your rack in one row or column, with no gaps, joined to the tiles already down (the first word covers the center star). Every word made must be in the word list. Or swap tiles (only while 7+ are in the bag), or pass.
+- Boards: `quick` (11x11, 60 tiles, about 15 minutes) is what every table plays right now. `classic` (15x15, 100 tiles) is built and tested; to offer it, pass `options.board = "classic"` from `MatchService` after checking it (the lobby has no option picker yet).
+- Scoring: letter values (the usual English set) times letter premiums under new tiles, times word premiums under new tiles, for the main word and every crossing word. Using all 7 tiles adds 50. Blanks score 0 and show their letter in blue.
+- Game end: someone plays their last tile with the bag empty (they gain what's left on the other racks, the others lose it), or six turns in a row (two full rounds with 4 players) score nothing. Top score wins; a tie across every seat is a draw.
+- Hidden info: `getView` sends only your own rack; others get tile counts. The bag is never sent.
+- Word list: `src/server/Data/WordList/`, server only. It's the public-domain ENABLE list (about 168,000 words of 2-15 letters) minus offensive words, built by `node tools/build-word-list.mjs enable1.txt`. The blocklist is `tools/word-blocklist.rot13.txt` (ROT13 so it doesn't read as a list of slurs; `contains` drops any word with it inside, `family` drops the word and its plain endings). To change the list, edit the blocklist and run the script again. `server/Core/Dictionary.luau` turns it into a `shared/WordTrie.luau` (about 0.4 s, done at server start) and `Main.server.luau` hands it to the rules with `WordTiles.useDictionary`.
+- Text filtering: players can only make words from that list, so played words are shown as they are, without TextService. Keep the blocklist tight.
+- Screen: `src/client/Renderers/WordTiles.luau`. Board left, rack and buttons (Play, Recall, Shuffle, Swap, Pass) at the bottom, side panel with the bag count, a live preview of the words and points you've laid out, and recent plays. Tap a tile, then a square; tap a placed tile to take it back. Blanks open a letter picker. You can lay tiles out while others play.
+- Bot: finds every play with the anchor-square method (Appel & Jacobson) over the trie, using cross-check masks for crossing words. Easy picks a random lower-scoring play and prefers short words; medium usually takes the top score; hard adds a rack-leave bonus (keep blanks and an S, avoid duplicates and a Q without a U). With nothing to play it swaps its clunky tiles. Search is capped per turn; a turn takes under 0.2 s in the test runner.
+- Tests: `tests/WordTiles.spec.luau` (placement rules, scoring, blanks, the 50 bonus, swaps, both endings, every bot candidate matches the referee's score, the word list loads without blocked words, and full bot games at every level on both boards that never lose a tile).
+- Not yet: board-size option in the lobby, tile and board cosmetics (shop items exist), a 3D board on the table (`Assets.WordTiles`), drag-and-drop, pinch zoom for the classic board on phones, "best word you missed" after the game, a daily word puzzle.

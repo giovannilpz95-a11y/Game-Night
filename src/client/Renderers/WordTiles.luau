@@ -1,0 +1,511 @@
+-- Word Tiles table: the board on the left, your rack and buttons along the bottom, and a
+-- side panel with the bag, a live score preview and recent plays.
+--
+-- Tap a rack tile, then tap a square to put it there (blanks ask which letter). Tap a tile
+-- you just placed to take it back. You can lay tiles out while others are playing; Play
+-- only works on your turn. The preview checks shape and score here, and the server checks
+-- the words. Premium squares use our own layout and colors.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Rules = require(ReplicatedStorage.Shared.Games.WordTiles)
+local Kit = require(script.Parent.Parent.UI.Kit)
+local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
+local Theme = Kit.Theme
+
+local WordTiles = {}
+
+local SQUARE = Color3.fromRGB(58, 74, 92)
+local PREMIUM = {
+	W = { color = Color3.fromRGB(128, 76, 196), text = "3×\nWORD" },
+	w = { color = Color3.fromRGB(232, 128, 92), text = "2×\nWORD" },
+	L = { color = Color3.fromRGB(38, 150, 128), text = "3×\nLTR" },
+	l = { color = Color3.fromRGB(214, 180, 82), text = "2×\nLTR" },
+	["*"] = { color = Color3.fromRGB(232, 128, 92), text = "★" },
+}
+local TILE = Color3.fromRGB(250, 236, 204)
+local TILE_TEXT = Color3.fromRGB(58, 40, 24)
+local BLANK_TEXT = Color3.fromRGB(70, 110, 190)
+local PENDING_STROKE = Theme.Accent
+local LAST_STROKE = Color3.fromRGB(88, 204, 120)
+
+-- One letter tile. letter "?" = an unassigned blank.
+local function tileVisual(letter: string, isBlank: boolean, stroke: Color3?): Frame
+	local tile = Kit.new("Frame", {
+		BackgroundColor3 = TILE,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.92, 0.92),
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.18, 0) }) })
+	if stroke then
+		Kit.new("UIStroke", { Color = stroke, Thickness = 3, Parent = tile })
+	end
+	Kit.new("TextLabel", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(0.8, 0.8),
+		Position = UDim2.fromScale(0.06, 0.04),
+		Text = if letter == "?" then "" else string.upper(letter),
+		TextScaled = true,
+		Font = Enum.Font.GothamBlack,
+		TextColor3 = if isBlank then BLANK_TEXT else TILE_TEXT,
+		Parent = tile,
+	})
+	local value = if isBlank then 0 else Rules.values[letter] or 0
+	if not isBlank then
+		Kit.new("TextLabel", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(1, 1),
+			Position = UDim2.fromScale(0.96, 0.98),
+			Size = UDim2.fromScale(0.4, 0.36),
+			Text = tostring(value),
+			TextScaled = true,
+			Font = Theme.FontBold,
+			TextColor3 = TILE_TEXT,
+			Parent = tile,
+		})
+	end
+	return tile
+end
+
+function WordTiles.create(container: Frame, sendMove: (any) -> ())
+	local snapshot: any = nil
+	local boardKey: string? = nil
+	local grid: BoardGrid.Grid? = nil
+	local premium: { { string } } = {}
+	local board: Rules.Board = {}
+
+	-- Your rack, with ids that stay put while you shuffle and place tiles.
+	local rackKey = ""
+	local rack: { { id: number, letter: string } } = {}
+	local order: { number } = {}
+	local placed: { [number]: { row: number, col: number, letter: string } } = {} -- by tile id
+	local selected: number? = nil
+	local swapMode = false
+	local swapPick: { [number]: boolean } = {}
+	local passConfirm = false
+
+	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.66, -8, 1, -96), Parent = root })
+
+	local side = Kit.panel({ Position = UDim2.new(0.66, 8, 0, 0), Size = UDim2.new(0.34, -8, 1, -96), Parent = root })
+	local sideList = Kit.list(8)
+	sideList.Parent = side
+	local bagLabel = Kit.label("", { Font = Theme.FontBold, TextSize = 18, LayoutOrder = 1, Parent = side })
+	local previewLabel = Kit.label("", { TextSize = 16, Size = UDim2.new(1, 0, 0, 64), TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2, Parent = side })
+	Kit.label("Recent plays", { TextSize = 14, TextColor3 = Theme.SubText, LayoutOrder = 3, Parent = side })
+	local logLabel = Kit.label("", {
+		TextSize = 14,
+		Size = UDim2.new(1, 0, 1, -150),
+		TextYAlignment = Enum.TextYAlignment.Top,
+		LayoutOrder = 4,
+		Parent = side,
+	})
+
+	local bottom = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 1, -88), Size = UDim2.new(1, 0, 0, 88), Parent = root })
+	local rackFrame = Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromRGB(110, 76, 52),
+		BorderSizePixel = 0,
+		Size = UDim2.new(0.5, 0, 1, 0),
+		Parent = bottom,
+	}, { Kit.corner(12), Kit.padding(8) })
+	local rackList = Kit.list(6, true)
+	rackList.VerticalAlignment = Enum.VerticalAlignment.Center
+	rackList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	rackList.Parent = rackFrame
+
+	local buttons = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0.5, 10, 0, 0), Size = UDim2.new(0.5, -10, 1, 0), Parent = bottom })
+	local grid2 = Kit.new("UIGridLayout", {
+		CellSize = UDim2.new(1 / 3, -6, 0.5, -4),
+		CellPadding = UDim2.new(0, 6, 0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	grid2.Parent = buttons
+
+	local render: () -> ()
+
+	local function myTurn(): boolean
+		return snapshot ~= nil and table.find(snapshot.activeSeats, snapshot.yourSeat) ~= nil
+	end
+
+	local function pendingTiles(): { Rules.PlacedTile }
+		local tiles = {}
+		for id, p in placed do
+			local tile = rack[id]
+			table.insert(tiles, { row = p.row, col = p.col, letter = p.letter, blank = tile.letter == "?" })
+		end
+		return tiles
+	end
+
+	local function recallAll()
+		table.clear(placed)
+		selected = nil
+	end
+
+	local playButton = Kit.button("Play", function()
+		local tiles = pendingTiles()
+		if myTurn() and #tiles > 0 then
+			sendMove({ kind = "place", tiles = tiles })
+		end
+	end, { LayoutOrder = 1, Parent = buttons })
+	local recallButton = Kit.button("Recall", function()
+		recallAll()
+		render()
+	end, { LayoutOrder = 2, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = buttons })
+	local shuffleButton = Kit.button("Shuffle", function()
+		for i = #order, 2, -1 do
+			local j = math.random(1, i)
+			order[i], order[j] = order[j], order[i]
+		end
+		render()
+	end, { LayoutOrder = 3, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = buttons })
+	local swapButton: TextButton
+	swapButton = Kit.button("Swap", function()
+		if not swapMode then
+			recallAll()
+			swapMode = true
+			table.clear(swapPick)
+		else
+			local letters = {}
+			for id in swapPick do
+				table.insert(letters, rack[id].letter)
+			end
+			if #letters > 0 and myTurn() then
+				sendMove({ kind = "exchange", letters = letters })
+			end
+			swapMode = false
+			table.clear(swapPick)
+		end
+		render()
+	end, { LayoutOrder = 4, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = buttons })
+	local passButton: TextButton
+	passButton = Kit.button("Pass", function()
+		if swapMode then
+			swapMode = false -- doubles as "Cancel" while swapping
+			table.clear(swapPick)
+			render()
+			return
+		end
+		if passConfirm then
+			passConfirm = false
+			sendMove({ kind = "pass" })
+		else
+			-- Ask twice so a stray tap doesn't waste a turn.
+			passConfirm = true
+			task.delay(3, function()
+				passConfirm = false
+				render()
+			end)
+		end
+		render()
+	end, { LayoutOrder = 5, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = buttons })
+
+	-- Letter picker for blank tiles.
+	local picker = Kit.panel({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.33, 0.45),
+		Size = UDim2.new(0, 330, 0, 250),
+		BackgroundColor3 = Theme.PanelLight,
+		Visible = false,
+		ZIndex = 20,
+		Parent = root,
+	})
+	Kit.label("Which letter is the blank?", { Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 21, Parent = picker })
+	local letterGrid = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 28), Size = UDim2.new(1, 0, 1, -56), ZIndex = 21, Parent = picker })
+	Kit.new("UIGridLayout", { CellSize = UDim2.new(0, 38, 0, 34), CellPadding = UDim2.new(0, 4, 0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = letterGrid })
+	local pickFor: { id: number, row: number, col: number }? = nil
+	for i = 1, 26 do
+		local letter = string.char(96 + i)
+		Kit.button(string.upper(letter), function()
+			if pickFor then
+				placed[pickFor.id] = { row = pickFor.row, col = pickFor.col, letter = letter }
+				selected = nil
+			end
+			pickFor = nil
+			picker.Visible = false
+			render()
+		end, { LayoutOrder = i, TextSize = 16, ZIndex = 22, Parent = letterGrid })
+	end
+	Kit.button("Cancel", function()
+		pickFor = nil
+		picker.Visible = false
+	end, { BackgroundTransparency = 1, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 24), ZIndex = 21, Parent = picker })
+
+	local function pendingAt(row: number, col: number): number?
+		for id, p in placed do
+			if p.row == row and p.col == col then
+				return id
+			end
+		end
+		return nil
+	end
+
+	local function onCell(row: number, col: number)
+		if not snapshot or snapshot.yourSeat == nil or swapMode then
+			return
+		end
+		local here = pendingAt(row, col)
+		if here then
+			placed[here] = nil
+			render()
+			return
+		end
+		if board[row] and board[row][col] then
+			return
+		end
+		local id = selected
+		if not id then
+			-- Nothing picked: use the first tile still on the rack.
+			for _, candidate in order do
+				if not placed[candidate] then
+					id = candidate
+					break
+				end
+			end
+		end
+		if not id then
+			return
+		end
+		if rack[id].letter == "?" then
+			pickFor = { id = id, row = row, col = col }
+			picker.Visible = true
+			return
+		end
+		placed[id] = { row = row, col = col, letter = rack[id].letter }
+		selected = nil
+		render()
+	end
+
+	local function buildBoard(key: string)
+		if grid then
+			grid.frame:Destroy()
+		end
+		local def = Rules.boards[key]
+		premium = def.premium
+		grid = BoardGrid.create(boardArea, def.size, onCell, { BackgroundColor3 = Color3.fromRGB(34, 44, 58) })
+		for r = 1, def.size do
+			for c = 1, def.size do
+				local cell = (grid :: BoardGrid.Grid).cell(r, c)
+				local info = PREMIUM[premium[r][c]]
+				cell.BackgroundColor3 = if info then info.color else SQUARE
+				Kit.new("UIStroke", { Color = Color3.fromRGB(34, 44, 58), Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = cell })
+				if info then
+					Kit.new("TextLabel", {
+						Name = "Premium",
+						BackgroundTransparency = 1,
+						Size = UDim2.fromScale(1, 1),
+						Text = info.text,
+						TextScaled = true,
+						Font = Theme.FontBold,
+						TextColor3 = Color3.new(1, 1, 1),
+						TextTransparency = 0.15,
+						Parent = cell,
+					}, { Kit.padding(2) })
+				end
+			end
+		end
+	end
+
+	local function nameOf(seat: number): string
+		if seat == snapshot.yourSeat then
+			return "You"
+		end
+		local s = snapshot.seats[seat]
+		return if s then s.name else "?"
+	end
+
+	local function describe(play: any): string
+		if play.kind == "place" then
+			local words = {}
+			for _, w in play.words or {} do
+				table.insert(words, string.upper(w.word))
+			end
+			local bonus = if play.bingo then " (all 7 tiles!)" else ""
+			return `{nameOf(play.seat)}: {table.concat(words, ", ")} +{play.score}{bonus}`
+		elseif play.kind == "exchange" then
+			return `{nameOf(play.seat)} swapped {play.count} tiles`
+		end
+		return `{nameOf(play.seat)} passed`
+	end
+
+	-- Keeps your rack order (and tiles you've laid out) when the rack hasn't changed.
+	local function syncRack(view: any)
+		local letters = view.rack or {}
+		local key = table.concat(letters, ",")
+		if key == rackKey then
+			return
+		end
+		rackKey = key
+		rack = {}
+		order = {}
+		for i, letter in letters do
+			rack[i] = { id = i, letter = letter }
+			order[i] = i
+		end
+		recallAll()
+		swapMode = false
+		table.clear(swapPick)
+	end
+
+	function render()
+		if not snapshot or not grid then
+			return
+		end
+		local view = snapshot.view
+		local turn = myTurn()
+		local over = snapshot.result ~= nil or snapshot.aborted == true
+
+		-- Drop laid-out tiles whose square got filled by someone else.
+		for id, p in placed do
+			if board[p.row][p.col] then
+				placed[id] = nil
+			end
+		end
+
+		-- Board squares.
+		local last: { [number]: boolean } = {}
+		if view.lastPlay and view.lastPlay.cells then
+			for _, rc in view.lastPlay.cells do
+				last[rc[1] * 32 + rc[2]] = true
+			end
+		end
+		local size = #premium
+		for r = 1, size do
+			for c = 1, size do
+				local content = grid.content(r, c)
+				Kit.clear(content)
+				local premiumLabel = grid.cell(r, c):FindFirstChild("Premium") :: TextLabel?
+				local ch = board[r][c]
+				local pendingId = pendingAt(r, c)
+				if ch then
+					local letter = string.lower(ch)
+					tileVisual(letter, ch ~= letter, if last[r * 32 + c] then LAST_STROKE else nil).Parent = content
+				elseif pendingId then
+					local p = placed[pendingId]
+					tileVisual(p.letter, rack[pendingId].letter == "?", PENDING_STROKE).Parent = content
+				end
+				if premiumLabel then
+					premiumLabel.Visible = ch == nil and pendingId == nil
+				end
+			end
+		end
+
+		-- Rack.
+		Kit.clear(rackFrame)
+		for index, id in order do
+			local tile = rack[id]
+			local slot = Kit.new("TextButton", {
+				Text = "",
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1 / 7, -6, 1, 0),
+				LayoutOrder = index,
+				Parent = rackFrame,
+			}, { Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }) })
+			if placed[id] then
+				-- An empty spot where the tile was; tap it to take the tile back.
+				Kit.new("Frame", {
+					BackgroundColor3 = Color3.new(0, 0, 0),
+					BackgroundTransparency = 0.7,
+					BorderSizePixel = 0,
+					Size = UDim2.fromScale(0.92, 0.92),
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.5),
+					Parent = slot,
+				}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.18, 0) }) })
+			else
+				local stroke = if swapMode and swapPick[id] then Theme.Bad elseif selected == id then PENDING_STROKE else nil
+				local visual = tileVisual(tile.letter, tile.letter == "?", stroke)
+				visual.Parent = slot
+				if selected == id then
+					visual.Position = UDim2.fromScale(0.5, 0.4)
+				end
+			end
+			slot.Activated:Connect(function()
+				if swapMode then
+					swapPick[id] = if swapPick[id] then nil else true
+				elseif placed[id] then
+					placed[id] = nil
+				else
+					selected = if selected == id then nil else id
+				end
+				render()
+			end)
+		end
+
+		-- Preview of what you've laid out.
+		local tiles = pendingTiles()
+		if swapMode then
+			local n = 0
+			for _ in swapPick do
+				n += 1
+			end
+			previewLabel.Text = `Tap the tiles to swap ({n} picked), then press Swap again. Swapping uses your turn.`
+			previewLabel.TextColor3 = Theme.Text
+		elseif #tiles > 0 then
+			local result, err = Rules.evaluate(board, premium, tiles, nil)
+			if result then
+				local words = {}
+				for _, w in result.words do
+					table.insert(words, `{string.upper(w.word)} {w.score}`)
+				end
+				local bonus = if result.bingo then `  +{Rules.bingoBonus} for all 7!` else ""
+				previewLabel.Text = `{table.concat(words, " · ")}\n= {result.score} points{bonus}`
+				previewLabel.TextColor3 = Theme.Good
+			else
+				previewLabel.Text = err or ""
+				previewLabel.TextColor3 = Theme.Bad
+			end
+		elseif over then
+			previewLabel.Text = ""
+		elseif turn then
+			previewLabel.Text = "Your turn! Tap a tile, then a square."
+			previewLabel.TextColor3 = Theme.Accent
+		else
+			previewLabel.Text = "You can lay out tiles while you wait."
+			previewLabel.TextColor3 = Theme.SubText
+		end
+
+		bagLabel.Text = `{view.bagCount} tiles in the bag`
+		local lines = {}
+		for i = #(view.log or {}), 1, -1 do
+			table.insert(lines, describe(view.log[i]))
+		end
+		logLabel.Text = table.concat(lines, "\n")
+
+		local canAct = turn and not over and snapshot.yourSeat ~= nil
+		playButton.Visible = not swapMode
+		playButton.Active = canAct and #tiles > 0
+		playButton.AutoButtonColor = playButton.Active
+		playButton.BackgroundTransparency = if playButton.Active then 0 else 0.5
+		recallButton.Visible = not swapMode
+		shuffleButton.Visible = not swapMode
+		swapButton.Visible = view.canExchange and canAct
+		swapButton.Text = if swapMode then "Swap now" else "Swap"
+		passButton.Visible = canAct
+		passButton.Text = if swapMode then "Cancel" elseif passConfirm then "Sure? Pass" else "Pass"
+		rackFrame.Visible = snapshot.yourSeat ~= nil
+	end
+
+	return {
+		update = function(newSnapshot: any)
+			snapshot = newSnapshot
+			local view = snapshot.view
+			if boardKey ~= view.board then
+				boardKey = view.board
+				buildBoard(view.board)
+			end
+			board = Rules.boardFromRows(view.rows)
+			syncRack(view)
+			if not myTurn() then
+				swapMode = false
+				passConfirm = false
+			end
+			render()
+		end,
+		destroy = function()
+			root:Destroy()
+		end,
+	}
+end
+
+return WordTiles
