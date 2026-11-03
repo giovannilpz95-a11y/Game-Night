@@ -158,7 +158,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			TextXAlignment = Enum.TextXAlignment.Center,
 			TextYAlignment = Enum.TextYAlignment.Center,
 			Position = UDim2.fromScale(0.04, if CORNER_KINDS[space.kind] then 0.05 else 0.25),
-			Size = UDim2.fromScale(0.92, if CORNER_KINDS[space.kind] then 0.6 else 0.42),
+			Size = UDim2.fromScale(0.92, if CORNER_KINDS[space.kind] then 0.6 else 0.3),
 			Parent = tile,
 		})
 		Kit.new("UITextSizeConstraint", { MaxTextSize = if CORNER_KINDS[space.kind] then 18 else 12, Parent = name })
@@ -169,13 +169,12 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			TextScaled = true,
 			TextColor3 = Color3.fromRGB(90, 86, 100),
 			TextXAlignment = Enum.TextXAlignment.Center,
-			Position = UDim2.fromScale(0, 0.66),
-			Size = UDim2.fromScale(1, 0.16),
+			Position = UDim2.fromScale(0, 0.53),
+			Size = UDim2.fromScale(1, 0.13),
 			Parent = tile,
 		})
 		Kit.new("UITextSizeConstraint", { MaxTextSize = 11, Parent = price })
-		-- Tokens sit along the bottom of the tile, in the price's row: the price hides
-		-- while someone stands there (tap the tile to see it).
+		-- Tokens get the bottom third of the tile, below the price, so they never cover it.
 		local tokens = Kit.new("Frame", {
 			BackgroundTransparency = 1,
 			Position = UDim2.fromScale(0.04, if CORNER_KINDS[space.kind] then 0.62 else 0.66),
@@ -553,7 +552,9 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 				onClick()
 			end
 		end, {
-			BackgroundColor3 = if not on then Theme.Panel elseif color then color else Theme.Accent,
+			-- Disabled buttons keep a faint fill so they still read as buttons.
+			BackgroundColor3 = if not on then Theme.PanelLight elseif color then color else Theme.Accent,
+			BackgroundTransparency = if on then 0 else 0.35,
 			TextColor3 = if not on then Theme.SubText elseif color then Theme.Text else Theme.AccentText,
 			AutoButtonColor = on,
 			TextSize = 15,
@@ -604,7 +605,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 
 		if view.phase == "trade" then
 			local t = view.trade
-			actionText.Text = `{nameOf(t.from)} offer{if t.from == me then "" else "s"} {nameOf(t.to)}:\nGives {describeSide(t.give)}\nWants {describeSide(t.get)}`
+			actionText.Text = `{nameOf(t.from)} offer{if t.from == me then "" else "s"} {if t.to == me then "you" else nameOf(t.to)}:\nGives {describeSide(t.give)}\nWants {describeSide(t.get)}`
 			if mine then
 				addButton("Accept", function()
 					sendMove({ kind = "accept" })
@@ -782,11 +783,9 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			local h = view.houses[pos]
 			t.houses.Text = if view.mortgaged[pos] then "MORTGAGED" elseif h == 5 then "HOTEL" elseif h > 0 then string.rep("■", h) else ""
 			Kit.clear(t.tokens)
-			t.price.Visible = true
 		end
 		for seat, p in view.players do
 			if not p.bankrupt then
-				tiles[p.pos].price.Visible = false
 				local token = Kit.new("Frame", {
 					BackgroundColor3 = Theme.Seat[seat] or Theme.Text,
 					BorderSizePixel = 0,
