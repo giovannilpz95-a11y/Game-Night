@@ -272,6 +272,12 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		for _, child in content:GetChildren() do
 			child:Destroy()
 		end
+		-- Inset so the first row's borders (UIStroke) aren't clipped by the scroll area.
+		Kit.new("UIPadding", {
+			PaddingTop = UDim.new(0, 4),
+			PaddingLeft = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 4),
+		}).Parent = content
 		if not wallet then
 			line("Loading your wallet...", 1)
 			return
