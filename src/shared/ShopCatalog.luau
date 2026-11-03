@@ -95,6 +95,14 @@ local items: { Item } = {
 	{ id = "wordtiles_score_pop", name = "Big Score Pop", shop = "wordtiles", slot = "effect", tier = "Rare", coins = 1200 },
 	{ id = "wordtiles_all_seven_party", name = "All-Seven Party", shop = "wordtiles", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "wordtiles_wordsmith_title", name = "Title: Wordsmith", shop = "wordtiles", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Conquest Isles shop
+	{ id = "conquest_toy_soldiers", name = "Toy Soldier Armies", shop = "conquest", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "conquest_battle_dice", name = "Battle-Worn Dice", shop = "conquest", slot = "dice", tier = "Common", coins = 500 },
+	{ id = "conquest_parchment_map", name = "Parchment Map", shop = "conquest", slot = "board", tier = "Rare", coins = 1500 },
+	{ id = "conquest_banner_flags", name = "Banner Flags", shop = "conquest", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "conquest_victory_cannons", name = "Victory Cannons", shop = "conquest", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "conquest_warlord_title", name = "Title: Warlord", shop = "conquest", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}

@@ -19,6 +19,7 @@ Economy.Coins = {
 	whodunit = { name = "Whodunit Coins", color = Color3.fromRGB(214, 168, 96), order = 6 },
 	property = { name = "Property Coins", color = Color3.fromRGB(88, 204, 120), order = 7 },
 	wordtiles = { name = "Word Tiles Coins", color = Color3.fromRGB(232, 180, 96), order = 8 },
+	conquest = { name = "Conquest Coins", color = Color3.fromRGB(226, 116, 84), order = 9 },
 }
 Economy.DefaultCoin = "arcade"
 

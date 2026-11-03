@@ -175,6 +175,20 @@ local entries: { Entry } = {
 		minMinutes = 0.5, -- bot turns are quick, so gate on moves rather than time
 		minMoves = 12,
 	},
+	{
+		id = "Conquest",
+		name = "Conquest Isles",
+		module = "Conquest",
+		category = "Strategy",
+		description = "Roll dice, take territories and hold whole regions to rule the Shattered Isles.",
+		minSeats = 2,
+		maxSeats = 6,
+		status = "ready", -- turns are timed by the game itself (Conquest.TURN_SECONDS)
+		coin = "conquest",
+		typicalMinutes = 20,
+		minMinutes = 3,
+		minMoves = 30,
+	},
 }
 
 local GameCatalog = {}
