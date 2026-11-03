@@ -536,8 +536,8 @@ end
 -- 1..seatCount plus the case file (seatCount + 1). Uses only what `seat` is allowed to
 -- know: its hand, cards shown to it, and the public log.
 --   easy:   own hand + cards shown to it
---   medium: + "seat X couldn't disprove" + hand sizes
---   hard:   + "seat X showed someone one of these three"
+--   medium: + "seat X couldn't disprove"
+--   hard:   + hand sizes + "seat X showed someone one of these three"
 function Whodunit.deduce(state, seat: number, level: string?)
 	level = level or "hard"
 	local n = state.seatCount
@@ -633,7 +633,7 @@ function Whodunit.deduce(state, seat: number, level: string?)
 				end
 			end
 		end
-		if level ~= "easy" then
+		if level == "hard" then
 			-- Hand sizes: a full hand holds nothing else; a hand with exactly as many
 			-- possible cards as its size holds all of them.
 			for h = 1, n do
@@ -716,6 +716,21 @@ local function distances(from: number): { number }
 	return dist
 end
 
+-- Bots make at least this many suggestions before accusing, even when sure, so a
+-- table with humans gets a real game (and long enough to pay rewards).
+local MIN_SUGGESTIONS_TO_ACCUSE = { easy = 3, medium = 5, hard = 4 }
+Whodunit.minSuggestionsToAccuse = MIN_SUGGESTIONS_TO_ACCUSE
+
+local function suggestionsMade(state, seat: number): number
+	local count = 0
+	for _, entry in state.log do
+		if entry.seat == seat then
+			count += 1
+		end
+	end
+	return count
+end
+
 local function accusation(know)
 	return {
 		kind = "accuse",
@@ -770,7 +785,8 @@ function Whodunit.chooseBotMove(state, seat: number, rng: Random): any?
 	end
 
 	local know = Whodunit.deduce(state, seat, state.botLevel)
-	if know.solved and not state.eliminated[seat] then
+	local patience = MIN_SUGGESTIONS_TO_ACCUSE[state.botLevel] or 4
+	if know.solved and not state.eliminated[seat] and suggestionsMade(state, seat) >= patience then
 		return accusation(know)
 	end
 

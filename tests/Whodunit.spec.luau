@@ -211,6 +211,13 @@ return function(T)
 					T.eq(result.isDraw, false, `{level} {seats}-seat game should be solved`)
 					for _, a in s.accusations do
 						T.ok(a.correct, "a bot accused without being sure")
+						local made = 0
+						for _, entry in s.log do
+							if entry.seat == a.seat then
+								made += 1
+							end
+						end
+						T.ok(made >= Whodunit.minSuggestionsToAccuse[level], "a bot accused before making enough suggestions")
 					end
 				end
 			end

@@ -139,9 +139,9 @@ local entries: { Entry } = {
 		turnSeconds = 45,
 		status = "ready",
 		coin = "whodunit",
-		typicalMinutes = 12,
-		minMinutes = 2,
-		minMoves = 12,
+		typicalMinutes = 10,
+		minMinutes = 1,
+		minMoves = 8,
 	},
 }
 

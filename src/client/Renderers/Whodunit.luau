@@ -84,7 +84,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		ScrollBarThickness = 4,
 		Parent = bottom,
 	})
-	Kit.list(4).Parent = notes
+	Kit.list(3).Parent = notes
 	local logList = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -153,7 +153,16 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		ZIndex = 21,
 		Parent = accuseBox,
 	})
-	Kit.list(6).Parent = accuseScroll
+	local accuseList = Kit.list(6)
+	accuseList.Parent = accuseScroll
+	-- Fit the box to its content (choices + pinned buttons), but never past the screen.
+	local function fitAccuseBox()
+		local wanted = accuseList.AbsoluteContentSize.Y + 48 + 24 -- footer + panel padding
+		local room = math.max(200, accuseOverlay.AbsoluteSize.Y * 0.98)
+		accuseBox.Size = UDim2.new(0.94, 0, 0, math.min(wanted, room))
+	end
+	accuseList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitAccuseBox)
+	accuseOverlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitAccuseBox)
 	Kit.new("UIPadding", { PaddingRight = UDim.new(0, 12), Parent = accuseScroll }) -- room for the scrollbar
 
 	-- Helpers -----------------------------------------------------------------------
@@ -407,8 +416,8 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				Parent = notes,
 			})
 			Kit.new("UIGridLayout", {
-				CellSize = UDim2.new(0.5, -3, 0, 30),
-				CellPadding = UDim2.fromOffset(6, 4),
+				CellSize = UDim2.new(0.5, -3, 0, 27),
+				CellPadding = UDim2.fromOffset(6, 3),
 				SortOrder = Enum.SortOrder.LayoutOrder,
 				Parent = grid,
 			})
