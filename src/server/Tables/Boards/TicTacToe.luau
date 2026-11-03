@@ -1,4 +1,6 @@
 -- 3D Tic-Tac-Toe: a 3x3 board with chunky X and O marks in each seat's color.
+-- Each player keeps 3 marks; the one that vanishes next is see-through, and the
+-- mover's own next-to-go mark also gets a white outline.
 -- Cells are numbered 1..9 left to right, top (far side for seat 1) to bottom.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11,6 +13,7 @@ local TicTacToe = {}
 
 local SEAT_COLORS = { Color3.fromRGB(255, 99, 132), Color3.fromRGB(54, 162, 235) }
 local WIN = Color3.fromRGB(255, 196, 64)
+local FADED = 0.6
 
 local function mark(seat: number, surface: CFrame, cellSize: number): Instance
 	local model = Instance.new("Model")
@@ -74,6 +77,28 @@ function TicTacToe.create(boardCF: CFrame, parent: Instance)
 						m.Parent = board.pieces
 						shown[i] = m
 					end
+				end
+			end
+			-- Flag the marks that leave next.
+			for i, m in shown do
+				local seatHere = shownSeat[i]
+				local fading = view.fading ~= nil and view.fading[seatHere] == i and not view.winningLine
+				for _, part in m:GetChildren() do
+					if part:IsA("BasePart") then
+						part.Transparency = if fading then FADED else 0
+					end
+				end
+				local outline = m:FindFirstChild("NextToGo")
+				local wantOutline = fading and view.turn == seatHere
+				if wantOutline and not outline then
+					local h = Instance.new("Highlight")
+					h.Name = "NextToGo"
+					h.FillTransparency = 1
+					h.OutlineColor = Color3.new(1, 1, 1)
+					h.DepthMode = Enum.HighlightDepthMode.Occluded
+					h.Parent = m
+				elseif outline and not wantOutline then
+					outline:Destroy()
 				end
 			end
 			local tints = {}
