@@ -6,7 +6,7 @@ Back to [[Home]] · see [[Economy]], [[Architecture]]. Everything needed to take
 
 These need a decision or code before launch, so they come first.
 
-1. **Sketch & Guess makes the whole experience 16+.** The maturity questionnaire's *Free-form user creation* question covers "freehand drawing" and blank canvases that other players can see, and the docs say: "Free-form user creation is only available to players that are at least 16 years old." It's triggered by an experience that *includes* it, not one that's mainly about it. Most of our audience is under 16, so launching with Sketch & Guess would cut it off. Options: launch without it (set `status = "soon"` in `GameCatalog`) and bring it back later as a separate 16+ experience or in a non-freehand form (stamps or shape pieces, *verify* with Roblox first); or keep it and accept 16+.
+1. **Sketch & Guess is held until after launch (decided 2026-11-03).** The maturity questionnaire's *Free-form user creation* question covers "freehand drawing" and blank canvases that other players can see, and the docs say: "Free-form user creation is only available to players that are at least 16 years old." It's triggered by an experience that *includes* it, not one that's mainly about it, so it would make all of Game Night 16+. It's now `status = "soon"` in `GameCatalog`: it shows as "Coming soon" and the server won't start it. It can come back later as a separate 16+ experience, or in a form without freehand drawing (stamps or shape pieces; *verify* with Roblox first).
 2. **Shop perks that aren't built yet.** The VIP pass lists a "VIP chat tag" and "20 saved looks in the Dressing Room", and Party Host lists private tables, house rules and custom word lists. None of these exist yet (see [[Economy]], "Not built yet"). Selling a pass whose perks don't work leads to refunds, bad reviews and possible moderation. Before launch, either build them or remove them from `Economy.Passes[*].perks` and keep the pass ID at 0 so the shop says "Coming soon".
 3. **No analytics yet.** Nothing calls `AnalyticsService`. Section 6 lists the events to add, and they need to be live before the soft launch, otherwise the soft launch can't tell us anything.
 
@@ -40,7 +40,7 @@ Short, says what it is, and puts the search words ("board games", "party games")
 >
 > 👍 Like and favorite to see new games first!
 
-Keep this list in step with `GameCatalog` (only games with `status = "ready"`). If Sketch & Guess launches, add: "✏️ Sketch & Guess: one draws, everyone guesses".
+Keep this list in step with `GameCatalog` (only games with `status = "ready"`). Sketch & Guess is left out on purpose (blocker 1).
 
 **Don't** use the words "hangout", "chill spot" or similar. The docs say a title or description that references social hangouts gets the game classified as one, and social hangouts are 16+.
 
@@ -90,14 +90,14 @@ Fill it in under Creator Hub > your experience > Audience > Maturity & Complianc
 | Romantic themes | None | |
 | Alcohol | None | Keep any snack-bar decor to soda and snacks |
 | Social hangout | **No** | The primary activity is playing games. Keep "hangout" out of the title and description |
-| Free-form user creation | **Yes if Sketch & Guess ships, otherwise No** | See blocker 1. Typed Trivia answers and guesses are filtered text, not free-form creation |
+| Free-form user creation | **No** | Sketch & Guess is held from launch (blocker 1). Typed Trivia answers are filtered text, not free-form creation. Answer Yes if a drawing game is ever turned on |
 | Sensitive issues | None | Check the Trivia question bank for political or religious questions |
 | Paid random items | None | All shop items are direct purchases. If crates are ever added, show odds and re-answer |
 | Paid item trading | None | Players can't trade |
 | Media | None | No outside video or music streams |
 | AI interaction | None | Bots are rule-based, not AI chat |
 
-**Expected label:** Minimal, which keeps us open to every age group. With Sketch & Guess the game becomes 16+ only.
+**Expected label:** Minimal, which keeps us open to every age group. Turning Sketch & Guess back on in this experience would make it 16+ only.
 
 ## 4. Creator Hub products
 
@@ -207,7 +207,7 @@ Keep the number of distinct values in custom fields small (game ids, not player 
 
 ### Code
 - [ ] Merge the PR stack in order: foundation, classic games, economy, party games, then this.
-- [ ] Decide on Sketch & Guess (blocker 1) and set its `status`.
+- [x] Hold Sketch & Guess from launch (blocker 1): `status = "soon"`.
 - [ ] Build or remove the VIP perks that don't work yet; keep Party Host at 0 unless built (blocker 2).
 - [ ] Add the analytics events in section 6.
 - [ ] Remove or Studio-gate every test helper (the Wallet tab's free Gems button is Studio-only: confirm in a live server).
