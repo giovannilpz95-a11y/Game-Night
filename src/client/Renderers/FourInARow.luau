@@ -6,6 +6,7 @@ local TweenService = game:GetService("TweenService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.FourInARow)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
 local Theme = Kit.Theme
 
@@ -24,6 +25,8 @@ local function discVisual(seat: number): GuiObject
 		}, {
 			Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
 			Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.6, Thickness = 2 }),
+			-- Glossy top, like a real plastic disc.
+			HudKit.gradient(Color3.new(1, 1, 1), Color3.fromRGB(175, 175, 175)),
 		})
 	end, { faceOn = true })
 end
@@ -43,6 +46,9 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 	}, {
 		Kit.new("UIAspectRatioConstraint", { AspectRatio = COLS / ROWS }),
 		Kit.corner(18),
+		-- Plastic frame lit from above, with a darker rim.
+		HudKit.gradient(Color3.new(1, 1, 1), Color3.fromRGB(165, 165, 165)),
+		Kit.new("UIStroke", { Color = Color3.new(0, 0, 0), Transparency = 0.5, Thickness = 2 }),
 	})
 
 	-- Ghost disc row above the board.

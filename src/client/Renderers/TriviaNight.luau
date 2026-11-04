@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Rules = require(ReplicatedStorage.Shared.Games.TriviaNight)
 local Theme = Kit.Theme
 
@@ -41,7 +42,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 	})
 	local question = Kit.label("", {
 		TextSize = 28,
-		Font = Theme.FontBold,
+		Font = Theme.FontTitle,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Center,
 		TextScaled = true,
