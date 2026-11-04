@@ -52,6 +52,8 @@ Never give currency any other way, so all the anti-farm limits stay in one place
 ## Saving
 One DataStore (`Config.ProfileStoreName`), one key per player (`player_<userId>`), saved with `UpdateAsync` every `Config.AutosaveSeconds`, when the player leaves, and on shutdown. The record holds a lock with the server's JobId: another server waits for it to be released (and asks the player to rejoin after about 30 seconds), and a lock older than 10 minutes counts as a crashed server. New profile fields go in `Profile.new`; `Profile.reconcile` adds them to old saves.
 
+Pressing Stop in Studio waits at most 3 seconds for the final save (live servers wait up to 25). If that save gets cut short, the next Play in Studio takes over the leftover lock after about 5 seconds.
+
 In Studio, turn on **Game Settings > Security > Enable Studio Access to API Services** to test saving. Without it you play on a fresh profile that doesn't save, and a message says so. The Wallet tab has a Studio-only button for free Gems and Coins.
 
 ## Robux products
