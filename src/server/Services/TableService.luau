@@ -334,8 +334,8 @@ function TableService.update(matchId: string, snapshot: any)
 	end
 end
 
--- The match ended. The final board and everyone's seats stay for a few seconds so the
--- result can be seen at the table, then the table is cleared.
+-- The match ended. Players stand up; the final board and the bots stay a few seconds
+-- so the result can be seen at the table, then the table is cleared.
 function TableService.release(matchId: string)
 	local t = tableOfMatch[matchId]
 	if not t then
@@ -348,6 +348,14 @@ function TableService.release(matchId: string)
 		tag.Enabled = false
 	end
 	t.model:SetAttribute("State", "Free")
+	-- People stand up right away (the result shows on their screen), so nobody is left
+	-- sitting low at the table with the camera stuck there. The final board stays a
+	-- moment for anyone watching, then clears.
+	for tableSeat, occupant in t.occupants do
+		if occupant.userId then
+			vacate(t, tableSeat)
+		end
+	end
 	t.holdToken += 1
 	local token = t.holdToken
 	task.delay(Config.TableHoldSeconds, function()
@@ -399,9 +407,11 @@ end
 local function makeSign(model: Model): TextLabel
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "TableSign"
-	gui.Size = UDim2.fromOffset(260, 34)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, 9, 0)
-	gui.MaxDistance = 90
+	-- Sized in studs, not pixels: far signs shrink with distance instead of lining up
+	-- into one long bar when you look down a row of tables.
+	gui.Size = UDim2.fromScale(7, 0.95)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 7.5, 0)
+	gui.MaxDistance = 70
 	local holder = Instance.new("Part")
 	holder.Name = "SignPoint"
 	holder.Anchored = true
@@ -421,11 +431,11 @@ local function makeSign(model: Model): TextLabel
 	label.TextScaled = true
 	label.Text = "Free table"
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
+	corner.CornerRadius = UDim.new(0.3, 0)
 	corner.Parent = label
 	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0, 10)
-	padding.PaddingRight = UDim.new(0, 10)
+	padding.PaddingLeft = UDim.new(0.05, 0)
+	padding.PaddingRight = UDim.new(0.05, 0)
 	padding.Parent = label
 	label.Parent = gui
 	gui.Parent = holder

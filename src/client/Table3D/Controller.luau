@@ -17,6 +17,7 @@ local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Controller = {}
 
 local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true }
+local BIG_BOARD = { Estates = true }
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
 
 local function findTable(id: string): Model?
@@ -65,6 +66,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	marks.Name = "GameNightMarks"
 	local savedCameraType: Enum.CameraType? = nil
 	local savedFieldOfView = camera.FieldOfView
+	-- Parts of the screen MatchView covers (the docked hand), as fractions of the
+	-- viewport: the camera aims the table at the middle of what's left.
+	local insetRight, insetBottom = 0, 0
 
 	local function setActive(value: boolean)
 		if active == value then
@@ -112,13 +116,32 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		if upright then
 			back, up, lift = 9.5, 5, 2.4
 		elseif screen then
-			back, up, lift = 9, 4.5, 4.4
+			back, up, lift = 9, 4.5, 4.9
+		elseif BIG_BOARD[snapshot.gameId] then
+			-- Wide boards (Property Party's loop): sit higher so the near corners stay in view.
+			back, up, lift = 9, 12, 0
 		elseif not snapshot.table.board3D then
 			back, up, lift = 8.5, 9, 0.8
 		end
+		local inset = math.max(insetRight, insetBottom)
+		if inset > 0 then
+			-- Less screen to fill: step back a little.
+			local scale = 1 + inset * 0.6
+			back, up = back * scale, up * scale
+		end
 		local focus = anchor + Vector3.new(0, lift, 0) - toSeat.Unit * 0.6
-		camera.CFrame = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
+		local cf = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
 		camera.FieldOfView = 55
+		if inset > 0 then
+			-- Turn so the table sits in the middle of the uncovered part of the screen.
+			local viewport = camera.ViewportSize
+			local halfV = math.rad(camera.FieldOfView / 2)
+			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
+			local yaw = math.atan(insetRight * math.tan(halfV) * aspect)
+			local pitch = math.atan(insetBottom * math.tan(halfV))
+			cf = cf * CFrame.Angles(0, -yaw, 0) * CFrame.Angles(-pitch, 0, 0)
+		end
+		camera.CFrame = cf
 	end
 
 	local function context(): Context
@@ -285,6 +308,15 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end,
 		isActive = function(): boolean
 			return active
+		end,
+		setInsets = function(right: number, bottom: number)
+			right, bottom = math.clamp(right, 0, 0.8), math.clamp(bottom, 0, 0.8)
+			if right ~= insetRight or bottom ~= insetBottom then
+				insetRight, insetBottom = right, bottom
+				if active then
+					placeCamera()
+				end
+			end
 		end,
 	}
 end

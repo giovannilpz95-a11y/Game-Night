@@ -130,15 +130,31 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = if view.sandwich then "Slap doubles (7-7) and sandwiches (7-4-7)!" else "Slap doubles (7-7)!"
 		end
 
-		local backs = {}
-		for i = 1, math.min(if me then view.pileCounts[me] or 0 else 0, 10) do
-			backs[i] = { id = nil, enabled = myTurn }
-		end
-		PlayingCard.renderHand(ui.hand, backs, function()
+		-- Your face-down pile: one card back with the count on it (tap it to flip).
+		local count = if me then view.pileCounts[me] or 0 else 0
+		PlayingCard.renderHand(ui.hand, if count > 0 then { { id = nil, enabled = myTurn } } else {}, function()
 			if myTurn then
 				sendMove({ kind = "flip" })
 			end
 		end)
+		local slot = ui.hand:FindFirstChildOfClass("Frame")
+		if slot then
+			local badge = Kit.label(`{count}`, {
+				Font = Theme.FontBold,
+				TextSize = 22,
+				TextColor3 = Theme.Text,
+				TextStrokeTransparency = 0.3,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				BackgroundColor3 = Theme.Panel,
+				BackgroundTransparency = 0.15,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.new(0.7, 0, 0, 32),
+				ZIndex = 6,
+				Parent = slot,
+			})
+			Kit.corner(8).Parent = badge
+		end
 	end
 
 	return {

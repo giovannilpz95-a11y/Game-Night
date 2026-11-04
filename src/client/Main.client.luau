@@ -51,6 +51,7 @@ local screen = Kit.new("ScreenGui", {
 })
 
 Layout.init(screen)
+require(script.Parent.Table3D.FaceViewer).start()
 
 -- See-through: the room is the lobby.
 local lobby = Kit.new("Frame", {
@@ -105,10 +106,7 @@ local function closeWindows()
 	dressingRoom.close()
 	shopPanel.root.Visible = false
 end
-local walletBar = WalletBar.create(screen, function(coinKey)
-	dressingRoom.close()
-	shopPanel.open(coinKey)
-end)
+local walletBar = WalletBar.create(screen)
 local matchView = MatchView.create(screen, sendMatch, function()
 	return currentParty ~= nil and currentParty.leaderId == localPlayer.UserId
 end, walletBar.width)

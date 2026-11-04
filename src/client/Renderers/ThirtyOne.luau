@@ -43,7 +43,7 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 				elseif view.knocker == seat then
 					line2 = "knocked!"
 				end
-				table.insert(chips, { seat = seat, lines = { hearts(view.lives[seat]), line2 }, turn = view.turn == seat and not showdown, dim = view.lives[seat] <= 0 })
+				table.insert(chips, { seat = seat, bigLine = { text = hearts(view.lives[seat]), color = Color3.fromRGB(240, 80, 100) }, lines = { line2 }, turn = view.turn == seat and not showdown, dim = view.lives[seat] <= 0 })
 			end
 		end
 		CardTable.seatChips(ui.seats, snapshot, chips)

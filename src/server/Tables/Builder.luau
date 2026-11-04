@@ -113,6 +113,14 @@ local function orderSeats(model: Model, center: Vector3)
 	end)
 	for i, seat in seats do
 		seat.Name = `Seat{i}`
+		-- Level the seat and turn it to face the middle. Template chairs can come in
+		-- tilted or turned sideways, and whoever sits there (bots too) takes the seat's
+		-- angle: side seats had their sitters leaning forward through the chair.
+		local pos = seat.Position
+		local toCenter = Vector3.new(center.X - pos.X, 0, center.Z - pos.Z)
+		if toCenter.Magnitude > 0.1 then
+			seat.CFrame = CFrame.lookAt(pos, pos + toCenter.Unit)
+		end
 	end
 	return #seats
 end

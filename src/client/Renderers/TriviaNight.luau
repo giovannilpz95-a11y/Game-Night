@@ -5,18 +5,17 @@
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local Kit = require(script.Parent.Parent.UI.Kit)
+local Rules = require(ReplicatedStorage.Shared.Games.TriviaNight)
 local Theme = Kit.Theme
 
 local TriviaNight = {}
 
-local ANSWER_COLORS = {
-	Color3.fromRGB(240, 110, 100), -- coral
-	Color3.fromRGB(245, 190, 70), -- honey
-	Color3.fromRGB(60, 190, 170), -- teal
-	Color3.fromRGB(150, 110, 230), -- violet
-}
-local SHAPES = { "▲", "◆", "●", "■" }
+-- Same letters and colors as the screen over the table.
+local ANSWER_COLORS = Rules.ANSWER_COLORS
+local LETTERS = Rules.ANSWER_LETTERS
 
 function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
@@ -91,7 +90,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 			LayoutOrder = i,
 			Parent = grid,
 		}, { Kit.corner(14) })
-		Kit.label(SHAPES[i], {
+		Kit.label(LETTERS[i], {
 			TextSize = 26,
 			Font = Theme.FontBold,
 			TextColor3 = Color3.new(1, 1, 1),

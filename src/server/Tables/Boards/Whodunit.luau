@@ -187,8 +187,9 @@ function Whodunit.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 		if furnish then
 			furnish(model, floor * CFrame.new(0, 0, -CELL * 0.3))
 		end
-		-- Room name on the near edge, so pawns and furniture don't cover it.
-		Scene.flatText(model, floor * CFrame.new(0, 0.012, CELL * 0.36), CELL * 0.86, CELL * 0.18, name, { TextColor3 = Color3.fromRGB(60, 44, 34) })
+		-- Room name floating over the room, facing each viewer, so walls and furniture
+		-- never hide it.
+		Scene.floatText(model, floor * CFrame.new(0, 0.9, -CELL * 0.3), CELL * 0.9, CELL * 0.22, name, { TextColor3 = Color3.fromRGB(60, 44, 34) })
 	end
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent

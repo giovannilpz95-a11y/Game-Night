@@ -8,6 +8,8 @@ local Theme = Kit.Theme
 
 local CardTable = {}
 
+local BIG_LINE = 22 -- px for a chip's bigLine
+
 export type Layout = {
 	root: Frame,
 	seats: Frame,
@@ -63,10 +65,20 @@ function CardTable.isActive(snapshot: any, seat: number?): boolean
 	return seat ~= nil and table.find(snapshot.activeSeats, seat) ~= nil and snapshot.result == nil
 end
 
--- chips: { { seat, lines = { string }, turn = bool?, highlight = bool?, dim = bool?, onClick = fn? } }
+-- chips: { { seat, lines = { string }, turn = bool?, highlight = bool?, dim = bool?, onClick = fn?,
+--   bigLine = { text, color }? } } -- bigLine: one larger line under the name (lives, score)
 function CardTable.seatChips(frame: Frame, snapshot: any, chips: { any })
 	Kit.clear(frame)
 	local width = math.clamp(math.floor((frame.AbsoluteSize.X - 6 * #chips) / math.max(1, #chips)), 90, 150)
+	local lines, big = 0, 0
+	for _, chip in chips do
+		lines = math.max(lines, #(chip.lines or {}))
+		if chip.bigLine then
+			big = BIG_LINE
+		end
+	end
+	-- As tall as the text in it (name plus its lines), not the whole strip.
+	local height = math.min(math.max(24, frame.AbsoluteSize.Y - 4), 10 + 17 + big + lines * 15 + 2)
 	for i, chip in chips do
 		local clickable = chip.onClick ~= nil
 		local color = if clickable then Theme.Accent elseif chip.turn then Theme.PanelLight else Theme.Panel
@@ -76,7 +88,7 @@ function CardTable.seatChips(frame: Frame, snapshot: any, chips: { any })
 			BackgroundColor3 = color,
 			BackgroundTransparency = if chip.dim then 0.5 else 0,
 			BorderSizePixel = 0,
-			Size = UDim2.new(0, width, 1, -4),
+			Size = UDim2.new(0, width, 0, height),
 			LayoutOrder = i,
 			Parent = frame,
 		}, { Kit.corner(10), Kit.padding(5) })
@@ -93,13 +105,25 @@ function CardTable.seatChips(frame: Frame, snapshot: any, chips: { any })
 			Size = UDim2.new(1, 0, 0, 17),
 			Parent = box,
 		})
+		if chip.bigLine then
+			Kit.label(chip.bigLine.text, {
+				Font = Theme.FontBold,
+				TextSize = BIG_LINE - 2,
+				TextColor3 = chip.bigLine.color or textColor,
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Position = UDim2.new(0, 0, 0, 17),
+				Size = UDim2.new(1, 0, 0, BIG_LINE),
+				Parent = box,
+			})
+		end
 		for j, line in chip.lines or {} do
 			Kit.label(line, {
 				TextSize = 12,
 				TextColor3 = if clickable then Theme.AccentText else Theme.SubText,
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				Position = UDim2.new(0, 0, 0, 17 + (j - 1) * 15),
+				Position = UDim2.new(0, 0, 0, 17 + (if chip.bigLine then BIG_LINE else 0) + (j - 1) * 15),
 				Size = UDim2.new(1, 0, 0, 15),
 				Parent = box,
 			})
@@ -115,14 +139,18 @@ function CardTable.buttons(frame: Frame, list: { any })
 	Kit.clear(frame)
 	for i, b in list do
 		local enabled = b.enabled ~= false
+		local background = if not enabled then Theme.Panel else (b.color or Theme.Accent)
+		-- Light text on dark buttons, dark text on light ones.
+		local light = 0.299 * background.R + 0.587 * background.G + 0.114 * background.B > 0.55
+		local textColor = if not enabled then Theme.SubText elseif light then Theme.AccentText else Theme.Text
 		local button = Kit.button(b.text, function()
 			if enabled then
 				b.onClick()
 			end
 		end, {
 			Size = UDim2.new(0, math.max(110, #b.text * 9 + 24), 1, 0),
-			BackgroundColor3 = if not enabled then Theme.Panel else (b.color or Theme.Accent),
-			TextColor3 = if enabled then Theme.AccentText else Theme.SubText,
+			BackgroundColor3 = background,
+			TextColor3 = textColor,
 			AutoButtonColor = enabled,
 			LayoutOrder = i,
 			Parent = frame,

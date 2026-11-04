@@ -1,4 +1,5 @@
--- Small always-on bar: your Gems, the Coins of the game you're in, and the Shop button.
+-- Small always-on bar: your Gems and the Coins of the game you're in. The Shop opens
+-- from the side rail (one Shop button, not two).
 -- In the lobby it shows Gems only; at a table it adds that game's Coins (never more than
 -- two balances at once, per the economy design). It always sits at the right end of
 -- Roblox's top bar, in the lobby and at a table, so it never covers the game.
@@ -42,7 +43,7 @@ local function chip(parent: Instance, order: number): (Frame, TextLabel, Frame)
 	return frame, label, dot
 end
 
-function WalletBar.create(parent: Instance, openShop: (string?) -> ())
+function WalletBar.create(parent: Instance)
 	local root = Kit.new("Frame", {
 		Name = "WalletBar",
 		BackgroundTransparency = 1,
@@ -68,10 +69,6 @@ function WalletBar.create(parent: Instance, openShop: (string?) -> ())
 	local wallet: any = nil
 	local compact = false
 
-	local shopButton = Kit.button("Shop", function()
-		openShop(coinKey)
-	end, { Size = UDim2.new(0, 70, 1, 0), LayoutOrder = 3, Parent = root })
-
 	local function render()
 		-- Phones show just the numbers next to the colored dot.
 		local gemsName = if compact then "" else ` {Economy.GemsName}`
@@ -85,8 +82,6 @@ function WalletBar.create(parent: Instance, openShop: (string?) -> ())
 		else
 			coinFrame.Visible = false
 		end
-		shopButton.Text = if compact then "🛒" else "Shop"
-		shopButton.Size = UDim2.new(0, if compact then 40 else 70, 1, 0)
 	end
 	render()
 

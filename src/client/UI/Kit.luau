@@ -114,7 +114,7 @@ function Kit.button(text: string, onClick: () -> (), props: { [string]: any }?):
 	return button
 end
 
--- A centered window over a dimmed screen. Tapping the dim area or the ✕ closes it.
+-- A centered window over a dimmed screen. Tapping the dim area or the X closes it.
 -- Put content in `body`. opts: name, maxSize (Vector2), zIndex, onClose.
 function Kit.modal(parent: Instance, opts: { [string]: any }): any
 	local z = opts.zIndex or 25
@@ -183,7 +183,7 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 		panel.Size = UDim2.new(1, -24, 1, -(top + bottom + 12))
 	end
 	overlay.Activated:Connect(modal.close)
-	Kit.button("✕", modal.close, {
+	Kit.button("X", modal.close, {
 		Name = "Close",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 4, 0, -4),
