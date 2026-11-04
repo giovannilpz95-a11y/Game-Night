@@ -15,6 +15,8 @@ local Pieces = require(script.Parent.Pieces)
 
 local Scene = {}
 
+Scene.FACE_VIEWER_TAG = "GameNightFaceViewer"
+
 export type Layout = { size: number, seats: { [number]: { dir: Vector3, reach: number } } }
 
 Scene.SEAT_COLORS = {
@@ -76,7 +78,44 @@ function Scene.flatGui(parent: Instance, cf: CFrame, width: number, depth: numbe
 	gui.LightInfluence = 0.3
 	gui.MaxDistance = 120
 	gui.Parent = plate
+	-- Each client turns the plate to face its own camera (client/Table3D/FaceViewer), so
+	-- text drawn for seat 1 doesn't read upside down from the other seats. Square-ish
+	-- plates may turn a quarter; long ones only flip, so they stay inside their spot.
+	plate:SetAttribute("Spin", if math.max(width, depth) <= math.min(width, depth) * 1.3 then "quarter" else "flip")
+	plate:AddTag(Scene.FACE_VIEWER_TAG)
 	return gui
+end
+
+-- Text floating over `cf` that always faces the camera (a BillboardGui sized in studs).
+-- For labels that must read from every seat and stay clear of the pieces under them.
+function Scene.floatText(parent: Instance, cf: CFrame, width: number, height: number, text: string, props: { [string]: any }?): TextLabel
+	local holder = Pieces.part({
+		Name = "Label",
+		Size = Vector3.new(0.05, 0.05, 0.05),
+		CFrame = cf,
+		Transparency = 1,
+		CanQuery = false,
+		Parent = parent,
+	})
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.new(width, 0, height, 0)
+	gui.LightInfluence = 0
+	gui.MaxDistance = 80
+	gui.Parent = holder
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.TextColor3 = INK
+	label.TextStrokeColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.4
+	label.Text = text
+	for key, value in props or {} do
+		(label :: any)[key] = value
+	end
+	label.Parent = gui
+	return label
 end
 
 -- Text lying flat on `cf`, the right way up from its +Z side. Returns the label.

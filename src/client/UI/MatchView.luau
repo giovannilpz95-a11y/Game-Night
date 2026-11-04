@@ -28,6 +28,32 @@ local Renderers = script.Parent.Parent.Renderers
 
 local MatchView = {}
 
+-- Table view of a watch-only scene keeps part of the 2D board on screen: the edge where
+-- that game keeps your hand, buttons and prompts. size < 1 is a fraction of the board,
+-- above 1 it's pixels. Games not listed dock their bottom 40%.
+local DOCK_DEFAULT = { side = "bottom", size = 0.4 }
+local DOCK: { [string]: { side: string, size: number } } = {
+	Hexlands = { side = "right", size = 0.42 },
+	Conquest = { side = "right", size = 0.32 },
+	Estates = { side = "right", size = 0.4 },
+	Whodunit = { side = "right", size = 0.44 },
+	SketchGuess = { side = "right", size = 0.32 },
+	WordTiles = { side = "bottom", size = 96 },
+	ColorClash = { side = "bottom", size = 0.72 },
+	TriviaNight = { side = "bottom", size = 0.62 },
+	Spoons = { side = "bottom", size = 0.41 },
+	War = { side = "bottom", size = 0.2 },
+	GoFish = { side = "bottom", size = 0.36 },
+	Speed = { side = "bottom", size = 0.36 },
+	Cheat = { side = "bottom", size = 0.39 },
+	President = { side = "bottom", size = 0.39 },
+	SlapStack = { side = "bottom", size = 0.39 },
+	Hearts = { side = "bottom", size = 0.39 },
+	Spades = { side = "bottom", size = 0.39 },
+	ThirtyOne = { side = "bottom", size = 0.39 },
+	Palace = { side = "bottom", size = 0.39 },
+}
+
 local localPlayer = Players.LocalPlayer
 
 local TURN_SOUND = "rbxasset://sounds/electronicpingshort.wav"
@@ -117,11 +143,16 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = header,
 	})
 
-	-- 3D view: the board on the real table, seen from your seat. Phones start in the
-	-- flat view (it's easier to tap); everyone can switch with the button.
-	local want3D = not (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
-	-- Watch-only tables (card games, big boards, party screens) start in the 2D view,
-	-- where you play; "Table view" looks up at the table.
+	-- 3D view: the board on the real table, seen from your seat. Only games you play by
+	-- tapping the table (Chess, Checkers, Four in a Row, Tic-Tac-Toe) start in 3D, and
+	-- phones start those flat too (it's easier to tap). Watch-only tables (card games, big
+	-- boards, party screens) always start in the 2D view, where you play; "Table view"
+	-- looks up at the table with your hand and prompts docked along the edge.
+	-- Both choices reset with every new match, so one game's toggle doesn't carry over.
+	local function default3D(): boolean
+		return not (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
+	end
+	local want3D = default3D()
 	local wantScene = false
 	local snapshot: any = nil
 	local function wanted(): boolean
@@ -131,6 +162,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local viewButton: TextButton
 	local applyMode: () -> ()
 	local relayout: () -> ()
+	local dockSpec: () -> { side: string, size: number }
 	local table3D = Table3D.create(parent :: ScreenGui, function(move: any)
 		sendMatch({ action = "move", move = move })
 	end, function()
@@ -195,11 +227,35 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = root,
 	}, { Kit.corner(12), Kit.padding(6), Kit.list(6) })
 
+	do
+		local listLayout = seatsPanel:FindFirstChildOfClass("UIListLayout")
+		if listLayout then
+			listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+				if relayout and table3D.isActive() then
+					relayout()
+				end
+			end)
+		end
+	end
+
 	local board = Kit.new("Frame", {
 		Name = "Board",
 		BackgroundTransparency = 1,
 		Parent = root,
 	})
+
+	-- Table view of a watch-only scene: the 2D board stays live, but only the strip with
+	-- your hand, buttons and prompts shows, docked on the edge where that game keeps them.
+	local dock = Kit.new("Frame", {
+		Name = "Dock",
+		BackgroundColor3 = Theme.Background,
+		BackgroundTransparency = 0.12,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Visible = false,
+		ZIndex = 2,
+		Parent = root,
+	}, { Kit.corner(12) })
 
 	---------------------------------------------------------------- "Your turn!" banner
 	local banner = Kit.new("Frame", {
@@ -224,6 +280,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local bannerToken = 0
 	local bannerY = 0
 
+	local function hideBanner()
+		bannerToken += 1
+		banner.Visible = false
+	end
+
 	local function showBanner(text: string)
 		bannerToken += 1
 		local token = bannerToken
@@ -243,7 +304,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				pcall(HapticService.SetMotor, HapticService, Enum.UserInputType.Gamepad1, Enum.VibrationMotor.Small, 0)
 			end)
 		end)
-		task.delay(1.4, function()
+		task.delay(1.1, function()
 			if bannerToken ~= token then
 				return
 			end
@@ -386,6 +447,10 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	end
 
 	---------------------------------------------------------------- layout
+	function dockSpec(): { side: string, size: number }
+		return (snapshot and DOCK[snapshot.gameId]) or DOCK_DEFAULT
+	end
+
 	function relayout()
 		local info = Layout.get()
 		local compact = info.compact
@@ -418,17 +483,43 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		seatsPanel.Position = UDim2.fromOffset(left, top)
 		if in3D then
 			-- Watching the room: a short seat list, sized to its chips.
-			local chipH = if compact then 38 else 48
-			local count = if snapshot then #snapshot.seats else 2
-			local listH = count * (chipH + 6) + 12
+			-- Sized to the chips actually drawn (their height depends on what each shows),
+			-- so the last seat isn't cut off.
+			local listLayout = seatsPanel:FindFirstChildOfClass("UIListLayout")
+			local listH = if listLayout then listLayout.AbsoluteContentSize.Y + 14 else 0
+			if listH < 20 then
+				local count = if snapshot then #snapshot.seats else 2
+				listH = count * ((if compact then 38 else 52) + 6) + 14
+			end
 			seatsPanel.Size = UDim2.fromOffset(seatsW, math.min(listH, available))
 		else
 			seatsPanel.Size = UDim2.fromOffset(seatsW, available)
 		end
-		board.Position = UDim2.fromOffset(left + seatsW + 8, top)
-		board.Size = UDim2.fromOffset(math.max(100, info.width - (left + seatsW + 8) - right), math.max(100, available))
+		local boardX = left + seatsW + 8
+		local boardW, boardH = math.max(100, info.width - boardX - right), math.max(100, available)
+		board.Size = UDim2.fromOffset(boardW, boardH)
+		if board.Parent == dock then
+			local spec = dockSpec()
+			if spec.side == "right" then
+				local w = math.floor(boardW * spec.size)
+				dock.Position = UDim2.fromOffset(boardX + boardW - w, top)
+				dock.Size = UDim2.fromOffset(w, boardH)
+				board.Position = UDim2.fromOffset(w - boardW, 0)
+				table3D.setInsets((w + right) / info.width, 0)
+			else
+				local h = if spec.size > 1 then spec.size else math.floor(boardH * spec.size)
+				dock.Position = UDim2.fromOffset(boardX, top + boardH - h)
+				dock.Size = UDim2.fromOffset(boardW, h)
+				board.Position = UDim2.fromOffset(0, h - boardH)
+				table3D.setInsets(0, (h + bottom) / info.height)
+			end
+		else
+			board.Position = UDim2.fromOffset(boardX, top)
+			table3D.setInsets(0, 0)
+		end
 
-		bannerY = top + 10
+		-- Over the middle of the board, clear of the opponents' row along its top.
+		bannerY = top + math.floor(available * 0.4)
 		banner.Size = UDim2.fromOffset(if compact then 220 else 280, if compact then 48 else 60)
 		bannerText.TextSize = if compact then 24 else 30
 
@@ -451,7 +542,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		local in3D = table3D.isActive()
 		-- In 3D the screen stays see-through: header, seats and results float over the room.
 		root.BackgroundTransparency = if in3D then 1 else 0
-		board.Visible = not in3D
+		-- Scenes keep your hand docked on screen; games played on the table don't need it.
+		local docked = in3D and not table3D.playable()
+		board.Parent = if docked then dock else root
+		board.Visible = not in3D or docked
+		dock.Visible = docked
 		viewButton.Visible = table3D.available() and snapshot ~= nil and not isOver()
 		local compact = Layout.get().compact
 		if table3D.playable() then
@@ -731,6 +826,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			if newSnapshot.matchId ~= shownMatchId then
 				-- A new match (or a rematch): fresh end card and turn tracking.
 				shownMatchId = newSnapshot.matchId
+				want3D = default3D()
+				wantScene = false
 				rewardLabel.Text = ""
 				rematchAsked = false
 				wasMyTurn = false
@@ -775,6 +872,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			end
 			if mine ~= wasMyTurn then
 				lastTick = -1
+			end
+			if not mine and wasMyTurn then
+				hideBanner()
 			end
 			wasMyTurn = mine
 

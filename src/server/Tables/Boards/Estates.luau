@@ -62,9 +62,12 @@ function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout
 			-- Color strip on the inner edge, like a real board.
 			Models.block(model, "Strip", if math.abs(out.X) > 0 then Vector3.new(U * 0.28, 0.05, U * 0.96) else Vector3.new(U * 0.96, 0.05, U * 0.28), cf * CFrame.new(-out * U * 0.34), Rules.groups[space.group].color)
 		end
-		local label = if isCorner(pos) then space.name else (if space.kind == "street" then "" else space.name)
-		if label ~= "" then
-			Scene.flatText(model, cf * CFrame.new(0, 0.025, 0), U * 0.86, U * 0.6, label, { TextColor3 = Color3.fromRGB(60, 50, 40) })
+		if space.kind == "street" then
+			-- Name and price beside the color strip.
+			Scene.flatText(model, cf * CFrame.new(out * U * 0.13) * CFrame.new(0, 0.025, 0), U * 0.66, U * 0.62, `{space.name}\n${space.price}`, { TextColor3 = Color3.fromRGB(60, 50, 40) })
+		else
+			local label = if space.price then `{space.name}\n${space.price}` else space.name
+			Scene.flatText(model, cf * CFrame.new(0, 0.025, 0), U * 0.86, U * 0.7, label, { TextColor3 = Color3.fromRGB(60, 50, 40) })
 		end
 		tops[pos] = cf * CFrame.new(0, 0.02, 0)
 	end
