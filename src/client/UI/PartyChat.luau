@@ -5,10 +5,10 @@
 
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
 
 local Kit = require(script.Parent.Kit)
+local Frame = require(script.Parent.Parent.Frame)
 local Layout = require(script.Parent.Layout)
 local Theme = Kit.Theme
 
@@ -96,14 +96,8 @@ function PartyChat.create(screen: Instance, send: (any) -> ())
 		button.Position = UDim2.fromOffset(x, y)
 	end
 	-- The chat box only moves when the screen changes size, so a few times a second is plenty.
-	local sincePlaced = math.huge
-	RunService.Heartbeat:Connect(function(dt)
-		sincePlaced += dt
-		if sincePlaced >= 0.25 then
-			sincePlaced = 0
-			place()
-		end
-	end)
+	place()
+	Frame.every("PartyChatPlace", 0.25, place)
 
 	-- /party and /all. Commands made on the client only run for this player.
 	local function command(name: string, alias: string, alias2: string, target: string)

@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 
 local TicTacToeRules = require(ReplicatedStorage.Shared.Games.TicTacToe)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local TicTacToe = {}
@@ -24,6 +25,8 @@ function TicTacToe.create(container: Frame, sendMove: (any) -> ())
 		Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }),
 		Kit.corner(16),
 		Kit.padding(10),
+		Kit.shade(0.3),
+		Kit.stroke(),
 		Kit.new("UIGridLayout", {
 			CellSize = UDim2.new(1 / 3, -8, 1 / 3, -8),
 			CellPadding = UDim2.new(0, 8, 0, 8),

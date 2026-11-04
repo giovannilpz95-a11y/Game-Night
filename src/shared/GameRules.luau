@@ -188,6 +188,49 @@ rules.TriviaNight = {
 	},
 }
 
+rules.Werewolf = {
+	goal = "Villagers: vote out every werewolf. Werewolves: catch villagers until you're as many as them.",
+	card = {
+		"Your role is secret. Werewolves know each other; nobody else knows anyone.",
+		"Night: everyone taps a player. Wolves catch, the Seer checks, the Guardian shields.",
+		"Day: talk it over (voice or chat), make one statement, then vote someone out.",
+		"Anyone can claim to be the Seer, wolves too. Who do you believe?",
+	},
+	sections = {
+		{
+			title = "Roles",
+			lines = {
+				"🐺 Werewolf: each night the wolves pick a villager to catch. Win by matching the village's numbers.",
+				"🔮 Seer: each night, learn whether one player is a werewolf.",
+				"🛡️ Guardian: each night, shield one player (you can shield yourself, but not the same player two nights running).",
+				"🧑‍🌾 Villager: no power at night, just a hunch. Your vote is your power.",
+			},
+		},
+		{
+			title = "Night",
+			lines = {
+				"Everyone taps someone at night, so nobody can tell who has a power.",
+				"If the wolves pick the shielded player, nobody is caught.",
+			},
+		},
+		{
+			title = "Day",
+			lines = {
+				"See who was caught, then talk. Make one statement: suspect someone, claim the Seer saw something, or pass.",
+				"The day ends early once everyone has spoken.",
+			},
+		},
+		{
+			title = "Vote",
+			lines = {
+				"Vote a player out or skip. Votes are public.",
+				"The player with the most votes is out, unless there's a tie or more skips than votes for them.",
+			},
+		},
+		{ title = "Winning", lines = { "Village: every werewolf is out.", "Werewolves: as many wolves as everyone else, or still hiding after day 8." } },
+	},
+}
+
 rules.SketchGuess = {
 	goal = "Score the most by guessing drawings fast and drawing well.",
 	card = {

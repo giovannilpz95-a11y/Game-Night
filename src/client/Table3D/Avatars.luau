@@ -20,12 +20,16 @@ local TweenService = game:GetService("TweenService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
 local TableActions = require(ReplicatedStorage.Shared.TableActions)
+local Perf = require(script.Parent.Parent.Perf)
 
 local Avatars = {}
 
 local actionListeners: { (any, Vector3, string) -> () } = {}
 
 local MAX_DISTANCE = 140 -- studs from the camera; further tables don't animate
+-- In low-detail mode (client/Perf) only nearby tables keep their idle breathing; gestures
+-- still play out to MAX_DISTANCE.
+local LOW_IDLE_DISTANCE = 60
 local DOWN = Vector3.new(0, -1, 0)
 local UP = Vector3.new(0, 1, 0)
 
@@ -1053,7 +1057,7 @@ local function scanIdles(now: number)
 	for _, inst in CollectionService:GetTagged(Config.TableTag) do
 		if inst:IsA("Model") and inst:GetAttribute("State") ~= "Free" then
 			local anchor = anchorPosition(inst)
-			if (camera.CFrame.Position - anchor).Magnitude <= MAX_DISTANCE then
+			if (camera.CFrame.Position - anchor).Magnitude <= (if Perf.isLow() then LOW_IDLE_DISTANCE else MAX_DISTANCE) then
 				turnSeats[inst] = findTurnSeats(inst)
 				for _, body in bodiesAt(inst) do
 					seen[body] = true

@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local Frame = require(script.Parent.Parent.Frame)
 local Config = require(ReplicatedStorage.Shared.Config)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 
@@ -53,7 +54,7 @@ local KEEP_VISIBLE = {
 	["Left Arm"] = true, ["Right Arm"] = true,
 }
 
-local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true }
+local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true, Werewolf = true }
 local BIG_BOARD = { Estates = true }
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
 
@@ -503,7 +504,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	end)
 
 	-- Keep looking while the board streams in, then give up and stay in 2D.
-	RunService.Heartbeat:Connect(function()
+	Frame.every("TableWatch", 0.1, function()
 		if wanted and snapshot and not active and os.clock() - waitingSince < FIND_TIMEOUT then
 			refresh()
 		end

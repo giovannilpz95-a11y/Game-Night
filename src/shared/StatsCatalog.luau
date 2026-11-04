@@ -48,6 +48,14 @@ StatsCatalog.games = {
 		},
 		score = { label = "Best score" },
 	},
+	Werewolf = {
+		extra = {
+			{ key = "wolfWins", label = "Wins as a werewolf", kind = "sum" },
+			{ key = "found", label = "Wolves found as the Seer", kind = "sum" },
+			{ key = "saves", label = "Players saved as the Guardian", kind = "sum" },
+			{ key = "survived", label = "Games survived to the end", kind = "sum" },
+		},
+	},
 	Whodunit = {
 		extra = {
 			{ key = "solved", label = "Cases solved", kind = "sum" },

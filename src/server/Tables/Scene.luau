@@ -8,6 +8,7 @@
 --             that seat's cards and pieces can go and still be on the table.
 -- Everything here works in board space: pass `boardCF * CFrame.new(...)`.
 
+local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
 
 local Models = require(script.Parent.Models)
@@ -174,9 +175,12 @@ end
 -- One card lying flat at `cf` (its long side along the seat's view). `front` is
 -- { text, color, background, corner } for a face-up card; nil draws the back. `text` fills
 -- the middle of the card, `corner` goes in two opposite corners. `scale` makes it bigger.
-function Scene.card(parent: Instance, cf: CFrame, front: { text: string, color: Color3?, background: Color3?, corner: string? }?, scale: number?): Part
+function Scene.card(parent: Instance, cf: CFrame, front: { text: string, color: Color3?, background: Color3?, corner: string? }?, scale: number?): BasePart
 	local k = scale or 1
-	local part = Models.block(parent, "Card", Vector3.new(Scene.CARD_W * k, Scene.CARD_T, Scene.CARD_H * k), cf * CFrame.new(0, Scene.CARD_T / 2, 0), CARD_EDGE)
+	local cardSize = Vector3.new(Scene.CARD_W * k, Scene.CARD_T, Scene.CARD_H * k)
+	local cardAt = cf * CFrame.new(0, Scene.CARD_T / 2, 0)
+	-- The rounded-corner card mesh when it's imported (docs/Meshes.md), else a block.
+	local part: BasePart = Models.mesh(parent, "Card", cardSize, cardAt, CARD_EDGE) or Models.block(parent, "Card", cardSize, cardAt, CARD_EDGE)
 	local top = cf * CFrame.new(0, Scene.CARD_T, 0)
 	if not front then
 		cardBack(parent, top, k)
@@ -269,12 +273,143 @@ function Scene.sign(parent: Instance, cf: CFrame, width: number, height: number,
 	return { Scene.text(board, Enum.NormalId.Front, text, props), Scene.text(board, Enum.NormalId.Back, text, props) }
 end
 
--- A folder that's emptied and refilled on every update (cheap for a few dozen parts).
+-- A folder of pieces that change with the game; redraw it with Scene.redraw.
 function Scene.dynamic(parent: Instance): Folder
 	local folder = Instance.new("Folder")
 	folder.Name = "Dynamic"
 	folder.Parent = parent
 	return folder
+end
+
+-- What each kind of instance looks like, for Scene.redraw: the properties scenes set.
+-- An instance of any other class never matches, so it's always redrawn (never stale).
+local SIGNATURE_PROPS: { { string | { string } } } = {
+	{ "BasePart", { "Size", "CFrame", "Color", "Material", "MaterialVariant", "Transparency", "Reflectance", "CastShadow", "CanCollide", "CanQuery", "CanTouch", "Anchored" } },
+	{ "Part", { "Shape" } },
+	{ "MeshPart", { "MeshId", "TextureID" } },
+	{ "SpecialMesh", { "MeshType", "Scale", "Offset", "MeshId", "TextureId", "VertexColor" } },
+	{ "SurfaceGui", { "Face", "SizingMode", "PixelsPerStud", "CanvasSize", "LightInfluence", "Brightness", "MaxDistance", "ZOffset", "AlwaysOnTop", "Enabled", "ClipsDescendants" } },
+	{ "BillboardGui", { "Size", "SizeOffset", "StudsOffset", "StudsOffsetWorldSpace", "ExtentsOffset", "ExtentsOffsetWorldSpace", "LightInfluence", "Brightness", "MaxDistance", "AlwaysOnTop", "Enabled", "ClipsDescendants" } },
+	{ "GuiObject", { "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "Visible", "ZIndex", "LayoutOrder", "ClipsDescendants" } },
+	{ "TextLabel", { "Text", "TextColor3", "TextTransparency", "TextStrokeColor3", "TextStrokeTransparency", "TextScaled", "TextSize", "TextWrapped", "FontFace", "RichText", "TextXAlignment", "TextYAlignment", "LineHeight" } },
+	{ "ImageLabel", { "Image", "ImageColor3", "ImageTransparency", "ScaleType", "ImageRectOffset", "ImageRectSize" } },
+	{ "UICorner", { "CornerRadius" } },
+	{ "UIStroke", { "Color", "Thickness", "Transparency", "ApplyStrokeMode", "LineJoinMode", "Enabled" } },
+	{ "UIGradient", { "Color", "Transparency", "Rotation", "Offset", "Enabled" } },
+	{ "UIPadding", { "PaddingLeft", "PaddingRight", "PaddingTop", "PaddingBottom" } },
+	{ "UIAspectRatioConstraint", { "AspectRatio", "AspectType", "DominantAxis" } },
+	{ "UIScale", { "Scale" } },
+	{ "UIListLayout", { "FillDirection", "Padding", "SortOrder", "HorizontalAlignment", "VerticalAlignment" } },
+	{ "Light", { "Color", "Brightness", "Shadows", "Enabled" } },
+	{ "PointLight", { "Range" } },
+	{ "Attachment", { "CFrame" } },
+	{ "Model", {} },
+	{ "Folder", {} },
+}
+
+local function signature(inst: Instance): string?
+	local known = false
+	local parts = { inst.ClassName, inst.Name }
+	for _, entry in SIGNATURE_PROPS do
+		if inst:IsA(entry[1] :: string) then
+			known = true
+			for _, prop in entry[2] :: { string } do
+				local ok, value = pcall(function()
+					return (inst :: any)[prop]
+				end)
+				table.insert(parts, if ok then tostring(value) else "?")
+			end
+		end
+	end
+	if not known then
+		return nil
+	end
+	local tags = CollectionService:GetTags(inst)
+	table.sort(tags)
+	table.insert(parts, table.concat(tags, ","))
+	local attributes = inst:GetAttributes()
+	local keys = {}
+	for key in attributes do
+		table.insert(keys, key)
+	end
+	table.sort(keys)
+	for _, key in keys do
+		table.insert(parts, `{key}={tostring(attributes[key])}`)
+	end
+	local children = {}
+	for _, child in inst:GetChildren() do
+		local sig = signature(child)
+		if not sig then
+			return nil
+		end
+		table.insert(children, sig)
+	end
+	table.sort(children)
+	return table.concat(parts, "|") .. "{" .. table.concat(children, ";") .. "}"
+end
+Scene.signature = signature
+
+-- Live folder -> { [child] = signature } for what Scene.redraw put there.
+local drawn: { [Instance]: { [Instance]: string } } = {}
+
+-- Redraws `live` with `draw(folder)`, but only changes what changed. The draw runs into a
+-- folder outside the world (free: nothing replicates), then each new piece is matched
+-- against the pieces already on the table. Identical ones stay put; only new or changed
+-- pieces are sent to players, and pieces that are gone are removed. A card game move
+-- that changes one hand resends that hand, not the whole table.
+function Scene.redraw(live: Instance, draw: (folder: Folder) -> ())
+	local stage = Instance.new("Folder")
+	stage.Name = "Stage"
+	local ok, err = pcall(draw, stage)
+	if not ok then
+		stage:Destroy()
+		error(err, 0)
+	end
+	local known = drawn[live]
+	if not known then
+		known = {}
+		drawn[live] = known
+		live.Destroying:Once(function()
+			drawn[live] = nil
+		end)
+	end
+	-- Pieces on the table now, by look.
+	local pool: { [string]: { Instance } } = {}
+	for child, sig in known do
+		if child.Parent == live then
+			local list = pool[sig]
+			if not list then
+				list = {}
+				pool[sig] = list
+			end
+			table.insert(list, child)
+		end
+	end
+	local nextKnown: { [Instance]: string } = {}
+	local keep: { [Instance]: boolean } = {}
+	for _, piece in stage:GetChildren() do
+		local sig = signature(piece)
+		local list = sig and pool[sig]
+		local same = list and table.remove(list)
+		if same then
+			keep[same] = true
+			nextKnown[same] = sig :: string
+			piece:Destroy()
+		else
+			piece.Parent = live
+			keep[piece] = true
+			if sig then
+				nextKnown[piece] = sig
+			end
+		end
+	end
+	for _, child in live:GetChildren() do
+		if not keep[child] then
+			child:Destroy()
+		end
+	end
+	drawn[live] = nextKnown
+	stage:Destroy()
 end
 
 -- True when `view` differs from the last one seen by `memo`. Scenes redraw a lot of parts,

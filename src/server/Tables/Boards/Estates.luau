@@ -82,44 +82,45 @@ function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout
 			if not Scene.changed(memo, view) then
 				return
 			end
-			dynamic:ClearAllChildren()
-			for pos = 1, #Rules.spaces do
-				local top = tops[pos]
-				local _, _, out = spot(pos)
-				local owner = (view.owner or {})[pos] or 0
-				if owner > 0 then
-					local mortgaged = (view.mortgaged or {})[pos]
-					local dot = Models.cyl(dynamic, "Owner", U * 0.3, 0.03, top * CFrame.new(out * U * 0.3), Scene.SEAT_COLORS[owner] or Color3.new(1, 1, 1), if mortgaged then Enum.Material.Slate else Enum.Material.Neon)
-					dot.Transparency = if mortgaged then 0.5 else 0
-				end
-				local houses = (view.houses or {})[pos] or 0
-				local strip = top * CFrame.new(-out * U * 0.34)
-				-- Face the buildings outward so their doors look at the players.
-				local facing = CFrame.lookAt(strip.Position, strip.Position - (top:VectorToWorldSpace(out)), top.UpVector)
-				if houses >= 5 then
-					Models.hotel(dynamic, facing, HOTEL, U * 0.34)
-				else
-					for h = 1, houses do
-						Models.house(dynamic, facing * CFrame.new((h - (houses + 1) / 2) * U * 0.23, 0, 0), HOUSE, U * 0.2)
+			Scene.redraw(dynamic, function(dynamic)
+				for pos = 1, #Rules.spaces do
+					local top = tops[pos]
+					local _, _, out = spot(pos)
+					local owner = (view.owner or {})[pos] or 0
+					if owner > 0 then
+						local mortgaged = (view.mortgaged or {})[pos]
+						local dot = Models.cyl(dynamic, "Owner", U * 0.3, 0.03, top * CFrame.new(out * U * 0.3), Scene.SEAT_COLORS[owner] or Color3.new(1, 1, 1), if mortgaged then Enum.Material.Slate else Enum.Material.Neon)
+						dot.Transparency = if mortgaged then 0.5 else 0
+					end
+					local houses = (view.houses or {})[pos] or 0
+					local strip = top * CFrame.new(-out * U * 0.34)
+					-- Face the buildings outward so their doors look at the players.
+					local facing = CFrame.lookAt(strip.Position, strip.Position - (top:VectorToWorldSpace(out)), top.UpVector)
+					if houses >= 5 then
+						Models.hotel(dynamic, facing, HOTEL, U * 0.34)
+					else
+						for h = 1, houses do
+							Models.house(dynamic, facing * CFrame.new((h - (houses + 1) / 2) * U * 0.23, 0, 0), HOUSE, U * 0.2)
+						end
 					end
 				end
-			end
-			-- Tokens: a small ring of offsets so several players on one space all show.
-			for seat, p in view.players or {} do
-				if not p.bankrupt and p.pos and tops[p.pos] then
-					local angle = (seat - 1) / 8 * math.pi * 2
-					local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * U * 0.22
-					local cf = tops[p.pos] * CFrame.new(offset)
-					if p.inJail then
-						cf *= CFrame.new(U * 0.15, 0, -U * 0.15)
+				-- Tokens: a small ring of offsets so several players on one space all show.
+				for seat, p in view.players or {} do
+					if not p.bankrupt and p.pos and tops[p.pos] then
+						local angle = (seat - 1) / 8 * math.pi * 2
+						local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * U * 0.22
+						local cf = tops[p.pos] * CFrame.new(offset)
+						if p.inJail then
+							cf *= CFrame.new(U * 0.15, 0, -U * 0.15)
+						end
+						Models.token(dynamic, cf, seat, Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1), U * 0.72)
 					end
-					Models.token(dynamic, cf, seat, Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1), U * 0.72)
 				end
-			end
-			-- Dice in the middle.
-			for i, value in view.dice or {} do
-				Models.die(dynamic, boardCF * CFrame.new((i - 1.5) * 0.75, 0.25, U * 1.5) * CFrame.Angles(0, math.rad(i * 17), 0), value, 0.5)
-			end
+				-- Dice in the middle.
+				for i, value in view.dice or {} do
+					Models.die(dynamic, boardCF * CFrame.new((i - 1.5) * 0.75, 0.25, U * 1.5) * CFrame.Angles(0, math.rad(i * 17), 0), value, 0.5)
+				end
+			end)
 		end,
 		destroy = function()
 			model:Destroy()

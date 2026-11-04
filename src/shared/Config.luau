@@ -40,6 +40,10 @@ local Config = {
 	-- Workspace.Lobby.Room already exists (placed by hand). `lighting` sets the warm night
 	-- look in Lighting either way.
 	Lobby = { buildRoom = true, lighting = true },
+	-- Which tables go on the LobbyLayout spots when none are tagged in Workspace:
+	-- "Detailed" = the code-built tables and stools in server/Tables/Furniture (default),
+	-- "Template" = Assets' Table_Square / Table_Round models (then plain parts).
+	TableFurniture = "Detailed",
 	TableColumns = 5, -- code-built tables are laid out in rows of this many
 	BoardSize = 6, -- studs across a square 3D board
 	TableHoldSeconds = 4, -- after a match: the final board and bots stay this long
@@ -72,6 +76,7 @@ local Config = {
 		WordTiles = true,
 		TriviaNight = true,
 		SketchGuess = true,
+		Werewolf = true,
 	},
 
 	-- Saved progress (DataService). Changing the store name starts everyone from zero.

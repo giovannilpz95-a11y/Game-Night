@@ -119,6 +119,10 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 	local function hex(h: number, color: Color3)
 		local center = Rules.hexes[h]
 		local cf = at(boardCF, center.x, center.y, TILE_Y)
+		-- One beveled hex mesh when it's imported (docs/Meshes.md), else three bars.
+		if Models.mesh(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2, 2 * S * 0.96), cf, color, Enum.Material.Grass) then
+			return
+		end
 		for i = 0, 2 do
 			Models.block(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2, S * 0.96), cf * CFrame.Angles(0, math.rad(60 * i), 0), color, Enum.Material.Grass)
 		end
@@ -155,41 +159,42 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 			if not Scene.changed(memo, view) then
 				return
 			end
-			dynamic:ClearAllChildren()
-			-- Roads
-			for e, seat in view.road or {} do
-				if seat ~= 0 then
-					local edge = Rules.edges[e]
-					local a, b = Rules.vertices[edge.a], Rules.vertices[edge.b]
-					local pa = at(boardCF, a.x, a.y, TOP_Y + 0.06).Position
-					local pb = at(boardCF, b.x, b.y, TOP_Y + 0.06).Position
-					local color = Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1)
-					local cf = CFrame.lookAt((pa + pb) / 2, pb, boardCF.UpVector)
-					local length = (pb - pa).Magnitude * 0.7
-					Models.block(dynamic, "Road", Vector3.new(0.14, 0.1, length), cf, color)
-					Models.block(dynamic, "RoadTop", Vector3.new(0.07, 0.02, length * 0.8), cf * CFrame.new(0, 0.055, 0), color:Lerp(Color3.new(1, 1, 1), 0.4))
-				end
-			end
-			-- Camps and towns
-			for v, seat in view.owner or {} do
-				if seat ~= 0 then
-					local vertex = Rules.vertices[v]
-					local cf = at(boardCF, vertex.x, vertex.y, TOP_Y)
-					local color = Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1)
-					if (view.town or {})[v] == true then
-						town(dynamic, cf, color)
-					else
-						camp(dynamic, cf, color)
+			Scene.redraw(dynamic, function(dynamic)
+				-- Roads
+				for e, seat in view.road or {} do
+					if seat ~= 0 then
+						local edge = Rules.edges[e]
+						local a, b = Rules.vertices[edge.a], Rules.vertices[edge.b]
+						local pa = at(boardCF, a.x, a.y, TOP_Y + 0.06).Position
+						local pb = at(boardCF, b.x, b.y, TOP_Y + 0.06).Position
+						local color = Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1)
+						local cf = CFrame.lookAt((pa + pb) / 2, pb, boardCF.UpVector)
+						local length = (pb - pa).Magnitude * 0.7
+						Models.block(dynamic, "Road", Vector3.new(0.14, 0.1, length), cf, color)
+						Models.block(dynamic, "RoadTop", Vector3.new(0.07, 0.02, length * 0.8), cf * CFrame.new(0, 0.055, 0), color:Lerp(Color3.new(1, 1, 1), 0.4))
 					end
 				end
-			end
-			if view.bandit and Rules.hexes[view.bandit] then
-				local center = Rules.hexes[view.bandit]
-				bandit(dynamic, at(boardCF, center.x + 0.38, center.y, TOP_Y))
-			end
-			for i, value in view.dice or {} do
-				Models.die(dynamic, boardCF * CFrame.new(4.4 + (i - 1.5) * 0.6, 0, 3.4) * CFrame.Angles(0, math.rad(i * 23), 0), value, 0.45)
-			end
+				-- Camps and towns
+				for v, seat in view.owner or {} do
+					if seat ~= 0 then
+						local vertex = Rules.vertices[v]
+						local cf = at(boardCF, vertex.x, vertex.y, TOP_Y)
+						local color = Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1)
+						if (view.town or {})[v] == true then
+							town(dynamic, cf, color)
+						else
+							camp(dynamic, cf, color)
+						end
+					end
+				end
+				if view.bandit and Rules.hexes[view.bandit] then
+					local center = Rules.hexes[view.bandit]
+					bandit(dynamic, at(boardCF, center.x + 0.38, center.y, TOP_Y))
+				end
+				for i, value in view.dice or {} do
+					Models.die(dynamic, boardCF * CFrame.new(4.4 + (i - 1.5) * 0.6, 0, 3.4) * CFrame.Angles(0, math.rad(i * 23), 0), value, 0.45)
+				end
+			end)
 		end,
 		destroy = function()
 			model:Destroy()

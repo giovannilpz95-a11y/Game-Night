@@ -6,6 +6,8 @@
 -- Every model stands on `cf` (a CFrame on the surface, Y up, -Z is "forward"), takes one
 -- size number, and is returned parented to `parent`.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local Pieces = require(script.Parent.Pieces)
 
 local Models = {}
@@ -46,6 +48,37 @@ function Models.egg(parent: Instance, name: string, size: Vector3, cf: CFrame, c
 	return part
 end
 
+-- A smooth mesh from ReplicatedStorage.Assets.Meshes (see docs/Meshes.md), sized to
+-- `size` and centered on `cf`, or nil when that mesh hasn't been imported. Callers build
+-- the same shape from parts when this returns nil.
+function Models.mesh(parent: Instance, name: string, size: Vector3, cf: CFrame, color: Color3?, material: Enum.Material?): MeshPart?
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local folder = assets and assets:FindFirstChild("Meshes")
+	local found = folder and folder:FindFirstChild(name)
+	if found and found:IsA("Model") then
+		found = found:FindFirstChildWhichIsA("MeshPart", true)
+	end
+	if not (found and found:IsA("MeshPart")) then
+		return nil
+	end
+	local part = found:Clone()
+	part.Name = name
+	part.Size = size
+	part.CFrame = cf
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	if color and part.TextureID == "" then
+		part.Color = color
+	end
+	if material then
+		part.Material = material
+	end
+	part.Parent = parent
+	return part
+end
+
 local function newModel(name: string, parent: Instance): Model
 	local model = Instance.new("Model")
 	model.Name = name
@@ -61,11 +94,17 @@ end
 function Models.pawn(parent: Instance, cf: CFrame, color: Color3, height: number): Model
 	local m = newModel("Pawn", parent)
 	local h = height
+	if Models.mesh(m, "Pawn", Vector3.new(h * 0.62, h, h * 0.62), cf * CFrame.new(0, h / 2, 0), color, Enum.Material.SmoothPlastic) then
+		return m
+	end
 	Models.cyl(m, "Base", h * 0.62, h * 0.1, cf, darker(color, 0.25))
+	Models.cyl(m, "BaseBead", h * 0.56, h * 0.03, cf * CFrame.new(0, h * 0.1, 0), Models.GOLD)
 	Models.cyl(m, "Step", h * 0.5, h * 0.08, cf * CFrame.new(0, h * 0.1, 0), color)
 	Models.egg(m, "Body", Vector3.new(h * 0.42, h * 0.6, h * 0.42), cf * CFrame.new(0, h * 0.42, 0), color)
 	Models.cyl(m, "Collar", h * 0.36, h * 0.05, cf * CFrame.new(0, h * 0.64, 0), darker(color, 0.25))
 	Models.ball(m, "Head", h * 0.36, cf * CFrame.new(0, h * 0.82, 0), color)
+	-- A small highlight dot so the head reads as glossy from a seat.
+	Models.ball(m, "Shine", h * 0.08, cf * CFrame.new(-h * 0.08, h * 0.92, -h * 0.1), color:Lerp(Color3.new(1, 1, 1), 0.55))
 	return m
 end
 
@@ -165,18 +204,48 @@ local PIPS = {
 	{ { -1, -1 }, { 1, -1 }, { -1, 0 }, { 1, 0 }, { -1, 1 }, { 1, 1 } },
 }
 
--- A rounded die showing `value` on top.
+-- Which values face front and right for each top value (opposite faces add up to 7).
+local SIDES = { { 2, 3 }, { 1, 3 }, { 1, 2 }, { 1, 5 }, { 1, 4 }, { 2, 4 } }
+
+-- The pips of `value` on one face of a die. `face` is a CFrame at the face center whose
+-- Y axis points out of the die.
+local function pips(m: Model, face: CFrame, value: number, size: number, color: Color3)
+	for _, pip in PIPS[value] or {} do
+		-- Sunk a little into the face so they read as drilled dots.
+		Models.cyl(m, "Pip", size * 0.19, size * 0.03, face * CFrame.new(pip[1] * size * 0.25, -size * 0.015, pip[2] * size * 0.25), color)
+	end
+end
+
+-- A die with rounded edges and corners showing `value` on top, with the right pips on the
+-- four sides too (anyone at the table sees a real die, not a stamped cube).
 function Models.die(parent: Instance, cf: CFrame, value: number, size: number, color: Color3?, pipColor: Color3?): Model
 	local m = newModel("Die", parent)
 	local c = color or Models.IVORY
+	local ink = pipColor or Models.INK
 	local mid = cf * CFrame.new(0, size / 2, 0)
-	local inset = size * 0.82
-	Models.block(m, "Body", Vector3.new(size, inset, inset), mid, c)
-	Models.block(m, "BodyY", Vector3.new(inset, size, inset), mid, c)
-	Models.block(m, "BodyZ", Vector3.new(inset, inset, size), mid, c)
-	for _, pip in PIPS[value] or {} do
-		Models.cyl(m, "Pip", size * 0.2, size * 0.02, cf * CFrame.new(pip[1] * size * 0.25, size, pip[2] * size * 0.25), pipColor or Models.INK)
+	local mesh = Models.mesh(m, "Die", Vector3.one * size, mid, c, Enum.Material.SmoothPlastic)
+	if not mesh then
+		local r = size * 0.12
+		local inner = size - 2 * r
+		Models.block(m, "Body", Vector3.new(size, inner, inner), mid, c)
+		Models.block(m, "BodyY", Vector3.new(inner, size, inner), mid, c)
+		Models.block(m, "BodyZ", Vector3.new(inner, inner, size), mid, c)
+		for _, sx in { -1, 1 } do
+			for _, sy in { -1, 1 } do
+				for _, sz in { -1, 1 } do
+					Models.ball(m, "Corner", r * 2, mid * CFrame.new(sx * inner / 2, sy * inner / 2, sz * inner / 2), c)
+				end
+			end
+		end
 	end
+	local v = math.clamp(math.floor(value), 1, 6)
+	local front, right = SIDES[v][1], SIDES[v][2]
+	local half = size / 2
+	pips(m, mid * CFrame.new(0, half, 0), v, size, ink)
+	pips(m, mid * CFrame.new(0, 0, -half) * CFrame.Angles(math.rad(-90), 0, 0), front, size, ink)
+	pips(m, mid * CFrame.new(0, 0, half) * CFrame.Angles(math.rad(90), 0, 0), 7 - front, size, ink)
+	pips(m, mid * CFrame.new(half, 0, 0) * CFrame.Angles(0, 0, math.rad(-90)), right, size, ink)
+	pips(m, mid * CFrame.new(-half, 0, 0) * CFrame.Angles(0, 0, math.rad(90)), 7 - right, size, ink)
 	return m
 end
 

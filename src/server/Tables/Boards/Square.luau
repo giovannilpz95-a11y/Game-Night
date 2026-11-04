@@ -32,6 +32,9 @@ function Square.create(boardCF: CFrame, parent: Instance, size: number, boardSiz
 		CanQuery = false,
 		Parent = model,
 	})
+	-- A darker plinth under the frame and a lip on top read as a beveled edge.
+	Models.block(model, "Plinth", Vector3.new(boardSize + 0.78, 0.08, boardSize + 0.78), boardCF * CFrame.new(0, 0.04, 0), frameColor:Lerp(Color3.new(0, 0, 0), 0.35), Enum.Material.Wood)
+	Models.block(model, "Lip", Vector3.new(boardSize + 0.46, 0.02, boardSize + 0.46), boardCF * CFrame.new(0, 0.3, 0), frameColor:Lerp(Color3.new(1, 1, 1), 0.08), Enum.Material.Wood)
 	-- A gold inlay around the squares and brass studs on the corners.
 	local inlay = boardSize + 0.14
 	for _, s in { -1, 1 } do
@@ -60,6 +63,7 @@ function Square.create(boardCF: CFrame, parent: Instance, size: number, boardSiz
 				Size = Vector3.new(cellSize, 0.1, cellSize),
 				CFrame = cf,
 				Color = color(r, c),
+				Material = Enum.Material.Wood,
 				CanQuery = true,
 				Parent = cellsFolder,
 			})
