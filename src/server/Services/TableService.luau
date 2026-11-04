@@ -226,6 +226,25 @@ local function boardCFrame(t: TableEntry): CFrame
 	return CFrame.lookAt(anchor, anchor - toSeat.Unit)
 end
 
+-- Where each match seat is, in board space, for scenes that put cards or racks in front
+-- of the players (see Tables/Scene).
+local function sceneLayout(t: TableEntry, boardCF: CFrame): any
+	local anchor = Builder.anchorPosition(t.model)
+	local seats = {}
+	for matchSeat, tableSeat in t.seatMap do
+		local seat = Builder.seat(t.model, tableSeat)
+		if seat then
+			local offset = boardCF:VectorToObjectSpace((seat.Position - anchor) * Vector3.new(1, 0, 1))
+			local distance = offset.Magnitude
+			if distance > 0.01 then
+				-- Seats sit about 2 studs past the table edge.
+				seats[matchSeat] = { dir = offset.Unit, reach = math.max(1.5, math.min(distance - 2.4, distance * 0.62)) }
+			end
+		end
+	end
+	return { size = Config.BoardSize, seats = seats }
+end
+
 local function signText(gameName: string, seats: { any }): string
 	if #seats == 2 then
 		return `{gameName} · {seats[1].name} vs {seats[2].name}`
@@ -264,22 +283,25 @@ function TableService.claim(matchId: string, partyId: string, catalogEntry: any,
 		end
 	end
 
-	local board3D = false
-	local boardModule = Config.Boards3D[catalogEntry.id] and catalogEntry.module and Tables.Boards:FindFirstChild(catalogEntry.module)
+	local board3D, scene = false, false
+	local wanted = Config.Boards3D[catalogEntry.id] or Config.TableScenes[catalogEntry.id]
+	local boardModule = wanted and catalogEntry.module and Tables.Boards:FindFirstChild(catalogEntry.module)
 	if boardModule then
+		local boardCF = boardCFrame(t)
 		local ok, board = pcall(function()
-			return (require(boardModule) :: any).create(boardCFrame(t), t.model)
+			return (require(boardModule) :: any).create(boardCF, t.model, sceneLayout(t, boardCF))
 		end)
 		if ok then
 			t.board = board
-			board3D = true
+			board3D = Config.Boards3D[catalogEntry.id] == true
+			scene = true
 		else
 			warn(`[GameNight] couldn't build the {catalogEntry.id} board: {board}`)
 		end
 	end
 
 	reconcile(t, seats)
-	return { id = t.id, seats = table.clone(t.seatMap), board3D = board3D }
+	return { id = t.id, seats = table.clone(t.seatMap), board3D = board3D, scene = scene }
 end
 
 -- Called with the spectator snapshot after every move: redraws the board, turn tags
@@ -290,7 +312,7 @@ function TableService.update(matchId: string, snapshot: any)
 		return
 	end
 	if t.board then
-		local ok, err = pcall(t.board.update, snapshot.view)
+		local ok, err = pcall(t.board.update, snapshot.view, snapshot)
 		if not ok then
 			warn(`[GameNight] board update failed: {err}`)
 		end

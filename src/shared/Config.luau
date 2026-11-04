@@ -23,14 +23,38 @@ local Config = {
 		{ zone = "Quick", shape = "Square4" },
 		{ zone = "Strategy", shape = "Square4" },
 		{ zone = "Strategy", shape = "Square4" },
+		{ zone = "Strategy", shape = "Round8" },
+		{ zone = "Board", shape = "Round8" },
+		{ zone = "Board", shape = "Round8" },
+		{ zone = "Word", shape = "Square4" },
+		{ zone = "Cards", shape = "Square4" },
+		{ zone = "Cards", shape = "Round8" },
 		{ zone = "Cards", shape = "Round8" },
 		{ zone = "Party", shape = "Round8" },
+		{ zone = "Party", shape = "Round8" },
 	},
+	TableColumns = 5, -- code-built tables are laid out in rows of this many
 	BoardSize = 6, -- studs across a square 3D board
 	TableHoldSeconds = 10, -- after a match: board and seated avatars stay this long
 	-- Games with a 3D board on the table (client/Table3D and server/Tables/Boards).
 	-- Other games still seat everyone at the table, but play in the 2D view.
 	Boards3D = { Chess = true, Checkers = true, FourInARow = true, TicTacToe = true },
+	-- Games whose table shows the game in the world (board, cards, a screen) for everyone
+	-- to watch, while seated players play in the 2D view ("Table view" to look up).
+	TableScenes = {
+		ColorClash = true,
+		Speed = true,
+		Spoons = true,
+		War = true,
+		GoFish = true,
+		Estates = true,
+		Hexlands = true,
+		Conquest = true,
+		Whodunit = true,
+		WordTiles = true,
+		TriviaNight = true,
+		SketchGuess = true,
+	},
 
 	-- Saved progress (DataService). Changing the store name starts everyone from zero.
 	ProfileStoreName = "Profiles_v1",

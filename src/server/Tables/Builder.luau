@@ -197,7 +197,9 @@ function Builder.getTables(): { Model }
 	local built = {}
 	local counts: { [string]: number } = {}
 	for i, spec in Config.DefaultTables do
-		local at = Config.TableOrigin + Vector3.new((i - (#Config.DefaultTables + 1) / 2) * Config.TableSpacing, 0, 0)
+		local columns = Config.TableColumns or #Config.DefaultTables
+		local col, row = (i - 1) % columns, (i - 1) // columns
+		local at = Config.TableOrigin + Vector3.new((col - (columns - 1) / 2) * Config.TableSpacing, 0, -row * Config.TableSpacing)
 		local template = findTemplate(spec.shape)
 		local model = if template then fromTemplate(template, spec.shape, at) else buildPlain(spec.shape, at)
 		counts[spec.zone] = (counts[spec.zone] or 0) + 1
