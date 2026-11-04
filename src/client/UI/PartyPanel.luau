@@ -1,4 +1,5 @@
--- Left-side panel: who's in your party, invite people in this server, invite Roblox friends.
+-- Party window (opened from the side rail): who's in your party, invite people in this
+-- server, invite Roblox friends. Everything scrolls, so it fits on a phone.
 -- Also the table setting (invite only / private for friends / password, Party Host only),
 -- "Find a table" and "Host tools".
 
@@ -15,17 +16,21 @@ local localPlayer = Players.LocalPlayer
 local PRIVACY_ORDER = { "invite", "friends", "password" }
 local PRIVACY_NAMES = { invite = "Invite only", friends = "Private (friends)", password = "Password" }
 
--- hooks: openTables(), openHostTools(), needHost(reason)
+-- hooks: needHost(reason)
 function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
-	local root = Kit.panel({
+	local root = Kit.new("ScrollingFrame", {
 		Name = "PartyPanel",
-		Size = UDim2.new(0, 260, 1, -40),
-		Position = UDim2.new(0, 20, 0, 20),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(),
+		ScrollBarThickness = 4,
 		Parent = parent,
-	})
+	}, { Kit.new("UIPadding", { PaddingRight = UDim.new(0, 8) }) })
 	Kit.list(8).Parent = root
 
-	local title = Kit.label("Your party", { TextSize = 22, Font = Theme.FontBold, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1, Parent = root })
+	local title = Kit.label("Your party", { TextSize = 22, Font = Theme.FontBold, Size = UDim2.new(1, -44, 0, 28), LayoutOrder = 1, Parent = root })
 	local members = Kit.new("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = 2, Parent = root }, { Kit.list(4) })
 	local leaveButton = Kit.button("Leave party", function()
 		send({ action = "leave" })
@@ -54,21 +59,12 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 		send({ action = "setPrivacy", privacy = "password", newCode = true })
 	end, { Size = UDim2.new(0, 90, 0, 26), Position = UDim2.new(1, -90, 0, 1), TextSize = 13, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = codeRow })
 
-	Kit.button("Find a table", function()
-		hooks.openTables()
-	end, { LayoutOrder = 9, Parent = root })
-	Kit.button("Host tools", function()
-		hooks.openHostTools()
-	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, LayoutOrder = 10, Parent = root })
 
 	Kit.label("Invite players here", { TextColor3 = Theme.SubText, LayoutOrder = 4, Parent = root })
-	local others = Kit.new("ScrollingFrame", {
+	local others = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, -430),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		CanvasSize = UDim2.new(),
-		ScrollBarThickness = 4,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
 		LayoutOrder = 5,
 		Parent = root,
 	}, { Kit.list(4) })

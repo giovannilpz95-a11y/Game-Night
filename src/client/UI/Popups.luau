@@ -1,6 +1,7 @@
 -- Toast messages and party invite prompts.
 
 local Kit = require(script.Parent.Kit)
+local Layout = require(script.Parent.Layout)
 local Theme = Kit.Theme
 
 local Popups = {}
@@ -15,6 +16,11 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 		ZIndex = 50,
 		Parent = parent,
 	}, { Kit.list(8) })
+	-- Just under Roblox's top bar, never wider than the screen.
+	Layout.onChange(function(info)
+		stack.Position = UDim2.new(0.5, 0, 0, info.top + 4)
+		stack.Size = UDim2.new(0, math.min(380, info.width - 24), 1, -(info.top + 8))
+	end)
 
 	-- The same message again (say, retrying a move the server keeps refusing) restarts
 	-- the visible toast instead of stacking a copy.
