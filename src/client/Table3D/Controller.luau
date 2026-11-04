@@ -14,6 +14,7 @@ local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 
 local Controller = {}
@@ -219,7 +220,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			-- Wide boards (Property Party's loop): sit higher so the near corners stay in view.
 			back, up, lift = 10, 11, 0
 		elseif not snapshot.table.board3D then
-			back, up, lift = 8.5, 9, 0.8
+			-- Aim a bit higher than the board: the far side's heads sat behind the top bar.
+			back, up, lift = 8.5, 9, 1.3
 		end
 		local inset = math.max(insetRight, insetBottom)
 		if inset > 0 then
@@ -238,7 +240,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
 			local distance = (cf.Position - focus).Magnitude
 			local right = distance * insetRight * math.tan(halfV) * aspect
-			local down = distance * insetBottom * math.tan(halfV)
+			-- Center in the space between the bottom dock and Roblox's top bar (the match
+			-- header lives there), so the far players' heads stay below it.
+			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
+			local down = distance * math.max(insetBottom - topBar, 0) * math.tan(halfV)
 			cf = cf * CFrame.new(right, -down, 0)
 		end
 		camera.CFrame = cf

@@ -236,8 +236,11 @@ function Scene.hand(parent: Instance, boardCF: CFrame, layout: Layout, seat: num
 		Scene.card(parent, stand, nil)
 	end
 	if count > shown or count >= 6 then
-		Models.cyl(parent, "CountTag", 0.62, 0.05, spot * CFrame.new(0, 0, -0.75), Color3.fromRGB(38, 34, 60))
-		Scene.floatText(parent, spot * CFrame.new(0, 0.3, -0.75), 0.5, 0.4, tostring(count), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
+		-- Beside the holder, not behind it: behind, the standing cards hid it from the
+		-- player whose rack it is.
+		local tag = spot * CFrame.new(width / 2 + 0.45, 0, 0.05)
+		Models.cyl(parent, "CountTag", 0.62, 0.05, tag, Color3.fromRGB(38, 34, 60))
+		Scene.floatText(parent, tag * CFrame.new(0, 0.3, 0), 0.5, 0.4, tostring(count), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
 	end
 end
 
