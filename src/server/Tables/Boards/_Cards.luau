@@ -1,31 +1,26 @@
--- Shared shell for card-game scenes: a model with a static felt mat and a dynamic folder
--- that each game redraws on every update.
+-- Shared shell for card-game scenes: a model with a static round mat and a dynamic folder
+-- that each game redraws when its view changes.
 
-local Pieces = require(script.Parent.Parent.Pieces)
+local Models = require(script.Parent.Parent.Models)
 local Scene = require(script.Parent.Parent.Scene)
 
 local Cards = {}
 
-function Cards.shell(boardCF: CFrame, parent: Instance, layout: Scene.Layout, draw: (folder: Folder, view: any, snapshot: any) -> ())
+function Cards.shell(boardCF: CFrame, parent: Instance, layout: Scene.Layout, draw: (folder: Folder, view: any, snapshot: any) -> (), matColor: Color3?)
 	local model = Instance.new("Model")
 	model.Name = "GameBoard"
-	Pieces.part({
-		Name = "Mat",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.04, 4.2, 4.2),
-		CFrame = boardCF * CFrame.new(0, 0.02, 0) * CFrame.Angles(0, 0, math.rad(90)),
-		Color = Color3.fromRGB(36, 86, 60),
-		Material = Enum.Material.Fabric,
-		CanQuery = false,
-		Parent = model,
-	})
+	Models.cyl(model, "MatRim", 5.4, 0.03, boardCF, Models.WALNUT, Enum.Material.Wood)
+	Models.cyl(model, "Mat", 5, 0.04, boardCF, matColor or Color3.fromRGB(36, 86, 60), Enum.Material.Fabric)
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent
+	local memo = {}
 	return {
 		model = model,
 		update = function(view: any, snapshot: any)
-			dynamic:ClearAllChildren()
-			draw(dynamic, view, snapshot)
+			if Scene.changed(memo, view) then
+				dynamic:ClearAllChildren()
+				draw(dynamic, view, snapshot)
+			end
 		end,
 		destroy = function()
 			model:Destroy()

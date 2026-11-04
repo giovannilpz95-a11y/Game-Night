@@ -1,20 +1,23 @@
 -- Spoons at the table: the spoons in the middle (one fewer than players), each player's
 -- four cards, and a spoon in front of everyone who has grabbed one.
 
+local Models = require(script.Parent.Parent.Models)
 local Scene = require(script.Parent.Parent.Scene)
-local Pieces = require(script.Parent.Parent.Pieces)
 local Cards = require(script.Parent._Cards)
 
 local Spoons = {}
 
 local SPOON = Color3.fromRGB(205, 210, 220)
+local METAL = Enum.Material.SmoothPlastic
 
 local function spoon(folder: Instance, cf: CFrame)
 	local model = Instance.new("Model")
 	model.Name = "Spoon"
-	Pieces.part({ Name = "Handle", Size = Vector3.new(0.12, 0.05, 1.1), CFrame = cf * CFrame.new(0, 0.05, 0.2), Color = SPOON, Material = Enum.Material.Metal, CanQuery = false, Parent = model })
-	local bowl = Pieces.part({ Name = "Bowl", Shape = Enum.PartType.Ball, Size = Vector3.new(0.4, 0.4, 0.4), CFrame = cf * CFrame.new(0, 0.07, -0.5), Color = SPOON, Material = Enum.Material.Metal, CanQuery = false, Parent = model })
-	bowl.Size = Vector3.new(0.4, 0.4, 0.4)
+	Models.block(model, "Handle", Vector3.new(0.09, 0.04, 0.8), cf * CFrame.new(0, 0.04, 0.2), SPOON, METAL)
+	Models.egg(model, "Grip", Vector3.new(0.18, 0.05, 0.3), cf * CFrame.new(0, 0.05, 0.62), SPOON, METAL)
+	Models.egg(model, "Neck", Vector3.new(0.14, 0.05, 0.22), cf * CFrame.new(0, 0.05, -0.2), SPOON, METAL)
+	Models.egg(model, "Bowl", Vector3.new(0.4, 0.09, 0.54), cf * CFrame.new(0, 0.06, -0.46), SPOON, METAL)
+	Models.egg(model, "BowlInner", Vector3.new(0.28, 0.04, 0.4), cf * CFrame.new(0, 0.1, -0.46), SPOON:Lerp(Color3.new(0, 0, 0), 0.25), METAL)
 	model.Parent = folder
 end
 
