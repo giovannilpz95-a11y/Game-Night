@@ -4,7 +4,7 @@ Back to [[Home]] · see [[Architecture]].
 
 When a match starts, the party is moved to a free table in the room and everyone sits down: players in real `Seat`s, bots as seated R15 rigs with their name over their head. Every game shows up on the table, in one of two ways:
 - **Played on the table** (`Config.Boards3D`: Chess, Checkers, Four in a Row, Tic-Tac-Toe): the 3D board is the game. Your camera looks at it from your seat and you tap pieces and squares.
-- **Shown on the table** (`Config.TableScenes`: every other game): the game is built in the world for the whole room to watch, and seated players play in the 2D view. **Table view** looks up from the 2D view at the table.
+- **Shown on the table** (`Config.TableScenes`: every other game): the game is built in the world for the whole room to watch. Seated players start in **Table view**: the camera looks at the table from their seat and the part of the 2D board with their hand, buttons and prompts is docked along the screen edge (`MatchView.DOCK`). **Back to game** switches to the full 2D view.
 
 | Game | What's on the table |
 |---|---|
@@ -49,7 +49,9 @@ Every table gets a sign post at its edge with its state on both faces, and a pen
 - The snapshot sent to each player has `table = { id, seats, board3D }`.
 
 ## On the client
-`MatchView` owns a `Table3D` controller. When `board3D` is true and the table has streamed in, the screen goes see-through, the flat board hides, and the camera looks at the table from your seat. The **2D view / 3D view** button switches. Phones start in 2D. If the board doesn't stream in within 8 seconds, the view stays 2D.
+`MatchView` owns a `Table3D` controller. When `board3D` is true and the table has streamed in, the screen goes see-through, the flat board hides, and the camera looks at the table from your seat. The **2D view / 3D view** button switches, and the choice is remembered per game for the session. Phones start in 2D. If the board doesn't stream in within 8 seconds, the view stays 2D.
+
+The table camera eases toward its resting spot at your seat rather than jumping: it glides in from your avatar's view and follows dock changes smoothly. While you play, it turns slightly toward whoever's turn it is. When a gesture plays at your table (`Avatars.onAction`), it turns toward that gesture and moves in a little, more for big moments like a slap, a dice roll or a win. A very slow drift keeps the view from feeling frozen. **Camera motion: Calm** in the ⋯ menu turns off the lean, push-ins and drift for the session, leaving only a quick smooth glide. The tuning constants are at the top of `client/Table3D/Controller.luau`.
 
 Cells are parts in the board's `Cells` folder with `Row`/`Col` attributes (Four in a Row: one invisible part per column with `Col`). The client raycasts only against that folder, so pieces never get in the way.
 

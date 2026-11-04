@@ -48,9 +48,11 @@ One event per currency change, sent only from `EconomyService` and `PurchaseServ
 | Level-up Gems | Source | Gameplay | `LevelUp` |
 | Badge Gems | Source | Gameplay | `Badge` |
 | `EconomyService.award` bonus | Source | Gameplay | the award's `reason` |
-| Daily login Gems | Source | TimedReward | `DailyLogin` |
+| Daily login Gems or Coins | Source | TimedReward | `DailyLogin` |
+| Friend invite Gems (inviter / new player) | Source | Onboarding | `FriendInvite` / `FriendWelcome` |
 | Gem pack / Starter Pack | Source | IAP | pack key / `starter` |
 | Shop purchase | Sink | Shop | item id |
+| Universal Coins converted (Sink of `universal`, Source of the game coin) | both | Shop | `Convert_<coinKey>` |
 
 The Studio test grant isn't logged. Every logged change also goes into the player's saved stats (Gems/Coins earned and spent, see [[Progression]]), and `inviteSent` / `inviteAccepted` add to the social stats. New things that spend or give currency must log too: take `AnalyticsService.snapshot(data)` before the change and call `AnalyticsService.logChange(player, data, before, transaction, sku)` after.
 
@@ -69,6 +71,8 @@ Roblox allows three custom fields (`CustomField01..03`), so match details are pa
 | `BotTookSeat` | 1 | game id | same reasons as above | |
 | `PartyFormed` | party size after someone joined | | | |
 | `InviteSent` / `InviteAccepted` | 1 | | | |
+| `FriendArrived` | 1 | `invite` or `follow` | | |
+| `JoinRequest` | 1 | `asked`, `accepted` or `declined` | | |
 | `DailyStreak` | login streak in days | | | |
 | `PassPrompted` | 1 | `vip` / `partyHost` | | |
 

@@ -13,6 +13,7 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Store page]]: title, description, genre, icon, thumbnails and trailer shot list
 - [[Launch]]: store page settings, maturity questionnaire, products, soft launch, analytics and the pre-publish checklist
 - [[Dressing Room]]: trying on and buying Roblox catalog items, saved looks
+- [[Friends]]: daily login calendar and streaks, the Friends window (invite, join a friend's table, go to their server), friend invite rewards
 - [[Party Host]]: VIP and Party Host perks (private and password tables, house rules, custom word lists and quiz decks)
 - [[Party chat]]: the chat box shows only your party's messages, with a switch to All
 - [[Voice Servers]]: voice-only servers and teleporting the party there and back

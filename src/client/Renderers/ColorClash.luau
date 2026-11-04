@@ -402,6 +402,22 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			snapshot = newSnapshot
 			render()
 		end,
+		-- Table view docks the bottom of the board (MatchView.DOCK): the piles and the
+		-- current color are on the 3D table, so only the buttons and your hand show. The
+		-- "+2 waiting" warning isn't on the table, so it moves just above the buttons, and
+		-- the wild color picker moves down into the dock.
+		setDocked = function(docked: boolean)
+			felt.Visible = not docked
+			if docked then
+				pendingLabel.Parent = root
+				pendingLabel.Position = UDim2.new(0, 0, 0.6, -28)
+				picker.Position = UDim2.fromScale(0.5, 0.8)
+			else
+				pendingLabel.Parent = felt
+				pendingLabel.Position = UDim2.new(0, 0, 1, -34)
+				picker.Position = UDim2.fromScale(0.5, 0.42)
+			end
+		end,
 		destroy = function()
 			root:Destroy()
 		end,

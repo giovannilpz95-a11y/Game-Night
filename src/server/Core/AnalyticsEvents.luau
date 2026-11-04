@@ -40,6 +40,8 @@ AnalyticsEvents.Custom = {
 	InviteSent = "InviteSent", -- value: 1
 	InviteAccepted = "InviteAccepted", -- value: 1
 	DailyStreak = "DailyStreak", -- value: login streak in days
+	FriendArrived = "FriendArrived", -- value: 1. "invite" or "follow"
+	JoinRequest = "JoinRequest", -- value: 1. "asked", "accepted" or "declined"
 	PassPrompted = "PassPrompted", -- value: 1. pass
 }
 
@@ -50,6 +52,7 @@ AnalyticsEvents.GemsCurrency = "Gems"
 AnalyticsEvents.Transaction = {
 	Gameplay = "Gameplay",
 	TimedReward = "TimedReward",
+	Onboarding = "Onboarding",
 	IAP = "IAP",
 	Shop = "Shop",
 }

@@ -13,6 +13,18 @@ All UI is built in code (`src/client/UI`). It's laid out for phones first: a lan
 
 Coordinates are offsets in the main ScreenGui, which has `IgnoreGuiInset = true`.
 
+## Kit (`UI/Kit`)
+Shared look for every window. Use these instead of hand-made copies:
+- `Theme.TextSize` (Title 22, Heading 18, Body 16, Small 14, Tiny 12), `Theme.Radius`, `Theme.Stroke`.
+- `Kit.button` sinks a little while pressed (`Kit.pressable` adds the same to any button). `Kit.secondary` is the panel-colored button.
+- `Kit.title(text)` for a window title, `Kit.closeButton(fn)` for the round ✕ in the top-right corner.
+- `Kit.chip(text, fn)` + `Kit.setChip(chip, selected)` for pill tabs and filters.
+- `Kit.panel` and `Kit.modal` windows have a thin outline (`Kit.stroke`) and pop in when opened (`Kit.popIn`).
+- `Kit.clear` keeps Kit's own decorations on the container (the `Outline` stroke and press/pop scales).
+
+## Game picker (`UI/GamePicker`)
+Filter chips (All games, then each category) above the grid. Each tile has an icon badge in its category's color, the name, the description and "👤 2-4 · ⏱ 10 min". Icons and category colors are in `shared/GameArt.luau`; a test fails if a catalog game has no icon, so add one with every new game.
+
 ## Lobby (`UI/LobbyHud`)
 The lobby frame is see-through: the 3D room is the lobby. On top of it:
 - one big **Play** button at the bottom center. It opens the game picker window. Non-leaders see "Games" and a hint that the leader picks.
