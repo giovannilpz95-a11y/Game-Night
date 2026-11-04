@@ -65,7 +65,7 @@ local FIRST_PERSON = {
 	President = true, SlapStack = true, Hearts = true, Spades = true, ThirtyOne = true,
 	Palace = true, OldMaid = true, Snap = true, GinRummy = true, OhHell = true,
 }
-local EYE_HEIGHT = 2.55 -- studs above the seat's top: a seated R15 avatar's eyes
+local EYE_ABOVE_TABLE = 4.2 -- studs above the tabletop for the first-person camera
 local FIRST_PERSON_FOV = 68
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
 
@@ -122,6 +122,71 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local shown: CFrame? = nil
 	local moment: { point: Vector3, strength: number, at: number }? = nil
 	local firstPerson = false -- seated eye-level camera (card games)
+	-- First person: your own cards standing in their holder on the table sit right in
+	-- front of the camera (a big blank wall of card backs). Your hand is on screen, so
+	-- the holder in front of your seat and what's in it are hidden on this screen.
+	local rackHidden: { [Instance]: boolean } = {}
+	local function showRack()
+		for inst in rackHidden do
+			if inst:IsA("BasePart") then
+				inst.LocalTransparencyModifier = 0
+			elseif inst:IsA("BillboardGui") or inst:IsA("SurfaceGui") then
+				inst.Enabled = true
+			end
+		end
+		table.clear(rackHidden)
+	end
+	local function hideRack()
+		if not (active and firstPerson and tableModel and snapshot and snapshot.table and snapshot.yourSeat) then
+			showRack()
+			return
+		end
+		local tableSeat = (snapshot.table.seats or {})[snapshot.yourSeat]
+		local seat = tableSeat and tableModel:FindFirstChild(`Seat{tableSeat}`, true)
+		if not (seat and seat:IsA("BasePart")) then
+			return
+		end
+		local holder: BasePart? = nil
+		local best = math.huge
+		for _, d in tableModel:GetDescendants() do
+			if d:IsA("BasePart") and d.Name == "Holder" then
+				local flat = ((d.Position - seat.Position) * Vector3.new(1, 0, 1)).Magnitude
+				if flat < best then
+					holder, best = d, flat
+				end
+			end
+		end
+		if not holder or best > 6 then
+			return
+		end
+		local h = holder :: BasePart
+		local radius = h.Size.X / 2 + 0.7
+		local function hide(inst: Instance)
+			if rackHidden[inst] then
+				return
+			end
+			if inst:IsA("BasePart") then
+				inst.LocalTransparencyModifier = 1
+				rackHidden[inst] = true
+			elseif (inst:IsA("BillboardGui") or inst:IsA("SurfaceGui")) and inst.Enabled then
+				inst.Enabled = false
+				rackHidden[inst] = true
+			end
+		end
+		for _, d in (h.Parent :: Instance):GetDescendants() do
+			if d:IsA("BasePart") and d.Size.Magnitude < 3 then
+				-- In the holder's own frame: along its length (plus the count tag at the
+				-- end), but only a card's depth front to back, so piles beside it stay.
+				local o = h.CFrame:PointToObjectSpace(d.Position)
+				if math.abs(o.X) < radius and math.abs(o.Z) < 0.9 and o.Y > -0.2 and o.Y < 2.5 then
+					hide(d)
+					for _, gui in d:GetDescendants() do
+						hide(gui)
+					end
+				end
+			end
+		end
+	end
 	-- First person: a small badge over each other player (name and what the game shows
 	-- for them, like "6 cards"), lit up on their turn. Only on this screen.
 	local badges: { [number]: BillboardGui } = {}
@@ -338,6 +403,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			camera.FieldOfView = savedFieldOfView
 			home, shown, moment = nil, nil, nil
 			clearBadges()
+			showRack()
 			marks.Parent = nil
 			marks:ClearAllChildren()
 		end
@@ -386,13 +452,14 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			back, up = back * scale, up * scale
 		end
 		if FIRST_PERSON[snapshot.gameId] and seat and seat:IsA("BasePart") then
-			-- Your eyes on your chair, looking a little past the middle of the table so the
-			-- piles and the players across from you are both in view. Then tilt down until
-			-- that sits in the middle of the screen left above the docked hand (a slide
-			-- would move your eyes out of your head).
-			local seatTop = seat.Position.Y + seat.Size.Y / 2
-			local eye = Vector3.new(seat.Position.X, seatTop + EYE_HEIGHT, seat.Position.Z) - toSeat.Unit * 0.35
-			local look = anchor - toSeat.Unit * 1.2 + Vector3.new(0, 0.4, 0)
+			-- From your place at the table, up high and looking down across it (like leaning
+			-- over the table): the whole tabletop with the piles, every other player and some
+			-- room above their heads. Measured from the tabletop, not the chair: stools
+			-- are low and eyes at seat height ended up level with the rail. Then tilt down
+			-- until that sits in the middle of the screen left above the docked hand.
+			local reach = toSeat.Magnitude
+			local eye = anchor + toSeat.Unit * (reach * 0.92) + Vector3.new(0, EYE_ABOVE_TABLE, 0)
+			local look = anchor - toSeat.Unit * (reach * 0.22) + Vector3.new(0, 0.9, 0)
 			local cf = CFrame.lookAt(eye, look)
 			camera.FieldOfView = FIRST_PERSON_FOV
 			local viewport = camera.ViewportSize
@@ -610,6 +677,13 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	end)
 
 	-- Keep looking while the board streams in, then give up and stay in 2D.
+	Frame.every("TableRack", 0.2, function()
+		-- The server redraws the cards on every move: keep your own rack hidden.
+		if (active and firstPerson) or next(rackHidden) ~= nil then
+			hideRack()
+		end
+	end)
+
 	Frame.every("TableWatch", 0.1, function()
 		if wanted and snapshot and not active and os.clock() - waitingSince < FIND_TIMEOUT then
 			refresh()
