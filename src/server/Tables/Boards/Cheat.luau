@@ -20,7 +20,7 @@ function Cheat.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 				Scene.card(folder, Cards.center(boardCF, (i - (#reveal.cards + 1) / 2) * 0.8, 1.1), Scene.playingFront(PlayingCards, id))
 			end
 		end
-	end)
+	end, Color3.fromRGB(70, 52, 110))
 end
 
 return Cheat

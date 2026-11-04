@@ -30,7 +30,7 @@ function Palace.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 		for i, id in top do
 			Scene.card(folder, cf * CFrame.new(0, i * 0.01, (i - #top) * 0.2), Scene.playingFront(PlayingCards, id))
 		end
-	end)
+	end, Color3.fromRGB(96, 50, 104))
 end
 
 return Palace

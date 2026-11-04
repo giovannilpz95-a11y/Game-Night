@@ -25,7 +25,7 @@ function ThirtyOne.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 		if view.discardTop then
 			Scene.card(folder, Cards.center(boardCF, 0.5), Scene.playingFront(PlayingCards, view.discardTop))
 		end
-	end)
+	end, Color3.fromRGB(36, 96, 84))
 end
 
 return ThirtyOne

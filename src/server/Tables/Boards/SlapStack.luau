@@ -20,7 +20,7 @@ function SlapStack.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			local angle = (i - #top) * 14
 			Scene.card(folder, cf * CFrame.new(0, i * 0.01, 0) * CFrame.Angles(0, math.rad(angle), 0), Scene.playingFront(PlayingCards, id))
 		end
-	end)
+	end, Color3.fromRGB(130, 46, 52))
 end
 
 return SlapStack

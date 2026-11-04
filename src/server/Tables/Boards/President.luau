@@ -18,7 +18,7 @@ function President.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 				Scene.card(folder, Cards.center(boardCF, (i - (#pile.cards + 1) / 2) * 0.55) * CFrame.Angles(0, math.rad((i - 2) * 8), 0), Scene.playingFront(PlayingCards, id))
 			end
 		end
-	end)
+	end, Color3.fromRGB(40, 56, 104))
 end
 
 return President
