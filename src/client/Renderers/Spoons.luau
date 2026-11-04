@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local Theme = Kit.Theme
@@ -112,16 +113,31 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			local isOut = view.out[tostring(seat)] ~= nil
 			local hasSpoon = view.spoonHolders[tostring(seat)] ~= nil
 			local status = if isOut then "out" elseif hasSpoon then "🥄" elseif view.phase == "pass" and passed[seat] then "passed" else ""
+			-- A card per player: avatar on the left, name and status beside it.
+			local chip = Kit.new("Frame", {
+				Size = UDim2.new(0, 112, 1, -4),
+				LayoutOrder = seat,
+				Parent = players,
+			}, { Kit.corner(10) })
+			HudKit.glass(chip, if isOut then 0.6 else 0.12)
+			if hasSpoon then
+				chip.Rim.Color = Theme.Good
+				chip.Rim.Transparency = 0
+			end
+			HudKit.avatar(seat, snapshot.seats[seat], {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 4, 0.5, 0),
+				Size = UDim2.fromOffset(20, 20),
+				Parent = chip,
+			})
 			Kit.label(`{nameOf(seat)}{if seat == view.dealer then " (dealer)" else ""}\n{status}`, {
 				TextSize = 13,
 				Font = Theme.FontBold,
 				TextColor3 = if isOut then Theme.SubText elseif hasSpoon then Theme.Good else Theme.Text,
 				TextXAlignment = Enum.TextXAlignment.Center,
-				BackgroundTransparency = if isOut then 0.6 else 0,
-				BackgroundColor3 = Theme.Panel,
-				Size = UDim2.new(0, 104, 1, -4),
-				LayoutOrder = seat,
-				Parent = players,
+				Position = UDim2.fromOffset(26, 0),
+				Size = UDim2.new(1, -30, 1, 0),
+				Parent = chip,
 			})
 		end
 

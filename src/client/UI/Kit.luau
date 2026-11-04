@@ -32,6 +32,9 @@ Kit.Theme = {
 	},
 	Font = Enum.Font.GothamMedium,
 	FontBold = Enum.Font.GothamBold,
+	-- Rounded, playful face for window titles and big calls to action.
+	FontTitle = Enum.Font.FredokaOne,
+	Gem = Color3.fromRGB(110, 220, 255),
 	-- Thin outline on windows and cards, so they separate from the 3D room behind them.
 	Stroke = Color3.fromRGB(120, 110, 170),
 	-- Type scale: window title, section heading, body text, small notes, tiny captions.
@@ -93,11 +96,34 @@ function Kit.stroke(color: Color3?, transparency: number?, thickness: number?): 
 	})
 end
 
+-- A soft top-to-bottom shade on a window or card background (it only tints the
+-- object's own background, never its children or text-free buttons' labels).
+function Kit.shade(amount: number?): UIGradient
+	local bottom = 1 - (amount or 0.16)
+	return Kit.new("UIGradient", {
+		Name = "Shade",
+		Rotation = 90,
+		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(bottom, bottom, bottom)),
+	})
+end
+
+-- A card inside a window: lighter panel, rounded, padded, shaded.
+function Kit.card(props: { [string]: any }?): Frame
+	local frame = Kit.new("Frame", {
+		BackgroundColor3 = Kit.Theme.PanelLight,
+		BorderSizePixel = 0,
+	}, { Kit.corner(12), Kit.padding(10), Kit.shade(0.12) })
+	for key, value in props or {} do
+		(frame :: any)[key] = value
+	end
+	return frame
+end
+
 function Kit.panel(props: { [string]: any }): Frame
 	local frame = Kit.new("Frame", {
 		BackgroundColor3 = Kit.Theme.Panel,
 		BorderSizePixel = 0,
-	}, { Kit.corner(14), Kit.padding(12), Kit.stroke() })
+	}, { Kit.corner(14), Kit.padding(12), Kit.stroke(), Kit.shade() })
 	-- A panel that brings its own outline (an accent ring) drops the default one.
 	frame.ChildAdded:Connect(function(child)
 		if child:IsA("UIStroke") and child.Name ~= "Outline" then
@@ -146,7 +172,31 @@ function Kit.button(text: string, onClick: () -> (), props: { [string]: any }?):
 	end
 	button.Activated:Connect(onClick)
 	Kit.pressable(button)
+	Kit.edge(button)
 	return button
+end
+
+-- A darker rim in the button's own color, so buttons read as chunky, tappable toys.
+-- Follows the button's color; steps aside when the caller adds its own UIStroke.
+function Kit.edge(button: GuiObject)
+	local edge = Kit.new("UIStroke", {
+		Name = "Edge",
+		Thickness = 1.5,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = button,
+	})
+	local function sync()
+		edge.Color = button.BackgroundColor3:Lerp(Color3.new(0, 0, 0), 0.35)
+		edge.Transparency = math.max(button.BackgroundTransparency, 0.15)
+	end
+	sync()
+	button:GetPropertyChangedSignal("BackgroundColor3"):Connect(sync)
+	button:GetPropertyChangedSignal("BackgroundTransparency"):Connect(sync)
+	button.ChildAdded:Connect(function(child)
+		if child:IsA("UIStroke") and child ~= edge then
+			edge:Destroy()
+		end
+	end)
 end
 
 -- Buttons sink a little while pressed and click, so a tap feels like it landed. The
@@ -217,7 +267,7 @@ end
 function Kit.title(text: string, props: { [string]: any }?): TextLabel
 	local label = Kit.label(text, {
 		Name = "Title",
-		Font = Kit.Theme.FontBold,
+		Font = Kit.Theme.FontTitle,
 		TextSize = Kit.Theme.TextSize.Title,
 		Size = UDim2.new(1, -48, 0, 28),
 		TextTruncate = Enum.TextTruncate.AtEnd,
@@ -298,6 +348,7 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 		Kit.corner(14),
 		Kit.padding(12),
 		Kit.stroke(),
+		Kit.shade(),
 		Kit.new("UISizeConstraint", { MaxSize = opts.maxSize or Vector2.new(900, 640) }),
 	})
 	local body = Kit.new("Frame", {
@@ -343,6 +394,93 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 	return modal
 end
 
+-- The Gem: a small cyan diamond. Same shape as the wallet's.
+function Kit.gemIcon(size: number, props: { [string]: any }?): Frame
+	local holder = Kit.new("Frame", { Name = "Gem", BackgroundTransparency = 1, Size = UDim2.fromOffset(size, size) })
+	Kit.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.7, 0.7),
+		Rotation = 45,
+		BackgroundColor3 = Kit.Theme.Gem,
+		BorderSizePixel = 0,
+		Parent = holder,
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0.2, 0) }),
+		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.4, Thickness = 1 }),
+	})
+	for key, value in props or {} do
+		(holder :: any)[key] = value
+	end
+	return holder
+end
+
+-- A coin: a disc in the coin's color with a darker rim.
+function Kit.coinIcon(color: Color3, size: number, props: { [string]: any }?): Frame
+	local coin = Kit.new("Frame", {
+		Name = "Coin",
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(size, size),
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		Kit.new("UIStroke", { Color = color:Lerp(Color3.new(0, 0, 0), 0.4), Thickness = math.max(1, size / 8) }),
+	})
+	for key, value in props or {} do
+		(coin :: any)[key] = value
+	end
+	return coin
+end
+
+-- A progress bar. Returns the bar and a setter taking 0..1.
+function Kit.progress(color: Color3?, props: { [string]: any }?): (Frame, (number) -> ())
+	local bar = Kit.new("Frame", {
+		Name = "Progress",
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.55,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 8),
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	local fill = Kit.new("Frame", {
+		Name = "Fill",
+		BackgroundColor3 = color or Kit.Theme.Good,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(0, 1),
+		Parent = bar,
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.shade(0.25) })
+	for key, value in props or {} do
+		(bar :: any)[key] = value
+	end
+	local function set(fraction: number)
+		fraction = math.clamp(fraction, 0, 1)
+		fill.Size = UDim2.fromScale(fraction, 1)
+		fill.Visible = fraction > 0
+	end
+	return bar, set
+end
+
+-- A small rounded tag ("BEST VALUE", "OWNED") in the corner of a card.
+function Kit.tag(text: string, color: Color3, props: { [string]: any }?): TextLabel
+	local tag = Kit.label(text, {
+		Name = "Tag",
+		BackgroundColor3 = color,
+		BackgroundTransparency = 0,
+		TextColor3 = Kit.Theme.AccentText,
+		Font = Kit.Theme.FontBold,
+		TextSize = 11,
+		TextWrapped = false,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 18),
+	})
+	Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = tag })
+	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = tag })
+	for key, value in props or {} do
+		(tag :: any)[key] = value
+	end
+	return tag
+end
+
 function Kit.clear(container: Instance)
 	for _, child in container:GetChildren() do
 		if
@@ -351,7 +489,8 @@ function Kit.clear(container: Instance)
 			and not child:IsA("UIPadding")
 			and not child:IsA("UICorner")
 			-- Kit's own decorations on the container itself.
-			and not (child:IsA("UIStroke") and child.Name == "Outline")
+			and not (child:IsA("UIStroke") and (child.Name == "Outline" or child.Name == "Edge"))
+			and not (child:IsA("UIGradient") and child.Name == "Shade")
 			and not (child:IsA("UIScale") and (child.Name == "PressScale" or child.Name == "PopScale"))
 		then
 			child:Destroy()

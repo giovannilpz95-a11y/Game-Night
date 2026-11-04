@@ -1,0 +1,305 @@
+-- In-match look, on top of Kit's theme: avatar badges for seats, glassy gradient panels,
+-- a pulsing ring for whoever's turn it is, "thinking" dots, confetti and a shine sweep.
+-- Used by MatchView and the shared game layouts (CardTable, BoardGrid). Menus and windows
+-- keep using Kit directly.
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
+local Kit = require(script.Parent.Kit)
+local Theme = Kit.Theme
+
+local HudKit = {}
+
+-- Seat shapes, so color is never the only way to tell seats apart.
+HudKit.SeatShapes = { "●", "■", "▲", "◆", "★", "✖", "♥", "♣" }
+
+function HudKit.seatColor(seat: number): Color3
+	return Theme.Seat[seat] or Theme.Text
+end
+
+function HudKit.seatShape(seat: number): string
+	return HudKit.SeatShapes[seat] or "●"
+end
+
+-- Darker (amount > 0) or lighter (amount < 0) copy of a color.
+function HudKit.shade(color: Color3, amount: number): Color3
+	if amount >= 0 then
+		return color:Lerp(Color3.new(0, 0, 0), amount)
+	end
+	return color:Lerp(Color3.new(1, 1, 1), -amount)
+end
+
+-- A two-stop gradient; rotation 90 runs top to bottom.
+function HudKit.gradient(from: Color3, to: Color3, rotation: number?, transparency: NumberSequence?): UIGradient
+	return Kit.new("UIGradient", {
+		Name = "HudGradient",
+		Color = ColorSequence.new(from, to),
+		Rotation = rotation or 90,
+		Transparency = transparency or NumberSequence.new(0),
+	})
+end
+
+-- Dark see-through panel with a soft top light and a thin rim, for HUD pieces that float
+-- over the 3D room (header, seat list, dock).
+function HudKit.glass(frame: GuiObject, transparency: number?)
+	frame.BackgroundColor3 = Color3.new(1, 1, 1)
+	frame.BackgroundTransparency = transparency or 0.12
+	local old = frame:FindFirstChild("HudGradient")
+	if old then
+		old:Destroy()
+	end
+	HudKit.gradient(HudKit.shade(Theme.PanelLight, -0.05), HudKit.shade(Theme.Background, 0.15)).Parent = frame
+	if not frame:FindFirstChild("Rim") then
+		Kit.new("UIStroke", {
+			Name = "Rim",
+			Color = Theme.Stroke,
+			Transparency = 0.45,
+			Thickness = 1,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Parent = frame,
+		})
+	end
+end
+
+-- Makes a frame or button a pill (fully round ends).
+function HudKit.pill(object: GuiObject)
+	local corner = object:FindFirstChildOfClass("UICorner")
+	if not corner then
+		corner = Kit.new("UICorner", { Parent = object })
+	end
+	(corner :: UICorner).CornerRadius = UDim.new(0.5, 0)
+end
+
+---------------------------------------------------------------- avatars
+local headshots: { [number]: string } = {}
+local waiting: { [number]: { ImageLabel } } = {}
+
+local function fetchHeadshot(userId: number)
+	local ok, content, ready = pcall(function()
+		return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+	end)
+	local list = waiting[userId] or {}
+	waiting[userId] = nil
+	if ok and ready and type(content) == "string" then
+		headshots[userId] = content
+		for _, image in list do
+			if image.Parent then
+				image.Image = content
+				image.Visible = true
+			end
+		end
+	elseif ok and type(content) == "string" then
+		-- Not ready yet: try again in a moment.
+		waiting[userId] = list
+		task.delay(2, fetchHeadshot, userId)
+	end
+end
+
+-- A round avatar badge with a ring in the seat's color and the seat's shape in a little
+-- tag on its corner. Players show their headshot (loaded in the background, with their
+-- initial meanwhile); bots show 🤖. props: Size, Position, AnchorPoint, ZIndex, Parent.
+function HudKit.avatar(seat: number, seatInfo: any, props: { [string]: any }): Frame
+	local color = HudKit.seatColor(seat)
+	local z = props.ZIndex or 4
+	local frame = Kit.new("Frame", {
+		Name = "Avatar",
+		BackgroundColor3 = HudKit.shade(color, 0.55),
+		BorderSizePixel = 0,
+		ZIndex = z,
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }),
+		Kit.new("UIStroke", { Name = "Ring", Color = color, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+	})
+	for key, value in props do
+		if key ~= "Parent" then
+			(frame :: any)[key] = value
+		end
+	end
+	local isBot = seatInfo and seatInfo.kind == "bot"
+	local name = (seatInfo and seatInfo.name) or "?"
+	local fallback = Kit.label(if isBot then "🤖" else string.upper(string.sub(name, 1, 1)), {
+		Font = Theme.FontBold,
+		TextScaled = true,
+		TextColor3 = Theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.62, 0.62),
+		ZIndex = z + 1,
+		Parent = frame,
+	})
+	local userId = seatInfo and seatInfo.userId
+	if not isBot and type(userId) == "number" and userId > 0 then
+		local image = Kit.new("ImageLabel", {
+			Name = "Headshot",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Image = headshots[userId] or "",
+			Visible = headshots[userId] ~= nil,
+			ZIndex = z + 2,
+			Parent = frame,
+		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+		if not headshots[userId] then
+			local list = waiting[userId]
+			if list then
+				table.insert(list, image)
+			else
+				waiting[userId] = { image }
+				task.spawn(fetchHeadshot, userId)
+			end
+		end
+		image:GetPropertyChangedSignal("Visible"):Connect(function()
+			fallback.Visible = not image.Visible
+		end)
+		fallback.Visible = not image.Visible
+	end
+	-- Seat shape tag, bottom-right.
+	local tag = Kit.label(HudKit.seatShape(seat), {
+		Name = "Shape",
+		Font = Theme.FontBold,
+		TextScaled = true,
+		TextColor3 = HudKit.shade(color, 0.7),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		BackgroundColor3 = color,
+		BackgroundTransparency = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.86, 0.86),
+		Size = UDim2.fromScale(0.42, 0.42),
+		ZIndex = z + 3,
+		Parent = frame,
+	})
+	Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = tag })
+	Kit.new("UIPadding", {
+		PaddingTop = UDim.new(0.18, 0),
+		PaddingBottom = UDim.new(0.18, 0),
+		PaddingLeft = UDim.new(0.18, 0),
+		PaddingRight = UDim.new(0.18, 0),
+		Parent = tag,
+	})
+	frame.Parent = props.Parent
+	return frame
+end
+
+---------------------------------------------------------------- motion
+local PULSE_INFO = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+
+-- A ring that breathes (whose turn it is). Stops by itself when the stroke is destroyed.
+function HudKit.pulse(stroke: UIStroke, low: number?, high: number?)
+	stroke.Transparency = low or 0
+	TweenService:Create(stroke, PULSE_INFO, { Transparency = high or 0.65 }):Play()
+end
+
+-- "Sam is thinking" dots: cycles . .. ... on a label until it's destroyed or hidden.
+function HudKit.dots(label: TextLabel, base: string)
+	task.spawn(function()
+		local n = 0
+		while label.Parent do
+			n = n % 3 + 1
+			label.Text = base .. string.rep(".", n)
+			task.wait(0.4)
+		end
+	end)
+end
+
+-- A light band that sweeps across once (banners, the win title).
+function HudKit.shine(object: GuiObject, z: number?)
+	local band = Kit.new("Frame", {
+		Name = "Shine",
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = z or (object.ZIndex + 1),
+		Parent = object,
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0, 14) }) })
+	local gradient = Kit.new("UIGradient", {
+		Rotation = 20,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.42, 1),
+			NumberSequenceKeypoint.new(0.5, 0.55),
+			NumberSequenceKeypoint.new(0.58, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Offset = Vector2.new(-1, 0),
+		Parent = band,
+	})
+	local tween = TweenService:Create(gradient, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Offset = Vector2.new(1, 0) })
+	tween.Completed:Once(function()
+		band:Destroy()
+	end)
+	tween:Play()
+end
+
+local CONFETTI = {
+	Color3.fromRGB(255, 196, 64),
+	Color3.fromRGB(255, 99, 132),
+	Color3.fromRGB(54, 162, 235),
+	Color3.fromRGB(88, 204, 120),
+	Color3.fromRGB(153, 102, 255),
+}
+
+-- A burst of confetti falling over `parent` (the win screen). Cleans itself up.
+function HudKit.confetti(parent: GuiObject, count: number?, z: number?)
+	local size = parent.AbsoluteSize
+	if size.X <= 0 then
+		return
+	end
+	local rng = Random.new()
+	for i = 1, count or 40 do
+		local w = rng:NextInteger(6, 11)
+		local bit = Kit.new("Frame", {
+			Name = "Confetti",
+			BackgroundColor3 = CONFETTI[(i % #CONFETTI) + 1],
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(rng:NextNumber(0.1, 0.9) * size.X, -rng:NextNumber(0, 0.3) * size.Y),
+			Size = UDim2.fromOffset(w, math.floor(w * 1.6)),
+			Rotation = rng:NextNumber(0, 360),
+			ZIndex = z or 60,
+			Parent = parent,
+		})
+		local duration = rng:NextNumber(1.4, 2.4)
+		local drift = rng:NextNumber(-0.18, 0.18) * size.X
+		local tween = TweenService:Create(bit, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = UDim2.fromOffset(bit.Position.X.Offset + drift, size.Y * rng:NextNumber(0.9, 1.1)),
+			Rotation = bit.Rotation + rng:NextNumber(-540, 540),
+			BackgroundTransparency = 0.6,
+		})
+		tween.Completed:Once(function()
+			bit:Destroy()
+		end)
+		task.delay(rng:NextNumber(0, 0.35), function()
+			if bit.Parent then
+				tween:Play()
+			end
+		end)
+	end
+end
+
+-- Slides a row in from the left with a small delay (end-screen standings).
+function HudKit.slideIn(object: GuiObject, delay: number)
+	local scale = object:FindFirstChild("SlideScale") :: UIScale?
+	if not scale then
+		scale = Kit.new("UIScale", { Name = "SlideScale", Parent = object })
+	end
+	local s = scale :: UIScale
+	s.Scale = 0.6
+	if object:IsA("Frame") then
+		local target = object.BackgroundTransparency
+		object.BackgroundTransparency = 1
+		task.delay(delay, function()
+			if object.Parent then
+				TweenService:Create(object, TweenInfo.new(0.25), { BackgroundTransparency = target }):Play()
+			end
+		end)
+	end
+	task.delay(delay, function()
+		if s.Parent then
+			TweenService:Create(s, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		end
+	end)
+end
+
+return HudKit

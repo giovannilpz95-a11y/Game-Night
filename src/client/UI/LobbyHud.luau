@@ -117,6 +117,7 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 		Position = UDim2.new(0.5, 0, 1, -20),
 		Size = UDim2.new(0, 230, 0, 64),
 		TextSize = 28,
+		Font = Theme.FontTitle,
 		ZIndex = 5,
 		Parent = parent,
 	})

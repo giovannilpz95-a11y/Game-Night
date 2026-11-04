@@ -246,7 +246,34 @@ function PlayingCard.felt(props: { [string]: any }): Frame
 		BorderSizePixel = 0,
 	}, {
 		Kit.corner(24),
-		Kit.new("UIStroke", { Color = PlayingCard.FeltEdge, Thickness = 6 }),
+		-- A lamp over the middle of the table: lighter center, darker near the rails.
+		Kit.new("UIGradient", {
+			Name = "Lamp",
+			Rotation = 90,
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(165, 175, 170)),
+				ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 160, 155)),
+			}),
+		}),
+		-- Wooden rail, lit from above.
+		Kit.new("UIStroke", { Name = "Rail", Color = Color3.new(1, 1, 1), Thickness = 7 }, {
+			Kit.new("UIGradient", {
+				Rotation = 90,
+				Color = ColorSequence.new(Color3.fromRGB(150, 100, 60), Color3.fromRGB(70, 42, 24)),
+			}),
+		}),
+	})
+	-- A thin gold line just inside the rail.
+	Kit.new("Frame", {
+		Name = "Inlay",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(7, 7),
+		Size = UDim2.new(1, -14, 1, -14),
+		Parent = felt,
+	}, {
+		Kit.corner(18),
+		Kit.new("UIStroke", { Color = Color3.fromRGB(214, 176, 96), Thickness = 1, Transparency = 0.55 }),
 	})
 	for key, value in props do
 		(felt :: any)[key] = value

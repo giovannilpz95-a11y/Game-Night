@@ -19,8 +19,10 @@ local UserInputService = game:GetService("UserInputService")
 local HapticService = game:GetService("HapticService")
 
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
+local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Kit = require(script.Parent.Kit)
 local Audio = require(script.Parent.Parent.Audio)
+local HudKit = require(script.Parent.HudKit)
 local Layout = require(script.Parent.Layout)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
 local Avatars = require(script.Parent.Parent.Table3D.Avatars)
@@ -93,12 +95,14 @@ end
 function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: () -> boolean, walletWidth: (() -> number)?, openRules: ((string) -> ())?, openReactionShop: (() -> ())?, openSound: (() -> ())?)
 	local root = Kit.new("Frame", {
 		Name = "MatchView",
-		BackgroundColor3 = Theme.Background,
+		BackgroundColor3 = Color3.new(1, 1, 1), -- colored by the gradient below
 		BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 1),
 		Visible = false,
 		Parent = parent,
 	})
+	-- 2D backdrop: a soft purple light from the top, darker toward the bottom edge.
+	HudKit.gradient(Color3.fromRGB(46, 40, 76), Color3.fromRGB(16, 14, 28)).Parent = root
 
 	---------------------------------------------------------------- header (in the top bar)
 	local header = Kit.new("Frame", {
@@ -109,6 +113,30 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ZIndex = 20,
 		Parent = root,
 	}, { Kit.corner(10) })
+	HudKit.glass(header, 0.08)
+	-- The game's icon in its category color, so the header says which game at a glance.
+	local gameBadge = Kit.new("Frame", {
+		Name = "GameBadge",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 6, 0.5, -1),
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
+		ZIndex = 21,
+		Parent = header,
+	}, {
+		Kit.corner(8),
+		HudKit.gradient(Color3.new(1, 1, 1), Color3.fromRGB(170, 170, 170)),
+	})
+	local gameIcon = Kit.label("", {
+		Font = Theme.FontBold,
+		TextScaled = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.72, 0.72),
+		ZIndex = 22,
+		Parent = gameBadge,
+	})
 	local turnLabel = Kit.label("", {
 		RichText = true,
 		Font = Theme.FontBold,
@@ -270,17 +298,25 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	end)
 
 	---------------------------------------------------------------- seats and board
+	-- The column itself is see-through; each seat is its own card.
 	local seatsPanel = Kit.new("ScrollingFrame", {
 		Name = "Seats",
-		BackgroundColor3 = Theme.Panel,
-		BackgroundTransparency = 0.1,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 3,
 		ZIndex = 2,
 		Parent = root,
-	}, { Kit.corner(12), Kit.padding(6), Kit.list(6) })
+	}, {
+		Kit.new("UIPadding", {
+			PaddingTop = UDim.new(0, 3),
+			PaddingBottom = UDim.new(0, 3),
+			PaddingLeft = UDim.new(0, 3),
+			PaddingRight = UDim.new(0, 5),
+		}),
+		Kit.list(6),
+	})
 
 	do
 		local listLayout = seatsPanel:FindFirstChildOfClass("UIListLayout")
@@ -311,20 +347,45 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ZIndex = 2,
 		Parent = root,
 	}, { Kit.corner(12) })
+	HudKit.glass(dock, 0.1)
+	-- A glowing edge where the dock meets the table, so the strip reads as a tray rather
+	-- than a box cut out of the screen. Placed on the inner edge in relayout.
+	local dockLip = Kit.new("Frame", {
+		Name = "Lip",
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
+		ZIndex = 20,
+		Parent = dock,
+	}, {
+		Kit.new("UIGradient", {
+			Name = "Fade",
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.2, 0.35),
+				NumberSequenceKeypoint.new(0.8, 0.35),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}),
+	})
 
 	---------------------------------------------------------------- "Your turn!" banner
 	local banner = Kit.new("Frame", {
 		Name = "TurnBanner",
 		AnchorPoint = Vector2.new(0.5, 0),
-		BackgroundColor3 = Theme.Accent,
+		BackgroundColor3 = Color3.new(1, 1, 1), -- gold from its gradient
 		BorderSizePixel = 0,
 		Size = UDim2.fromOffset(260, 56),
 		Visible = false,
 		ZIndex = 30,
 		Parent = root,
-	}, { Kit.corner(14), Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.3 }) })
+	}, {
+		Kit.corner(14),
+		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.3 }),
+		HudKit.gradient(Color3.fromRGB(255, 224, 120), Color3.fromRGB(255, 166, 40)),
+	})
+	local bannerScale = Kit.new("UIScale", { Parent = banner })
 	local bannerText = Kit.label("Your turn!", {
-		Font = Theme.FontBold,
+		Font = Theme.FontTitle,
 		TextSize = 28,
 		TextColor3 = Theme.AccentText,
 		TextXAlignment = Enum.TextXAlignment.Center,
@@ -332,6 +393,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ZIndex = 31,
 		Parent = banner,
 	})
+	-- A soft shadow under the banner text, so it pops on the gold.
+	Kit.new("UIStroke", { Color = Color3.fromRGB(255, 244, 200), Thickness = 1, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = bannerText })
 	local bannerToken = 0
 	local bannerY = 0
 
@@ -348,9 +411,16 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		banner.BackgroundTransparency = 0
 		bannerText.TextTransparency = 0
 		banner.Position = UDim2.new(0.5, 0, 0, bannerY - 70)
+		bannerScale.Scale = 0.7
 		TweenService:Create(banner, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 			Position = UDim2.new(0.5, 0, 0, bannerY),
 		}):Play()
+		TweenService:Create(bannerScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		task.delay(0.25, function()
+			if bannerToken == token then
+				HudKit.shine(banner, 32)
+			end
+		end)
 		Audio.play("turn")
 		-- A short buzz on gamepads (phones without haptics just skip it).
 		pcall(function()
@@ -383,34 +453,66 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ZIndex = 50,
 		Parent = root,
 	})
-	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.4, Parent = resultOverlay })
-	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 36), ZIndex = 51, Parent = resultOverlay })
+	local resultRing = Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.4, Parent = resultOverlay })
+	-- Title band: gold when you won, blue for a draw, plum otherwise.
+	local BAND_H = 56
+	local TOP_H = BAND_H + 46 -- band + reason lines
+	local resultBand = Kit.new("Frame", {
+		Name = "Band",
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, BAND_H),
+		ZIndex = 51,
+		Parent = resultOverlay,
+	}, { Kit.corner(10) })
+	local bandGradient = HudKit.gradient(Theme.PanelLight, Theme.Panel)
+	bandGradient.Parent = resultBand
+	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontTitle, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 52, Parent = resultBand })
 	-- Two lines, so longer reasons (a Whodunit solution) wrap instead of being cut off.
-	local reasonLabel = Kit.label("", { TextSize = 15, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.new(0, 0, 0, 38), Size = UDim2.new(1, 0, 0, 38), ZIndex = 51, Parent = resultOverlay })
+	local reasonLabel = Kit.label("", { TextSize = 15, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, Position = UDim2.new(0, 0, 0, BAND_H + 4), Size = UDim2.new(1, 0, 0, 38), ZIndex = 51, Parent = resultOverlay })
 	local standings = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 0, 0, 80),
+		Position = UDim2.new(0, 0, 0, TOP_H),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 3,
 		ZIndex = 51,
 		Parent = resultOverlay,
-	}, { Kit.list(4) })
-	-- What you earned, filled in by showReward a moment after the result arrives.
+	}, { Kit.list(5), Kit.new("UIPadding", { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2) }) })
+	-- What you earned, filled in by showReward a moment after the result arrives: a gold
+	-- tray over the buttons.
 	local REWARD_H = 46
+	local rewardBox = Kit.new("Frame", {
+		Name = "Rewards",
+		BackgroundColor3 = Color3.fromRGB(70, 52, 18),
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, -52),
+		Size = UDim2.new(1, 0, 0, REWARD_H),
+		Visible = false,
+		ZIndex = 51,
+		Parent = resultOverlay,
+	}, { Kit.corner(10), Kit.new("UIStroke", { Color = Theme.Accent, Transparency = 0.5, Thickness = 1 }) })
 	local rewardLabel = Kit.label("", {
 		TextSize = 14,
 		TextColor3 = Theme.Accent,
 		Font = Theme.FontBold,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Center,
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, -52),
-		Size = UDim2.new(1, 0, 0, REWARD_H),
-		ZIndex = 51,
-		Parent = resultOverlay,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 52,
+		Parent = rewardBox,
 	})
+	rewardLabel:GetPropertyChangedSignal("Text"):Connect(function()
+		local shown = rewardLabel.Text ~= ""
+		if shown and not rewardBox.Visible then
+			rewardBox.Visible = true
+			Kit.popIn(rewardBox)
+		end
+		rewardBox.Visible = shown
+	end)
 	local shownMatchId: string? = nil
 	local rematchAsked = false
 	local rematchButton: TextButton
@@ -541,7 +643,12 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if emotes.button.Visible then
 			textRight += 44
 		end
-		turnLabel.Size = UDim2.new(1, -(12 + textRight), 1, -4)
+		-- The game badge only when the strip has room for it and a useful line of text.
+		gameBadge.Visible = barW - textRight >= 260
+		gameBadge.Size = UDim2.fromOffset(buttonH, buttonH)
+		local textX = if gameBadge.Visible then 14 + buttonH else 12
+		turnLabel.Position = UDim2.new(0, textX, 0, 0)
+		turnLabel.Size = UDim2.new(1, -(textX + textRight), 1, -4)
 		turnLabel.TextSize = if compact then 16 else 19
 		menu.Position = UDim2.fromOffset(info.barX + barW, info.barY + 2 + barH + 4)
 
@@ -561,7 +668,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			local listH = if listLayout then listLayout.AbsoluteContentSize.Y + 14 else 0
 			if listH < 20 then
 				local count = if snapshot then #snapshot.seats else 2
-				listH = count * ((if compact then 38 else 52) + 6) + 14
+				listH = count * ((if compact then 40 else 54) + 6) + 14
 			end
 			seatsPanel.Size = UDim2.fromOffset(seatsW, math.min(listH, available))
 		else
@@ -583,12 +690,18 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				dock.Position = UDim2.fromOffset(boardX + boardW - w, top)
 				dock.Size = UDim2.fromOffset(w, boardH)
 				board.Position = UDim2.fromOffset(w - virtualW, 0)
+				dockLip.Position = UDim2.fromOffset(0, 0)
+				dockLip.Size = UDim2.new(0, 3, 1, 0)
+				dockLip.Fade.Rotation = 90
 				table3D.setInsets((w + right) / info.width, 0)
 			else
 				local h = if spec.size > 1 then spec.size else math.floor(boardH * spec.size)
 				dock.Position = UDim2.fromOffset(boardX, top + boardH - h)
 				dock.Size = UDim2.fromOffset(boardW, h)
 				board.Position = UDim2.fromOffset(0, h - boardH)
+				dockLip.Position = UDim2.fromOffset(0, 0)
+				dockLip.Size = UDim2.new(1, 0, 0, 3)
+				dockLip.Fade.Rotation = 0
 				table3D.setInsets(0, (h + bottom) / info.height)
 			end
 		else
@@ -602,13 +715,14 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		bannerText.TextSize = if compact then 24 else 30
 
 		-- End card: as big as it can be, up to 420 x 420.
-		local cardW = math.min(420, info.width - 24)
+		local cardW = math.min(440, info.width - 24)
 		local cardH = math.min(420, available)
 		resultOverlay.Size = UDim2.fromOffset(cardW, cardH)
 		resultOverlay.Position = UDim2.fromOffset(info.width / 2, top + available / 2)
 		resultLabel.TextSize = if compact then 22 else 26
 		-- 12 px padding on each side of the card.
-		standings.Size = UDim2.new(1, 0, 0, math.max(0, cardH - 24 - 80 - REWARD_H - 52 - 4))
+		resultBand.Size = UDim2.new(1, 0, 0, if compact then BAND_H - 8 else BAND_H)
+		standings.Size = UDim2.new(1, 0, 0, math.max(0, cardH - 24 - TOP_H - REWARD_H - 52 - 4))
 	end
 	Layout.onChange(function()
 		if applyMode then
@@ -668,7 +782,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		elseif #active == 1 then
 			local s = snapshot.seats[active[1]]
 			local name = esc(s.name)
-			text = if s.kind == "bot" then `{name} is thinking...` else `Waiting for {name}...`
+			local dots = string.rep(".", 1 + math.floor(os.clock() * 2.5) % 3)
+			text = if s.kind == "bot" then `{name} is thinking{dots}` else `Waiting for {name}{dots}`
 		else
 			text = "Waiting for other players..."
 		end
@@ -709,58 +824,80 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end
 	end
 
+	-- Each seat is a card: avatar (headshot, or 🤖) ringed in the seat color with the
+	-- seat's shape, the name, and the game's line for that seat. Whoever's turn it is
+	-- gets a seat-tinted card with a breathing gold ring and their own timer bar.
 	local function renderSeats()
 		Kit.clear(seatsPanel)
 		local compact = Layout.get().compact
 		for index, s in snapshot.seats do
 			local active = not isOver() and table.find(snapshot.activeSeats, index) ~= nil
+			local mine = index == snapshot.yourSeat
 			local info = snapshot.seatInfo and snapshot.seatInfo[index]
-			local chipH = if compact then (if info then 38 else 32) else (if info then 52 else 40)
-			local seatColor = Theme.Seat[index] or Theme.Text
+			local chipH = if compact then (if info then 40 else 34) else (if info then 54 else 44)
+			local seatColor = HudKit.seatColor(index)
 			local frame = Kit.new("Frame", {
 				Name = `Seat{index}`,
-				BackgroundColor3 = if active then Theme.PanelLight else Theme.Background,
-				BackgroundTransparency = if active then 0 else 0.3,
 				BorderSizePixel = 0,
 				Size = UDim2.new(1, 0, 0, chipH),
 				LayoutOrder = index,
 				ZIndex = 3,
 				Parent = seatsPanel,
-			}, { Kit.corner(8) })
+			}, { Kit.corner(10) })
+			HudKit.glass(frame, if active then 0 else 0.18)
 			if active then
-				Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Parent = frame })
+				frame.HudGradient.Color = ColorSequence.new(HudKit.shade(seatColor, 0.45), HudKit.shade(Theme.Panel, 0.1))
+				frame.HudGradient.Rotation = 0
+				frame.Rim.Color = Theme.Accent
+				frame.Rim.Thickness = 2
+				HudKit.pulse(frame.Rim, 0, 0.6)
+			elseif mine then
+				frame.Rim.Color = seatColor
+				frame.Rim.Transparency = 0.3
 			end
-			-- Seat color with a shape, so colors aren't the only way to tell seats apart.
-			Kit.label(({ "●", "■", "▲", "◆", "★", "✖", "♥", "♣" })[index] or "●", {
-				TextColor3 = seatColor,
-				TextSize = if compact then 14 else 16,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				Position = UDim2.new(0, 2, 0, 0),
-				Size = UDim2.new(0, 18, 0, if info then chipH - (if compact then 14 else 22) else chipH),
+			-- A slim bar in the seat's color down the left edge.
+			Kit.new("Frame", {
+				Name = "Stripe",
+				BackgroundColor3 = seatColor,
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 0, 0, 6),
+				Size = UDim2.new(0, 3, 1, -12),
+				ZIndex = 4,
+				Parent = frame,
+			}, { Kit.corner(2) })
+			local avatarSize = chipH - (if compact then 10 else 14)
+			HudKit.avatar(index, s, {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 8, 0.5, 0),
+				Size = UDim2.fromOffset(avatarSize, avatarSize),
 				ZIndex = 4,
 				Parent = frame,
 			})
-			local icon = if s.kind == "bot" then "🤖 " else ""
-			local nameH = if info then chipH - (if compact then 14 else 22) else chipH
-			Kit.label(`{icon}{nameOf(index)}`, {
-				Position = UDim2.new(0, 20, 0, if info then 2 else 0),
-				Size = UDim2.new(1, -24, 0, nameH - (if info then 2 else 0)),
-				Font = if active then Theme.FontBold else Theme.Font,
+			local textX = 8 + avatarSize + 7
+			local nameH = if info then (if compact then 20 else 26) else chipH
+			local nameY = if info then (if compact then 2 else 4) else 0
+			Kit.label(nameOf(index), {
+				Name = "Name",
+				Position = UDim2.new(0, textX, 0, nameY),
+				Size = UDim2.new(1, -(textX + 6), 0, nameH),
+				Font = if active or mine then Theme.FontBold else Theme.Font,
 				TextSize = if compact then 13 else 16,
+				TextColor3 = if mine and not active then HudKit.shade(seatColor, -0.45) else Theme.Text,
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				ZIndex = 4,
+				ZIndex = 5,
 				Parent = frame,
 			})
 			if info then
 				Kit.label(info, {
-					Position = UDim2.new(0, 20, 0, nameH),
-					Size = UDim2.new(1, -24, 0, if compact then 12 else 18),
+					Name = "Info",
+					Position = UDim2.new(0, textX, 0, nameY + nameH - 2),
+					Size = UDim2.new(1, -(textX + 6), 0, if compact then 13 else 18),
 					TextSize = if compact then 11 else 13,
-					TextColor3 = Theme.SubText,
+					TextColor3 = if active then Color3.fromRGB(226, 222, 245) else Theme.SubText,
 					TextWrapped = false,
 					TextTruncate = Enum.TextTruncate.AtEnd,
-					ZIndex = 4,
+					ZIndex = 5,
 					Parent = frame,
 				})
 			end
@@ -771,13 +908,13 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 					BackgroundTransparency = 0.5,
 					BorderSizePixel = 0,
 					AnchorPoint = Vector2.new(0, 1),
-					Position = UDim2.new(0, 6, 1, -2),
-					Size = UDim2.new(1, -12, 0, 3),
+					Position = UDim2.new(0, textX, 1, -3),
+					Size = UDim2.new(1, -(textX + 8), 0, 3),
 					Visible = false,
 					ZIndex = 5,
 					Parent = frame,
-				})
-				Kit.new("Frame", { Name = "Fill", BackgroundColor3 = Theme.Good, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 6, Parent = bar })
+				}, { Kit.corner(2) })
+				Kit.new("Frame", { Name = "Fill", BackgroundColor3 = Theme.Good, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 6, Parent = bar }, { Kit.corner(2) })
 			end
 		end
 	end
@@ -867,26 +1004,48 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				Audio.play("clap") -- watching: applaud the winner
 			end
 		end
-		-- Gold when you won, light for a draw or a game you watched, muted when you lost.
+		-- Gold when you won, blue for a draw, plum when you lost or watched.
+		local outcome = "other"
 		resultLabel.TextColor3 = Theme.Text
 		if snapshot.aborted then
 			resultLabel.Text = "Game ended"
 		elseif result and result.isDraw then
-			resultLabel.Text = "It's a draw!"
+			resultLabel.Text = "It's a draw! 🤝"
+			outcome = "draw"
 		elseif result and snapshot.yourSeat and winners[snapshot.yourSeat] then
 			resultLabel.Text = "You win! 🎉"
-			resultLabel.TextColor3 = Theme.Accent
+			resultLabel.TextColor3 = Theme.AccentText
+			outcome = "win"
 		elseif result then
-			if snapshot.yourSeat then
-				resultLabel.TextColor3 = Theme.SubText
-			end
 			local names = {}
 			for _, seat in result.winners do
 				table.insert(names, nameOf(seat))
 			end
-			resultLabel.Text = `{table.concat(names, ", ")} won`
+			resultLabel.Text = `{table.concat(names, ", ")} won 🏆`
+			if snapshot.yourSeat then
+				outcome = "lose"
+			end
+		end
+		if outcome == "win" then
+			bandGradient.Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(240, 150, 30))
+			resultRing.Color = Theme.Accent
+		elseif outcome == "draw" then
+			bandGradient.Color = ColorSequence.new(Color3.fromRGB(96, 168, 255), Color3.fromRGB(58, 92, 196))
+			resultRing.Color = Color3.fromRGB(96, 168, 255)
+		elseif outcome == "lose" then
+			bandGradient.Color = ColorSequence.new(Color3.fromRGB(88, 80, 128), Color3.fromRGB(52, 46, 82))
+			resultRing.Color = Theme.Stroke
+		else
+			bandGradient.Color = ColorSequence.new(Color3.fromRGB(120, 92, 190), Color3.fromRGB(70, 52, 128))
+			resultRing.Color = Theme.Stroke
 		end
 		reasonLabel.Text = if result and result.reason then result.reason else ""
+		if not wasShown then
+			HudKit.shine(resultBand, 53)
+			if outcome == "win" then
+				HudKit.confetti(root, if Layout.get().compact then 40 else 70, 60)
+			end
+		end
 
 		-- Standings: winners first, then everyone else in seat order, with their last
 		-- seat line (points, cards left...).
@@ -902,41 +1061,61 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			end
 			return a < b
 		end)
+		local rowH = if Layout.get().compact then 32 else 38
 		for place, index in order do
 			local s = snapshot.seats[index]
 			local info = snapshot.seatInfo and snapshot.seatInfo[index]
+			local won = winners[index] == true
 			local row = Kit.new("Frame", {
-				BackgroundColor3 = if index == snapshot.yourSeat then Theme.Panel else Theme.Background,
-				BackgroundTransparency = 0.2,
 				BorderSizePixel = 0,
-				Size = UDim2.new(1, -4, 0, 30),
+				Size = UDim2.new(1, -4, 0, rowH),
 				LayoutOrder = place,
 				ZIndex = 52,
 				Parent = standings,
-			}, { Kit.corner(6) })
-			local medal = if winners[index] then "🏆" elseif result and result.isDraw then "🤝" else ""
-			Kit.label(`{medal} {if s.kind == "bot" then "🤖 " else ""}{nameOf(index)}`, {
-				Position = UDim2.new(0, 8, 0, 0),
-				Size = UDim2.new(0.55, -8, 1, 0),
-				Font = if winners[index] then Theme.FontBold else Theme.Font,
+			}, { Kit.corner(8) })
+			HudKit.glass(row, if index == snapshot.yourSeat then 0.05 else 0.3)
+			if won then
+				row.HudGradient.Color = ColorSequence.new(Color3.fromRGB(120, 92, 30), Color3.fromRGB(64, 50, 40))
+				row.HudGradient.Rotation = 0
+				row.Rim.Color = Theme.Accent
+			elseif index == snapshot.yourSeat then
+				row.Rim.Color = HudKit.seatColor(index)
+			end
+			local avatarSize = rowH - 8
+			HudKit.avatar(index, s, {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 6, 0.5, 0),
+				Size = UDim2.fromOffset(avatarSize, avatarSize),
+				ZIndex = 53,
+				Parent = row,
+			})
+			local textX = avatarSize + 14
+			local medal = if won then "🏆 " elseif result and result.isDraw then "🤝 " else ""
+			Kit.label(`{medal}{nameOf(index)}`, {
+				Position = UDim2.new(0, textX, 0, 0),
+				Size = UDim2.new(0.6, -textX, 1, 0),
+				Font = if won then Theme.FontBold else Theme.Font,
 				TextSize = 15,
-				TextColor3 = Theme.Seat[index] or Theme.Text,
+				TextColor3 = if won then Theme.Accent else HudKit.shade(HudKit.seatColor(index), -0.35),
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				ZIndex = 53,
+				ZIndex = 54,
 				Parent = row,
 			})
 			Kit.label(info or "", {
-				Position = UDim2.new(0.55, 0, 0, 0),
-				Size = UDim2.new(0.45, -8, 1, 0),
+				Position = UDim2.new(0.6, 0, 0, 0),
+				Size = UDim2.new(0.4, -10, 1, 0),
 				TextSize = 13,
-				TextColor3 = Theme.SubText,
+				TextColor3 = if won then Color3.fromRGB(255, 232, 170) else Theme.SubText,
 				TextXAlignment = Enum.TextXAlignment.Right,
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				ZIndex = 53,
+				ZIndex = 54,
 				Parent = row,
 			})
+			if not wasShown then
+				HudKit.slideIn(row, 0.12 + place * 0.07)
+			end
 		end
 
 		if not rematchAsked then
@@ -1011,6 +1190,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				renderer = nil
 				rendererGameId = snapshot.gameId
 				local entry = GameCatalog.get(snapshot.gameId)
+				local rgb = GameArt.rgb(if entry then entry.category else "")
+				gameIcon.Text = GameArt.icon(snapshot.gameId)
+				gameBadge.BackgroundColor3 = Color3.fromRGB(rgb[1], rgb[2], rgb[3])
 				local moduleScript = entry and entry.module and Renderers:FindFirstChild(entry.module)
 				if moduleScript then
 					renderer = (require(moduleScript) :: any).create(board, function(move: any)
