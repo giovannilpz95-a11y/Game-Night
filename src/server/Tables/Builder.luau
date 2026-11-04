@@ -8,12 +8,15 @@
 --      in it, cloned onto the spots in shared/LobbyLayout. Seats and an anchor are added
 --      if missing.
 --   3. Plain tables built from parts, so 3D play works before any art exists.
+-- Unless Config.TableFurniture is "Template", 2 and 3 are replaced by the detailed
+-- code-built tables in Tables/Furniture.
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local LobbyLayout = require(ReplicatedStorage.Shared.LobbyLayout)
+local Furniture = require(script.Parent.Furniture)
 local Pieces = require(script.Parent.Pieces)
 
 local Builder = {}
@@ -285,8 +288,11 @@ function Builder.getTables(): { Model }
 		local at = if sx and sy and sz
 			then Vector3.new(sx, sy, sz)
 			else Config.TableOrigin + Vector3.new((col - (columns - 1) / 2) * Config.TableSpacing, 0, -row * Config.TableSpacing)
-		local template = findTemplate(spec.shape)
-		local model = if template then fromTemplate(template, spec.shape, at) else buildPlain(spec.shape, at)
+		local template = if Config.TableFurniture == "Template" then findTemplate(spec.shape) else nil
+		local model = if Config.TableFurniture ~= "Template"
+			then Furniture.build(spec.shape, at)
+			elseif template then fromTemplate(template, spec.shape, at)
+			else buildPlain(spec.shape, at)
 		Builder.smoothCylinders(model)
 		counts[spec.zone] = (counts[spec.zone] or 0) + 1
 		local id = `{spec.zone}-{counts[spec.zone]}`

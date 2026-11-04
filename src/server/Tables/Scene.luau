@@ -174,9 +174,12 @@ end
 -- One card lying flat at `cf` (its long side along the seat's view). `front` is
 -- { text, color, background, corner } for a face-up card; nil draws the back. `text` fills
 -- the middle of the card, `corner` goes in two opposite corners. `scale` makes it bigger.
-function Scene.card(parent: Instance, cf: CFrame, front: { text: string, color: Color3?, background: Color3?, corner: string? }?, scale: number?): Part
+function Scene.card(parent: Instance, cf: CFrame, front: { text: string, color: Color3?, background: Color3?, corner: string? }?, scale: number?): BasePart
 	local k = scale or 1
-	local part = Models.block(parent, "Card", Vector3.new(Scene.CARD_W * k, Scene.CARD_T, Scene.CARD_H * k), cf * CFrame.new(0, Scene.CARD_T / 2, 0), CARD_EDGE)
+	local cardSize = Vector3.new(Scene.CARD_W * k, Scene.CARD_T, Scene.CARD_H * k)
+	local cardAt = cf * CFrame.new(0, Scene.CARD_T / 2, 0)
+	-- The rounded-corner card mesh when it's imported (docs/Meshes.md), else a block.
+	local part: BasePart = Models.mesh(parent, "Card", cardSize, cardAt, CARD_EDGE) or Models.block(parent, "Card", cardSize, cardAt, CARD_EDGE)
 	local top = cf * CFrame.new(0, Scene.CARD_T, 0)
 	if not front then
 		cardBack(parent, top, k)
