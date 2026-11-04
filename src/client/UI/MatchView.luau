@@ -24,6 +24,9 @@ local Layout = require(script.Parent.Layout)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
 local Avatars = require(script.Parent.Parent.Table3D.Avatars)
 local EmoteWheel = require(script.Parent.EmoteWheel)
+local ReactionFx = require(script.Parent.ReactionFx)
+local Net = require(ReplicatedStorage.Shared.Net)
+local Reactions = require(ReplicatedStorage.Shared.Reactions)
 local Theme = Kit.Theme
 
 local Renderers = script.Parent.Parent.Renderers
@@ -87,7 +90,8 @@ local function timerColor(left: number): Color3
 end
 
 -- openRules(gameId): shows that game's rules over the table (the ? in the header).
-function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: () -> boolean, walletWidth: (() -> number)?, openRules: ((string) -> ())?)
+-- openReactionShop(): the reaction packs in the shop (the wheel's 🛍️ button).
+function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: () -> boolean, walletWidth: (() -> number)?, openRules: ((string) -> ())?, openReactionShop: (() -> ())?)
 	local root = Kit.new("Frame", {
 		Name = "MatchView",
 		BackgroundColor3 = Theme.Background,
@@ -444,8 +448,16 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = header,
 	})
 
-	-- Emotes for your avatar at the table (shown only while you're seated at one).
-	local emotes = EmoteWheel.create(root, header, Avatars.emote)
+	-- The 😀 wheel: animated reactions while you have a seat, plus emotes for your avatar
+	-- when you're seated at a 3D table.
+	local reactionRemote = Net.event(Net.Names.Reaction)
+	local emotes = EmoteWheel.create(root, header, {
+		emote = Avatars.emote,
+		react = function(id: string)
+			reactionRemote:FireServer({ id = id })
+		end,
+		openShop = openReactionShop,
+	})
 
 	local function nameOf(seat: number): string
 		local s = snapshot.seats[seat]
@@ -594,7 +606,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		board.Visible = not in3D or docked
 		dock.Visible = docked
 		viewButton.Visible = table3D.available() and snapshot ~= nil and not isOver()
-		emotes.setEnabled(snapshot ~= nil and snapshot.table ~= nil and snapshot.yourSeat ~= nil and not isOver())
+		emotes.setEnabled(snapshot ~= nil and snapshot.yourSeat ~= nil and not isOver(), snapshot ~= nil and snapshot.table ~= nil)
 		local compact = Layout.get().compact
 		if table3D.playable() then
 			viewButton.Text = if in3D then "2D view" else "3D view"
@@ -746,6 +758,48 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end
 	end
 
+	-- Reactions next to the seat chip. At a 3D table they pop over the player's head
+	-- instead (Table3D/HeadReactions), unless you're looking at the 2D board.
+	local chipReaction: { [number]: Frame } = {}
+	reactionRemote.OnClientEvent:Connect(function(payload: any)
+		if type(payload) ~= "table" or not snapshot or payload.match ~= snapshot.matchId or type(payload.seat) ~= "number" then
+			return
+		end
+		local reaction = Reactions.get(payload.id)
+		local chip = seatsPanel:FindFirstChild(`Seat{payload.seat}`)
+		if not reaction or not (chip and chip:IsA("GuiObject")) then
+			return
+		end
+		if table3D.isActive() and payload.table ~= nil then
+			return
+		end
+		local old = chipReaction[payload.seat]
+		if old then
+			old:Destroy()
+		end
+		local base = if Layout.get().compact then 56 else 72
+		local size = ReactionFx.size(reaction, base)
+		local origin = root.AbsolutePosition
+		local x = chip.AbsolutePosition.X + chip.AbsoluteSize.X + 4 - origin.X
+		local y = chip.AbsolutePosition.Y + chip.AbsoluteSize.Y / 2 - origin.Y
+		local holder = Kit.new("Frame", {
+			Name = "Reaction",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(x, y),
+			Size = UDim2.fromOffset(size.X, size.Y),
+			ZIndex = 40,
+			Parent = root,
+		})
+		chipReaction[payload.seat] = holder
+		holder.Destroying:Once(function()
+			if chipReaction[payload.seat] == holder then
+				chipReaction[payload.seat] = nil
+			end
+		end)
+		ReactionFx.play(holder, reaction)
+	end)
+
 	local function renderResult()
 		local result = snapshot.result
 		local over = isOver()
@@ -859,6 +913,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 
 	return {
 		root = root,
+		-- What the player owns (wallet state), so the wheel shows their reaction packs.
+		setOwned = emotes.setOwned,
 		setSnapshot = function(newSnapshot: any)
 			if newSnapshot == nil then
 				-- We left the match; drop the view unless a result is still on screen.

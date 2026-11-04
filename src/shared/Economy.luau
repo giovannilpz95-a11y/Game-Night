@@ -93,6 +93,15 @@ Economy.StarterPack = {
 	windowDays = 3,
 }
 
+-- Every reaction pack sold for Gems, in one Robux purchase (a developer product). Packs
+-- the player already owns are skipped; Card Sharp stays a Card Coins pack.
+Economy.ReactionBundle = {
+	key = "reactionsAll",
+	productId = 0,
+	robux = 299,
+	items = { "reactions_party", "reactions_drama", "reactions_animals", "reactions_talk", "reactions_trash" },
+}
+
 -- Game passes (one-time)
 Economy.Passes = {
 	vip = {
@@ -124,7 +133,8 @@ function Economy.coinName(coinKey: string): string
 	return if coin then coin.name else "Coins"
 end
 
--- Finds what a Robux purchase was for: ("gems", pack) or ("starter", pack) or nil.
+-- Finds what a Robux purchase was for: ("gems", pack), ("starter", pack),
+-- ("reactions", bundle) or nil.
 function Economy.productById(productId: number): (string?, any)
 	if productId == 0 then
 		return nil, nil
@@ -136,6 +146,9 @@ function Economy.productById(productId: number): (string?, any)
 	end
 	if Economy.StarterPack.productId == productId then
 		return "starter", Economy.StarterPack
+	end
+	if Economy.ReactionBundle.productId == productId then
+		return "reactions", Economy.ReactionBundle
 	end
 	return nil, nil
 end

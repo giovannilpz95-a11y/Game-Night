@@ -20,6 +20,7 @@ local HostService = require(script.Parent.Services.HostService)
 local VoiceService = require(script.Parent.Services.VoiceService)
 local ProgressionService = require(script.Parent.Services.ProgressionService)
 local TableActionService = require(script.Parent.Services.TableActionService)
+local ReactionService = require(script.Parent.Services.ReactionService)
 
 Net.init()
 -- The room first, so the tables stand in it. It's decor: if it ever fails, the games
@@ -69,6 +70,7 @@ Net.event(Net.Names.HostRequest).OnServerEvent:Connect(guarded(HostService.handl
 Net.event(Net.Names.VoiceRequest).OnServerEvent:Connect(guarded(VoiceService.handleRequest))
 Net.event(Net.Names.StatsRequest).OnServerEvent:Connect(guarded(ProgressionService.handleRequest))
 Net.event(Net.Names.TableAction).OnServerEvent:Connect(guarded(TableActionService.init(MatchService)))
+Net.event(Net.Names.Reaction).OnServerEvent:Connect(guarded(ReactionService.init(MatchService)))
 
 Players.PlayerRemoving:Connect(function(player)
 	limiter:forget(player.UserId)

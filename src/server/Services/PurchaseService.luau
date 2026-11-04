@@ -1,4 +1,5 @@
--- Robux purchases: Gem packs and the Starter Pack (developer products), VIP and Party Host
+-- Robux purchases: Gem packs, the Starter Pack and the reaction bundle (developer
+-- products), VIP and Party Host
 -- (game passes). Product IDs live in shared/Economy.luau.
 --
 -- Developer products go through ProcessReceipt, which Roblox retries until we say
@@ -46,6 +47,8 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 		Profile.addGems(data, product.gems)
 		Shop.grant(data, product.items)
 		data.grants.starter = true
+	elseif kind == "reactions" then
+		Shop.grant(data, product.items)
 	else
 		warn(`[GameNight] receipt for unknown product {info.ProductId}`)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
@@ -57,7 +60,10 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	AnalyticsService.robuxPurchase(player, product.key, data, product.gems)
-	notify(player, if kind == "starter" then "Starter Pack unlocked! Thanks for supporting Game Night." else `+{product.gems} Gems. Thanks!`)
+	notify(player, if kind == "starter"
+		then "Starter Pack unlocked! Thanks for supporting Game Night."
+		elseif kind == "reactions" then "Every reaction pack is on your 😀 wheel. Thanks!"
+		else `+{product.gems} Gems. Thanks!`)
 	EconomyService.push(player)
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
@@ -86,6 +92,17 @@ function PurchaseService.handleRequest(player: Player, request: any)
 		end
 		AnalyticsService.robuxPrompt(player, Economy.StarterPack.key)
 		MarketplaceService:PromptProductPurchase(player, Economy.StarterPack.productId)
+	elseif request.action == "buyReactionBundle" then
+		local bundle = Economy.ReactionBundle
+		if bundle.productId == 0 then
+			return notify(player, "The reaction bundle isn't set up yet")
+		end
+		local data = DataService.get(player)
+		if data and Shop.missing(data, bundle.items) == 0 then
+			return notify(player, "You already have every reaction pack")
+		end
+		AnalyticsService.robuxPrompt(player, bundle.key)
+		MarketplaceService:PromptProductPurchase(player, bundle.productId)
 	elseif request.action == "buyPass" then
 		local pass = if type(request.key) == "string" then Economy.Passes[request.key] else nil
 		if not pass then

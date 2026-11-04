@@ -2,6 +2,7 @@
 --
 --   shop       "hub" (Gems only, works everywhere) or a coin key from Economy.Coins
 --   slot       what it replaces: pieces, cards, dice, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
+--              ("reactions" = a reaction pack from shared/Reactions: owning it puts it on the 😀 wheel, nothing to equip)
 --   tier       Common | Rare | Epic | Legendary
 --   coins      price in that shop's Coins (nil = not sold for Coins)
 --   gems       Gem price. If nil and coins is set, the Gem price is coins / Economy.CoinsPerGem.
@@ -33,6 +34,14 @@ local items: { Item } = {
 	-- Starter Pack only
 	{ id = "hub_cozy_cabin", name = "Cozy Cabin Table", shop = "hub", slot = "theme", tier = "Epic", notForSale = true },
 	{ id = "hub_nameplate_cozy", name = "Cozy Nameplate", shop = "hub", slot = "nameplate", tier = "Rare", notForSale = true },
+
+	-- Reaction packs (shared/Reactions lists what's in each). All the Gem ones together are
+	-- also a Robux product: Economy.ReactionBundle.
+	{ id = "reactions_party", name = "Party Pack", shop = "hub", slot = "reactions", tier = "Rare", gems = 150 },
+	{ id = "reactions_drama", name = "Drama Pack", shop = "hub", slot = "reactions", tier = "Rare", gems = 150 },
+	{ id = "reactions_animals", name = "Animal Pack", shop = "hub", slot = "reactions", tier = "Common", gems = 120 },
+	{ id = "reactions_talk", name = "Table Talk", shop = "hub", slot = "reactions", tier = "Rare", gems = 200 },
+	{ id = "reactions_trash", name = "Friendly Trash Talk", shop = "hub", slot = "reactions", tier = "Epic", gems = 250 },
 
 	-- Chess shop
 	{ id = "chess_walnut_board", name = "Walnut Board", shop = "chess", slot = "board", tier = "Common", coins = 400 },
@@ -120,6 +129,7 @@ local items: { Item } = {
 	{ id = "cards_starry_backs", name = "Starry Night Backs", shop = "cards", slot = "cards", tier = "Rare", coins = 1500 },
 	{ id = "cards_card_fountain", name = "Card Fountain Win", shop = "cards", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "cards_speed_demon_title", name = "Title: Speed Demon", shop = "cards", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
+	{ id = "reactions_cards", name = "Card Sharp", shop = "cards", slot = "reactions", tier = "Rare", coins = 1500 },
 }
 
 local byId: { [string]: Item } = {}

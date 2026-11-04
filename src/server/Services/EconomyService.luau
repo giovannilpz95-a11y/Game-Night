@@ -17,6 +17,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Net = require(ReplicatedStorage.Shared.Net)
+local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
 local Profile = require(script.Parent.Parent.Core.Profile)
 local Daily = require(script.Parent.Parent.Core.Daily)
 local Rewards = require(script.Parent.Parent.Core.Rewards)
@@ -289,7 +290,8 @@ function handlers.buy(player: Player, request: any)
 	if not ok then
 		return notify(player, err :: string)
 	end
-	notify(player, "Bought! Equip it from the shop.")
+	local item = ShopCatalog.get(request.itemId)
+	notify(player, if item and item.slot == "reactions" then "Bought! It's on your 😀 reaction wheel in every game." else "Bought! Equip it from the shop.")
 	EconomyService.push(player)
 end
 

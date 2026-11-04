@@ -545,6 +545,20 @@ function MatchService.tableSeatOf(player: Player): (any?, { any }?, number?)
 	return entry.table, entry.match.seats, entry.match:seatOf(player.UserId)
 end
 
+-- The match and seat a player is playing in, for reactions: (matchId, seat, tableInfo?),
+-- or nil when they aren't seated in a running match. tableInfo is nil in 2D-only matches.
+function MatchService.matchSeatOf(player: Player): (string?, number?, any?)
+	local entry = entryFor(player)
+	if not entry or entry.ended then
+		return nil, nil, nil
+	end
+	local seat = entry.match:seatOf(player.UserId)
+	if not seat then
+		return nil, nil, nil
+	end
+	return entry.match.id, seat, entry.table
+end
+
 function MatchService.handleRequest(player: Player, request: any)
 	if type(request) ~= "table" or type(request.action) ~= "string" then
 		return

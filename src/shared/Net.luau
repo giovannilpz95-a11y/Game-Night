@@ -28,6 +28,7 @@ Net.Names = {
 	StatsRequest = "StatsRequest", -- client -> server: { action = "profile", userId? } | { action = "board", board }
 	StatsState = "StatsState", -- server -> client: { kind = "profile" | "board" | "error", ... }
 	TableAction = "TableAction", -- both ways: avatars acting out moves and emotes at a table (client sends { emote })
+	Reaction = "Reaction", -- both ways: animated reactions over a player's head or seat (client sends { id })
 }
 
 local FOLDER_NAME = "Remotes"
