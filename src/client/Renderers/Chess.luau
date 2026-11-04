@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ChessRules = require(ReplicatedStorage.Shared.Games.Chess)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
 local Theme = Kit.Theme
@@ -177,6 +178,9 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end
 		local view = snapshot.view
 		grid.setFlipped(snapshot.yourSeat == 2)
+		local over = snapshot.result ~= nil or snapshot.aborted == true
+		local acting = if over then nil else snapshot.activeSeats[1]
+		HudKit.turnTint(side, acting, acting ~= nil and acting == snapshot.yourSeat)
 
 		local targets = {}
 		if selected then

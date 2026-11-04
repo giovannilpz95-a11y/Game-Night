@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Rules = require(ReplicatedStorage.Shared.Games.WordTiles)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local Theme = Kit.Theme
 
@@ -92,12 +93,12 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	local side = Kit.panel({ Position = UDim2.new(0.66, 8, 0, 0), Size = UDim2.new(0.34, -8, 1, -96), Parent = root })
 	local sideList = Kit.list(8)
 	sideList.Parent = side
-	local bagLabel = Kit.label("", { Font = Theme.FontBold, TextSize = 18, LayoutOrder = 1, Parent = side })
+	local bagLabel = Kit.label("", { Font = Theme.FontTitle, TextSize = 19, LayoutOrder = 1, Parent = side })
 	local previewLabel = Kit.label("", { TextSize = 16, Size = UDim2.new(1, 0, 0, 64), TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2, Parent = side })
-	Kit.label("Recent plays", { TextSize = 14, TextColor3 = Theme.SubText, LayoutOrder = 3, Parent = side })
+	HudKit.heading("Recent plays", { size = 15, LayoutOrder = 3, Parent = side })
 	local logLabel = Kit.label("", {
 		TextSize = 14,
-		Size = UDim2.new(1, 0, 1, -150),
+		Size = UDim2.new(1, 0, 1, -158),
 		TextYAlignment = Enum.TextYAlignment.Top,
 		LayoutOrder = 4,
 		Parent = side,
@@ -109,7 +110,13 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		BorderSizePixel = 0,
 		Size = UDim2.new(0.5, 0, 1, 0),
 		Parent = bottom,
-	}, { Kit.corner(12), Kit.padding(8) })
+	}, {
+		Kit.corner(12),
+		Kit.padding(8),
+		-- A wooden rack lit from above, with a dark rim (Kit's names, so Kit.clear keeps them).
+		Kit.shade(0.35),
+		Kit.stroke(Color3.fromRGB(50, 32, 20), 0.2, 2),
+	})
 	local rackList = Kit.list(6, true)
 	rackList.VerticalAlignment = Enum.VerticalAlignment.Center
 	rackList.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -355,6 +362,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		local view = snapshot.view
 		local turn = myTurn()
 		local over = snapshot.result ~= nil or snapshot.aborted == true
+		HudKit.turnTint(side, if over then nil else snapshot.activeSeats[1], turn and not over)
 
 		if over then
 			recallAll()
