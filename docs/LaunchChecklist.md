@@ -26,6 +26,7 @@ Create each under Creator Hub > Game Night > Monetization, then paste the ID int
 - [ ] Private servers on (about 100 R$ a month), auto-translation on, devices: computer, phone, tablet
 - [ ] Maturity questionnaire filled in (answers in [[Launch]] section 3: social hangout = No, free-form creation = No while Sketch & Guess is off)
 - [ ] Genre Strategy > Board & Card Games; title and description from [[Store page]]
+- [ ] Optional: **import the smooth meshes** (`meshes/*.obj` in the project files) into `ReplicatedStorage.Assets.Meshes`, named as in [[Meshes]]. The game works without them; with them the round tables, stools, cards, dice and hex tiles look smooth and use fewer parts
 
 ## 3. Tests that need people or devices
 
