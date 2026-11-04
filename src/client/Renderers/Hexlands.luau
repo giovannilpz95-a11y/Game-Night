@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 local Rules = require(ReplicatedStorage.Shared.Games.Hexlands)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local Hexlands = {}
@@ -424,6 +425,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		ScrollBarThickness = 6,
 		Parent = root,
 	}, { Kit.corner(14), Kit.padding(10), Kit.list(8) })
+	HudKit.sidePanel(side)
 
 	local order = 0
 	local function nextOrder(): number
@@ -432,14 +434,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local function heading(text: string, color: Color3?)
-		Kit.label(text, {
-			Font = Theme.FontBold,
-			TextSize = 17,
-			TextColor3 = color or Theme.Text,
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = nextOrder(),
-			Parent = side,
-		})
+		HudKit.heading(text, { TextColor3 = color, LayoutOrder = nextOrder(), Parent = side })
 	end
 
 	local function note(text: string, color: Color3?)
@@ -795,19 +790,27 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 	local function renderPlayers(view: any, me: number?)
 		heading("Players")
 		for seat, p in view.players do
+			local turn = seat == view.turn and view.phase ~= "over"
 			local line = Kit.new("Frame", {
-				BackgroundColor3 = if seat == view.turn then Theme.PanelLight else Theme.Background,
 				BorderSizePixel = 0,
 				Size = UDim2.new(1, 0, 0, 42),
 				LayoutOrder = nextOrder(),
 				Parent = side,
 			}, { Kit.corner(8), Kit.padding(6) })
-			Kit.new("Frame", {
-				BackgroundColor3 = Theme.Seat[seat] or Theme.Text,
-				BorderSizePixel = 0,
-				Size = UDim2.new(0, 6, 1, 0),
+			HudKit.glass(line, if turn then 0 else 0.25)
+			if turn then
+				line.HudGradient.Color = ColorSequence.new(HudKit.shade(HudKit.seatColor(seat), 0.5), HudKit.shade(Theme.Panel, 0.1))
+				line.HudGradient.Rotation = 0
+				line.Rim.Color = Theme.Accent
+				line.Rim.Thickness = 2
+				HudKit.pulse(line.Rim, 0, 0.6)
+			end
+			HudKit.avatar(seat, snapshot.seats[seat], {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, -2, 0.5, 0),
+				Size = UDim2.fromOffset(28, 28),
 				Parent = line,
-			}, { Kit.corner(3) })
+			})
 			local badges = {}
 			if view.longestRoad == seat then
 				table.insert(badges, "🛣 Longest Road")
@@ -818,15 +821,19 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			Kit.label(`<b>{nameOf(seat)}</b>  {p.points} pts{if seat == me and view.you and view.you.secret > 0 then ` (+{view.you.secret} secret)` else ""}  ·  {p.cards} cards  ·  {p.actionCards} action`, {
 				TextSize = 14,
 				RichText = true,
-				Position = UDim2.fromOffset(12, 0),
-				Size = UDim2.new(1, -12, 0, 16),
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Position = UDim2.fromOffset(32, 0),
+				Size = UDim2.new(1, -32, 0, 16),
 				Parent = line,
 			})
 			Kit.label(`Road {p.roadLength} · Guards {p.guards}  {table.concat(badges, "  ")}`, {
 				TextSize = 12,
 				TextColor3 = Theme.SubText,
-				Position = UDim2.fromOffset(12, 16),
-				Size = UDim2.new(1, -12, 0, 14),
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Position = UDim2.fromOffset(32, 16),
+				Size = UDim2.new(1, -32, 0, 14),
 				Parent = line,
 			})
 		end
@@ -949,7 +956,10 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		order = 0
-		heading(statusText(view, me), Theme.Accent)
+		local mine = me ~= nil and view.turn == me and view.phase ~= "over"
+		local turnSeat = if view.phase == "over" then nil else view.turn
+		HudKit.turnTint(side, turnSeat, mine)
+		HudKit.statusCard(statusText(view, me), turnSeat, mine, { LayoutOrder = nextOrder(), Parent = side })
 		note(`First to {view.target} points wins · round {math.min(view.round, view.maxRounds)} of {view.maxRounds}`)
 		if view.steal and view.steal.res then
 			local s = view.steal

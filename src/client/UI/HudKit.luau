@@ -71,6 +71,137 @@ function HudKit.pill(object: GuiObject)
 	(corner :: UICorner).CornerRadius = UDim.new(0.5, 0)
 end
 
+---------------------------------------------------------------- side panels
+-- The big games' side panels (Property Party, Hexlands, Conquest Isles, Whodunit).
+-- Uses Kit's own Shade gradient and Outline stroke, so Kit.clear keeps them.
+function HudKit.sidePanel(frame: GuiObject)
+	frame.BackgroundColor3 = Theme.Panel
+	if not frame:FindFirstChild("Shade") then
+		Kit.shade(0.22).Parent = frame
+	end
+	if not frame:FindFirstChild("Outline") then
+		Kit.stroke().Parent = frame
+	end
+	if frame:IsA("ScrollingFrame") then
+		frame.ScrollBarImageColor3 = Theme.Accent
+		frame.ScrollBarImageTransparency = 0.4
+	end
+end
+
+-- Rings a panel in the color of whoever's turn it is (gold when it's yours), so the
+-- side panel says whose move it is even when you aren't reading it.
+function HudKit.turnTint(frame: GuiObject, seat: number?, yours: boolean)
+	local outline = frame:FindFirstChild("Outline") :: UIStroke?
+	if not outline then
+		return
+	end
+	if yours then
+		outline.Color = Theme.Accent
+		outline.Thickness = 2
+		outline.Transparency = 0.1
+	elseif seat then
+		outline.Color = HudKit.seatColor(seat)
+		outline.Thickness = 2
+		outline.Transparency = 0.35
+	else
+		outline.Color = Theme.Stroke
+		outline.Thickness = 1
+		outline.Transparency = 0.55
+	end
+end
+
+-- A section heading: title font, with a short gold underline that fades out.
+-- props: LayoutOrder, Parent, TextColor3, Text size via `size`.
+function HudKit.heading(text: string, props: { [string]: any }): Frame
+	local size = props.size or 17
+	local frame = Kit.new("Frame", {
+		Name = "Heading",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, size + 10),
+		LayoutOrder = props.LayoutOrder or 0,
+	})
+	Kit.label(text, {
+		Name = "Text",
+		Font = Theme.FontTitle,
+		TextSize = size + 1,
+		TextColor3 = props.TextColor3 or Theme.Text,
+		TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Size = UDim2.new(1, 0, 0, size + 5),
+		ZIndex = props.ZIndex or 1,
+		Parent = frame,
+	})
+	Kit.new("Frame", {
+		Name = "Underline",
+		BackgroundColor3 = props.TextColor3 or Theme.Accent,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, -1),
+		Size = UDim2.new(0.6, 0, 0, 2),
+		ZIndex = props.ZIndex or 1,
+		Parent = frame,
+	}, {
+		Kit.new("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.2),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}),
+	})
+	frame.Parent = props.Parent
+	return frame
+end
+
+-- A status card: the "what now" line on a seat-tinted glass strip with a pulsing ring
+-- when it's your move.
+function HudKit.statusCard(text: string, seat: number?, yours: boolean, props: { [string]: any }): Frame
+	local card = Kit.new("Frame", {
+		Name = "Status",
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = props.LayoutOrder or 0,
+	}, {
+		Kit.corner(10),
+		Kit.new("UIPadding", {
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 8),
+			PaddingLeft = UDim.new(0, 12),
+			PaddingRight = UDim.new(0, 10),
+		}),
+	})
+	HudKit.glass(card, 0)
+	local tint = if yours then Theme.Accent elseif seat then HudKit.seatColor(seat) else Theme.PanelLight
+	card.HudGradient.Color = ColorSequence.new(HudKit.shade(tint, if yours then 0.55 else 0.6), HudKit.shade(Theme.Panel, 0.1))
+	card.HudGradient.Rotation = 0
+	card.Rim.Color = tint
+	card.Rim.Transparency = 0.2
+	if yours then
+		card.Rim.Thickness = 2
+		HudKit.pulse(card.Rim, 0, 0.55)
+	end
+	Kit.new("Frame", {
+		Name = "Stripe",
+		BackgroundColor3 = tint,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, -8, 0, 0),
+		Size = UDim2.new(0, 3, 1, 0),
+		Parent = card,
+	}, { Kit.corner(2) })
+	Kit.label(text, {
+		Name = "Text",
+		Font = Theme.FontBold,
+		TextSize = props.size or 16,
+		TextColor3 = if yours then Color3.fromRGB(255, 230, 150) else Theme.Text,
+		RichText = true,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
+		Parent = card,
+	})
+	card.Parent = props.Parent
+	return card
+end
+
 ---------------------------------------------------------------- avatars
 local headshots: { [number]: string } = {}
 local waiting: { [number]: { ImageLabel } } = {}

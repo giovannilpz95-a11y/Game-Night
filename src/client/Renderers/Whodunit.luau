@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Rules = require(ReplicatedStorage.Shared.Games.Whodunit)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local Whodunit = {}
@@ -114,6 +115,8 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	logTab = Kit.button("Case log", function()
 		selectTab("log")
 	end, { Size = UDim2.new(0.5, -4, 1, 0), Position = UDim2.new(0.5, 4, 0, 0), TextSize = 14, Parent = tabs })
+	HudKit.pill(notesTab)
+	HudKit.pill(logTab)
 	selectTab("notes")
 
 	-- Accusation picker (an overlay over the whole table).
@@ -558,6 +561,9 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	local function renderActions(view: any)
 		Kit.clear(actions)
 		local me = snapshot.yourSeat
+		-- The panel's ring shows whose move it is (gold when it's yours).
+		local acting = if view.phase == "over" then nil else snapshot.activeSeats[1]
+		HudKit.turnTint(actionPanel, acting, acting ~= nil and acting == me)
 		local myTurn = me ~= nil and view.turn == me and view.phase ~= "show" and view.phase ~= "over"
 		local entry = view.suggestion
 		local turnName = nameOf(view.turn)
