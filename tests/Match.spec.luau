@@ -34,7 +34,7 @@ return function(T)
 			local seat = m:getActiveSeats()[1]
 			T.ok(m:playForSeat(seat))
 			guard += 1
-			T.ok(guard <= 9)
+			T.ok(guard <= TicTacToe.maxMoves)
 		end
 		T.ok(m.result ~= nil)
 		T.eq(#m:getActiveSeats(), 0)

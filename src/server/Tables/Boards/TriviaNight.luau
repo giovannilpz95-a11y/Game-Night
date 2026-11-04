@@ -2,6 +2,7 @@
 -- the four answers to the whole room, then lights up the right one at the reveal.
 -- Answering stays in each player's 2D view.
 
+local Models = require(script.Parent.Parent.Models)
 local Scene = require(script.Parent.Parent.Scene)
 
 local TriviaNight = {}
@@ -14,10 +15,20 @@ local ANSWER_COLORS = {
 	Color3.fromRGB(88, 204, 120),
 }
 
-function TriviaNight.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout)
+-- A game-show buzzer in the seat's color, in front of each player.
+local function buzzer(parent: Instance, cf: CFrame, color: Color3)
+	Models.cyl(parent, "BuzzerBase", 0.95, 0.14, cf, Models.WALNUT, Enum.Material.Wood)
+	Models.cyl(parent, "BuzzerRing", 0.74, 0.05, cf * CFrame.new(0, 0.14, 0), Models.GOLD)
+	Models.egg(parent, "BuzzerDome", Vector3.new(0.6, 0.34, 0.6), cf * CFrame.new(0, 0.2, 0), color)
+end
+
+function TriviaNight.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	local model = Instance.new("Model")
 	model.Name = "GameBoard"
 	local _, faces = Scene.jumbotron(model, boardCF, 3.4)
+	for seat in layout.seats do
+		buzzer(model, Scene.seatSpot(boardCF, layout, seat, 0.8), Scene.SEAT_COLORS[seat] or Models.GOLD)
+	end
 	model.Parent = parent
 
 	local function fill(frame: Frame, view: any)

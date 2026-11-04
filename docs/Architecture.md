@@ -19,6 +19,7 @@ When the leader starts a game, `MatchService` builds the seats: party members fi
 - A player has `Config.TurnSeconds` seconds; after that a bot moves for them.
 - If a player leaves, a bot takes their seat. If every player leaves, the game ends.
 - In two-player games, either player can resign.
+- The end screen's Rematch replays the party's last game with the same settings (leader only; others ask the leader). See [[UI]].
 - The leader picks the bot difficulty (easy, medium or hard). The server checks it before passing it to the game. Never forward the client's options table as-is.
 - Each game sets its own turn time with `turnSeconds` in the catalog. A Party Host can halve or double it with the Turn timer house rule.
 

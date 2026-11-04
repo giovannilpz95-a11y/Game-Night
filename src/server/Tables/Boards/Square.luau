@@ -2,6 +2,7 @@
 -- Tic-Tac-Toe. Each cell is a part in the board's "Cells" folder with Row and Col
 -- attributes; the client raycasts against that folder to know which cell was tapped.
 
+local Models = require(script.Parent.Parent.Models)
 local Pieces = require(script.Parent.Parent.Pieces)
 
 local Square = {}
@@ -31,6 +32,15 @@ function Square.create(boardCF: CFrame, parent: Instance, size: number, boardSiz
 		CanQuery = false,
 		Parent = model,
 	})
+	-- A gold inlay around the squares and brass studs on the corners.
+	local inlay = boardSize + 0.14
+	for _, s in { -1, 1 } do
+		Models.block(model, "Inlay", Vector3.new(inlay, 0.01, 0.05), boardCF * CFrame.new(0, 0.305, s * inlay / 2), Models.GOLD)
+		Models.block(model, "Inlay", Vector3.new(0.05, 0.01, inlay), boardCF * CFrame.new(s * inlay / 2, 0.305, 0), Models.GOLD)
+		for _, t in { -1, 1 } do
+			Models.cyl(model, "Stud", 0.2, 0.02, boardCF * CFrame.new(s * (boardSize / 2 + 0.17), 0.3, t * (boardSize / 2 + 0.17)), Models.GOLD)
+		end
+	end
 
 	local cellsFolder = Instance.new("Folder")
 	cellsFolder.Name = "Cells"
