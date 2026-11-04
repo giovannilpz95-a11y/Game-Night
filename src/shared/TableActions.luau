@@ -125,6 +125,8 @@ end
 local KINDS: { [string]: { [string]: string } } = {
 	ColorClash = { play = "card", draw = "draw" },
 	TriviaNight = { answer = "buzz" },
+	-- Night picks stay silent and still (a gesture would give a role away).
+	Werewolf = { accuse = "point", claim = "point", vote = "point", pass = "pass" },
 	SketchGuess = { choose = "point", giveUp = "pass", voteSkip = "pass" }, -- strokes, shapes, guesses and reports: none
 	Whodunit = { move = "place", suggest = "point", accuse = "slap", show = "card", ["end"] = "pass" },
 	Estates = {

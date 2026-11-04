@@ -83,6 +83,7 @@ Badges.list = {
 	{ id = "colorclash_10", name = "Color Master", desc = "Win 10 games of Color Clash", icon = "🌈", tier = 1, stat = "games.ColorClash.wins", goal = 10, gameId = "ColorClash" },
 	{ id = "colorclash_wilds", name = "Wild Card", desc = "Play 50 wilds in Color Clash", icon = "🃏", tier = 2, stat = "games.ColorClash.extra.wilds", goal = 50, gameId = "ColorClash" },
 	{ id = "trivia_100", name = "Know-It-All", desc = "Get 100 Trivia Night answers right", icon = "🧠", tier = 2, stat = "games.TriviaNight.extra.correct", goal = 100, gameId = "TriviaNight" },
+	{ id = "werewolf_alpha", name = "Pack Leader", desc = "Win 5 games of Werewolf as a werewolf", icon = "🐺", tier = 2, stat = "games.Werewolf.extra.wolfWins", goal = 5, gameId = "Werewolf" },
 	{ id = "whodunit_5", name = "Detective", desc = "Solve 5 cases in Whodunit", icon = "🔍", tier = 2, stat = "games.Whodunit.extra.solved", goal = 5, gameId = "Whodunit" },
 	{ id = "estates_10", name = "Tycoon", desc = "Own 10 properties at once in Property Party", icon = "🏠", tier = 2, stat = "games.Estates.extra.properties", goal = 10, gameId = "Estates" },
 	{ id = "wordtiles_100", name = "Wordsmith", desc = "Play 100 words in Word Tiles", icon = "🔤", tier = 2, stat = "games.WordTiles.extra.words", goal = 100, gameId = "WordTiles" },

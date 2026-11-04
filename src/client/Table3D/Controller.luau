@@ -54,7 +54,7 @@ local KEEP_VISIBLE = {
 	["Left Arm"] = true, ["Right Arm"] = true,
 }
 
-local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true }
+local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true, Werewolf = true }
 local BIG_BOARD = { Estates = true }
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
 

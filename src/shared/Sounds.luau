@@ -62,6 +62,10 @@ Sounds.Effects = {
 	grab = asset(9119709863, PSE, "Swish Sweetener 32 (SFX)", 0.5, { speed = 1.4 }),
 	buzz = builtIn("electronicpingshort.wav", 0.5, { speed = 0.55 }),
 	clap = asset(9114677797, PSE, "Group Clapping Rhythmic Constant Hits 99 (SFX)", 0.4, { vary = 0.08 }),
+	-- Werewolf phases (client/Renderers/Werewolf)
+	night = builtIn("electronicpingshort.wav", 0.4, { speed = 0.42 }), -- night falls: a low chime
+	dawn = builtIn("electronicpingshort.wav", 0.45, { speed = 0.8 }), -- the village wakes up
+	caught = asset(9118621947, PSE, "Rock Impacts 2 (SFX)", 0.55, { speed = 0.55 }), -- someone is out: a heavy thud
 	-- moments
 	start = asset(9047214582, APM, "Party In The Wild - Tag2", 0.35), -- a match begins
 	win = asset(9039712090, APM, "Family Friendly Tag - Sting 2", 0.55),
