@@ -61,6 +61,7 @@ Create these in the Creator Hub (your experience > Monetization), then paste eac
 |---|---|---|---|
 | 50 / 110 / 300 / 650 / 1,400 Gems | Developer product | 49 / 99 / 249 / 499 / 999 R$ | `Economy.GemPacks[i].productId` |
 | Starter Pack (first 3 days) | Developer product | 79 R$ | `Economy.StarterPack.productId` |
+| All Reaction Packs (see [[Reactions]]) | Developer product | 299 R$ | `Economy.ReactionBundle.productId` |
 | VIP | Game pass | 399 R$ | `Economy.Passes.vip.gamePassId` |
 | Party Host | Game pass | 199 R$ | `Economy.Passes.partyHost.gamePassId` |
 

@@ -29,6 +29,7 @@ Net.Names = {
 	StatsState = "StatsState", -- server -> client: { kind = "profile" | "board" | "error", ... }
 	ChatRequest = "ChatRequest", -- client -> server: { action = "view", view = "party" | "all" }
 	TableAction = "TableAction", -- both ways: avatars acting out moves and emotes at a table (client sends { emote })
+	Reaction = "Reaction", -- both ways: animated reactions over a player's head or seat (client sends { id })
 }
 
 local FOLDER_NAME = "Remotes"

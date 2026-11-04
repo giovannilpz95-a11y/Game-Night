@@ -59,6 +59,7 @@ local screen = Kit.new("ScreenGui", {
 Layout.init(screen)
 require(script.Parent.Table3D.FaceViewer).start()
 require(script.Parent.Table3D.Avatars).start()
+require(script.Parent.Table3D.HeadReactions).start()
 
 -- See-through: the room is the lobby.
 local lobby = Kit.new("Frame", {
@@ -139,7 +140,9 @@ end
 local walletBar = WalletBar.create(screen)
 local matchView = MatchView.create(screen, sendMatch, function()
 	return currentParty ~= nil and currentParty.leaderId == localPlayer.UserId
-end, walletBar.width, rulesPanel.open)
+end, walletBar.width, rulesPanel.open, function()
+	shopPanel.open("reactions")
+end)
 walletBar.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(matchView.relayout)
 local voicePanel = VoicePanel.create(lobby, screen, function(request)
 	voiceRequest:FireServer(request)
@@ -283,6 +286,7 @@ Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
 	end
 	walletBar.setWallet(state)
 	shopPanel.setWallet(state)
+	matchView.setOwned(state.owned)
 	local isHost = state.passes ~= nil and state.passes.partyHost == true
 	if isHost ~= wasHost then
 		wasHost = isHost

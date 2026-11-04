@@ -76,6 +76,9 @@ function Shop.toggleEquip(data: Profile.Data, itemId: any): (boolean, string?)
 	if not data.owned[item.id] then
 		return false, "You don't own that yet"
 	end
+	if item.slot == "reactions" then
+		return false, "Reaction packs are always on your reaction wheel"
+	end
 	local slots = data.equipped[item.shop] or {}
 	data.equipped[item.shop] = slots
 	if slots[item.slot] == item.id then
@@ -86,13 +89,28 @@ function Shop.toggleEquip(data: Profile.Data, itemId: any): (boolean, string?)
 	return true
 end
 
--- Gives items without charging (Starter Pack, rank rewards).
-function Shop.grant(data: Profile.Data, itemIds: { string })
+-- How many of `itemIds` the player doesn't own yet.
+function Shop.missing(data: Profile.Data, itemIds: { string }): number
+	local count = 0
 	for _, id in itemIds do
-		if ShopCatalog.get(id) then
-			data.owned[id] = true
+		if not data.owned[id] then
+			count += 1
 		end
 	end
+	return count
+end
+
+-- Gives items without charging (Starter Pack, reaction bundle, rank rewards). Returns
+-- how many were new.
+function Shop.grant(data: Profile.Data, itemIds: { string }): number
+	local added = 0
+	for _, id in itemIds do
+		if ShopCatalog.get(id) and not data.owned[id] then
+			data.owned[id] = true
+			added += 1
+		end
+	end
+	return added
 end
 
 return Shop
