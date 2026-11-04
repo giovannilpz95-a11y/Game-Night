@@ -63,7 +63,15 @@ export type Data = {
 	},
 	badges: { [string]: number }, -- badge id -> os.time() it was earned (shared/Badges)
 	weekly: { week: number, points: { [string]: number } }, -- this week's leaderboard points (Core/Weekly)
-	login: { lastDay: number, streak: number },
+	login: { lastDay: number, streak: number, best: number },
+	-- Friend invites (see Core/Referrals): who brought this player, and who they brought.
+	friends: {
+		invitedBy: number, -- user id of the friend whose invite brought them here, 0 if none
+		welcomed: boolean, -- the invite rewards for their first game were paid
+		invited: { number }, -- friends already paid for (newest last, capped)
+		payDay: number, -- day the count below belongs to
+		paidToday: number,
+	},
 	daily: Daily,
 	receipts: { string },
 	grants: { [string]: boolean }, -- one-time grants already given (e.g. starter)
@@ -117,7 +125,8 @@ function Profile.new(now: number): Data
 		},
 		badges = {},
 		weekly = { week = 0, points = {} },
-		login = { lastDay = 0, streak = 0 },
+		login = { lastDay = 0, streak = 0, best = 0 },
+		friends = { invitedBy = 0, welcomed = false, invited = {}, payDay = 0, paidToday = 0 },
 		daily = newDaily(0),
 		receipts = {},
 		grants = {},
@@ -150,8 +159,11 @@ function Profile.reconcile(data: any, now: number): Data
 	if type(data.stats) == "table" and data.stats.losses == nil and type(data.stats.matches) == "number" then
 		data.stats.losses = math.max(0, data.stats.matches - (data.stats.wins or 0))
 	end
+	-- A save written by a newer build (after a rollback to an older one) keeps its version,
+	-- so that build doesn't run its migrations a second time when it's back.
+	local savedVersion = if type(data.version) == "number" and data.version == data.version then data.version else 0
 	fill(data, Profile.new(now))
-	data.version = Profile.Version
+	data.version = math.max(savedVersion, Profile.Version)
 	return data
 end
 

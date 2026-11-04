@@ -271,7 +271,8 @@ local function startMatch(leader: Player, request: any)
 	end
 
 	local memberCount = #party.members
-	local seatCount = if type(request.seats) == "number" then math.floor(request.seats) else memberCount
+	-- `seats == seats` drops NaN, which would slip past math.clamp and seat too few players.
+	local seatCount = if type(request.seats) == "number" and request.seats == request.seats then math.floor(request.seats) else memberCount
 	seatCount = math.max(seatCount, memberCount)
 	seatCount = math.clamp(seatCount, rules.minSeats, math.min(rules.maxSeats, Config.MaxSeats))
 	if memberCount > seatCount then
@@ -396,6 +397,12 @@ end
 
 -- Called when a player leaves the match, their party, or the server. `reason` is for
 -- analytics: "left" (default), "leftParty", "kicked" or "leftServer".
+-- The game a match is playing, for "Friends" rows ("Playing Chess"). nil if it's over.
+function MatchService.gameIdOf(matchId: string): string?
+	local entry = matches[matchId]
+	return if entry then entry.match.gameId else nil
+end
+
 function MatchService.leaveMatch(player: Player, reason: string?)
 	local entry = entryFor(player)
 	matchOfUser[player.UserId] = nil

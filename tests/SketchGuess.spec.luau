@@ -2,6 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local SketchGuess = require(ReplicatedStorage.Shared.Games.SketchGuess)
 local Words = require(ReplicatedStorage.Shared.Games.Data.SketchWords)
+local Doodles = require(ReplicatedStorage.Shared.Games.Data.SketchDoodles)
 local Match = require(ServerScriptService.Server.Core.Match)
 
 return function(T)
@@ -28,18 +29,27 @@ return function(T)
 		error("no guesser")
 	end
 
-	T.test("only players draw, and the drawer picks a word", function()
-		local s = SketchGuess.new(4, { bots = { 3, 4 } }, T.Random.new(1))
-		T.eq(#s.drawers, 2)
-		T.eq(s.totalTurns, 6, "two drawers draw three times each")
+	T.test("with 3+ players only players draw, and the drawer picks a word", function()
+		local s = SketchGuess.new(5, { bots = { 4, 5 } }, T.Random.new(1))
+		T.eq(#s.drawers, 3)
+		T.eq(s.totalTurns, 6, "three drawers draw twice each")
 		T.eq(s.phase, "choose")
 		T.eq(#SketchGuess.getActiveSeats(s), 1)
 		local view = SketchGuess.getView(s, s.drawer)
 		T.eq(#view.choices, 3)
-		T.eq(SketchGuess.getView(s, 3).choices, nil, "others don't see the choices")
+		T.eq(SketchGuess.getView(s, 4).choices, nil, "others don't see the choices")
 		apply(s, s.drawer, { kind = "choose", index = 2 })
 		T.eq(s.phase, "draw")
-		T.eq(#SketchGuess.getActiveSeats(s), 4, "drawer + 3 guessers")
+		T.eq(#SketchGuess.getActiveSeats(s), 5, "drawer + 4 guessers")
+	end)
+
+	T.test("with fewer than 3 players bots join the drawing turns", function()
+		local s = SketchGuess.new(4, { bots = { 3, 4 } }, T.Random.new(1))
+		T.eq(#s.drawers, 4)
+		T.eq(s.totalTurns, 8)
+		local solo = SketchGuess.new(3, { bots = { 2, 3 } }, T.Random.new(1))
+		T.eq(#solo.drawers, 3)
+		T.eq(solo.totalTurns, 6)
 	end)
 
 	T.test("the word is hidden from guessers until they get it", function()
@@ -175,12 +185,186 @@ return function(T)
 		T.eq(#s.strokes, 0, "the drawing is wiped")
 	end)
 
-	T.test("a bot drawer gives up its turn", function()
+	T.test("a bot drawer picks a doodle word and draws it shape by shape", function()
 		local s = SketchGuess.new(3, { bots = { 2, 3 } }, T.Random.new(1))
+		-- Seat 1 (the player) draws first; skip to the bot's turn.
+		apply(s, s.drawer, { kind = "giveUp" })
+		SketchGuess.onTimeout(s)
+		T.eq(s.drawer, 2)
+		for _, entry in s.choices do
+			T.ok(Doodles[string.split(entry, "|")[1]] ~= nil, `{entry} has no doodle`)
+		end
+		local rng = T.Random.new(1)
+		apply(s, 2, SketchGuess.chooseBotMove(s, 2, rng))
+		T.eq(s.phase, "draw")
+		local planned = #SketchGuess.doodleMoves(s.word)
+		T.ok(planned >= 2)
+		for _ = 1, planned do
+			local move = SketchGuess.chooseBotMove(s, 2, rng)
+			T.eq(move.kind, "shape")
+			apply(s, 2, move)
+		end
+		T.eq(#s.strokes, planned)
+		T.eq(SketchGuess.chooseBotMove(s, 2, rng), nil, "done drawing: just wait")
+		T.eq(#SketchGuess.getLegalMoves(s, 2), 0, "and never fall back to giving up")
+		T.eq(s.phase, "draw")
+		-- Bots draw in shapes only, so they work at a shapes-only table too.
+		T.ok(SketchGuess.getView(s, 1).drawerIsBot)
+		T.eq((SketchGuess.validateMove(s, 1, { kind = "report" })), false, "bot doodles can't be reported")
+	end)
+
+	T.test("a player's seat a bot took over gives up when it has no doodle", function()
+		local s = SketchGuess.new(4, { bots = {} }, T.Random.new(5))
+		s.choices = { "dragon", "castle", "pirate" }
 		local move = SketchGuess.chooseBotMove(s, s.drawer, T.Random.new(1))
 		T.eq(move.kind, "giveUp")
-		apply(s, s.drawer, move)
-		T.eq(s.phase, "reveal")
+		s.choices = { "dragon", "sun", "pirate" }
+		move = SketchGuess.chooseBotMove(s, s.drawer, T.Random.new(1))
+		T.eq(move.kind, "choose")
+		T.eq(move.index, 2)
+	end)
+
+	T.test("every doodle is an easy word and draws with legal moves", function()
+		local easy = {}
+		for _, entry in Words.easy do
+			easy[string.split(entry, "|")[1]] = true
+		end
+		local count = 0
+		for word in Doodles do
+			count += 1
+			T.ok(easy[word], `doodle "{word}" isn't in the easy list`)
+			local s = drawing(word)
+			for _, move in SketchGuess.doodleMoves(word) :: any do
+				local ok, err = SketchGuess.validateMove(s, s.drawer, move)
+				T.ok(ok, `{word}: {err}`)
+				SketchGuess.applyMove(s, s.drawer, move)
+			end
+		end
+		T.ok(count >= 30, "enough doodles to keep solo games fresh")
+		T.eq(SketchGuess.doodleMoves("dragon"), nil)
+	end)
+
+	T.test("shapes: lines, boxes and ovals; undo removes one shape", function()
+		local s = drawing("tree")
+		local d = s.drawer
+		local two = SketchGuess.encodePoints({ 100, 100, 2000, 1500 })
+		apply(s, d, { kind = "shape", shape = "rect", color = 4, size = 2, fill = true, points = two })
+		apply(s, d, { kind = "shape", shape = "ellipse", color = 7, size = 1, fill = false, points = two })
+		apply(s, d, { kind = "shape", shape = "line", color = 1, size = 3, points = two })
+		T.eq(#s.strokes, 3)
+		T.eq(s.strokes[1].shape, "rect")
+		T.eq(s.strokes[1].fill, true)
+		T.eq(s.strokes[3].fill, false)
+		apply(s, d, { kind = "undo" })
+		T.eq(#s.strokes, 2)
+		T.eq(s.pointCount, 4)
+		local function bad(move, why)
+			T.eq((SketchGuess.validateMove(s, d, move)), false, why)
+		end
+		bad({ kind = "shape", shape = "star", color = 1, size = 1, points = two }, "unknown shape")
+		bad({ kind = "shape", shape = "rect", color = 1, size = 1, points = SketchGuess.encodePoints({ 1, 2, 3, 4, 5, 6 }) }, "three points")
+		bad({ kind = "shape", shape = "rect", color = 1, size = 9, points = two }, "bad size")
+		bad({ kind = "shape", shape = "rect", color = 1, size = 1, fill = "yes", points = two }, "bad fill")
+		bad({ kind = "shape", shape = "rect", color = 1, size = 1, points = "!!!!!!!!" }, "bad points")
+		T.eq((SketchGuess.validateMove(s, guesserOf(s), { kind = "shape", shape = "line", color = 1, size = 1, points = two })), false, "guessers can't draw")
+	end)
+
+	T.test("shapes-only tables reject the pen", function()
+		local s = SketchGuess.new(4, { bots = {}, rules = { tools = "shapes" } }, T.Random.new(4))
+		apply(s, s.drawer, { kind = "choose", index = 1 })
+		T.eq(SketchGuess.getView(s, 1).tools, "shapes")
+		local pts = SketchGuess.encodePoints({ 0, 0, 100, 100 })
+		T.eq((SketchGuess.validateMove(s, s.drawer, { kind = "stroke", color = 1, size = 1, points = pts })), false)
+		apply(s, s.drawer, { kind = "shape", shape = "line", color = 1, size = 1, points = pts })
+		T.eq(SketchGuess.new(4, { bots = {}, rules = { tools = "bogus" } }, T.Random.new(4)).tools, "all")
+	end)
+
+	T.test("a report counts as a skip vote and only the reporter is told", function()
+		local s = SketchGuess.new(5, { bots = {} }, T.Random.new(2))
+		apply(s, s.drawer, { kind = "choose", index = 1 })
+		local others = {}
+		for seat = 1, 5 do
+			if seat ~= s.drawer then
+				table.insert(others, seat)
+			end
+		end
+		apply(s, others[1], { kind = "report" })
+		T.ok(SketchGuess.getView(s, others[1]).youReported)
+		T.ok(SketchGuess.getView(s, others[1]).youVotedSkip, "a report is a skip vote")
+		T.eq((SketchGuess.validateMove(s, others[1], { kind = "report" })), false, "once per drawing")
+		local function mentions(seat)
+			for _, e in SketchGuess.getView(s, seat).feed do
+				if string.find(e.text, "reporting") then
+					return true
+				end
+			end
+			return false
+		end
+		T.ok(mentions(others[1]))
+		T.ok(not mentions(others[2]), "nobody else learns who reported")
+		T.ok(not mentions(s.drawer))
+		-- Voting after reporting doesn't count twice.
+		T.eq((SketchGuess.validateMove(s, others[1], { kind = "voteSkip" })), false)
+		apply(s, others[2], { kind = "voteSkip" })
+		T.eq(s.phase, "draw", "2 of 4")
+		apply(s, others[3], { kind = "report" })
+		T.eq(s.phase, "reveal", "3 of 4")
+	end)
+
+	T.test("a player skipped twice doesn't draw again", function()
+		local s = SketchGuess.new(3, { bots = {}, rules = { rounds = 3 } }, T.Random.new(3))
+		local target = s.drawer
+		local function skipCurrent()
+			apply(s, s.drawer, { kind = "choose", index = 1 })
+			local voters = {}
+			for seat = 1, 3 do
+				if seat ~= s.drawer then
+					table.insert(voters, seat)
+				end
+			end
+			apply(s, voters[1], { kind = "voteSkip" })
+			apply(s, voters[2], { kind = "voteSkip" })
+			T.eq(s.phase, "reveal")
+		end
+		skipCurrent()
+		local turns = 0
+		while not s.finished and turns < 30 do
+			turns += 1
+			SketchGuess.onTimeout(s) -- reveal -> next turn
+			if s.finished then
+				break
+			end
+			if s.drawer == target then
+				T.ok((s.strikes[target] or 0) < 2, "benched players don't get turns")
+				skipCurrent()
+			else
+				apply(s, s.drawer, { kind = "giveUp" })
+			end
+		end
+		T.ok(s.finished)
+		T.eq(s.strikes[target], 2)
+		T.ok(s.benched[target])
+	end)
+
+	T.test("scoring follows the drawing time", function()
+		local s = SketchGuess.new(4, { bots = {}, rules = { drawSeconds = 120 } }, T.Random.new(4))
+		s.choices = { "cat", "dog", "sun" }
+		apply(s, s.drawer, { kind = "choose", index = 1 })
+		local g = guesserOf(s)
+		apply(s, g, { kind = "guess", text = "cat", shown = "cat" })
+		T.eq(s.scores[g], 500, "first guess before any hint")
+		for _ = 1, 3 do
+			SketchGuess.onTimeout(s)
+		end
+		local g2 = nil
+		for seat = 1, 4 do
+			if seat ~= s.drawer and not s.guessed[seat] then
+				g2 = seat
+				break
+			end
+		end
+		apply(s, g2, { kind = "guess", text = "cat", shown = "cat" })
+		T.eq(s.scores[g2], 100 + 100 + 160, "halfway, second")
 	end)
 
 	T.test("bots can't guess right on an empty canvas", function()
@@ -212,6 +396,37 @@ return function(T)
 		SketchGuess.onTimeout(s)
 		T.eq(SketchGuess.getTimer(s).displaySeconds, 60)
 		T.eq(SketchGuess.getTimer(s).seconds, 20)
+	end)
+
+	T.test("a solo match with bot drawers finishes and the bots draw", function()
+		local seats = {
+			{ kind = "player", userId = 1, name = "Gio" },
+			{ kind = "bot", name = "Bot Ava" },
+			{ kind = "bot", name = "Bot Milo" },
+		}
+		local m = Match.new("m", SketchGuess, seats, { botLevel = "medium", bots = { 2, 3 } }, T.Random.new(11))
+		local steps, mostStrokes = 0, 0
+		while not m:isOver() and steps < 5000 do
+			steps += 1
+			local acted = false
+			for _, seat in m:getActiveSeats() do
+				if m:isBot(seat) and m:playForSeat(seat) then
+					acted = true
+				end
+			end
+			mostStrokes = math.max(mostStrokes, #m.state.strokes)
+			if not acted then
+				if m.state.phase == "choose" and m.state.drawer == 1 then
+					T.ok(m:submitMove(1, { kind = "choose", index = 1 }))
+				else
+					local timer = m:getTimer()
+					T.ok(timer ~= nil)
+					T.ok(m:timeout(timer.id))
+				end
+			end
+		end
+		T.ok(m.result ~= nil, "match should end")
+		T.ok(mostStrokes >= 3, "bots drew something")
 	end)
 
 	T.test("a full match with bots and timers ends with a winner", function()

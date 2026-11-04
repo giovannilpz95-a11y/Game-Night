@@ -191,13 +191,35 @@ rules.TriviaNight = {
 rules.SketchGuess = {
 	goal = "Score the most by guessing drawings fast and drawing well.",
 	card = {
-		"When it's your turn to draw, pick a word and draw it. No letters!",
+		"When it's your turn to draw, pick a word and draw it. No letters or numbers!",
 		"Everyone else types guesses. Earlier guesses score more.",
 		"Letters of the word are revealed as time goes on.",
 	},
 	sections = {
-		{ title = "Drawing", lines = { "Pick one of three words: easy, medium or hard.", "Draw it before the clock runs out. You score for every player who guesses it." } },
-		{ title = "Guessing", lines = { "Type guesses in the box. A right guess scores more the earlier it comes.", "Don't like a drawing? Vote to skip it." } },
+		{
+			title = "Drawing",
+			lines = {
+				"Pick one of three words: easy, medium or hard.",
+				"Draw with the pen, or the line, box and oval tools (tap Fill for solid boxes and ovals). White is the eraser.",
+				"Undo takes back your last line or shape. You score for every player who guesses it.",
+			},
+		},
+		{
+			title = "Guessing",
+			lines = {
+				"Type guesses in the box. A right guess scores more the earlier it comes, and nobody sees what you typed.",
+				"One letter off? Only you get a \"close!\" note.",
+			},
+		},
+		{
+			title = "Keep it friendly",
+			lines = {
+				"Hide shows or hides a drawing on your screen only.",
+				"Vote skip: when more than half the players vote, the drawing is wiped and the next one starts.",
+				"Report hides that player's drawings for you, counts as a skip vote, and can block them. A player whose drawings get skipped twice doesn't draw again that game.",
+			},
+		},
+		{ title = "Bots", lines = { "With fewer than 3 players, bots take turns drawing simple doodles. Bots always guess." } },
 		{ title = "Winning", lines = { "After everyone has drawn, the highest score wins." } },
 	},
 }

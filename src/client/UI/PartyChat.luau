@@ -95,7 +95,15 @@ function PartyChat.create(screen: Instance, send: (any) -> ())
 		end
 		button.Position = UDim2.fromOffset(x, y)
 	end
-	RunService.Heartbeat:Connect(place)
+	-- The chat box only moves when the screen changes size, so a few times a second is plenty.
+	local sincePlaced = math.huge
+	RunService.Heartbeat:Connect(function(dt)
+		sincePlaced += dt
+		if sincePlaced >= 0.25 then
+			sincePlaced = 0
+			place()
+		end
+	end)
 
 	-- /party and /all. Commands made on the client only run for this player.
 	local function command(name: string, alias: string, alias2: string, target: string)

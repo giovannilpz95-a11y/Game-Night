@@ -79,24 +79,109 @@ return function(T)
 
 	-- Daily -----------------------------------------------------------------------
 
-	T.test("login streak pays 5 a day and 20 on day 7, and resets after a missed day", function()
+	T.test("login calendar pays its 7 days, then repeats, and resets after a missed day", function()
 		local data = fresh()
-		local total = 0
+		local gems, coins = 0, 0
 		for d = 1, 7 do
-			local gems, streakDay = Daily.login(data, DAY + d, false)
-			T.eq(streakDay, d)
-			total += gems
+			local reward = Daily.login(data, DAY + d, false)
+			T.ok(reward ~= nil)
+			T.eq(reward.streakDay, d)
+			T.eq(reward.streak, d)
+			gems += reward.gems
+			coins += reward.coins
+			if reward.coins > 0 then
+				T.eq(reward.coinKey, Economy.UniversalCoin.key)
+			end
 		end
-		T.eq(total, 5 * 6 + 20)
-		T.eq((Daily.login(data, DAY + 7, false)), 0, "same day pays once")
-		local gems, streakDay = Daily.login(data, DAY + 9, false)
-		T.eq(streakDay, 1)
-		T.eq(gems, 5)
+		local wantGems, wantCoins = 0, 0
+		for _, entry in Economy.DailyCalendar do
+			wantGems += entry.gems or 0
+			wantCoins += entry.coins or 0
+		end
+		T.eq(gems, wantGems)
+		T.eq(coins, wantCoins)
+		T.eq(data.gems, wantGems)
+		T.eq(data.coins[Economy.UniversalCoin.key], wantCoins)
+		T.eq(Daily.login(data, DAY + 7, false), nil, "same day pays once")
+		local day8 = Daily.login(data, DAY + 8, false)
+		T.eq(day8.streak, 8)
+		T.eq(day8.streakDay, 1, "calendar repeats")
+		local again = Daily.login(data, DAY + 10, false)
+		T.eq(again.streak, 1, "missed a day")
+		T.eq(again.streakDay, 1)
+		T.eq(data.login.best, 8)
 	end)
 
-	T.test("VIP doubles the login reward", function()
+	T.test("VIP doubles the calendar reward", function()
 		local data = fresh()
-		T.eq((Daily.login(data, DAY, true)), 10)
+		local reward = Daily.login(data, DAY, true)
+		T.eq(reward.coins, (Economy.DailyCalendar[1].coins or 0) * Economy.VipDailyLoginMultiplier)
+		local day2 = Daily.login(data, DAY + 1, true)
+		T.eq(day2.gems, (Economy.DailyCalendar[2].gems or 0) * Economy.VipDailyLoginMultiplier)
+	end)
+
+	T.test("streak milestones pay extra Gems once, on the day they're reached", function()
+		local data = fresh()
+		local milestoneDays = {}
+		for at in Economy.StreakMilestones do
+			table.insert(milestoneDays, at)
+		end
+		table.sort(milestoneDays)
+		local first = milestoneDays[1]
+		local paid = 0
+		for d = 1, first + 1 do
+			local reward = Daily.login(data, DAY + d, false)
+			if reward.milestoneGems > 0 then
+				T.eq(reward.streak, first)
+				paid += reward.milestoneGems
+			end
+		end
+		T.eq(paid, Economy.StreakMilestones[first])
+		local inDays, gems = Daily.nextMilestone(first)
+		T.eq(inDays, milestoneDays[2] - first)
+		T.eq(gems, Economy.StreakMilestones[milestoneDays[2]])
+		T.eq((Daily.nextMilestone(100000)), nil)
+	end)
+
+	T.test("Universal Coins turn into any game's Coins, one way", function()
+		local data = fresh()
+		local U = Economy.UniversalCoin.key
+		T.eq(Economy.Coins[U], nil, "not a game coin, so no shop of its own")
+		Profile.addCoins(data, U, 100)
+		T.ok(Shop.convertUniversal(data, "chess", 60))
+		T.eq(Profile.coins(data, U), 40)
+		T.eq(Profile.coins(data, "chess"), 60)
+		T.ok(not Shop.convertUniversal(data, "chess", 41), "not more than you have")
+		T.ok(not Shop.convertUniversal(data, U, 10), "can't convert into itself")
+		T.ok(not Shop.convertUniversal(data, "nope", 10))
+		T.ok(not Shop.convertUniversal(data, "chess", 0))
+		T.ok(not Shop.convertUniversal(data, "chess", 1.5))
+		T.ok(not Shop.convertUniversal(data, "chess", 0 / 0))
+		T.ok(not Shop.convertUniversal(data, "chess", "10"))
+		T.eq(Profile.coins(data, U), 40)
+		T.eq(Profile.coins(data, "chess"), 60)
+		T.eq(Economy.coinName(U), Economy.UniversalCoin.name)
+	end)
+
+	T.test("reaction packs can be bought with Universal Coins", function()
+		local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
+		local U = Economy.UniversalCoin.key
+		local priced = 0
+		for _, item in ShopCatalog.items do
+			if item.slot == "reactions" and not item.notForSale then
+				T.ok(item.universal ~= nil, `{item.id} has no Universal price`)
+				priced += 1
+			end
+		end
+		T.ok(priced > 0)
+		local data = fresh()
+		Profile.addCoins(data, U, 1499)
+		T.ok(not Shop.buy(data, "reactions_party", "universal", false), "not enough")
+		Profile.addCoins(data, U, 1)
+		T.ok(Shop.buy(data, "reactions_party", "universal", false))
+		T.eq(Profile.coins(data, U), 0)
+		T.ok(data.owned.reactions_party)
+		T.ok(not Shop.buy(data, "hub_neon_table", "universal", false), "only items with a Universal price")
 	end)
 
 	T.test("three challenges, one of them a game you haven't played", function()
@@ -310,6 +395,21 @@ return function(T)
 			local coin = entry.coin or Economy.DefaultCoin
 			T.ok(#ShopCatalog.forShop(coin) > 0, `{entry.id} pays {coin} but that shop is empty`)
 		end
+	end)
+
+	T.test("reconcile keeps a newer save's version (rollback to an older build)", function()
+		local newer = Profile.new(1000)
+		newer.version = Profile.Version + 3
+		newer.futureField = { kept = true }
+		local loaded = Profile.reconcile(newer, 2000)
+		T.eq(loaded.version, Profile.Version + 3)
+		T.eq((loaded :: any).futureField.kept, true, "fields it doesn't know survive")
+		local old = Profile.new(1000)
+		old.version = 0
+		T.eq(Profile.reconcile(old, 2000).version, Profile.Version)
+		local broken = Profile.new(1000)
+		broken.version = 0 / 0
+		T.eq(Profile.reconcile(broken, 2000).version, Profile.Version)
 	end)
 
 	-- Session lock --------------------------------------------------------------------

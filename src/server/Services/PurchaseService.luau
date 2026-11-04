@@ -37,7 +37,12 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 	end
 	local purchaseId = tostring(info.PurchaseId)
 	if Profile.hasReceipt(data, purchaseId) then
-		return Enum.ProductPurchaseDecision.PurchaseGranted
+		-- Granted on an earlier try. Only tell Roblox it's done once that is saved: an
+		-- earlier save may have failed, or this profile may not be saving at all
+		-- (DataStore down when they joined), and then the purchase must stay pending.
+		return if DataService.saveNow(player)
+			then Enum.ProductPurchaseDecision.PurchaseGranted
+			else Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
 	local kind, product = Economy.productById(info.ProductId)
@@ -119,13 +124,36 @@ function PurchaseService.handleRequest(player: Player, request: any)
 	end
 end
 
+-- A finished pass prompt is only a hint: check with Roblox that the pass is really owned
+-- before turning perks on (VIP changes Gem prices). Ownership can take a moment to show up
+-- after buying, so ask twice. If Roblox can't be reached, trust the prompt for this session;
+-- passes are checked again on every join and never saved.
+local function confirmPass(player: Player, gamePassId: number): boolean
+	for attempt = 1, 2 do
+		local ok, owns = pcall(function()
+			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, gamePassId)
+		end)
+		if not ok then
+			return true
+		end
+		if owns then
+			return true
+		end
+		if attempt == 1 then
+			task.wait(3)
+		end
+	end
+	warn(`[GameNight] pass prompt for {player.Name} said bought, but Roblox says not owned`)
+	return false
+end
+
 function PurchaseService.init()
 	notifyRemote = Net.event(Net.Names.Notify)
 	MarketplaceService.ProcessReceipt = processReceipt
 
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, purchased)
 		local key = Economy.passByGamePassId(gamePassId)
-		if purchased and key then
+		if purchased and key and confirmPass(player, gamePassId) then
 			EconomyService.setPass(player, key, true)
 			AnalyticsService.robuxPurchase(player, `pass:{key}`)
 			notify(player, `{Economy.Passes[key].name} unlocked. Thanks for supporting Game Night!`)

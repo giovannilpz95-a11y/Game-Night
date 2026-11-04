@@ -17,6 +17,9 @@ PlayingCard.FeltEdge = Color3.fromRGB(92, 58, 34)
 local RED = Color3.fromRGB(205, 45, 60)
 local BLACK = Color3.fromRGB(30, 30, 40)
 local BACK = Color3.fromRGB(120, 40, 60)
+local COURT_GOLD = Color3.fromRGB(200, 150, 40)
+-- Small marks over the court letters (text glyphs, so no image assets are needed).
+local COURT_MARK = { [11] = "⚔", [12] = "♛", [13] = "♚" }
 
 -- One card face that fills its parent. id nil = face down.
 function PlayingCard.face(id: number?): Frame
@@ -89,16 +92,53 @@ function PlayingCard.face(id: number?): Frame
 			Parent = box,
 		})
 	end
-	Kit.label(suitText, {
-		Font = Theme.FontBold,
-		TextScaled = true,
-		TextColor3 = color,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.55, 0.4),
-		Parent = face,
-	})
+	local rank = PlayingCards.rank(id)
+	if rank >= 11 then
+		-- Jack, Queen, King: a framed court panel with the letter and a crown, so they
+		-- read apart from the number cards at a glance.
+		local court = Kit.new("Frame", {
+			BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), 0.86),
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(0.5, 0.5),
+			Parent = face,
+		}, {
+			Kit.new("UICorner", { CornerRadius = UDim.new(0.12, 0) }),
+			Kit.new("UIStroke", { Color = COURT_GOLD, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+		})
+		Kit.label(COURT_MARK[rank] or "♛", {
+			Font = Theme.FontBold,
+			TextScaled = true,
+			TextColor3 = COURT_GOLD,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.fromScale(0, 0.04),
+			Size = UDim2.fromScale(1, 0.3),
+			Parent = court,
+		})
+		Kit.label(rankText, {
+			Font = Theme.FontBold,
+			TextScaled = true,
+			TextColor3 = color,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.fromScale(0, 0.32),
+			Size = UDim2.fromScale(1, 0.62),
+			Parent = court,
+		})
+	else
+		-- Aces get a bigger center suit.
+		local big = if rank == 1 then 0.5 else 0.4
+		Kit.label(suitText, {
+			Font = Theme.FontBold,
+			TextScaled = true,
+			TextColor3 = color,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(0.55, big),
+			Parent = face,
+		})
+	end
 	return face
 end
 

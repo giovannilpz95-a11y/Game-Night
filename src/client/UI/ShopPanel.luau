@@ -9,6 +9,7 @@ local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
 local Reactions = require(ReplicatedStorage.Shared.Reactions)
 local ReactionFx = require(script.Parent.ReactionFx)
 local Kit = require(script.Parent.Kit)
+local CoinConvertPanel = require(script.Parent.CoinConvertPanel)
 local Analytics = require(script.Parent.Parent.Analytics)
 local Theme = Kit.Theme
 
@@ -79,6 +80,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 
 	local wallet: any = nil
 	local tab = "wallet"
+	local converter = CoinConvertPanel.create(parent, sendEconomy)
 
 	local tabs = {
 		{ key = "wallet", name = "Wallet & daily" },
@@ -135,6 +137,15 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		section(`Level {wallet.level}  ({wallet.xp}/{wallet.xpNeeded} XP)`, 1)
 		section("Balances", 2)
 		line(`{wallet.gems} {Economy.GemsName}`, 3, Color3.fromRGB(110, 220, 255))
+		-- Universal Coins (daily calendar) turn into any game's Coins.
+		local universal = wallet.coins[Economy.UniversalCoin.key] or 0
+		local universalRow = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 30), LayoutOrder = 3, Parent = content })
+		Kit.label(`{universal} {Economy.UniversalCoin.name}`, { TextColor3 = Economy.UniversalCoin.color, Size = UDim2.new(1, -110, 1, 0), Parent = universalRow })
+		if universal > 0 then
+			Kit.button("Convert", function()
+				converter.open(universal, nil)
+			end, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 100, 1, 0), TextSize = 14, Parent = universalRow })
+		end
 		local order = 4
 		for _, key in coinKeys do
 			line(`{wallet.coins[key] or 0} {Economy.coinName(key)}`, order, Economy.Coins[key].color)
@@ -470,6 +481,11 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 							sendEconomy({ action = "buy", itemId = item.id, currency = "gems" })
 						end)
 					end
+					if item.universal and not item.notForSale then
+						buyButton(buttons, `{item.universal} Universal`, Economy.UniversalCoin.color, 3, function()
+							sendEconomy({ action = "buy", itemId = item.id, currency = "universal" })
+						end)
+					end
 				end
 			end
 		end
@@ -539,6 +555,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		end,
 		setWallet = function(state: any)
 			wallet = state
+			converter.setBalance(state.coins and state.coins[Economy.UniversalCoin.key] or 0)
 			if root.Visible then
 				render()
 			end
