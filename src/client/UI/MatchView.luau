@@ -643,10 +643,12 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if emotes.button.Visible then
 			textRight += 44
 		end
-		local badge = buttonH
-		gameBadge.Size = UDim2.fromOffset(badge, badge)
-		turnLabel.Position = UDim2.new(0, 14 + badge, 0, 0)
-		turnLabel.Size = UDim2.new(1, -(14 + badge + textRight), 1, -4)
+		-- The game badge only when the strip has room for it and a useful line of text.
+		gameBadge.Visible = barW - textRight >= 260
+		gameBadge.Size = UDim2.fromOffset(buttonH, buttonH)
+		local textX = if gameBadge.Visible then 14 + buttonH else 12
+		turnLabel.Position = UDim2.new(0, textX, 0, 0)
+		turnLabel.Size = UDim2.new(1, -(textX + textRight), 1, -4)
 		turnLabel.TextSize = if compact then 16 else 19
 		menu.Position = UDim2.fromOffset(info.barX + barW, info.barY + 2 + barH + 4)
 

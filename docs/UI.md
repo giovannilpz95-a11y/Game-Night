@@ -34,13 +34,24 @@ The lobby frame is see-through: the 3D room is the lobby. On top of it:
 
 Windows use `Kit.modal(parent, opts)`: a dimmed overlay, a centered window with a ✕, and a `body` to fill. Tapping the dim area closes it. Main keeps one window open at a time (`closeWindows`) and closes them all when a match starts.
 
+## In-match look (`UI/HudKit`)
+In-match pieces built on Kit's theme (menus and windows keep using Kit directly):
+- `HudKit.avatar(seat, seatInfo, props)`: round badge with the player's headshot (fetched in the background and cached; their initial meanwhile) or 🤖 for bots, ringed in the seat color, with the seat's shape in a corner tag.
+- `HudKit.glass(frame, transparency)`: dark see-through panel with a soft top light and a thin `Rim` stroke, for HUD pieces over the 3D room. It adds `HudGradient` and `Rim`, which callers recolor (whose turn, something to pick).
+- `HudKit.pulse(stroke)` breathing ring for whoever's turn it is, `HudKit.shine(object)` light sweep, `HudKit.confetti(parent)` win burst, `HudKit.slideIn(row, delay)` staggered rows.
+- A `UIGradient` multiplies everything its object draws, text included. Put gradients on Frames and keep text in a child label (or on a button with dark text), and set the object's own color to white when the gradient carries the color.
+
 ## Match screen (`UI/MatchView`)
-- **Header** in the top bar: game name, one "what now" line ("Your turn!", "Sam is thinking...", or the party game's own `view.status`) with the seconds left, the 3D/2D toggle, a **?** that opens the game's rules, and a **⋯ menu** (Resign, End for everyone, Leave game).
+- **Header** in the top bar: the game's icon badge in its category color (when the strip has room), game name, one "what now" line ("Your turn!", "Sam is thinking...", or the party game's own `view.status`) with the seconds left, the 3D/2D toggle, a **?** that opens the game's rules, and a **⋯ menu** (Resign, End for everyone, Leave game).
 - **Timer bars**: under the header and on the active seat chip. Green, then orange under 10 s, red under 5 s. Your own turn ticks for the last 5 seconds.
-- **Seats**: a narrow column of chips on the left (140 px on phones, 210 px otherwise). Each seat has its color and a shape, so color isn't the only cue.
+- **Seats**: a narrow column of seat cards on the left (140 px on phones, 210 px otherwise). Each card has the avatar badge (seat color ring and shape, so color isn't the only cue), the name and the game's line for that seat. Whoever's turn it is gets a seat-tinted card with a breathing gold ring.
 - **Board**: everything else. Renderers get it as their `container` and should size with Scale, or listen to `AbsoluteSize` (see Chess and Color Clash).
 - **Your turn banner**: slides in with a sound when your turn starts. Party games that set `view.status` skip it, since everyone moves at once.
-- **End screen**: result, reason, standings (winners first, with each seat's last `getSeatInfo` line), rewards, then **Rematch** and **Lobby**.
+- **Table view dock**: a glass tray with a gold lip on the edge that meets the table.
+- **End screen**: a title band (gold when you win, with confetti; blue for a draw; plum otherwise), the reason, standings with avatars (winners first in gold, with each seat's last `getSeatInfo` line, sliding in one by one), a gold rewards tray, then **Rematch** and **Lobby**.
+
+## Card tables (`UI/CardTable`, `UI/PlayingCard`)
+Seat chips are glass cards with a small avatar; the turn seat is seat-tinted with a pulsing ring, a seat you can pick is gold. The prompt sits on a dark pill sized to its text. Action buttons are pills. The felt has a lamp-lit middle, a wooden rail and a thin gold inlay.
 
 ## Help (`UI/RulesPanel`, `UI/LobbyTour`)
 Rules text lives in `shared/GameRules.luau`, one entry per catalog id (see [[Adding a game]]).
