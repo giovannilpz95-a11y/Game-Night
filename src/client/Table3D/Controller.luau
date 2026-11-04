@@ -120,6 +120,17 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 				end
 			end
 		end
+		-- The "<name>'s turn" tags over the seats float right over the board from the seat
+		-- camera (they covered chess pieces); the seat list and banner already show whose
+		-- turn it is. The server switches the tag's Enabled every turn, so hide its label.
+		for _, d in tableModel:GetDescendants() do
+			if d.Name == "Label" and d:IsA("TextLabel") and d.Visible and d.Parent and d.Parent.Name == "TurnTag" then
+				d.Visible = false
+				table.insert(hidden, function()
+					d.Visible = true
+				end)
+			end
+		end
 		-- Bodies at the table: bots (in the table's Bots folder) and whoever sits in a seat.
 		local bodies: { Instance } = {}
 		local bots = tableModel:FindFirstChild("Bots")
