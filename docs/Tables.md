@@ -33,10 +33,10 @@ When a match starts, the party is moved to a free table in the room and everyone
 ## Where tables come from
 In this order:
 1. **Tables placed in Studio:** any Model in Workspace tagged `GameTable` (CollectionService). Give it attributes `TableId` (e.g. `Quick-1`) and `Zone` (`Quick`, `Strategy`, `Cards`, `Party`, matching `GameCatalog.category`), `Seat` parts, and a `BoardAnchor` (Attachment or part) at the center of the table top. Seats are renamed `Seat1..N` in order around the table, starting from the +Z side.
-2. **A template from Assets:** if nothing is tagged, a Model under `ReplicatedStorage.Assets` whose name has "Square" or "Round" in it (and "Table" in its name or its folder's) is cloned for each entry in `Config.DefaultTables` (13 tables: 4-seat and 8-seat, one zone per catalog category), in rows of `Config.TableColumns` from `Config.TableOrigin`. Seats are added around it if it has none, and the anchor goes on top of its bounding box.
-3. **Plain tables built in code**, same layout, so 3D play works before any art exists.
+2. **A template from Assets:** if nothing is tagged, a Model under `ReplicatedStorage.Assets` whose name has "Square" or "Round" in it (and "Table" in its name or its folder's) is cloned for each entry in `Config.DefaultTables` (13 tables: 4-seat and 8-seat, one zone per catalog category), each on its spot in the lobby room (`shared/LobbyLayout.luau`, see [[Lobby]]). Seats are added around it if it has none, and the anchor goes on top of its bounding box.
+3. **Plain tables built in code**, same spots, so 3D play works before any art exists.
 
-`Config.TableOrigin` is a guess (60 studs behind the spawn). Once the lobby room exists, tag its tables and the code-built ones go away.
+Every table gets a sign post at its edge with its state on both faces, and a pendant lamp over it (see [[Lobby]]).
 
 ## How a match uses a table
 - `MatchService` calls `TableService.claim` after building the seats. It picks the party's previous table if it's free, then a table in the game's zone, then the smallest table that fits. No free table means the match plays in the 2D view, like before (overflow).
