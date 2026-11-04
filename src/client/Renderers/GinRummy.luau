@@ -155,6 +155,17 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		local buttons = {}
+		if drawing then
+			-- Also as buttons, so Table view (which only keeps the bottom on screen) can draw.
+			table.insert(buttons, { text = "Draw from stock", onClick = function()
+				sendMove({ kind = "draw", from = "stock" })
+			end })
+			if view.discardTop then
+				table.insert(buttons, { text = `Take {PlayingCards.short(view.discardTop)}`, color = Theme.PanelLight, onClick = function()
+					sendMove({ kind = "draw", from = "discard" })
+				end })
+			end
+		end
 		if discarding and next(knockable) ~= nil then
 			table.insert(buttons, {
 				text = if knocking then "Cancel knock" elseif view.deadwood and view.deadwood == 0 then "Gin!" else "Knock",

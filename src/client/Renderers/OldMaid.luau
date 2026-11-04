@@ -1,6 +1,7 @@
--- Old Maid table: players along the top (cards left and pairs down), and on the felt the
--- face-down hand you're drawing from: tap any card to take it. Your hand is at the
--- bottom, with the Old Maid outlined in red if you're holding her.
+-- Old Maid table: players along the top (cards left and pairs down), the hand being drawn
+-- from on the felt, your hand at the bottom with the Old Maid outlined in red. On your
+-- turn the two swap places: the cards you pick from move to the bottom row (the part
+-- Table view keeps on screen) and your own hand moves up onto the felt.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -52,22 +53,26 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 			local slot = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.6), Size = UDim2.fromScale(1, 0.62), Parent = ui.content })
 			local face = PlayingCard.show(slot, view.oldMaid)
 			Kit.new("UIStroke", { Color = MAID_RED, Thickness = 4, Parent = face })
+		elseif myTurn then
+			-- Your hand sits on the felt while you pick from the bottom row.
+			CardTable.feltText(ui.content, "Your hand", 0.04, 15)
+			local mine = {}
+			for _, id in view.hand or {} do
+				table.insert(mine, id)
+			end
+			CardTable.cardRow(ui.content, mine, { Position = UDim2.fromScale(0.04, 0.2), Size = UDim2.fromScale(0.92, 0.6), ZIndex = 6 })
 		elseif target then
-			-- The hand being drawn from, face down. Tap one on your turn.
+			-- The hand being drawn from, face down.
 			local count = view.handCounts[target] or 0
 			local picker = if view.turn == me then "Pick one of" else `{nameOf(view.turn)} picks from`
 			local owner = if target == me then "your" else `{nameOf(target)}'s`
 			CardTable.feltText(ui.content, `{picker} {owner} cards`, 0.04, 17).TextColor3 = if myTurn then Theme.Accent else Theme.Text
 			local row = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromScale(0.04, 0.2), Size = UDim2.fromScale(0.92, 0.6), ZIndex = 6, Parent = ui.content })
-			local cards = {}
-			for i = 1, count do
-				table.insert(cards, { id = nil, key = i, glow = myTurn, enabled = myTurn })
+			local backs = {}
+			for _ = 1, count do
+				table.insert(backs, false)
 			end
-			PlayingCard.renderHand(row, cards, function(index: number)
-				if myTurn then
-					sendMove({ kind = "draw", index = index })
-				end
-			end)
+			CardTable.cardRow(row, backs, { Size = UDim2.fromScale(1, 1) })
 		end
 
 		-- What just happened (the card itself only for the two players involved).
@@ -107,11 +112,22 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 		elseif myCount == 0 then
 			ui.prompt.Text = "You're safe! Watch who ends up with the Old Maid"
 		elseif myTurn then
-			ui.prompt.Text = `Your turn: tap one of {nameOf(target)}'s cards`
+			ui.prompt.Text = `Your turn: tap one of {nameOf(target)}'s cards below`
 		else
 			ui.prompt.Text = `{nameOf(view.turn)}'s turn` .. (if holding then " · you have the Old Maid, keep a straight face!" else "")
 		end
 
+		if myTurn then
+			-- The target's cards, face down, where your hand usually is: tap one to take it.
+			local backs = {}
+			for i = 1, view.handCounts[target] or 0 do
+				table.insert(backs, { id = nil, key = i, glow = true, enabled = true })
+			end
+			PlayingCard.renderHand(ui.hand, backs, function(index: number)
+				sendMove({ kind = "draw", index = index })
+			end)
+			return
+		end
 		local cards = {}
 		for _, id in view.hand or {} do
 			table.insert(cards, { id = id, raised = id == view.oldMaid })

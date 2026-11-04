@@ -67,6 +67,12 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		Size = UDim2.new(1, 0, 0, 18),
 		Parent = root,
 	})
+	-- "Ask <name>" buttons in the same spot as your books line, once you've picked a rank,
+	-- so Table view (which keeps only the bottom of the screen) can ask too.
+	local askRow = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.65, 22), Size = UDim2.new(1, 0, 0, 26), Visible = false, Parent = root })
+	local askList = Kit.list(6, true)
+	askList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	askList.Parent = askRow
 	local hand = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.74, 0), Size = UDim2.new(1, 0, 0.26, 0), Parent = root })
 
 	local function nameOf(seat: number): string
@@ -183,12 +189,30 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		elseif not myTurn then
 			prompt.Text = `{nameOf(view.turn)} is asking...`
 		elseif selectedRank then
-			prompt.Text = `Who do you ask for {PlayingCards.rankPlural[selectedRank]}? Tap a player.`
+			prompt.Text = `Who do you ask for {PlayingCards.rankPlural[selectedRank]}?`
 		else
 			prompt.Text = "Your turn! Tap a card to ask for that rank."
 		end
 		local myList = if me then view.books[me] or {} else {}
 		myBooks.Text = if not me then "" elseif #myList == 0 then "You have no books yet" else `Your {booksText(myList)}`
+		Kit.clear(askRow)
+		local choosing = myTurn and selectedRank ~= nil
+		if choosing then
+			for _, seat in targets do
+				if view.handCounts[seat] > 0 then
+					Kit.button(`Ask {nameOf(seat)}`, function()
+						ask(seat)
+					end, {
+						Size = UDim2.new(0, math.max(90, #nameOf(seat) * 8 + 50), 1, 0),
+						TextSize = 14,
+						LayoutOrder = seat,
+						Parent = askRow,
+					})
+				end
+			end
+		end
+		askRow.Visible = choosing
+		myBooks.Visible = not choosing
 
 		local cards = {}
 		for _, id in view.hand or {} do
