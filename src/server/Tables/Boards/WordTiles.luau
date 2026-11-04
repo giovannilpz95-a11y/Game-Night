@@ -81,44 +81,45 @@ function WordTiles.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			if not Scene.changed(memo, view) then
 				return
 			end
-			dynamic:ClearAllChildren()
-			local cell = SIZE / size
-			for r, row in view.rows or {} do
-				for c = 1, #row do
-					local ch = string.sub(row, c, c)
-					if ch ~= "." then
-						local cf = cellCF(r, c, 0.24)
-						Models.block(dynamic, "Tile", Vector3.new(cell * 0.88, 0.09, cell * 0.88), cf * CFrame.new(0, 0.045, 0), TILE)
-						Models.block(dynamic, "TileTop", Vector3.new(cell * 0.76, 0.02, cell * 0.76), cf * CFrame.new(0, 0.095, 0), TILE_TOP)
-						-- Blanks are stored in upper case: show them a little paler, with no value.
-						local blank = ch == string.upper(ch) and ch ~= string.lower(ch)
-						local letter = string.upper(ch)
-						local top = cf * CFrame.new(0, 0.11, 0)
-						Scene.flatText(dynamic, top, cell * 0.66, cell * 0.66, letter, { TextColor3 = if blank then Color3.fromRGB(150, 120, 90) else INK })
-						local value = Rules.values[string.lower(letter)]
-						if value and not blank then
-							Scene.flatText(dynamic, top * CFrame.new(cell * 0.27, 0.002, cell * 0.28), cell * 0.24, cell * 0.2, tostring(value), { TextColor3 = INK })
+			Scene.redraw(dynamic, function(dynamic)
+				local cell = SIZE / size
+				for r, row in view.rows or {} do
+					for c = 1, #row do
+						local ch = string.sub(row, c, c)
+						if ch ~= "." then
+							local cf = cellCF(r, c, 0.24)
+							Models.block(dynamic, "Tile", Vector3.new(cell * 0.88, 0.09, cell * 0.88), cf * CFrame.new(0, 0.045, 0), TILE)
+							Models.block(dynamic, "TileTop", Vector3.new(cell * 0.76, 0.02, cell * 0.76), cf * CFrame.new(0, 0.095, 0), TILE_TOP)
+							-- Blanks are stored in upper case: show them a little paler, with no value.
+							local blank = ch == string.upper(ch) and ch ~= string.lower(ch)
+							local letter = string.upper(ch)
+							local top = cf * CFrame.new(0, 0.11, 0)
+							Scene.flatText(dynamic, top, cell * 0.66, cell * 0.66, letter, { TextColor3 = if blank then Color3.fromRGB(150, 120, 90) else INK })
+							local value = Rules.values[string.lower(letter)]
+							if value and not blank then
+								Scene.flatText(dynamic, top * CFrame.new(cell * 0.27, 0.002, cell * 0.28), cell * 0.24, cell * 0.2, tostring(value), { TextColor3 = INK })
+							end
 						end
 					end
 				end
-			end
-			-- Racks: an angled wooden stand with the right number of tiles on it.
-			for seat, count in view.rackCounts or {} do
-				local spot = Scene.seatSpot(boardCF, layout, seat, 0.45)
-				Models.block(dynamic, "Rack", Vector3.new(3.3, 0.16, 0.56), spot * CFrame.new(0, 0.08, 0), Models.WOOD, Enum.Material.Wood)
-				Models.block(dynamic, "RackBack", Vector3.new(3.3, 0.34, 0.12), spot * CFrame.new(0, 0.26, 0.2) * CFrame.Angles(math.rad(14), 0, 0), Models.WALNUT, Enum.Material.Wood)
-				for _, s in { -1, 1 } do
-					Models.block(dynamic, "RackEnd", Vector3.new(0.1, 0.32, 0.56), spot * CFrame.new(s * 1.65, 0.16, 0), Models.WALNUT, Enum.Material.Wood)
+				-- Racks: an angled wooden stand with the right number of tiles on it.
+				for seat, count in view.rackCounts or {} do
+					local spot = Scene.seatSpot(boardCF, layout, seat, 0.45)
+					Models.block(dynamic, "Rack", Vector3.new(3.3, 0.16, 0.56), spot * CFrame.new(0, 0.08, 0), Models.WOOD, Enum.Material.Wood)
+					Models.block(dynamic, "RackBack", Vector3.new(3.3, 0.34, 0.12), spot * CFrame.new(0, 0.26, 0.2) * CFrame.Angles(math.rad(14), 0, 0), Models.WALNUT, Enum.Material.Wood)
+					for _, s in { -1, 1 } do
+						Models.block(dynamic, "RackEnd", Vector3.new(0.1, 0.32, 0.56), spot * CFrame.new(s * 1.65, 0.16, 0), Models.WALNUT, Enum.Material.Wood)
+					end
+					for i = 1, count do
+						local tile = spot * CFrame.new((i - (count + 1) / 2) * 0.43, 0.38, 0.03) * CFrame.Angles(math.rad(14), 0, 0)
+						Models.block(dynamic, "RackTile", Vector3.new(0.39, 0.39, 0.09), tile, TILE)
+						Models.block(dynamic, "RackTileBack", Vector3.new(0.31, 0.31, 0.01), tile * CFrame.new(0, 0, -0.05), TILE_TOP)
+					end
 				end
-				for i = 1, count do
-					local tile = spot * CFrame.new((i - (count + 1) / 2) * 0.43, 0.38, 0.03) * CFrame.Angles(math.rad(14), 0, 0)
-					Models.block(dynamic, "RackTile", Vector3.new(0.39, 0.39, 0.09), tile, TILE)
-					Models.block(dynamic, "RackTileBack", Vector3.new(0.31, 0.31, 0.01), tile * CFrame.new(0, 0, -0.05), TILE_TOP)
+				if (view.bagCount or 0) > 0 then
+					bag(dynamic, boardCF * CFrame.new(SIZE / 2 + 0.95, 0, -SIZE / 2 + 0.6))
 				end
-			end
-			if (view.bagCount or 0) > 0 then
-				bag(dynamic, boardCF * CFrame.new(SIZE / 2 + 0.95, 0, -SIZE / 2 + 0.6))
-			end
+			end)
 		end,
 		destroy = function()
 			model:Destroy()
