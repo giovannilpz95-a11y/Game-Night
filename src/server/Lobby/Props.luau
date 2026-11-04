@@ -528,7 +528,8 @@ local function rack(m, origin, x, z, rng)
 end
 
 -- The Dressing Room corner (front-right, off the foyer): a lit mirror, clothing racks
--- and a little photo stage. The Dressing Room button on the HUD opens the try-on UI.
+-- and a little photo stage. The Looks button on the HUD (or the prompts here) opens the
+-- try-on UI and stands you on the stage.
 function Props.DressingCorner(origin: CFrame, w: number, d: number, parent: Instance): Model
 	local m = newModel("DressingCorner", parent)
 	local rng = Random.new(11)
@@ -554,6 +555,39 @@ function Props.DressingCorner(origin: CFrame, w: number, d: number, parent: Inst
 	-- Two racks of clothes.
 	rack(m, origin, -w / 2 + 6, -d / 2 + 3, rng)
 	rack(m, origin, 1, -d / 2 + 3, rng)
+	-- Fitting spots on the stage: opening the Dressing Room stands you on one, facing the
+	-- room, with the backdrop behind you (client/UI/DressingCamera). Invisible markers.
+	local stageZ = d / 2 - 5.5
+	for i, dx in { 0, 2.6, -2.6 } do
+		local spot = box(m, origin, stageX + dx, 0.7, stageZ, 1, 0.1, 1, {
+			Name = "FittingSpot",
+			Transparency = 1,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = false,
+			CastShadow = false,
+		})
+		spot:SetAttribute("Order", i)
+	end
+	-- Walk up to the stage or the mirror to open the Dressing Room.
+	for _, at in { Vector3.new(stageX, 3, stageZ - 4), Vector3.new(mx, 3, d / 2 - 3) } do
+		local holder = box(m, origin, at.X, at.Y, at.Z, 1, 1, 1, {
+			Name = "DressingRoomPromptHolder",
+			Transparency = 1,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = false,
+			CastShadow = false,
+		})
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "DressingRoomPrompt"
+		prompt.ActionText = "Try on outfits"
+		prompt.ObjectText = "Dressing Room"
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = holder
+	end
 	-- A sign over it.
 	local sign = box(m, origin, 0, 14, d / 2 - 0.5, 14, 2.4, 0.3, { Color = C.ink })
 	Props.text(sign, Enum.NormalId.Front, "Dressing Room", { color = Color3.fromRGB(255, 200, 236), stroke = Color3.fromRGB(120, 40, 110), lightInfluence = 0, padding = 0.1 })

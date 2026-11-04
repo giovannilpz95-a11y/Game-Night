@@ -253,11 +253,20 @@ renderHud()
 
 Net.event(Net.Names.DressingRoomState).OnClientEvent:Connect(dressingRoom.setState)
 
+-- Walking up to the Dressing Room corner's stage or mirror offers to open it.
+game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt)
+	if prompt.Name == "DressingRoomPrompt" and not matchView.isOpen() then
+		closeWindows()
+		dressingRoom.open()
+	end
+end)
+
 -- At a table the wallet shows that game's Coins too.
 local shownGameId: string? = nil
 RunService.RenderStepped:Connect(function()
 	-- The lobby menu hides while at a table, so the 3D view shows the room.
-	lobby.Visible = not matchView.isOpen()
+	-- The Dressing Room has the whole screen too: its panel and your avatar on the stage.
+	lobby.Visible = not matchView.isOpen() and not dressingRoom.isOpen()
 	local gameId = matchView.gameId()
 	if gameId ~= shownGameId then
 		shownGameId = gameId
