@@ -176,6 +176,53 @@ local function fromTemplate(template: Model, shape: string, at: Vector3): Model
 	return model
 end
 
+-- Roblox draws a Cylinder part with a fixed number of sides, so a 14-stud table top
+-- looks like a polygon up close. Each big cylinder gets a few copies turned a fraction
+-- of a side around its own axis; together their outlines read as a smooth circle.
+-- The copies are a hair shorter so their tops never fight the original's.
+local SMOOTH_MIN_DIAMETER = 5
+local SMOOTH_COPIES = 3
+local SMOOTH_STEP = 360 / 64 -- degrees between copies
+
+function Builder.smoothCylinders(model: Instance)
+	for _, d in model:GetDescendants() do
+		if
+			d.ClassName == "Part"
+			and (d :: Part).Shape == Enum.PartType.Cylinder
+			and not d:GetAttribute("SmoothCopy")
+			and (d :: Part).Transparency < 1
+		then
+			local part = d :: Part
+			local diameter = math.min(part.Size.Y, part.Size.Z)
+			if diameter >= SMOOTH_MIN_DIAMETER then
+				local inset = math.min(0.02, part.Size.X * 0.2)
+				for i = 1, SMOOTH_COPIES do
+					local copy = Instance.new("Part")
+					copy.Name = `{part.Name}Smooth`
+					copy:SetAttribute("SmoothCopy", true)
+					copy.Shape = Enum.PartType.Cylinder
+					copy.Size = Vector3.new(part.Size.X - inset, part.Size.Y, part.Size.Z)
+					-- A cylinder's axis is its local X, so turning about X spins it in place.
+					copy.CFrame = part.CFrame * CFrame.Angles(math.rad(i * SMOOTH_STEP), 0, 0)
+					copy.Color = part.Color
+					copy.Material = part.Material
+					copy.MaterialVariant = part.MaterialVariant
+					copy.Reflectance = part.Reflectance
+					copy.Transparency = part.Transparency
+					copy.CastShadow = part.CastShadow
+					copy.TopSurface = Enum.SurfaceType.Smooth
+					copy.BottomSurface = Enum.SurfaceType.Smooth
+					copy.Anchored = true
+					copy.CanCollide = false
+					copy.CanQuery = false
+					copy.CanTouch = false
+					copy.Parent = part.Parent
+				end
+			end
+		end
+	end
+end
+
 -- World CFrame of a table's board anchor (position only matters; Y up).
 function Builder.anchorPosition(model: Model): Vector3
 	local anchor = model:FindFirstChild("BoardAnchor", true)
@@ -240,6 +287,7 @@ function Builder.getTables(): { Model }
 			else Config.TableOrigin + Vector3.new((col - (columns - 1) / 2) * Config.TableSpacing, 0, -row * Config.TableSpacing)
 		local template = findTemplate(spec.shape)
 		local model = if template then fromTemplate(template, spec.shape, at) else buildPlain(spec.shape, at)
+		Builder.smoothCylinders(model)
 		counts[spec.zone] = (counts[spec.zone] or 0) + 1
 		local id = `{spec.zone}-{counts[spec.zone]}`
 		model.Name = id
