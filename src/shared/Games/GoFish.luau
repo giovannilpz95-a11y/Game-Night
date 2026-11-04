@@ -315,4 +315,13 @@ function GoFish.chooseBotMove(state, seat: number, rng: Random): any?
 	return bestMove
 end
 
+-- Stats for the profile (see shared/StatsCatalog.luau).
+function GoFish.getMatchStats(state): { [number]: { [string]: number } }
+	local out = {}
+	for seat = 1, state.seatCount do
+		out[seat] = { books = #state.books[seat] }
+	end
+	return out
+end
+
 return GoFish

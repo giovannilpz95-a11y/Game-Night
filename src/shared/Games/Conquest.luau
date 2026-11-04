@@ -24,6 +24,8 @@
 	The map is data (regions, territories, links) so new maps are a content swap.
 ]]
 
+local GameModule = require(script.Parent.Parent.GameModule)
+
 local Conquest = {}
 
 Conquest.id = "Conquest"
@@ -626,6 +628,7 @@ end
 
 local function eliminate(state, loser: number, by: number)
 	state.eliminated[loser] = true
+	GameModule.addStat(state, by, "knockouts")
 	for _, card in state.hands[loser] do
 		table.insert(state.hands[by], card)
 	end

@@ -16,7 +16,7 @@ local localPlayer = Players.LocalPlayer
 local PRIVACY_ORDER = { "invite", "friends", "password" }
 local PRIVACY_NAMES = { invite = "Invite only", friends = "Private (friends)", password = "Password" }
 
--- hooks: needHost(reason)
+-- hooks: needHost(reason), viewStats(userId)
 function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 	local root = Kit.new("ScrollingFrame", {
 		Name = "PartyPanel",
@@ -76,9 +76,22 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 		end
 	end, { LayoutOrder = 6, Parent = root })
 
-	local function row(text: string, color: Color3?): Frame
+	-- A name row with a 📊 button that opens that player's stats.
+	local function row(text: string, color: Color3?, userId: number?): Frame
 		local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, Size = UDim2.new(1, 0, 0, 34), BorderSizePixel = 0 }, { Kit.corner(8) })
-		Kit.label(text, { Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -90, 1, 0), TextColor3 = color or Theme.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame })
+		Kit.label(text, { Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -126, 1, 0), TextColor3 = color or Theme.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame })
+		if userId and hooks.viewStats then
+			Kit.button("📊", function()
+				hooks.viewStats(userId)
+			end, {
+				Size = UDim2.new(0, 30, 0, 26),
+				Position = UDim2.new(1, -112, 0.5, -13),
+				TextSize = 14,
+				BackgroundColor3 = Theme.Panel,
+				TextColor3 = Theme.Text,
+				Parent = frame,
+			})
+		end
 		return frame
 	end
 
@@ -108,7 +121,7 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 			inParty[member.userId] = true
 			local isMe = member.userId == localPlayer.UserId
 			local crown = if member.userId == party.leaderId then "👑 " else ""
-			local frame = row(`{crown}{member.name}{if isMe then " (you)" else ""}`)
+			local frame = row(`{crown}{member.name}{if isMe then " (you)" else ""}`, nil, member.userId)
 			frame.LayoutOrder = index
 			if isLeader and not isMe then
 				smallButton("Remove", function()
@@ -128,7 +141,7 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 
 		for _, player in Players:GetPlayers() do
 			if not inParty[player.UserId] then
-				local frame = row(player.DisplayName, Theme.SubText)
+				local frame = row(player.DisplayName, Theme.SubText, player.UserId)
 				if isLeader and #party.members < party.maxSize then
 					smallButton("Invite", function()
 						send({ action = "invite", userId = player.UserId })

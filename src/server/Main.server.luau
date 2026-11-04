@@ -17,6 +17,7 @@ local Dictionary = require(script.Parent.Core.Dictionary)
 local WordTiles = require(ReplicatedStorage.Shared.Games.WordTiles)
 local HostService = require(script.Parent.Services.HostService)
 local VoiceService = require(script.Parent.Services.VoiceService)
+local ProgressionService = require(script.Parent.Services.ProgressionService)
 local TableActionService = require(script.Parent.Services.TableActionService)
 
 Net.init()
@@ -28,6 +29,7 @@ PurchaseService.init()
 DressingRoomService.init()
 HostService.init()
 VoiceService.init(PartyService)
+ProgressionService.init(EconomyService)
 DataService.init() -- last, so every onLoaded listener is in place before profiles load
 MatchService.onMatchFinished(EconomyService.onMatchFinished)
 
@@ -57,6 +59,7 @@ Net.event(Net.Names.PurchaseRequest).OnServerEvent:Connect(guarded(PurchaseServi
 Net.event(Net.Names.DressingRoomRequest).OnServerEvent:Connect(guarded(DressingRoomService.handleRequest))
 Net.event(Net.Names.HostRequest).OnServerEvent:Connect(guarded(HostService.handleRequest))
 Net.event(Net.Names.VoiceRequest).OnServerEvent:Connect(guarded(VoiceService.handleRequest))
+Net.event(Net.Names.StatsRequest).OnServerEvent:Connect(guarded(ProgressionService.handleRequest))
 Net.event(Net.Names.TableAction).OnServerEvent:Connect(guarded(TableActionService.init(MatchService)))
 
 Players.PlayerRemoving:Connect(function(player)

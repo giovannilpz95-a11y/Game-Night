@@ -1878,4 +1878,16 @@ function Hexlands.chooseBotMove(state: any, seat: number, rng: any): any?
 	return nil
 end
 
+-- Stats for the profile (see shared/StatsCatalog.luau).
+function Hexlands.getMatchStats(state: any): { [number]: { [string]: number } }
+	local out = {}
+	for seat, p in state.players do
+		out[seat] = {
+			roads = Hexlands.PIECES.road - p.roads,
+			towns = Hexlands.PIECES.town - p.towns,
+		}
+	end
+	return out
+end
+
 return Hexlands

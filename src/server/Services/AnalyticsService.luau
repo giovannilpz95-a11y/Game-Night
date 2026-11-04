@@ -7,6 +7,10 @@
 --
 -- Economy events come only from EconomyService and PurchaseService, so they match the
 -- profile. In Studio every event is printed to the Output instead of being lost.
+--
+-- The same events feed the player's saved stats (Core/Stats): every logged wallet change
+-- adds to Gems/Coins earned or spent, and invites add to the social counters. Listeners
+-- registered with onStatsChanged (ProgressionService, for badges) hear about it.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,6 +21,7 @@ local RobloxAnalytics = game:GetService("AnalyticsService")
 local Net = require(ReplicatedStorage.Shared.Net)
 local AnalyticsEvents = require(script.Parent.Parent.Core.AnalyticsEvents)
 local RateLimiter = require(script.Parent.Parent.Core.RateLimiter)
+local Stats = require(script.Parent.Parent.Core.Stats)
 local DataService = require(script.Parent.DataService)
 
 local AnalyticsService = {}
@@ -81,7 +86,25 @@ local function shopStep(player: Player, stepName: string, fields: { [string]: st
 	end
 end
 
+local statsCallbacks: { (Player) -> () } = {}
+
+-- Runs `callback(player)` after this module changed a player's saved stats.
+function AnalyticsService.onStatsChanged(callback: (Player) -> ())
+	table.insert(statsCallbacks, callback)
+end
+
+local function statsChanged(player: Player)
+	for _, callback in statsCallbacks do
+		task.spawn(callback, player)
+	end
+end
+
 local function economy(player: Player, entry: AnalyticsEvents.EconomyEntry)
+	local data = DataService.get(player)
+	if data then
+		Stats.recordCurrency(data, entry)
+		statsChanged(player)
+	end
 	send(
 		"LogEconomyEvent",
 		player,
@@ -170,13 +193,27 @@ end
 
 -- Parties (PartyService) -------------------------------------------------------------
 
-function AnalyticsService.inviteSent(player: Player)
-	AnalyticsService.custom(player, AnalyticsEvents.Custom.InviteSent, 1)
+local function addSocial(player: Player?, key: string)
+	local data = player and DataService.get(player)
+	if player and data then
+		Stats.addSocial(data, key)
+		statsChanged(player)
+	end
 end
 
-function AnalyticsService.inviteAccepted(player: Player, partySize: number)
+function AnalyticsService.inviteSent(player: Player)
+	AnalyticsService.custom(player, AnalyticsEvents.Custom.InviteSent, 1)
+	addSocial(player, "invitesSent")
+end
+
+-- `player` accepted an invite from the leader `leaderId` (only leaders invite).
+function AnalyticsService.inviteAccepted(player: Player, partySize: number, leaderId: number?)
 	AnalyticsService.custom(player, AnalyticsEvents.Custom.InviteAccepted, 1)
 	AnalyticsService.custom(player, AnalyticsEvents.Custom.PartyFormed, partySize)
+	addSocial(player, "partiesJoined")
+	if leaderId and leaderId ~= player.UserId then
+		addSocial(Players:GetPlayerByUserId(leaderId), "friendsJoined")
+	end
 end
 
 -- Matches (MatchService events) ------------------------------------------------------
