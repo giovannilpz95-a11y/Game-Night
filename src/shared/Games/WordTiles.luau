@@ -553,6 +553,11 @@ function WordTiles.applyMove(state, seat: number, move: any)
 		play.words = {}
 		for _, w in result.words do
 			table.insert(play.words, { word = w.word, score = w.score })
+			GameModule.addStat(state, seat, "words")
+			GameModule.maxStat(state, seat, "bestWord", w.score)
+		end
+		if result.bingo then
+			GameModule.addStat(state, seat, "bingos")
 		end
 		state.scores[seat] += result.score
 		refill(state, seat)

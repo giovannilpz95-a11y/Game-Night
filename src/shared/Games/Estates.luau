@@ -1614,4 +1614,19 @@ function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 	return { kind = "endTurn" }
 end
 
+-- Stats for the profile (see shared/StatsCatalog.luau).
+function Estates.getMatchStats(state): { [number]: { [string]: number } }
+	local out = {}
+	for seat = 1, state.seatCount do
+		local deeds = 0
+		for _, who in state.owner do
+			if who == seat then
+				deeds += 1
+			end
+		end
+		out[seat] = { properties = deeds, bankrupt = if state.players[seat].bankrupt then 1 else 0 }
+	end
+	return out
+end
+
 return Estates

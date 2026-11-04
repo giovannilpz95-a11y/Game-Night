@@ -9,6 +9,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local Profile = require(script.Parent.Profile)
 local Daily = require(script.Parent.Daily)
+local Stats = require(script.Parent.Stats)
+local Weekly = require(script.Parent.Weekly)
 
 local Rewards = {}
 
@@ -25,6 +27,9 @@ export type MatchContext = {
 	resigned: boolean?, -- this player gave up: no Coins, Gems, XP or challenge progress
 	humanOpponents: { number }, -- user ids of the other humans at the table
 	vip: boolean,
+	extra: { [string]: any }?, -- the game's own stats for this seat (StatsCatalog)
+	score: number?, -- this seat's final score, for games with getScores
+	now: number?, -- os.time(); stats and the weekly board use it
 }
 
 export type Payout = {
@@ -35,6 +40,7 @@ export type Payout = {
 	levelUps: { number }, -- new levels reached
 	challenges: { string }, -- texts of challenges completed
 	notes: { string }, -- why something was reduced ("Daily bot reward limit reached")
+	weeklyPoints: number, -- added to this week's leaderboards (Core/Weekly)
 }
 
 local function round(x: number): number
@@ -65,22 +71,25 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 		levelUps = {},
 		challenges = {},
 		notes = {},
+		weeklyPoints = 0,
 	}
+	local now = ctx.now or os.time()
 	local daily = data.daily
 	local vsBots = #ctx.humanOpponents == 0
 	local playMultiplier = if ctx.vip then 1 + Economy.VipPlayBonus else 1
 
 	-- Stats count every finished match, rewarded or not.
-	local stats = data.stats
-	stats.matches += 1
-	stats.minutes += ctx.minutes
-	local gameStats = stats.games[ctx.gameId] or { played = 0, wins = 0 }
-	stats.games[ctx.gameId] = gameStats
-	gameStats.played += 1
-	if ctx.won then
-		stats.wins += 1
-		gameStats.wins += 1
-	end
+	Stats.recordMatch(data, {
+		gameId = ctx.gameId,
+		won = ctx.won,
+		isDraw = ctx.isDraw,
+		minutes = ctx.minutes,
+		vsHumans = not vsBots,
+		extra = ctx.extra,
+		score = ctx.score,
+		now = now,
+	})
+	Weekly.current(data, now)
 
 	-- Win streaks: a loss resets, a draw keeps it.
 	local streak = data.winStreak[ctx.coinKey] or 0
@@ -117,6 +126,15 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 			table.insert(payout.notes, "No more rewards for beating the same player today")
 		end
 	end
+
+	payout.weeklyPoints = Weekly.points({
+		won = ctx.won,
+		isDraw = ctx.isDraw,
+		vsHumans = not vsBots,
+		rewarded = coinsAllowed, -- the anti-farm limits above count here too
+		botCapped = vsBots and daily.botMatches > Economy.BotMatchesPerDay,
+	})
+	Weekly.add(data, now, ctx.gameId, payout.weeklyPoints)
 
 	local paidMinutes = math.min(ctx.minutes, ctx.typicalMinutes * Economy.MaxMinutesFactor)
 	if coinsAllowed then
@@ -169,6 +187,9 @@ function Rewards.describe(payout: Payout): { string }
 	end
 	for _, text in payout.challenges do
 		table.insert(lines, `Challenge done: {text}`)
+	end
+	if payout.weeklyPoints > 0 then
+		table.insert(lines, `+{payout.weeklyPoints} weekly leaderboard points`)
 	end
 	for _, note in payout.notes do
 		table.insert(lines, note)

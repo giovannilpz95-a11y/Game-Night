@@ -25,6 +25,8 @@ Net.Names = {
 	HostState = "HostState", -- server -> client: your saved word lists and quiz decks
 	VoiceRequest = "VoiceRequest", -- client -> server: { action = "join" | "lobby" | "sync", force? }
 	VoiceState = "VoiceState", -- server -> client: voice server status, prompts, teleporting
+	StatsRequest = "StatsRequest", -- client -> server: { action = "profile", userId? } | { action = "board", board }
+	StatsState = "StatsState", -- server -> client: { kind = "profile" | "board" | "error", ... }
 }
 
 local FOLDER_NAME = "Remotes"

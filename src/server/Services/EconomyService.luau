@@ -28,6 +28,7 @@ local AnalyticsService = require(script.Parent.AnalyticsService)
 local EconomyService = {}
 
 local passes: { [number]: { [string]: boolean } } = {} -- live pass ownership, checked on join
+local recordedCallbacks: { (Player, Profile.Data, Rewards.Payout, string) -> () } = {}
 local walletRemote: RemoteEvent
 local rewardRemote: RemoteEvent
 local notifyRemote: RemoteEvent
@@ -141,7 +142,17 @@ end
 -- games that run outside MatchService can call it directly.
 function EconomyService.recordMatch(
 	player: Player,
-	result: { gameId: string, won: boolean, isDraw: boolean?, resigned: boolean?, minutes: number, moves: number, humanOpponents: { number } }
+	result: {
+		gameId: string,
+		won: boolean,
+		isDraw: boolean?,
+		resigned: boolean?,
+		minutes: number,
+		moves: number,
+		humanOpponents: { number },
+		stats: { [string]: number }?, -- the game's own stats for this player (StatsCatalog)
+		score: number?,
+	}
 ): Rewards.Payout?
 	local data = DataService.get(player)
 	local entry = GameCatalog.get(result.gameId)
@@ -163,11 +174,23 @@ function EconomyService.recordMatch(
 		resigned = result.resigned == true,
 		humanOpponents = result.humanOpponents,
 		vip = isVip(player),
+		extra = result.stats,
+		score = result.score,
+		now = os.time(),
 	})
 	sendReward(player, "Rewards", Rewards.describe(payout))
 	AnalyticsService.matchPayout(player, data, payout)
 	EconomyService.push(player)
+	for _, callback in recordedCallbacks do
+		task.spawn(callback, player, data, payout, entry.id)
+	end
 	return payout
+end
+
+-- Runs `callback(player, data, payout, gameId)` after each match was recorded and paid
+-- (ProgressionService: weekly leaderboards and badges).
+function EconomyService.onMatchRecorded(callback: (Player, Profile.Data, Rewards.Payout, string) -> ())
+	table.insert(recordedCallbacks, callback)
 end
 
 -- Hooked to MatchService: pays every human still at the table.
@@ -197,6 +220,8 @@ function EconomyService.onMatchFinished(summary: any)
 			minutes = summary.minutes,
 			moves = summary.moves,
 			humanOpponents = opponents,
+			stats = summary.stats and summary.stats[index],
+			score = summary.scores and summary.scores[index],
 		})
 	end
 end

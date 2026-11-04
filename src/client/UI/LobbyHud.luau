@@ -1,6 +1,6 @@
 -- The lobby is the 3D room. On top of it there's only a small HUD:
 -- * one big Play button at the bottom center (opens the game picker),
--- * a side rail of round icon buttons on the left: Party, Tables, Shop, Looks, Host, Voice.
+-- * a side rail of round icon buttons on the left: Party, Tables, Stats, Shop, Looks, Host, Voice.
 -- Everything else opens on demand and closes back to the room.
 -- Phones keep the bottom corners free for the thumbstick and jump button.
 
@@ -16,6 +16,7 @@ export type Actions = {
 	play: () -> (),
 	party: () -> (),
 	tables: () -> (),
+	stats: () -> (),
 	shop: () -> (),
 	looks: () -> (),
 	host: () -> (),
@@ -97,10 +98,11 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 
 	railButton("Party", 1, "👥", "Party", actions.party)
 	railButton("Tables", 2, "🎲", "Tables", actions.tables)
-	railButton("Shop", 3, "🛒", "Shop", actions.shop)
-	railButton("Looks", 4, "👕", "Looks", actions.looks)
-	railButton("Host", 5, "👑", "Host", actions.host)
-	local voiceButton = railButton("Voice", 6, "🎙", "Voice", actions.voice, VOICE_COLOR)
+	railButton("Stats", 3, "📊", "Stats", actions.stats)
+	railButton("Shop", 4, "🛒", "Shop", actions.shop)
+	railButton("Looks", 5, "👕", "Looks", actions.looks)
+	railButton("Host", 6, "👑", "Host", actions.host)
+	local voiceButton = railButton("Voice", 7, "🎙", "Voice", actions.voice, VOICE_COLOR)
 	voiceButton.Visible = false
 
 	-- The one big call to action.
