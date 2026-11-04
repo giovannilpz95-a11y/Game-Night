@@ -46,7 +46,7 @@ local DOCK: { [string]: { side: string, size: number } } = {
 	Whodunit = { side = "right", size = 0.44 },
 	SketchGuess = { side = "right", size = 0.32 },
 	WordTiles = { side = "bottom", size = 96 },
-	ColorClash = { side = "bottom", size = 0.72 },
+	ColorClash = { side = "bottom", size = 0.45 }, -- the "+2 waiting" line, buttons and hand
 	TriviaNight = { side = "bottom", size = 0.26 }, -- answers only (the screen shows the question)
 	Spoons = { side = "bottom", size = 0.41 },
 	War = { side = "bottom", size = 0.2 },
@@ -156,21 +156,23 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = header,
 	})
 
-	-- 3D view: the board on the real table, seen from your seat. Only games you play by
-	-- tapping the table (Chess, Checkers, Four in a Row, Tic-Tac-Toe) start in 3D, and
-	-- phones start those flat too (it's easier to tap). Watch-only tables (card games, big
-	-- boards, party screens) always start in the 2D view, where you play; "Table view"
-	-- looks up at the table with your hand and prompts docked along the edge.
-	-- Both choices reset with every new match, so one game's toggle doesn't carry over.
-	local function default3D(): boolean
+	-- Table view: the game on the real table, seen from your seat, with your hand and
+	-- prompts docked along the edge for watch-only tables. It's the default everywhere
+	-- except on phones (there the flat view is easier to tap and read). Your toggle is
+	-- remembered per game for the session, so turning Table view off for one game doesn't
+	-- turn it off for the rest.
+	local function defaultView(): boolean
 		return not (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
 	end
-	local want3D = default3D()
-	local wantScene = false
+	local viewChoice: { [string]: boolean } = {}
 	local snapshot: any = nil
 	local function wanted(): boolean
-		local info = snapshot and snapshot.table
-		return if info and not info.board3D then wantScene else want3D
+		local gameId = snapshot and snapshot.gameId
+		local choice = gameId and viewChoice[gameId]
+		if choice == nil then
+			return defaultView()
+		end
+		return choice
 	end
 	-- Rules for this game, any time. A window over the table: the match keeps going.
 	local rulesButton = Kit.button("?", function()
@@ -239,8 +241,20 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		closeMenu()
 		sendMatch({ action = "leave" })
 	end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 3, ZIndex = 41, Parent = menu })
+	-- Calm camera: Table view without the lean, push-ins and drift.
+	local calmButton: TextButton
+	local function calmText(): string
+		return if Table3D.isCalm() then "Camera motion: Calm" else "Camera motion: Full"
+	end
+	calmButton = Kit.button(calmText(), function()
+		Table3D.setCalm(not Table3D.isCalm())
+		calmButton.Text = calmText()
+	end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, ZIndex = 41, Parent = menu })
 	menuButton.Activated:Connect(function()
 		menu.Visible = not menu.Visible
+	end)
+	Avatars.onAction(function(tableId, point, kind)
+		table3D.focus(tableId, point, kind)
 	end)
 
 	---------------------------------------------------------------- seats and board
@@ -428,12 +442,10 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local lastTick = -1
 
 	viewButton = Kit.button("2D view", function()
-		if snapshot and snapshot.table and not snapshot.table.board3D then
-			wantScene = not wantScene
-		else
-			want3D = not want3D
-		end
 		if snapshot then
+			-- From what's on screen: if Table view was wanted but the table never
+			-- streamed in, the button reads "Table view" and should try again.
+			viewChoice[snapshot.gameId] = not table3D.isActive()
 			table3D.setSnapshot(snapshot, wanted())
 		end
 		applyMode()
@@ -820,21 +832,31 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local function renderResult()
 		local result = snapshot.result
 		local over = isOver()
+		local wasShown = resultOverlay.Visible
 		resultOverlay.Visible = over
 		if not over then
 			return
+		end
+		if not wasShown then
+			Kit.popIn(resultOverlay)
 		end
 		local winners: { [number]: boolean } = {}
 		for _, seat in (result and result.winners) or {} do
 			winners[seat] = true
 		end
+		-- Gold when you won, light for a draw or a game you watched, muted when you lost.
+		resultLabel.TextColor3 = Theme.Text
 		if snapshot.aborted then
 			resultLabel.Text = "Game ended"
 		elseif result and result.isDraw then
 			resultLabel.Text = "It's a draw!"
 		elseif result and snapshot.yourSeat and winners[snapshot.yourSeat] then
 			resultLabel.Text = "You win! 🎉"
+			resultLabel.TextColor3 = Theme.Accent
 		elseif result then
+			if snapshot.yourSeat then
+				resultLabel.TextColor3 = Theme.SubText
+			end
 			local names = {}
 			for _, seat in result.winners do
 				table.insert(names, nameOf(seat))
@@ -946,8 +968,6 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			if newSnapshot.matchId ~= shownMatchId or (snapshot ~= nil and newSnapshot.gameId ~= snapshot.gameId) then
 				-- A new match (or a rematch): fresh end card and turn tracking.
 				shownMatchId = newSnapshot.matchId
-				want3D = default3D()
-				wantScene = false
 				rewardLabel.Text = ""
 				rematchAsked = false
 				wasMyTurn = false

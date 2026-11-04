@@ -14,7 +14,7 @@ function TableList.create(parent: Instance, sendParty: (any) -> ())
 		Text = "",
 		AutoButtonColor = false,
 		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.45,
+		BackgroundTransparency = 0.55,
 		Size = UDim2.fromScale(1, 1),
 		Visible = false,
 		ZIndex = 30,
@@ -30,7 +30,7 @@ function TableList.create(parent: Instance, sendParty: (any) -> ())
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(460, 420) }).Parent = panel
 	panel.Size = UDim2.new(0.92, 0, 0.8, 0)
 
-	Kit.label("Find a table", { Font = Theme.FontBold, TextSize = 22, Size = UDim2.new(1, -100, 0, 28), ZIndex = 32, Parent = panel })
+	Kit.title("🎲 Find a table", { ZIndex = 32, Parent = panel })
 	Kit.label("Private tables are for the host's friends. Password tables need the host's code.", {
 		TextColor3 = Theme.SubText,
 		TextSize = 13,
@@ -56,7 +56,7 @@ function TableList.create(parent: Instance, sendParty: (any) -> ())
 		overlay.Visible = false
 		openToken += 1
 	end
-	Kit.button("Close", close, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 90, 0, 30), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, ZIndex = 32, Parent = panel })
+	Kit.closeButton(close, { ZIndex = 33, Parent = panel })
 	Kit.button("Refresh", function()
 		sendParty({ action = "list" })
 	end, { Position = UDim2.new(0, 0, 1, -38), Size = UDim2.new(0, 140, 0, 36), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, ZIndex = 32, Parent = panel })
@@ -132,6 +132,7 @@ function TableList.create(parent: Instance, sendParty: (any) -> ())
 	local function open()
 		table.clear(typed)
 		overlay.Visible = true
+		Kit.popIn(panel)
 		openToken += 1
 		local token = openToken
 		sendParty({ action = "list" })

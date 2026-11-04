@@ -19,6 +19,32 @@ local Players = game:GetService("Players")
 
 local Controller = {}
 
+-- Camera life at the table (all off with Calm camera, Controller.setCalm):
+local GLIDE = 5 -- how fast the camera eases toward where it wants to be (higher = snappier)
+local GLIDE_CALM = 9
+local LEAN = 0.05 -- share of the view that turns toward whoever's turn it is
+local MOMENT_TIME = 1.8 -- seconds a key moment holds the camera's attention
+local MOMENT_TURN = 0.09 -- how far the view turns toward a key moment
+local MOMENT_PUSH = 1.1 -- studs the camera moves in on a key moment
+local BREATHE = 0.035 -- studs of slow drift, so the view doesn't feel frozen
+-- How much each table action pulls the camera (TableActions kinds; missing = none).
+local MOMENT_STRENGTH: { [string]: number } = {
+	cheer = 1, groan = 1, shrug = 0.6,
+	slap = 0.9, dice = 0.8, grab = 0.8, buzz = 0.7,
+	move = 0.5, place = 0.45, card = 0.4, draw = 0.3, point = 0.35, knock = 0.3,
+}
+
+local calm = false
+
+-- Calm camera: no lean, push-in or drift, just a quick smooth glide. Lasts the session.
+function Controller.setCalm(value: boolean)
+	calm = value
+end
+
+function Controller.isCalm(): boolean
+	return calm
+end
+
 -- Parts of your own avatar that stay visible at the table (hands reaching for pieces);
 -- the rest is hidden so your body and accessories don't block the board.
 local KEEP_VISIBLE = {
@@ -77,6 +103,12 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	marks.Name = "GameNightMarks"
 	local savedCameraType: Enum.CameraType? = nil
 	local savedFieldOfView = camera.FieldOfView
+	-- The camera's resting frame at your seat (placeCamera), what's on screen now (eased
+	-- toward the resting frame plus lean, moments and drift every frame), and the current
+	-- key moment.
+	local home: CFrame? = nil
+	local shown: CFrame? = nil
+	local moment: { point: Vector3, strength: number, at: number }? = nil
 	-- Parts of the screen MatchView covers (the docked hand), as fractions of the
 	-- viewport: the camera aims the table at the middle of what's left.
 	local insetRight, insetBottom = 0, 0
@@ -222,6 +254,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		else
 			camera.CameraType = if savedCameraType and savedCameraType ~= Enum.CameraType.Scriptable then savedCameraType else Enum.CameraType.Custom
 			camera.FieldOfView = savedFieldOfView
+			home, shown, moment = nil, nil, nil
 			marks.Parent = nil
 			marks:ClearAllChildren()
 		end
@@ -286,7 +319,78 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local down = distance * math.max(insetBottom - topBar, 0) * math.tan(halfV)
 			cf = cf * CFrame.new(right, -down, 0)
 		end
-		camera.CFrame = cf
+		home = cf
+		if not shown then
+			-- Glide in from wherever the camera was (your avatar's view).
+			shown = camera.CFrame
+		end
+	end
+
+	-- Where whoever's turn it is sits (their head), if it isn't you.
+	local function activePoint(): Vector3?
+		if not (tableModel and snapshot and snapshot.table and snapshot.activeSeats) then
+			return nil
+		end
+		local seatMap = snapshot.table.seats or {}
+		for _, matchSeat in snapshot.activeSeats do
+			if matchSeat ~= snapshot.yourSeat then
+				local tableSeat = seatMap[matchSeat]
+				local seat = tableSeat and tableModel:FindFirstChild(`Seat{tableSeat}`, true)
+				if seat and seat:IsA("BasePart") then
+					return seat.Position + Vector3.new(0, 3, 0)
+				end
+			end
+		end
+		return nil
+	end
+
+	-- Turns a frame's view `share` of the way toward `point` (no roll).
+	local function turnToward(cf: CFrame, point: Vector3, share: number): CFrame
+		local to = point - cf.Position
+		if to.Magnitude < 0.1 or share <= 0 then
+			return cf
+		end
+		local dir = cf.LookVector:Lerp(to.Unit, share).Unit
+		return CFrame.lookAt(cf.Position, cf.Position + dir)
+	end
+
+	-- Smooth rise, hold, smooth fall over MOMENT_TIME.
+	local function momentWeight(age: number): number
+		if age < 0 or age > MOMENT_TIME then
+			return 0
+		end
+		local rise = math.clamp(age / 0.35, 0, 1)
+		local fall = math.clamp((MOMENT_TIME - age) / 0.8, 0, 1)
+		local w = math.min(rise, fall)
+		return w * w * (3 - 2 * w)
+	end
+
+	local function stepCamera(dt: number)
+		if not (active and home) then
+			return
+		end
+		local target = home
+		if not calm then
+			local lean = activePoint()
+			if lean then
+				target = turnToward(target, lean, LEAN)
+			end
+			if moment then
+				local w = momentWeight(os.clock() - moment.at) * moment.strength
+				if w <= 0 and os.clock() - moment.at > MOMENT_TIME then
+					moment = nil
+				elseif w > 0 then
+					target = turnToward(target, moment.point, MOMENT_TURN * w)
+					target += target.LookVector * MOMENT_PUSH * w
+				end
+			end
+			local t = os.clock()
+			target += Vector3.new(math.sin(t * 0.7) * BREATHE * 0.6, math.sin(t * 1.1) * BREATHE, 0)
+		end
+		local current = shown or target
+		local alpha = 1 - math.exp(-dt * (if calm then GLIDE_CALM else GLIDE))
+		shown = current:Lerp(target, alpha)
+		camera.CFrame = shown :: CFrame
 	end
 
 	local function context(): Context
@@ -390,9 +494,11 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 	end
 
-	RunService.RenderStepped:Connect(function()
+	-- After Roblox's camera scripts (which leave a Scriptable camera alone anyway).
+	RunService:BindToRenderStep("GameNightTableCamera", Enum.RenderPriority.Camera.Value + 1, function(dt)
 		if active then
 			fadeSelf(true)
+			stepCamera(dt)
 		end
 	end)
 
@@ -460,6 +566,21 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end,
 		isActive = function(): boolean
 			return active
+		end,
+		-- A gesture played at a table (Avatars.onAction): if it's yours, the camera
+		-- turns and moves in a little toward it, more for big moments.
+		focus = function(tableId: any, point: Vector3, kind: string)
+			if not (active and tableModel) or tableModel:GetAttribute("TableId") ~= tableId then
+				return
+			end
+			local strength = MOMENT_STRENGTH[kind]
+			if not strength then
+				return
+			end
+			if moment and os.clock() - moment.at < MOMENT_TIME * 0.5 and moment.strength > strength then
+				return -- don't cut off a bigger moment that just started
+			end
+			moment = { point = point, strength = strength, at = os.clock() }
 		end,
 		setInsets = function(right: number, bottom: number)
 			right, bottom = math.clamp(right, 0, 0.8), math.clamp(bottom, 0, 0.8)
