@@ -33,6 +33,7 @@ export type Registry = typeof(setmetatable(
 		invites: { [number]: { [string]: number } }, -- invitee -> partyId -> expiresAt
 		changed: { [string]: boolean },
 		codeFails: { [number]: { count: number, resetAt: number } }, -- wrong codes per player
+		requests: { [string]: { [number]: number } }, -- partyId -> asker -> expiresAt ("Ask to join")
 	},
 	PartyRegistry
 ))
@@ -48,6 +49,7 @@ function PartyRegistry.new(maxSize: number, inviteSeconds: number, clock: (() ->
 		invites = {},
 		changed = {},
 		codeFails = {},
+		requests = {},
 	}, PartyRegistry)
 	return self
 end
@@ -105,6 +107,7 @@ function PartyRegistry._detach(self: Registry, userId: number)
 		for _, byParty in self.invites do
 			byParty[partyId] = nil
 		end
+		self.requests[partyId] = nil
 	elseif party.leaderId == userId then
 		party.leaderId = party.members[1]
 		party.privacy = "invite"
@@ -276,6 +279,58 @@ function PartyRegistry.joinTable(self: Registry, userId: number, partyId: any, c
 	return self:_moveInto(userId, target)
 end
 
+-- "Ask to join": a friend of someone at the table asks the leader to let them in. The
+-- service checks the friendship; this keeps the request until the leader answers or it
+-- expires (same time as an invite). Returns the leader's user id to ask.
+function PartyRegistry.requestJoin(self: Registry, userId: number, partyId: any): (boolean, string?, number?)
+	local target = if type(partyId) == "string" then self.parties[partyId] else nil
+	if not target then
+		return false, "That table is gone"
+	end
+	if table.find(target.members, userId) then
+		return false, "You're already at that table"
+	end
+	if #target.members >= self.maxSize then
+		return false, "That table is full"
+	end
+	if target.matchId then
+		return false, "They're in a game right now. Try again when it ends."
+	end
+	local byUser = self.requests[target.id] or {}
+	self.requests[target.id] = byUser
+	local now = self.clock()
+	if byUser[userId] and byUser[userId] > now then
+		return false, "You already asked. Waiting for the leader."
+	end
+	byUser[userId] = now + self.inviteSeconds
+	return true, nil, target.leaderId
+end
+
+function PartyRegistry.hasRequest(self: Registry, partyId: string, userId: number): boolean
+	local byUser = self.requests[partyId]
+	local expiresAt = byUser and byUser[userId]
+	return expiresAt ~= nil and expiresAt > self.clock()
+end
+
+-- The leader lets an asker in (accept) or says no. Either way the request is used up.
+function PartyRegistry.answerJoin(self: Registry, leaderId: number, userId: number, accept: boolean): (boolean, string?)
+	local party = self:getParty(leaderId)
+	if not party or party.leaderId ~= leaderId then
+		return false, "Only the party leader can answer"
+	end
+	if not self:hasRequest(party.id, userId) then
+		return false, "That request has expired"
+	end
+	self.requests[party.id][userId] = nil
+	if not accept then
+		return true
+	end
+	if not self.partyOf[userId] then
+		return false, "They left"
+	end
+	return self:_moveInto(userId, party)
+end
+
 -- Leave your party and go back to a party of one.
 function PartyRegistry.leave(self: Registry, userId: number): (boolean, string?)
 	local party = self:getParty(userId)
@@ -344,6 +399,9 @@ function PartyRegistry.removePlayer(self: Registry, userId: number)
 	self:_detach(userId)
 	self.invites[userId] = nil
 	self.codeFails[userId] = nil
+	for _, byUser in self.requests do
+		byUser[userId] = nil
+	end
 end
 
 function PartyRegistry.setMatch(self: Registry, partyId: string, matchId: string?)

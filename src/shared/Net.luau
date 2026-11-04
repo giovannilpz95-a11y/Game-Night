@@ -25,6 +25,9 @@ Net.Names = {
 	HostState = "HostState", -- server -> client: your saved word lists and quiz decks
 	VoiceRequest = "VoiceRequest", -- client -> server: { action = "join" | "lobby" | "sync", force? }
 	VoiceState = "VoiceState", -- server -> client: voice server status, prompts, teleporting
+	FriendRequest = "FriendRequest", -- client -> server: { action = "follow", userId }
+	FriendState = "FriendState", -- server -> client: your friends in this server and their tables
+	FriendPrompt = "FriendPrompt", -- server -> client: { kind = "joinRequest" | "friendHere", ... }
 	StatsRequest = "StatsRequest", -- client -> server: { action = "profile", userId? } | { action = "board", board }
 	StatsState = "StatsState", -- server -> client: { kind = "profile" | "board" | "error", ... }
 	ChatRequest = "ChatRequest", -- client -> server: { action = "view", view = "party" | "all" }
