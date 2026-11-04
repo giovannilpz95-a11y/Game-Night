@@ -5,8 +5,9 @@
 --
 -- The server says who did what (server/Services/TableActionService, gestures from
 -- Shared/TableActions); every client animates it locally. There are no animation assets:
--- gestures are poses on the R15 upper-body joints (Motor6D.Transform), written every
--- frame after the Animator, so the seated pose underneath keeps playing. Arms that reach
+-- gestures are poses on the R15 upper-body joints, written every frame after the
+-- Animator, so the seated pose underneath keeps playing. A joint is either a Motor6D or,
+-- on rigs with the newer avatar joints, an AnimationConstraint (Transform on both). Arms that reach
 -- for something are aimed at its real position on the table. Small props (a card, two
 -- dice, a spoon) are client-only parts.
 
@@ -28,22 +29,60 @@ local UP = Vector3.new(0, 1, 0)
 
 ---------------------------------------------------------------- rigs and joints
 
+-- One body joint. `inst` has a writable Transform (Motor6D or AnimationConstraint);
+-- `frame()` is the joint's world frame before Transform (Part0.CFrame * C0 for a motor,
+-- Attachment0.WorldCFrame for a constraint); `part1` is the limb it moves.
+type Joint = { inst: any, part1: BasePart, frame: () -> CFrame }
+
 type Rig = {
 	model: Model,
-	motors: { [string]: Motor6D },
+	motors: { [string]: Joint },
 	rightHand: BasePart?,
 	head: BasePart?,
 }
 
 local JOINTS = { "Waist", "Neck", "RightShoulder", "RightElbow", "RightWrist", "LeftShoulder", "LeftElbow", "LeftWrist" }
 
+local function jointOf(model: Model, name: string): Joint?
+	-- Prefer a Motor6D; fall back to an AnimationConstraint of the same name.
+	local constraint: AnimationConstraint? = nil
+	for _, d in model:GetDescendants() do
+		if d.Name == name then
+			if d:IsA("Motor6D") and d.Part0 and d.Part1 then
+				local motor = d
+				return {
+					inst = motor,
+					part1 = motor.Part1 :: BasePart,
+					frame = function()
+						return (motor.Part0 :: BasePart).CFrame * motor.C0
+					end,
+				}
+			elseif d:IsA("AnimationConstraint") and not constraint then
+				constraint = d
+			end
+		end
+	end
+	local c = constraint
+	if c and c.Attachment0 and c.Attachment1 then
+		local a0, a1 = c.Attachment0 :: Attachment, c.Attachment1 :: Attachment
+		local part1 = a1.Parent
+		if part1 and part1:IsA("BasePart") then
+			return {
+				inst = c,
+				part1 = part1,
+				frame = function()
+					return a0.WorldCFrame
+				end,
+			}
+		end
+	end
+	return nil
+end
+
 local function rigOf(model: Model): Rig?
 	local motors = {}
 	for _, name in JOINTS do
-		local motor = model:FindFirstChild(name, true)
-		if motor and motor:IsA("Motor6D") and motor.Part0 and motor.Part1 then
-			motors[name] = motor
-		end
+		motors[name] = jointOf(model, name)
 	end
 	if not (motors.RightShoulder and motors.RightElbow and motors.Waist) then
 		return nil -- not an R15 body (the block stand-in bots use without a network)
@@ -60,10 +99,12 @@ end
 -- frame for players; bot bodies have no Animator tracks, so their Transform stays put.
 -- If the value is still what we wrote last frame, nothing rewrote it and the base is the
 -- one we saved; otherwise the new value is the base.
-local baseOf: { [Motor6D]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
-local wroteOf: { [Motor6D]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
+-- Plain tables (not weak-keyed): Roblox can drop an Instance key from a weak table while
+-- the Instance still exists. restore() clears the entries when a gesture ends.
+local baseOf: { [any]: CFrame } = {}
+local wroteOf: { [any]: CFrame } = {}
 
-local function currentBase(motor: Motor6D): CFrame
+local function currentBase(motor: any): CFrame
 	local now = motor.Transform
 	local wrote = wroteOf[motor]
 	if wrote and now == wrote then
@@ -73,12 +114,12 @@ local function currentBase(motor: Motor6D): CFrame
 	return now
 end
 
-local function write(motor: Motor6D, value: CFrame)
+local function write(motor: any, value: CFrame)
 	motor.Transform = value
 	wroteOf[motor] = value
 end
 
-local function restore(motor: Motor6D)
+local function restore(motor: any)
 	if wroteOf[motor] and motor.Transform == wroteOf[motor] then
 		motor.Transform = baseOf[motor] or CFrame.identity
 	end
@@ -118,12 +159,12 @@ end
 
 ---------------------------------------------------------------- aiming
 
-local function jointFrame(motor: Motor6D): CFrame
-	return (motor.Part0 :: BasePart).CFrame * motor.C0
+local function jointFrame(joint: Joint): CFrame
+	return joint.frame()
 end
 
 -- Shoulder Transform that points the (straight) arm at `point`.
-local function aimShoulder(motor: Motor6D, point: Vector3): CFrame
+local function aimShoulder(motor: Joint, point: Vector3): CFrame
 	local frame = jointFrame(motor)
 	local offset = point - frame.Position
 	if offset.Magnitude < 0.05 then
@@ -139,7 +180,7 @@ local function aimShoulder(motor: Motor6D, point: Vector3): CFrame
 end
 
 -- Neck Transform that turns the head toward `point` (limited, like a real neck).
-local function aimNeck(motor: Motor6D, point: Vector3): CFrame
+local function aimNeck(motor: Joint, point: Vector3): CFrame
 	local frame = jointFrame(motor)
 	local offset = point - frame.Position
 	if offset.Magnitude < 0.05 then
@@ -264,7 +305,7 @@ type Gesture = { duration: number, pose: (t: number, ctx: Ctx) -> Pose }
 
 -- Chest height in front of the body, for hands that come back with something.
 local function chest(ctx: Ctx): Vector3
-	local torso = ctx.rig.motors.Waist.Part1 :: BasePart
+	local torso = ctx.rig.motors.Waist.part1
 	return torso.Position + torso.CFrame.LookVector * 1.4 - Vector3.new(0, 0.4, 0)
 end
 
@@ -435,7 +476,7 @@ G.pass = {
 	duration = 0.9,
 	pose = function(t, ctx)
 		local w = ramp(t, 0, 0.22) * (1 - ramp(t, 0.6, 0.9))
-		local torso = ctx.rig.motors.Waist.Part1 :: BasePart
+		local torso = ctx.rig.motors.Waist.part1
 		local sweep = ramp(t, 0.22, 0.55)
 		local point = ctx.front + Vector3.new(0, 1.2, 0) + torso.CFrame.RightVector * (sweep * 2.2 - 0.4)
 		local pose = {}
@@ -576,9 +617,9 @@ local function stop(model: Model)
 	end
 	playing[model] = nil
 	for name in p.written do
-		local motor = p.ctx.rig.motors[name]
-		if motor then
-			restore(motor)
+		local joint = p.ctx.rig.motors[name]
+		if joint then
+			restore(joint.inst)
 		end
 	end
 end
@@ -599,15 +640,16 @@ local function step()
 		-- Joints this gesture touched before but not this frame go back to their base.
 		for name in p.written do
 			if not pose[name] then
-				local motor = p.ctx.rig.motors[name]
-				if motor then
-					write(motor, currentBase(motor))
+				local joint = p.ctx.rig.motors[name]
+				if joint then
+					write(joint.inst, currentBase(joint.inst))
 				end
 			end
 		end
 		for name, jp in pose do
-			local motor = p.ctx.rig.motors[name]
-			if motor then
+			local joint = p.ctx.rig.motors[name]
+			if joint then
+				local motor = joint.inst
 				local base = currentBase(motor)
 				local value = base
 				if jp.abs then
