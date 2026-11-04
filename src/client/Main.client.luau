@@ -52,6 +52,7 @@ local screen = Kit.new("ScreenGui", {
 
 Layout.init(screen)
 require(script.Parent.Table3D.FaceViewer).start()
+require(script.Parent.Table3D.Avatars).start()
 
 -- See-through: the room is the lobby.
 local lobby = Kit.new("Frame", {
