@@ -16,11 +16,25 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 		ZIndex = 50,
 		Parent = parent,
 	}, { Kit.list(8) })
-	-- Just under Roblox's top bar, never wider than the screen.
-	Layout.onChange(function(info)
-		stack.Position = UDim2.new(0.5, 0, 0, info.top + 4)
-		stack.Size = UDim2.new(0, math.min(380, info.width - 24), 1, -(info.top + 8))
-	end)
+	-- Just under Roblox's top bar, never wider than the screen. While a window that has its
+	-- title along the top is open (the shop), toasts stack up from the bottom instead.
+	local atBottom = false
+	local function place()
+		local info = Layout.get()
+		local list = stack:FindFirstChildOfClass("UIListLayout")
+		stack.Size = UDim2.new(0, math.min(380, info.width - 24), 1, -(info.top + info.bottom + 16))
+		if atBottom then
+			stack.AnchorPoint = Vector2.new(0.5, 1)
+			stack.Position = UDim2.new(0.5, 0, 1, -(info.bottom + 8))
+		else
+			stack.AnchorPoint = Vector2.new(0.5, 0)
+			stack.Position = UDim2.new(0.5, 0, 0, info.top + 4)
+		end
+		if list then
+			list.VerticalAlignment = if atBottom then Enum.VerticalAlignment.Bottom else Enum.VerticalAlignment.Top
+		end
+	end
+	Layout.onChange(place)
 
 	-- The same message again (say, retrying a move the server keeps refusing) restarts
 	-- the visible toast instead of stacking a copy.
@@ -88,6 +102,10 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 	return {
 		toast = toast,
 		invite = invite,
+		setAtBottom = function(bottom: boolean)
+			atBottom = bottom
+			place()
+		end,
 	}
 end
 

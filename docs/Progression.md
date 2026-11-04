@@ -55,7 +55,7 @@ Points only come from matches that also pay Coins, so resigned, too-short, past-
 | Draw with another person at the table | 1 |
 | Win against bots only | 1 |
 
-The profile keeps this week's points (`data.weekly`). `ProgressionService` writes the totals (not deltas, so a retry never double counts) to an OrderedDataStore named `Weekly_<week>_<board>` once a minute and when the player leaves; only profiles that save are written. The top 10 is read with `GetSortedAsync` and cached for a minute per server. If the store can't be reached (Studio without API access) the window ranks the players in this server instead and says so.
+The profile keeps this week's points (`data.weekly`). `ProgressionService` writes the totals (not deltas, so a retry never double counts) to an OrderedDataStore named `Weekly_<week>_<board>` once a minute and when the player leaves; only profiles that save are written. The top 10 is read with `GetSortedAsync` and cached for a minute per server. Studio play tests never write to the boards, even with API access, so test games don't land on the live leaderboards. In Studio, or whenever the store can't be reached, the window ranks the players in this server instead and says so.
 
 There are no prizes for the top of the board yet.
 

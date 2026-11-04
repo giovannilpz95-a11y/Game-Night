@@ -452,7 +452,7 @@ function VoiceService.init(partyServiceRef: any)
 		end
 	end)
 
-	if isVoiceServer then
+	if isVoiceServer and not RunService:IsStudio() then
 		game:BindToClose(function()
 			local key = serverKey
 			serverKey = nil

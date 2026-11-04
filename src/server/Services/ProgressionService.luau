@@ -12,6 +12,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 local BadgeService = game:GetService("BadgeService")
+local RunService = game:GetService("RunService")
 
 local Net = require(ReplicatedStorage.Shared.Net)
 local Badges = require(ReplicatedStorage.Shared.Badges)
@@ -156,7 +157,9 @@ local function boardStore(week: number, board: string): OrderedDataStore?
 end
 
 local function queuePoints(player: Player, data: Profile.Data, gameId: string)
-	if not DataService.isPersistent(player) then
+	-- Studio play tests never reach the live boards (Studio with API access writes to the
+	-- real DataStores). The window shows this server's players instead.
+	if RunService:IsStudio() or not DataService.isPersistent(player) then
 		return
 	end
 	local weekly = data.weekly
@@ -333,11 +336,21 @@ function ProgressionService.init(economy: any)
 			end
 		end
 	end)
+	-- Shutdown: write what's left, waiting at most 5 seconds. Nothing is ever pending in
+	-- Studio (see queuePoints), so Stop doesn't wait here.
 	game:BindToClose(function()
+		local left = 0
 		for userId in pending do
-			task.spawn(flushUser, userId)
+			left += 1
+			task.spawn(function()
+				flushUser(userId)
+				left -= 1
+			end)
 		end
-		task.wait(2)
+		local deadline = os.clock() + 5
+		while left > 0 and os.clock() < deadline do
+			task.wait(0.1)
+		end
 	end)
 end
 
