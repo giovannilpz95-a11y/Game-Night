@@ -145,7 +145,8 @@ function PlayingCard.empty(slot: Frame)
 end
 
 -- A horizontal hand. container should have a fixed height; cards size from it.
--- cards: { { id = number, enabled = boolean?, raised = boolean?, dim = boolean?, glow = boolean? } }
+-- cards: { { id = number, enabled = boolean?, raised = boolean?, dim = boolean?, glow = boolean?,
+--   key = any? } } -- key: what onClick gets instead of id (for face-down picks)
 function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((number) -> ())?)
 	Kit.clear(container)
 	local list = container:FindFirstChildOfClass("UIListLayout")
@@ -191,7 +192,7 @@ function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((num
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
 			button.Activated:Connect(function()
 				if card.enabled ~= false then
-					onClick(card.id)
+					onClick(if card.key ~= nil then card.key else card.id)
 				end
 			end)
 		end

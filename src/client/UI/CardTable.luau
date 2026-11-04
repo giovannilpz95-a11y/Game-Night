@@ -1,5 +1,5 @@
 -- Shared layout for the card-game screens (I Doubt It, President, Slap Stack, Hearts,
--- Spades, Thirty-One, Palace): a row of seat chips on top, the felt in the middle, a
+-- Spades, Thirty-One, Palace, Old Maid, Snap, Gin Rummy, Oh Hell): a row of seat chips on top, the felt in the middle, a
 -- prompt and action buttons, and your hand along the bottom.
 
 local Kit = require(script.Parent.Kit)
@@ -196,17 +196,18 @@ function CardTable.toggle(selection: { number }, id: number, max: number)
 	end
 end
 
--- The cards of a 4-player trick, each in front of whoever played it: you at the bottom,
--- the next seat (your left) on the left, your partner across at the top.
-local TRICK_SPOTS = { Vector2.new(0.5, 0.7), Vector2.new(0.3, 0.45), Vector2.new(0.5, 0.22), Vector2.new(0.7, 0.45) }
-function CardTable.trick(parent: Instance, snapshot: any, plays: { any }, winner: number?)
+-- The cards of a trick, each in front of whoever played it: you at the bottom, the next
+-- seat (your left) to the left, and so on round the table (with 4 seats, your partner is
+-- across at the top). seatCount defaults to 4.
+function CardTable.trick(parent: Instance, snapshot: any, plays: { any }, winner: number?, seatCount: number?)
 	local me = snapshot.yourSeat or 1
+	local n = seatCount or 4
 	for _, play in plays do
-		local spot = TRICK_SPOTS[(play.seat - me) % 4 + 1]
+		local angle = ((play.seat - me) % n) / n * math.pi * 2
 		local slot = PlayingCard.slot({
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(spot.X, spot.Y),
-			Size = UDim2.fromScale(1, 0.42),
+			Position = UDim2.fromScale(0.5 - 0.2 * math.sin(angle), 0.46 + 0.24 * math.cos(angle)),
+			Size = UDim2.fromScale(1, if n > 5 then 0.36 else 0.42),
 			Parent = parent,
 		})
 		local face = PlayingCard.show(slot, play.card)
