@@ -31,13 +31,15 @@ local Renderers = script.Parent.Parent.Renderers
 local MatchView = {}
 
 -- Table view of a watch-only scene keeps part of the 2D board on screen: the edge where
--- that game keeps your hand, buttons and prompts. size < 1 is a fraction of the board,
--- above 1 it's pixels. Games not listed dock their bottom 40%.
+-- that game keeps your hand, buttons and prompts. Bottom docks: size < 1 is a fraction of
+-- the board, above 1 it's pixels. Right docks: size is the share of the board the game's
+-- side panel takes (the dock is sized to show all of it). Unlisted games dock their
+-- bottom 40%.
 local DOCK_DEFAULT = { side = "bottom", size = 0.4 }
 local DOCK: { [string]: { side: string, size: number } } = {
 	Hexlands = { side = "right", size = 0.42 },
 	Conquest = { side = "right", size = 0.32 },
-	Estates = { side = "right", size = 0.3 },
+	Estates = { side = "right", size = 0.4 },
 	Whodunit = { side = "right", size = 0.44 },
 	SketchGuess = { side = "right", size = 0.32 },
 	WordTiles = { side = "bottom", size = 96 },
@@ -531,10 +533,16 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if board.Parent == dock then
 			local spec = dockSpec()
 			if spec.side == "right" then
-				local w = math.floor(boardW * spec.size)
+				-- spec.size is the share of the board the game's side panel takes. The dock
+				-- gets a sensible width (280 px at least, half the board at most) and the
+				-- board is drawn just wide enough that its side panel exactly fills it, so
+				-- the panel is never cut off on small screens.
+				local w = math.floor(math.clamp(boardW * 0.3, math.min(280, boardW * 0.5), boardW * 0.5))
+				local virtualW = math.floor(w / spec.size)
+				board.Size = UDim2.fromOffset(virtualW, boardH)
 				dock.Position = UDim2.fromOffset(boardX + boardW - w, top)
 				dock.Size = UDim2.fromOffset(w, boardH)
-				board.Position = UDim2.fromOffset(w - boardW, 0)
+				board.Position = UDim2.fromOffset(w - virtualW, 0)
 				table3D.setInsets((w + right) / info.width, 0)
 			else
 				local h = if spec.size > 1 then spec.size else math.floor(boardH * spec.size)
