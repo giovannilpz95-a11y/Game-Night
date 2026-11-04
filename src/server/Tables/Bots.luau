@@ -118,6 +118,14 @@ function Bots.seat(name: string, seat: Seat, parent: Instance): Model
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 	end
 	rig:PivotTo(seat.CFrame * CFrame.new(0, 3, 0))
+	-- Rigs with the newer avatar joints (AnimationConstraints) are physics-driven unless
+	-- kinematic: a pose written to them (client/Table3D/Avatars) would fold the body.
+	-- Kinematic joints hold their pose exactly, like Motor6Ds.
+	for _, d in rig:GetDescendants() do
+		if d:IsA("AnimationConstraint") then
+			d.IsKinematic = true
+		end
+	end
 	rig.Parent = parent
 	local root = rig:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if root then

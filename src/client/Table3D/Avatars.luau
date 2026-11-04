@@ -63,6 +63,13 @@ local function jointOf(model: Model, name: string): Joint?
 		end
 	end
 	local c = constraint
+	-- Only kinematic constraints: a physics-driven one (IsKinematic false) would let the
+	-- body fold under a written pose. Your own character is the exception, since this
+	-- client simulates it.
+	local mine = model == Players.LocalPlayer.Character
+	if c and not (c.IsKinematic or mine) then
+		return nil
+	end
 	if c and c.Attachment0 and c.Attachment1 then
 		local a0, a1 = c.Attachment0 :: Attachment, c.Attachment1 :: Attachment
 		local part1 = a1.Parent
