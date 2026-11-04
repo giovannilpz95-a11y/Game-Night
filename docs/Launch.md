@@ -12,68 +12,17 @@ These need a decision or code before launch, so they come first.
 
 ## 1. Store page
 
-### Title
-**Game Night: Board & Party Games**
-
-Short, says what it is, and puts the search words ("board games", "party games") in the title without keyword spam. Roblox's guidance is to avoid repeated words and heavy emoji use. A fallback with one emoji: **🎲 Game Night: Board & Party Games**.
-
-### Description (paste-ready)
-
-> Grab your friends and pull up a chair! Game Night is one cozy game room full of board, card and party games. Make a party, sit at a table and switch games without ever leaving.
->
-> 🎲 GAMES
-> ♟ Chess and Checkers: classic strategy with Easy, Medium and Hard bots
-> 🃏 Color Clash: match colors and numbers, empty your hand first (2 to 8 players)
-> ❓ Trivia Night: race your friends to the right answer
-> 🔴 Four in a Row and Tic-Tac-Toe: quick games for a fast round
-> More games are on the way!
->
-> 👥 PLAY YOUR WAY
-> • Play with friends, or solo against bots. Bots fill any empty seat.
-> • Up to 8 seats per table.
-> • If a friend leaves, a bot takes their seat so the game keeps going.
->
-> 💎 EARN AND STYLE
-> • Earn Coins in every game and Gems every day.
-> • Unlock board skins, piece sets, card backs and win celebrations.
-> • Everything in the shop is cosmetic. Nobody can buy a win.
->
-> 👍 Like and favorite to see new games first!
-
-Keep this list in step with `GameCatalog` (only games with `status = "ready"`). Sketch & Guess is left out on purpose (blocker 1).
-
-**Don't** use the words "hangout", "chill spot" or similar. The docs say a title or description that references social hangouts gets the game classified as one, and social hangouts are 16+.
-
-### Genre and settings
-- Genre: **Party & Casual** (sub-genre board/card if offered). *verify* the current genre list in Creator Hub.
+Moved to [[Store page]]: the title, the paste-ready description, genre (Strategy > Board & Card Games), search words and settings. The settings in short:
 - Devices: computer, phone, tablet. Add console only after a controller pass of the UI.
-- Max players per server: about 24 (three full 8-seat tables plus people browsing). Start here and tune with server-fill data.
-- Private servers: **on**, priced at about 100 R$/month. It fits the "game room for your friend group" idea and costs us nothing.
+- Max players per server: 24 or more (voice servers need 20 or more). Tune with server-fill data.
+- Private servers: **on**, about 100 R$ a month.
 - Auto-translation: on.
 
-## 2. Icon and thumbnail briefs
+**Don't** use the words "hangout", "chill spot", "vibe" or similar. A title or description that references social hangouts gets the game classified as one, and social hangouts are 16+.
 
-Style follows the vault's "05 Research/Art Direction.md": stylized, chunky, warm lamp-lit game room.
+## 2. Icon and thumbnails
 
-### Icon (square, 512 × 512, one per language)
-- **Subject:** a glowing table seen from slightly above, with a chess knight, a fanned hand of Color Clash cards and a red disc at the center. Two or three friendly avatar hands reaching in.
-- **Text:** "GAME NIGHT" in a fat rounded font across the bottom, cream on a deep purple band. Must read at 64 px, so no other text.
-- **Color:** warm amber lamp light against deep purple and navy. Avoid plain black edges, which disappear in dark mode.
-- **Don't:** use Roblox logos, other games' logos, real brand cards (the real Uno look), or "FREE ROBUX"-style text.
-- **Tests:** two variants for icon testing later (A: the table scene; B: a close-up of a single smiling avatar holding cards).
-
-### Thumbnails (16:9, ideally 1920 × 1080 and under 3 MB, up to 10)
-Make five. Roblox can personalize and test 2 to 5 of them, so all five should be strong.
-
-| # | Shot | Overlay text (short, top or bottom third) |
-|---|---|---|
-| 1 | Wide shot of the game room: four tables mid-game, avatars seated, warm lights | "Play with friends!" |
-| 2 | Color Clash at an 8-seat table, a wild card mid-flip | "Card games" |
-| 3 | Chess close-up, a knight capture with sparkle effect | "Beat the bots" |
-| 4 | Trivia Night podiums, one player buzzing in, confetti | "Party games" |
-| 5 | Shop screen with board skins, piece sets and celebrations | "Unlock styles" |
-
-A 15 to 30 second gameplay video can come later (uploads are limited to 3 a month).
+Also in [[Store page]]: the icon concept, five thumbnails, the trailer shot list and Roblox's rules for each.
 
 ## 3. Maturity questionnaire
 
@@ -223,8 +172,8 @@ Keep the number of distinct values in custom fields small (game ids, not player 
 - [ ] UI fits on a small phone screen in landscape.
 
 ### Creator Hub
-- [ ] Name, description, genre, devices, max players, private server price (section 1).
-- [ ] Icon and 5 thumbnails uploaded (section 2).
+- [ ] Name, description, genre, devices, max players, private server price ([[Store page]]).
+- [ ] Icon, 5 thumbnails and the trailer uploaded ([[Store page]]).
 - [ ] Maturity questionnaire answered; label shows Minimal (section 3).
 - [ ] All products created and IDs pasted, images uploaded (section 4).
 - [ ] Studio access to API services on for testing; DataStores working in the live game.

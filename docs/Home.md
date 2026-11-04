@@ -6,7 +6,8 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Tables]]: 3D tables, seated avatars and boards
 - [[Adding a game]]: the checklist for every new game
 - [[Economy]]: Gems, Coins, saving, the shop and Robux products
-- [[Launch]]: store page, art briefs, maturity questionnaire, products, soft launch, analytics and the pre-publish checklist
+- [[Store page]]: title, description, genre, icon, thumbnails and trailer shot list
+- [[Launch]]: store page settings, maturity questionnaire, products, soft launch, analytics and the pre-publish checklist
 - [[Dressing Room]]: trying on and buying Roblox catalog items, saved looks
 - [[Party Host]]: VIP and Party Host perks (private and password tables, house rules, custom word lists and quiz decks)
 - [[Voice Servers]]: voice-only servers and teleporting the party there and back
