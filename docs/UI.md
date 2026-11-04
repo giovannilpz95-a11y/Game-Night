@@ -17,17 +17,25 @@ Coordinates are offsets in the main ScreenGui, which has `IgnoreGuiInset = true`
 The lobby frame is see-through: the 3D room is the lobby. On top of it:
 - one big **Play** button at the bottom center. It opens the game picker window. Non-leaders see "Games" and a hint that the leader picks.
 - a **side rail** of round buttons on the left: Party (with a member count badge), Tables, Stats (see [[Progression]]), Shop, Looks (Dressing Room), Host, and Voice (only when voice servers are on).
+- a round **?** (Help) right of Play.
 - the **wallet** at the right end of the top bar (lobby and matches).
 
 Windows use `Kit.modal(parent, opts)`: a dimmed overlay, a centered window with a ✕, and a `body` to fill. Tapping the dim area closes it. Main keeps one window open at a time (`closeWindows`) and closes them all when a match starts.
 
 ## Match screen (`UI/MatchView`)
-- **Header** in the top bar: game name, one "what now" line ("Your turn!", "Sam is thinking...", or the party game's own `view.status`) with the seconds left, the 3D/2D toggle and a **⋯ menu** (Resign, End for everyone, Leave game).
+- **Header** in the top bar: game name, one "what now" line ("Your turn!", "Sam is thinking...", or the party game's own `view.status`) with the seconds left, the 3D/2D toggle, a **?** that opens the game's rules, and a **⋯ menu** (Resign, End for everyone, Leave game).
 - **Timer bars**: under the header and on the active seat chip. Green, then orange under 10 s, red under 5 s. Your own turn ticks for the last 5 seconds.
 - **Seats**: a narrow column of chips on the left (140 px on phones, 210 px otherwise). Each seat has its color and a shape, so color isn't the only cue.
 - **Board**: everything else. Renderers get it as their `container` and should size with Scale, or listen to `AbsoluteSize` (see Chess and Color Clash).
 - **Your turn banner**: slides in with a sound when your turn starts. Party games that set `view.status` skip it, since everyone moves at once.
 - **End screen**: result, reason, standings (winners first, with each seat's last `getSeatInfo` line), rewards, then **Rematch** and **Lobby**.
+
+## Help (`UI/RulesPanel`, `UI/LobbyTour`)
+Rules text lives in `shared/GameRules.luau`, one entry per catalog id (see [[Adding a game]]).
+- **How-to-play card**: shown when you sit down for a new match: the goal, 2-4 numbered lines, Full rules and Got it. "Don't show this card for this game" is saved in the profile (`tips.hideCard`).
+- **Rules page**: the ? in the match header, the ? on each game in the picker, and Help in the lobby. It's a lightly dimmed window, so the match carries on behind it. The game's house rules are listed from `GameCatalog`.
+- **Help** (the ? by Play): every game's rules and "Replay the lobby tour".
+- **Lobby tour**: coach marks on Play, Party, Tables, the wallet, Shop, Looks, Host and Help, with Next / Skip. It runs once per player: finishing or skipping sends `{ action = "tips", tip = "lobbyTour" }` on `EconomyRequest`, checked by `server/Core/Tips`. Steps whose button is hidden are skipped.
 
 ## Rematch
 The end screen's Rematch sends `{ action = "rematch" }`. `MatchService` remembers the last start of each party (game, table size, bot level, house rule picks and custom deck slot, all already checked) for 30 minutes. The leader's Rematch starts it again through `startMatch`, which checks everything again. Anyone else's Rematch sends the leader a toast asking for one.

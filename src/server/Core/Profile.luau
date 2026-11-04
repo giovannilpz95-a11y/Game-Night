@@ -78,6 +78,8 @@ export type Data = {
 		words: { [string]: { name: string, words: { string } } },
 		decks: { [string]: { name: string, questions: { { q: string, a: { string } } } } },
 	},
+	-- Help already seen: the lobby tour, and how-to-play cards turned off (see Core/Tips).
+	tips: { lobbyTour: boolean, hideCard: { [string]: boolean } },
 }
 
 local function newDaily(day: number): Daily
@@ -124,6 +126,7 @@ function Profile.new(now: number): Data
 		currentLook = nil,
 		catalog = { purchases = 0, robux = 0 },
 		custom = { words = {}, decks = {} },
+		tips = { lobbyTour = false, hideCard = {} },
 	}
 end
 

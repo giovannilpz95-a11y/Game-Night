@@ -1,6 +1,7 @@
 -- The lobby is the 3D room. On top of it there's only a small HUD:
 -- * one big Play button at the bottom center (opens the game picker),
--- * a side rail of round icon buttons on the left: Party, Tables, Stats, Shop, Looks, Host, Voice.
+-- * a side rail of round icon buttons on the left: Party, Tables, Stats, Shop, Looks, Host, Voice,
+-- * a round ? (Help) next to Play: every game's rules and the lobby tour.
 -- Everything else opens on demand and closes back to the room.
 -- Phones keep the bottom corners free for the thumbstick and jump button.
 
@@ -21,6 +22,7 @@ export type Actions = {
 	looks: () -> (),
 	host: () -> (),
 	voice: () -> (),
+	help: () -> (),
 }
 
 function LobbyHud.create(parent: Instance, actions: Actions)
@@ -116,6 +118,22 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 		Parent = parent,
 	})
 	Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.5, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = play })
+	-- Help sits beside Play (the rail is full on a landscape phone).
+	local help = Kit.button("?", actions.help, {
+		Name = "HelpButton",
+		AnchorPoint = Vector2.new(0, 1),
+		BackgroundColor3 = Theme.Panel,
+		BackgroundTransparency = 0.1,
+		TextColor3 = Theme.Text,
+		TextSize = 26,
+		ZIndex = 5,
+		Parent = parent,
+	})
+	local helpCorner = help:FindFirstChildOfClass("UICorner")
+	if helpCorner then
+		helpCorner.CornerRadius = UDim.new(0.5, 0) -- round, like the rail
+	end
+	Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.75, Thickness = 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = help })
 	-- One line above Play: what's going on ("Waiting for Mia to pick a game").
 	local hint = Kit.label("", {
 		Name = "PlayHint",
@@ -161,11 +179,23 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 		play.TextSize = if info.compact then 24 else 28
 		local bottomGap = info.bottom + (if info.compact then 12 else 20)
 		play.Position = UDim2.new(0.5, 0, 1, -bottomGap)
+		local helpSize = playH - 8
+		help.Size = UDim2.fromOffset(helpSize, helpSize)
+		help.Position = UDim2.new(0.5, playW / 2 + 10, 1, -(bottomGap + 4))
 		hint.Position = UDim2.new(0.5, 0, 1, -(bottomGap + playH + 4))
 		hint.Size = UDim2.fromOffset(math.min(420, info.width - 2 * (info.left + railSize + 24)), 24)
 	end)
 
 	return {
+		-- The button for a lobby tour step: "Play" or a rail key ("Party", "Help", ...).
+		target = function(key: string): GuiObject?
+			if key == "Play" then
+				return play
+			elseif key == "Help" then
+				return help
+			end
+			return buttons[key]
+		end,
 		-- Play opens the picker for everyone; the label and hint say who decides.
 		setPlay = function(text: string, hintText: string?)
 			play.Text = text

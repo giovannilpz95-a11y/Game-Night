@@ -25,6 +25,7 @@ export type Match = typeof(setmetatable(
 		result: GameModule.Result?,
 		moveNumber: number,
 		aborted: boolean,
+		lastMove: { seat: number, move: any, number: number }?,
 	},
 	Match
 ))
@@ -41,6 +42,7 @@ function Match.new(id: string, rules: any, seats: { Seat }, options: any?, rng: 
 		result = nil,
 		moveNumber = 0,
 		aborted = false,
+		lastMove = nil,
 	}, Match)
 end
 
@@ -95,6 +97,8 @@ function Match.submitMove(self: Match, seat: number, move: any): (boolean, strin
 	end
 	self.rules.applyMove(self.state, seat, move)
 	self.moveNumber += 1
+	-- Who moved and how, for the avatars at the table (MatchService reads it after moves).
+	self.lastMove = { seat = seat, move = move, number = self.moveNumber }
 	self.result = self.rules.getResult(self.state)
 	return true
 end

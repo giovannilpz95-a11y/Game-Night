@@ -18,6 +18,7 @@ local WordTiles = require(ReplicatedStorage.Shared.Games.WordTiles)
 local HostService = require(script.Parent.Services.HostService)
 local VoiceService = require(script.Parent.Services.VoiceService)
 local ProgressionService = require(script.Parent.Services.ProgressionService)
+local TableActionService = require(script.Parent.Services.TableActionService)
 
 Net.init()
 TableService.init()
@@ -59,6 +60,7 @@ Net.event(Net.Names.DressingRoomRequest).OnServerEvent:Connect(guarded(DressingR
 Net.event(Net.Names.HostRequest).OnServerEvent:Connect(guarded(HostService.handleRequest))
 Net.event(Net.Names.VoiceRequest).OnServerEvent:Connect(guarded(VoiceService.handleRequest))
 Net.event(Net.Names.StatsRequest).OnServerEvent:Connect(guarded(ProgressionService.handleRequest))
+Net.event(Net.Names.TableAction).OnServerEvent:Connect(guarded(TableActionService.init(MatchService)))
 
 Players.PlayerRemoving:Connect(function(player)
 	limiter:forget(player.UserId)
