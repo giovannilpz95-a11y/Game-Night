@@ -22,6 +22,8 @@ local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
+local Avatars = require(script.Parent.Parent.Table3D.Avatars)
+local EmoteWheel = require(script.Parent.EmoteWheel)
 local Theme = Kit.Theme
 
 local Renderers = script.Parent.Parent.Renderers
@@ -436,6 +438,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = header,
 	})
 
+	-- Emotes for your avatar at the table (shown only while you're seated at one).
+	local emotes = EmoteWheel.create(root, header, Avatars.emote)
+
 	local function nameOf(seat: number): string
 		local s = snapshot.seats[seat]
 		if not s then
@@ -489,6 +494,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		viewButton.Size = UDim2.fromOffset(viewW, buttonH)
 		viewButton.Position = UDim2.new(1, -48 - rulesW, 0.5, -1)
 		local textRight = 52 + rulesW + (if viewButton.Visible then viewW + 4 else 0)
+		emotes.button.Size = UDim2.fromOffset(40, buttonH)
+		emotes.button.Position = UDim2.new(1, -textRight, 0.5, -1)
+		if emotes.button.Visible then
+			textRight += 44
+		end
 		turnLabel.Size = UDim2.new(1, -(12 + textRight), 1, -4)
 		turnLabel.TextSize = if compact then 16 else 19
 		menu.Position = UDim2.fromOffset(info.barX + barW, info.barY + 2 + barH + 4)
@@ -572,6 +582,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		board.Visible = not in3D or docked
 		dock.Visible = docked
 		viewButton.Visible = table3D.available() and snapshot ~= nil and not isOver()
+		emotes.setEnabled(snapshot ~= nil and snapshot.table ~= nil and snapshot.yourSeat ~= nil and not isOver())
 		local compact = Layout.get().compact
 		if table3D.playable() then
 			viewButton.Text = if in3D then "2D view" else "3D view"
