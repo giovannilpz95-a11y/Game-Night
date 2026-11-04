@@ -22,6 +22,7 @@ local Daily = require(script.Parent.Parent.Core.Daily)
 local Rewards = require(script.Parent.Parent.Core.Rewards)
 local Shop = require(script.Parent.Parent.Core.Shop)
 local Looks = require(script.Parent.Parent.Core.Looks)
+local Tips = require(script.Parent.Parent.Core.Tips)
 local DataService = require(script.Parent.DataService)
 local AnalyticsService = require(script.Parent.AnalyticsService)
 
@@ -89,6 +90,7 @@ function EconomyService.push(player: Player)
 		starterEndsAt = starterEndsAt,
 		lookSlots = Looks.slotCount(data, vip),
 		saving = DataService.isPersistent(player),
+		tips = data.tips,
 		studio = RunService:IsStudio(),
 	})
 end
@@ -304,6 +306,14 @@ function handlers.studioPass(player: Player, request: any)
 	local owned = not EconomyService.hasPass(player, request.key)
 	EconomyService.setPass(player, request.key, owned)
 	notify(player, `Studio test: {Economy.Passes[request.key].name} {if owned then "on" else "off"}`)
+end
+
+-- Help seen: the lobby tour, and how-to-play cards turned off for a game (Core/Tips).
+function handlers.tips(player: Player, request: any)
+	local data = DataService.get(player)
+	if data and Tips.apply(data.tips, request) then
+		EconomyService.push(player)
+	end
 end
 
 function EconomyService.handleRequest(player: Player, request: any)
