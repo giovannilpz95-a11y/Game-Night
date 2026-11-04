@@ -1,4 +1,5 @@
--- Parties: invite players in this server, accept/decline, leave, kick.
+-- Parties: invite players in this server, accept/decline, leave, kick, and join a friend's
+-- table (straight in, or "Ask to join" the leader).
 -- Players stay in their party between games, which is the whole point of Game Night.
 -- Party Host leaders can also open their table to friends (private) or to anyone with a
 -- 4-digit code (password); those tables show up in everyone's "Find a table" list.
@@ -7,6 +8,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Net = require(ReplicatedStorage.Shared.Net)
 local PartyRegistry = require(script.Parent.Parent.Core.PartyRegistry)
 local AnalyticsService = require(script.Parent.AnalyticsService)
@@ -20,6 +22,8 @@ local matchService: any = nil -- set in init, avoids a require cycle
 local partyStateRemote: RemoteEvent
 local partyInviteRemote: RemoteEvent
 local partyListRemote: RemoteEvent
+local friendStateRemote: RemoteEvent
+local friendPromptRemote: RemoteEvent
 local notifyRemote: RemoteEvent
 
 local FRIEND_CACHE_SECONDS = 120
@@ -65,6 +69,21 @@ local function isFriend(player: Player, otherId: number): boolean
 	local value = ok and result == true
 	friendCache[key] = { at = os.clock(), value = value }
 	return value
+end
+
+PartyService.isFriend = isFriend
+
+-- Who brought a newcomer here (FriendService sets it on join): the friend whose invite they
+-- accepted (invited = true, so that friend's consent is given) or the friend they followed.
+local arrivals: { [number]: { friendId: number, invited: boolean } } = {}
+
+function PartyService.setArrival(userId: number, friendId: number, invited: boolean)
+	arrivals[userId] = { friendId = friendId, invited = invited }
+end
+
+local function linkedTo(player: Player, otherId: number): boolean
+	local arrival = arrivals[player.UserId]
+	return arrival ~= nil and arrival.friendId == otherId
 end
 
 local function newCode(): string
@@ -247,6 +266,126 @@ function handlers.join(player: Player, request: any)
 	flush()
 end
 
+-- Friends in this server and what they're doing, for the Friends window.
+function handlers.friends(player: Player, _request: any)
+	local mine = registry:getParty(player.UserId)
+	local rows = {}
+	for _, other in Players:GetPlayers() do
+		if other == player or not (linkedTo(player, other.UserId) or isFriend(player, other.UserId)) then
+			continue
+		end
+		local party = registry:getParty(other.UserId)
+		if not party then
+			continue
+		end
+		local leader = Players:GetPlayerByUserId(party.leaderId)
+		local gameId = if party.matchId and matchService then matchService.gameIdOf(party.matchId) else nil
+		local entry = gameId and GameCatalog.get(gameId)
+		table.insert(rows, {
+			userId = other.UserId,
+			name = other.DisplayName,
+			together = mine ~= nil and mine.id == party.id,
+			size = #party.members,
+			maxSize = Config.MaxPartySize,
+			leaderName = if leader and leader ~= other then leader.DisplayName else nil,
+			playing = if entry then entry.name elseif party.matchId then "a game" else nil,
+		})
+	end
+	table.sort(rows, function(a, b)
+		return a.name < b.name
+	end)
+	friendStateRemote:FireClient(player, rows)
+end
+
+-- { userId }: join a friend's table in this server. Friends-only tables of a friend and
+-- tables of the friend who invited you let you straight in; otherwise the leader is asked.
+function handlers.joinFriend(player: Player, request: any)
+	local friend = if type(request.userId) == "number" then Players:GetPlayerByUserId(request.userId) else nil
+	if not friend or friend == player then
+		return notify(player, "That player isn't here")
+	end
+	local linked = linkedTo(player, friend.UserId)
+	if not linked and not isFriend(player, friend.UserId) then
+		return notify(player, "You can only join your Roblox friends")
+	end
+	local party = registry:getParty(friend.UserId)
+	local mine = registry:getParty(player.UserId)
+	if not party then
+		return notify(player, "That table is gone")
+	end
+	if mine and mine.id == party.id then
+		return notify(player, `You're already with {friend.DisplayName}`)
+	end
+
+	-- Straight in: the leader invited you here, or it's a friends-only table of your friend.
+	local arrival = arrivals[player.UserId]
+	local invitedByLeader = linked and arrival ~= nil and arrival.invited and party.leaderId == friend.UserId
+	local friendsTable = effectivePrivacy(party) == "friends" and isFriend(player, party.leaderId)
+	if invitedByLeader or friendsTable then
+		local ok, err
+		if invitedByLeader then
+			ok, err = registry:invite(party.leaderId, player.UserId)
+			if ok then
+				ok, err = registry:acceptInvite(player.UserId, party.id)
+			end
+		else
+			ok, err = registry:joinTable(player.UserId, party.id, nil, true)
+		end
+		if not ok then
+			return notify(player, err :: string)
+		end
+		arrivals[player.UserId] = nil
+		local leader = Players:GetPlayerByUserId(party.leaderId)
+		if leader then
+			notify(leader, `{player.DisplayName} joined your table`)
+		end
+		-- Counts for the leader's "joined from your invite" only when they invited them here.
+		AnalyticsService.inviteAccepted(player, #party.members, if invitedByLeader then party.leaderId else nil)
+		flush()
+		return
+	end
+
+	local ok, err, leaderId = registry:requestJoin(player.UserId, party.id)
+	if not ok then
+		return notify(player, err :: string)
+	end
+	local leader = Players:GetPlayerByUserId(leaderId :: number)
+	if not leader then
+		return notify(player, "Their party leader isn't here")
+	end
+	friendPromptRemote:FireClient(leader, {
+		kind = "joinRequest",
+		userId = player.UserId,
+		name = player.DisplayName,
+		friendName = if leader ~= friend then friend.DisplayName else nil,
+		expiresIn = Config.InviteSeconds,
+	})
+	notify(player, `Asked {leader.DisplayName} to let you join`)
+	AnalyticsService.joinRequest(player, "asked")
+end
+
+-- Leader: { userId, accept }
+function handlers.answerJoin(player: Player, request: any)
+	if type(request.userId) ~= "number" or type(request.accept) ~= "boolean" then
+		return
+	end
+	local ok, err = registry:answerJoin(player.UserId, request.userId, request.accept)
+	local asker = Players:GetPlayerByUserId(request.userId)
+	if not ok then
+		return notify(player, err :: string)
+	end
+	AnalyticsService.joinRequest(player, if request.accept then "accepted" else "declined")
+	if asker then
+		if request.accept then
+			local party = registry:getParty(asker.UserId)
+			AnalyticsService.inviteAccepted(asker, if party then #party.members else 1)
+		else
+			notify(asker, `{player.DisplayName} can't take more players right now`)
+		end
+	end
+	flush()
+end
+
 function handlers.decline(player: Player, request: any)
 	if type(request.partyId) == "string" then
 		registry:declineInvite(player.UserId, request.partyId)
@@ -299,6 +438,8 @@ function PartyService.init(matchServiceRef: any)
 	partyStateRemote = Net.event(Net.Names.PartyState)
 	partyInviteRemote = Net.event(Net.Names.PartyInvite)
 	partyListRemote = Net.event(Net.Names.PartyList)
+	friendStateRemote = Net.event(Net.Names.FriendState)
+	friendPromptRemote = Net.event(Net.Names.FriendPrompt)
 	notifyRemote = Net.event(Net.Names.Notify)
 
 	local function onPlayerAdded(player: Player)
@@ -315,6 +456,7 @@ function PartyService.init(matchServiceRef: any)
 			matchService.leaveMatch(player, "leftServer")
 		end
 		registry:removePlayer(player.UserId)
+		arrivals[player.UserId] = nil
 		local prefix = `{player.UserId}:`
 		for key in friendCache do
 			if string.sub(key, 1, #prefix) == prefix then
