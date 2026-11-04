@@ -9,6 +9,7 @@ local RateLimiter = require(script.Parent.Core.RateLimiter)
 local PartyService = require(script.Parent.Services.PartyService)
 local MatchService = require(script.Parent.Services.MatchService)
 local TableService = require(script.Parent.Services.TableService)
+local LobbyService = require(script.Parent.Services.LobbyService)
 local DataService = require(script.Parent.Services.DataService)
 local EconomyService = require(script.Parent.Services.EconomyService)
 local PurchaseService = require(script.Parent.Services.PurchaseService)
@@ -21,7 +22,14 @@ local ProgressionService = require(script.Parent.Services.ProgressionService)
 local TableActionService = require(script.Parent.Services.TableActionService)
 
 Net.init()
+-- The room first, so the tables stand in it. It's decor: if it ever fails, the games
+-- still start.
+local lobbyOk, lobbyErr = pcall(LobbyService.init)
+if not lobbyOk then
+	warn(`[GameNight] lobby room failed to build: {lobbyErr}`)
+end
 TableService.init()
+pcall(LobbyService.afterTables)
 MatchService.init(PartyService)
 PartyService.init(MatchService)
 EconomyService.init()

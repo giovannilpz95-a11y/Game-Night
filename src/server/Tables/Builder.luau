@@ -5,13 +5,15 @@
 -- Attachment or a part) at the center of the table top. In that order of preference:
 --   1. Tables already in Workspace with the tag (placed by hand in Studio).
 --   2. A table model from ReplicatedStorage.Assets whose name has "Square" or "Round"
---      in it, cloned along Config.TableOrigin. Seats and an anchor are added if missing.
+--      in it, cloned onto the spots in shared/LobbyLayout. Seats and an anchor are added
+--      if missing.
 --   3. Plain tables built from parts, so 3D play works before any art exists.
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local LobbyLayout = require(ReplicatedStorage.Shared.LobbyLayout)
 local Pieces = require(script.Parent.Pieces)
 
 local Builder = {}
@@ -215,7 +217,10 @@ function Builder.getTables(): { Model }
 	for i, spec in Config.DefaultTables do
 		local columns = Config.TableColumns or #Config.DefaultTables
 		local col, row = (i - 1) % columns, (i - 1) // columns
-		local at = Config.TableOrigin + Vector3.new((col - (columns - 1) / 2) * Config.TableSpacing, 0, -row * Config.TableSpacing)
+		local sx, sy, sz = LobbyLayout.tableSpot(i)
+		local at = if sx and sy and sz
+			then Vector3.new(sx, sy, sz)
+			else Config.TableOrigin + Vector3.new((col - (columns - 1) / 2) * Config.TableSpacing, 0, -row * Config.TableSpacing)
 		local template = findTemplate(spec.shape)
 		local model = if template then fromTemplate(template, spec.shape, at) else buildPlain(spec.shape, at)
 		counts[spec.zone] = (counts[spec.zone] or 0) + 1
