@@ -16,7 +16,28 @@ Players browse the Roblox catalog, try items on, and wear the look everywhere in
 | `shared/DressingRoom.luau` | Item types we handle (by AssetTypeId), browse categories, look limits |
 | `server/Core/Looks.luau` | Building a look, layering it over the player's avatar, saved slots (pure, tested) |
 | `server/Services/DressingRoomService.luau` | Asset lookups, ownership, applying `HumanoidDescription`, Robux prompts, purchase tracking |
-| `client/UI/DressingRoomPanel.luau` | The window: catalog search, live 3D preview, your look, saved looks |
+| `client/UI/DressingRoomPanel.luau` | The window: Shop (For you, catalog tabs, search, infinite scroll), My look, Saved |
+| `client/UI/DressingCamera.luau` | Stands you on the Dressing Room stage, pauses your controls and frames your avatar with the real camera |
+| `shared/AvatarFraming.luau` | Panel/stage split for every screen shape, fit-the-whole-avatar distance, zoom steps (pure, tested) |
+| `shared/Recommendations.luau` | "For you": picks seeds from what you wear, ranks similar items (pure, tested) |
+
+## The room and the camera
+Opening the Dressing Room (Looks on the HUD rail, or the "Try on outfits" prompt at the corner's stage or mirror) walks you into the lobby's Dressing Room corner. You stand on a `FittingSpot` on the photo stage (three spots, the first free one wins) facing the room, with the backdrop behind you. Your controls pause and the camera frames your real avatar, so every change shows as soon as the server applies it. Other players standing right next to you are hidden on your screen while you dress.
+
+- The panel docks on the right on wide screens and along the bottom on tall ones; the rest of the screen is the stage. `AvatarFraming.split` decides this from the screen size and safe insets.
+- The camera distance fits the avatar's whole bounding box (big hats and wings included) in the stage, and re-fits when accessories change. **+ / −** buttons, a pinch or the mouse wheel zoom from 0.3x to 1.8x of that; zooming in moves the focus toward the head. Drag to turn around the avatar. **Fit** resets.
+- Closing the window gives the camera and controls back; you stay in the corner. If a match starts, the window closes and the table view takes the camera.
+- No Dressing Room corner in the place (`Config.Lobby.buildRoom = false`)? It frames you where you stand.
+
+## Shop: infinite scroll and For you
+The grid loads the next catalog page when you're within two rows of the end, up to 600 items per list. If the catalog doesn't answer, scrolling again retries after 3 seconds.
+
+**For you** is the first tab. It uses what you have on:
+1. Seeds: what you tried on here (newest first), then your own avatar's items, one of each kind before a second of a kind, up to 12.
+2. For four seeds at a time, `AvatarEditorService:GetRecommendedAssetsAsync(type, assetId)` returns Roblox's "similar items" for it (the same list the website shows under an item).
+3. `Recommendations.merge` ranks them: items several seeds agree on first, then by how high each list ranked them, with a bonus for creators you already wear. Items you have on and resale limiteds are left out.
+4. When the seeds run out it shows the best sellers from the creators you wear most (`CatalogSearchParams.CreatorName`).
+A brand new avatar with nothing to go on gets Popular instead. Changing your look marks the picks out of date; tap For you again to refresh.
 
 Remotes: `DressingRoomRequest` (client asks) and `DressingRoomState` (server sends the look, saved looks and slots). The **Dressing Room** button sits next to Shop on the wallet bar and hides at a table.
 
@@ -45,4 +66,4 @@ Commission: the experience gets 40% of each catalog sale made inside Game Night,
 ## Not built yet (v2)
 - Bundles: bodies, heads, layered shoes, animation packs.
 - Poses and avatar effects for Gems, the photo stage, sharing a look with friends.
-- The 3D room in the lobby (mirror, racks, photo stage). The room should open this same window.
+- Photo mode on the stage (poses, a screenshot frame), and showing other players' looks in the room.
