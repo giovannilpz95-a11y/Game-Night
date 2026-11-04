@@ -4,6 +4,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
@@ -51,21 +52,36 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 		Parent = felt,
 	})
 
+	-- Big and easy to hit: it scales with the table (at least 220 x 48), and Space or a
+	-- gamepad's A button grabs too.
 	local grabButton = Kit.button("GRAB A SPOON!", function()
 		sendMove({ kind = "grab" })
 	end, {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.61, 0),
-		Size = UDim2.new(0, 260, 0, 48),
-		TextSize = 22,
+		Position = UDim2.new(0.5, 0, 0.6, 0),
+		Size = UDim2.new(0.5, 0, 0.12, 0),
+		TextScaled = true,
+		ZIndex = 5,
 		Parent = root,
 	})
+	Kit.new("UISizeConstraint", { MinSize = Vector2.new(220, 48), MaxSize = Vector2.new(460, 76), Parent = grabButton })
+	Kit.new("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 30, Parent = grabButton })
+	Kit.new("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), Parent = grabButton })
+	local grabPulse = Kit.new("UIScale", { Parent = grabButton })
+	local keyConnection = UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+		if processed or not grabButton.Visible then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA then
+			sendMove({ kind = "grab" })
+		end
+	end)
 	local prompt = Kit.label("", {
 		TextSize = 15,
 		Font = Theme.FontBold,
 		TextColor3 = Theme.Accent,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Position = UDim2.new(0, 0, 0.61, 52),
+		Position = UDim2.new(0, 0, 0.6, 14),
 		Size = UDim2.new(1, 0, 0, 20),
 		Parent = root,
 	})
@@ -149,10 +165,12 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			and (view.phase == "scramble" or (view.phase == "pass" and view.hasFour))
 		grabButton.Visible = canGrab and snapshot.result == nil
 		if view.phase == "scramble" and lastPhase ~= "scramble" and canGrab then
-			grabButton.Size = UDim2.new(0, 320, 0, 60)
-			TweenService:Create(grabButton, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Size = UDim2.new(0, 260, 0, 48) }):Play()
+			grabPulse.Scale = 1.25
+			TweenService:Create(grabPulse, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 		end
 		lastPhase = view.phase
+		-- The prompt sits where the button goes; the button says it all when it's up.
+		prompt.Visible = not grabButton.Visible
 
 		if not me then
 			prompt.Text = "Watching"
@@ -190,6 +208,7 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			render()
 		end,
 		destroy = function()
+			keyConnection:Disconnect()
 			root:Destroy()
 		end,
 	}

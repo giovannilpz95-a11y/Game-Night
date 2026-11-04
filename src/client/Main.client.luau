@@ -1,4 +1,6 @@
 -- Client entry point: builds the lobby UI and wires it to the server.
+-- The lobby is the 3D room with a small HUD (Play button + side rail); every menu is a
+-- window that opens on demand and closes back to the room.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,6 +19,8 @@ local DressingRoomPanel = require(script.Parent.UI.DressingRoomPanel)
 local TableList = require(script.Parent.UI.TableList)
 local HostPanel = require(script.Parent.UI.HostPanel)
 local VoicePanel = require(script.Parent.UI.VoicePanel)
+local Layout = require(script.Parent.UI.Layout)
+local LobbyHud = require(script.Parent.UI.LobbyHud)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 
@@ -46,10 +50,12 @@ local screen = Kit.new("ScreenGui", {
 	Parent = localPlayer:WaitForChild("PlayerGui"),
 })
 
+Layout.init(screen)
+
+-- See-through: the room is the lobby.
 local lobby = Kit.new("Frame", {
 	Name = "Lobby",
-	BackgroundColor3 = Kit.Theme.Background,
-	BackgroundTransparency = 0.15,
+	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	Size = UDim2.fromScale(1, 1),
 	Parent = screen,
@@ -74,10 +80,13 @@ end, hostHooks)
 hostHooks.openTables = tableList.open
 hostHooks.openHostTools = hostPanel.open
 
-local partyPanel = PartyPanel.create(lobby, sendParty, hostHooks)
-local gamePicker = GamePicker.create(lobby, sendMatch, hostHooks)
-local matchView = MatchView.create(screen, sendMatch, function()
-	return currentParty ~= nil and currentParty.leaderId == localPlayer.UserId
+local partyWindow = Kit.modal(lobby, { name = "PartyWindow", maxSize = Vector2.new(420, 600) })
+local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = Vector2.new(1000, 680) })
+local partyPanel = PartyPanel.create(partyWindow.body, sendParty, hostHooks)
+local gamePicker = GamePicker.create(pickerWindow.body, sendMatch, hostHooks)
+Layout.onChange(function(info)
+	partyWindow.fit(info.top, info.bottom)
+	pickerWindow.fit(info.top, info.bottom)
 end)
 popups = Popups.create(screen, sendParty)
 local shopPanel = ShopPanel.create(screen, function(request)
@@ -89,16 +98,79 @@ local dressingRoom = DressingRoomPanel.create(screen, function(request)
 	dressingRequest:FireServer(request)
 end)
 -- One big window at a time.
+local function closeWindows()
+	partyWindow.close()
+	pickerWindow.close()
+	tableList.close()
+	dressingRoom.close()
+	shopPanel.root.Visible = false
+end
 local walletBar = WalletBar.create(screen, function(coinKey)
 	dressingRoom.close()
 	shopPanel.open(coinKey)
-end, function()
-	shopPanel.root.Visible = false
-	dressingRoom.open()
 end)
+local matchView = MatchView.create(screen, sendMatch, function()
+	return currentParty ~= nil and currentParty.leaderId == localPlayer.UserId
+end, walletBar.width)
+walletBar.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(matchView.relayout)
 local voicePanel = VoicePanel.create(lobby, screen, function(request)
 	voiceRequest:FireServer(request)
 end)
+
+local hud = LobbyHud.create(lobby, {
+	play = function()
+		closeWindows()
+		pickerWindow.open()
+	end,
+	party = function()
+		closeWindows()
+		partyWindow.open()
+	end,
+	tables = function()
+		closeWindows()
+		tableList.open()
+	end,
+	shop = function()
+		closeWindows()
+		shopPanel.open(nil)
+	end,
+	looks = function()
+		closeWindows()
+		dressingRoom.open()
+	end,
+	host = function()
+		closeWindows()
+		hostPanel.open()
+	end,
+	voice = function()
+		closeWindows()
+		voicePanel.open()
+	end,
+})
+voicePanel.onChange(hud.setVoice)
+
+-- The Play button says who decides, and the rail shows how many are in your party.
+local function renderHud()
+	local party = currentParty
+	if not party then
+		hud.setPlay("▶  Play", "Connecting...")
+		hud.setBadge("Party", nil)
+		return
+	end
+	hud.setBadge("Party", if #party.members > 1 then tostring(#party.members) else nil)
+	if party.leaderId == localPlayer.UserId then
+		hud.setPlay("▶  Play", if #party.members > 1 then `You pick the game for your party of {#party.members}` else nil)
+	else
+		local leaderName = "the leader"
+		for _, member in party.members do
+			if member.userId == party.leaderId then
+				leaderName = member.name
+			end
+		end
+		hud.setPlay("Games", `{leaderName} picks the game`)
+	end
+end
+renderHud()
 
 Net.event(Net.Names.DressingRoomState).OnClientEvent:Connect(dressingRoom.setState)
 
@@ -113,7 +185,7 @@ RunService.RenderStepped:Connect(function()
 		local entry = gameId and GameCatalog.get(gameId)
 		walletBar.setContext(if entry then entry.coin or Economy.DefaultCoin else nil, gameId ~= nil)
 		if gameId then
-			dressingRoom.close() -- a game started: get out of the way
+			closeWindows() -- a game started: get out of the way
 		end
 	end
 end)
@@ -164,6 +236,7 @@ Net.event(Net.Names.PartyState).OnClientEvent:Connect(function(party)
 	partyPanel.setParty(party)
 	gamePicker.setParty(party)
 	voicePanel.setParty(party)
+	renderHud()
 end)
 
 Net.event(Net.Names.VoiceState).OnClientEvent:Connect(voicePanel.setState)

@@ -34,6 +34,11 @@ local finishedCallbacks: { (any) -> () } = {}
 local matches: { [string]: Entry } = {}
 local matchOfUser: { [number]: string } = {}
 
+-- The last game each party started, so the end screen's Rematch can start it again.
+-- Only already-checked values are kept; startMatch checks them again anyway.
+local lastStarts: { [string]: { request: any, at: number } } = {}
+local REMATCH_MEMORY = 30 * 60 -- seconds
+
 local matchStateRemote: RemoteEvent
 local notifyRemote: RemoteEvent
 
@@ -319,6 +324,27 @@ local function startMatch(leader: Player, request: any)
 	broadcast(entry)
 	emit("started", { matchId = matchId, gameId = catalogEntry.id, seats = seats, botLevel = options.botLevel })
 
+	-- Remember it for Rematch: the rule picks HouseRules accepted, not the client's table.
+	local now = os.clock()
+	for partyId, saved in lastStarts do
+		if now - saved.at > REMATCH_MEMORY then
+			lastStarts[partyId] = nil
+		end
+	end
+	local picks = {}
+	if type(request.rules) == "table" then
+		for _, rule in HouseRules.list(catalogEntry) do
+			local pick = request.rules[rule.key]
+			if type(pick) == "number" then
+				picks[rule.key] = pick
+			end
+		end
+	end
+	lastStarts[party.id] = {
+		at = now,
+		request = { gameId = catalogEntry.id, seats = seatCount, botLevel = options.botLevel, rules = picks, custom = customSlot },
+	}
+
 	local lines = HouseRules.describe(catalogEntry, ruleValues)
 	if customContent then
 		table.insert(lines, 1, if catalogEntry.custom == "words" then "the host's own words" else "the host's own questions")
@@ -411,6 +437,27 @@ function handlers.move(player: Player, request: any)
 	end
 	afterMove(entry)
 	emit("moved", { player = player, matchId = entry.match.id, gameId = entry.match.gameId })
+end
+
+-- "Rematch" on the end screen. The leader starts the same game again (same table size,
+-- bots and house rules); anyone else asks the leader.
+function handlers.rematch(player: Player, _request: any)
+	local party = partyService.getParty(player.UserId)
+	if not party or party.matchId then
+		return
+	end
+	if party.leaderId ~= player.UserId then
+		local leader = Players:GetPlayerByUserId(party.leaderId)
+		if leader then
+			notify(leader, `{player.DisplayName} wants a rematch! Tap Rematch or pick a new game.`)
+		end
+		return notify(player, "Asked your party leader for a rematch")
+	end
+	local saved = lastStarts[party.id]
+	if not saved then
+		return notify(player, "Pick a game to play")
+	end
+	startMatch(player, saved.request)
 end
 
 function handlers.resign(player: Player, _request: any)

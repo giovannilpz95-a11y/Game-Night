@@ -1,5 +1,6 @@
--- Voice servers UI: the bar at the bottom of the lobby, the "go without them?" prompt and the
--- teleport screen. The server decides everything; this only shows state and sends requests.
+-- Voice servers UI: the Voice window (opened from the 🎙 button on the side rail), the
+-- "go without them?" prompt and the teleport screen. The server decides everything; this
+-- only shows state and sends requests.
 
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
@@ -14,27 +15,26 @@ local VOICE_COLOR = Color3.fromRGB(120, 140, 255)
 local localPlayer = Players.LocalPlayer
 
 function VoicePanel.create(lobby: Instance, screen: Instance, send: (any) -> ())
-	local bar = Kit.panel({
-		Name = "VoiceBar",
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 300, 1, -20), -- under the game picker
-		Size = UDim2.new(1, -340, 0, 64),
-		Visible = false,
-		Parent = lobby,
-	})
+	local window = Kit.modal(lobby, { name = "VoiceWindow", maxSize = Vector2.new(440, 230) })
+	local bar = window.body
+	Kit.label("🎙 Voice servers", { TextSize = 22, Font = Theme.FontBold, Size = UDim2.new(1, -44, 0, 28), Parent = bar })
 	local text = Kit.label("", {
-		Size = UDim2.new(1, -170, 1, 0),
+		Position = UDim2.new(0, 0, 0, 36),
+		Size = UDim2.new(1, 0, 1, -36 - 48),
 		TextSize = 15,
+		TextYAlignment = Enum.TextYAlignment.Top,
 		Parent = bar,
 	})
 	local button = Kit.button("", function() end, {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0),
-		Size = UDim2.new(0, 160, 0, 38),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 44),
 		BackgroundColor3 = VOICE_COLOR,
 		TextColor3 = Theme.Text,
+		TextSize = 18,
 		Parent = bar,
 	})
+	local changed: ((boolean, boolean) -> ())? = nil
 
 	-- "Some of your party can't use voice chat" prompt for the leader.
 	local prompt = Kit.panel({
@@ -72,21 +72,26 @@ function VoicePanel.create(lobby: Instance, screen: Instance, send: (any) -> ())
 	local partySize = 1
 
 	local function render()
-		bar.Visible = state.enabled == true
+		if changed then
+			changed(state.enabled == true, state.isVoiceServer == true)
+		end
+		if state.enabled ~= true then
+			window.close()
+		end
 		if state.isVoiceServer then
-			text.Text = "🎙 Voice server: everyone here has voice chat. Walk up to a table and talk!"
+			text.Text = "You're on a voice server: everyone here has voice chat. Walk up to a table and talk!"
 			button.Text = if isLeader and partySize > 1 then "Party to lobby" else "Back to lobby"
 			button.AutoButtonColor = true
 			button.BackgroundColor3 = Theme.PanelLight
 		elseif state.eligible == false then
-			text.Text = "🎙 Voice servers need voice chat: a 13+ account with Roblox's age check."
+			text.Text = "Voice servers need voice chat: a 13+ account with Roblox's age check."
 			button.Text = "Not available"
 			button.AutoButtonColor = false
 			button.BackgroundColor3 = Theme.PanelLight
 		else
 			text.Text = if partySize > 1
-				then "🎙 Play in a voice-only server with your party."
-				else "🎙 Play in a voice-only server where everyone can talk."
+				then "Play in a voice-only server with your party. Everyone moves together."
+				else "Play in a voice-only server where everyone can talk."
 			button.Text = if isLeader then "Join voice server" else "Leader decides"
 			button.AutoButtonColor = isLeader
 			button.BackgroundColor3 = if isLeader then VOICE_COLOR else Theme.PanelLight
@@ -109,12 +114,21 @@ function VoicePanel.create(lobby: Instance, screen: Instance, send: (any) -> ())
 		end
 		if state.isVoiceServer then
 			send({ action = "lobby" })
+			window.close()
 		elseif state.eligible ~= false and isLeader then
 			send({ action = "join" })
+			window.close()
 		end
 	end)
 
 	return {
+		open = window.open,
+		close = window.close,
+		-- callback(enabled, isVoiceServer): the side rail shows the 🎙 button when enabled.
+		onChange = function(callback: (boolean, boolean) -> ())
+			changed = callback
+			callback(state.enabled == true, state.isVoiceServer == true)
+		end,
 		setState = function(newState: any)
 			if newState.prompt then
 				local names = table.concat(newState.prompt.names, ", ")

@@ -19,42 +19,57 @@ local localPlayer = Players.LocalPlayer
 
 -- hooks: needHost(reason)
 function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
-	local root = Kit.panel({
+	-- Fills `parent` (the Play window). Phones get a 2-column grid; wide screens get more.
+	local root = Kit.new("Frame", {
 		Name = "GamePicker",
-		Size = UDim2.new(1, -340, 1, -124), -- leaves room for the voice server bar below
-		Position = UDim2.new(0, 300, 0, 20),
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
 		Parent = parent,
 	})
 
-	Kit.label("Game Night", { TextSize = 30, Font = Theme.FontBold, Size = UDim2.new(1, 0, 0, 36), Parent = root })
-	local status = Kit.label("", { TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 0, 38), Parent = root })
+	Kit.label("Pick a game", { TextSize = 24, Font = Theme.FontBold, Size = UDim2.new(1, -48, 0, 30), Parent = root })
+	local status = Kit.label("", { TextColor3 = Theme.SubText, TextSize = 14, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, -48, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd, Parent = root })
 
+	local BAR_H = 44
+	local gridLayout = Kit.new("UIGridLayout", {
+		CellSize = UDim2.new(0.5, -6, 0, 112),
+		CellPadding = UDim2.new(0, 8, 0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
 	local grid = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 0, 0, 70),
-		Size = UDim2.new(1, 0, 1, -190),
+		Position = UDim2.new(0, 0, 0, 56),
+		Size = UDim2.new(1, 0, 1, -56 - BAR_H - 8),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 4,
 		Parent = root,
-	}, {
-		Kit.new("UIGridLayout", {
-			CellSize = UDim2.new(0, 200, 0, 130),
-			CellPadding = UDim2.new(0, 10, 0, 10),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	})
+	}, { gridLayout })
+	local function fitGrid()
+		local width = grid.AbsoluteSize.X - 8
+		if width <= 0 then
+			return
+		end
+		local columns = math.clamp(math.floor(width / 190), 2, 5)
+		local cellHeight = if width / columns < 170 then 104 else 124
+		gridLayout.CellSize = UDim2.new(1 / columns, -8, 0, cellHeight)
+	end
+	grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitGrid)
+	fitGrid()
 
-	-- Bottom bar: chosen game, seat stepper, start button (leader only).
-	local bar = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 1, -56), Size = UDim2.new(1, 0, 0, 56), Parent = root })
-	local chosenLabel = Kit.label("", { TextSize = 18, Font = Theme.FontBold, Size = UDim2.new(0.4, 0, 1, 0), Parent = bar })
-	local seatsLabel = Kit.label("", { TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0.4, 50, 0, 0), Size = UDim2.new(0, 120, 1, 0), Parent = bar })
+	-- Bottom bar (leader only): the controls sit right-aligned in one row; the chosen
+	-- game's name is in the status line above, so nothing overlaps on a phone.
+	local bar = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 1, -BAR_H), Size = UDim2.new(1, 0, 0, BAR_H), Parent = root })
+	local barList = Kit.list(8, true)
+	barList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	barList.VerticalAlignment = Enum.VerticalAlignment.Center
+	barList.Parent = bar
+	local seatsLabel = Kit.label("", { TextXAlignment = Enum.TextXAlignment.Center, TextSize = 15, Size = UDim2.new(0, 72, 1, 0), LayoutOrder = 3, Parent = bar })
 
-	-- House rules row (leader, once a game is chosen) and the rules sheet it opens.
-	local rulesRow = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 1, -104), Size = UDim2.new(1, 0, 0, 40), Visible = false, Parent = root })
-	local rulesSummary = Kit.label("", { TextColor3 = Theme.SubText, TextSize = 14, Position = UDim2.new(0, 170, 0, 0), Size = UDim2.new(1, -170, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = rulesRow })
-	local sheet = Kit.new("Frame", { BackgroundColor3 = Theme.Panel, BorderSizePixel = 0, Position = UDim2.new(0, 0, 0, 70), Size = UDim2.new(1, 0, 1, -180), Visible = false, ZIndex = 5, Parent = root })
+	-- House rules (leader, once a game is chosen) and the rules sheet it opens.
+	local rulesRow = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0, 112, 0, 40), LayoutOrder = 1, Visible = false, Parent = bar })
+	local sheet = Kit.new("Frame", { BackgroundColor3 = Theme.Panel, BorderSizePixel = 0, Position = UDim2.new(0, 0, 0, 56), Size = UDim2.new(1, 0, 1, -56 - BAR_H - 8), Visible = false, ZIndex = 5, Parent = root })
 	local sheetList = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -92,24 +107,24 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		seats -= 1
 		clampSeats()
 		render()
-	end, { Position = UDim2.new(0.4, 0, 0, 10), Size = UDim2.new(0, 40, 0, 36), Parent = bar })
+	end, { Size = UDim2.new(0, 40, 0, 40), LayoutOrder = 2, Parent = bar })
 	local plus = Kit.button("+", function()
 		seats += 1
 		clampSeats()
 		render()
-	end, { Position = UDim2.new(0.4, 180, 0, 10), Size = UDim2.new(0, 40, 0, 36), Parent = bar })
-	local startButton = Kit.button("Start game", function()
+	end, { Size = UDim2.new(0, 40, 0, 40), LayoutOrder = 4, Parent = bar })
+	local startButton = Kit.button("Start", function()
 		if chosen then
 			sendMatch({ action = "start", gameId = chosen.id, seats = seats, botLevel = botLevel, rules = picks, custom = customSlot })
 		end
-	end, { BackgroundColor3 = Theme.Good, Position = UDim2.new(1, -170, 0, 10), Size = UDim2.new(0, 170, 0, 36), Parent = bar })
+	end, { BackgroundColor3 = Theme.Good, Size = UDim2.new(0, 110, 0, 40), TextSize = 18, LayoutOrder = 6, Parent = bar })
 	-- Tapping cycles Easy -> Medium -> Hard. Only shown when bots will play.
 	local levelButton: TextButton
 	levelButton = Kit.button("", function()
 		local index = table.find(Config.BotLevels, botLevel) or 1
 		botLevel = Config.BotLevels[index % #Config.BotLevels + 1]
 		render()
-	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Position = UDim2.new(1, -330, 0, 10), Size = UDim2.new(0, 150, 0, 36), Parent = bar })
+	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 112, 0, 40), TextSize = 14, LayoutOrder = 5, Parent = bar })
 
 	local function savedLists(kind: string): { any }
 		local out = {}
@@ -216,14 +231,17 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 	local rulesButton = Kit.button("House rules", function()
 		sheet.Visible = not sheet.Visible
 		render()
-	end, { Size = UDim2.new(0, 160, 0, 36), Position = UDim2.new(0, 0, 0, 2), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = rulesRow })
+	end, { Size = UDim2.fromScale(1, 1), TextSize = 14, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = rulesRow })
 
 	function render()
 		local isLeader = party ~= nil and party.leaderId == localPlayer.UserId
 		if not party then
 			status.Text = "Connecting..."
+		elseif isLeader and chosen then
+			local hasRules = #HouseRules.list(chosen) > 0 or chosen.custom ~= nil
+			status.Text = if hasRules then `{chosen.name} · {rulesText(chosen)}` else `{chosen.name} · empty seats get bots`
 		elseif isLeader then
-			status.Text = "Pick a game. Empty seats are filled with bots."
+			status.Text = "Tap a game, then Start. Empty seats are filled with bots."
 		else
 			local leaderName = "the leader"
 			for _, member in party.members do
@@ -251,9 +269,10 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			Kit.label(entry.description, {
 				TextSize = 13,
 				TextColor3 = if selected then Theme.AccentText else Theme.SubText,
-				Position = UDim2.new(0, 0, 0, 26),
-				Size = UDim2.new(1, 0, 0, 50),
+				Position = UDim2.new(0, 0, 0, 24),
+				Size = UDim2.new(1, 0, 1, -44),
 				TextYAlignment = Enum.TextYAlignment.Top,
+				TextTruncate = Enum.TextTruncate.AtEnd,
 				Parent = card,
 			})
 			local players = if entry.minSeats == entry.maxSeats then `{entry.maxSeats} players` else `{entry.minSeats}-{entry.maxSeats} players`
@@ -279,20 +298,18 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		end
 
 		bar.Visible = isLeader
+		-- Non-leaders don't get the bar, so the grid can use its space.
+		grid.Size = if isLeader then UDim2.new(1, 0, 1, -56 - BAR_H - 8) else UDim2.new(1, 0, 1, -56)
 		local hasRules = chosen ~= nil and (#HouseRules.list(chosen) > 0 or chosen.custom ~= nil)
 		rulesRow.Visible = isLeader and hasRules
 		if not rulesRow.Visible then
 			sheet.Visible = false
-		end
-		if chosen and hasRules then
-			rulesSummary.Text = rulesText(chosen)
 		end
 		rulesButton.Text = if sheet.Visible then "Done" else "House rules"
 		if sheet.Visible then
 			renderSheet()
 		end
 		if chosen then
-			chosenLabel.Text = chosen.name
 			seatsLabel.Text = `{seats} seats`
 			minus.Visible = chosen.minSeats ~= chosen.maxSeats
 			plus.Visible = minus.Visible
@@ -302,7 +319,6 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			levelButton.Text = BOT_LEVEL_NAMES[botLevel] or botLevel
 		else
 			levelButton.Visible = false
-			chosenLabel.Text = "Choose a game"
 			seatsLabel.Text = ""
 			minus.Visible = false
 			plus.Visible = false

@@ -59,6 +59,16 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -230, 1, 0), Parent = root })
 
 	local side = Kit.panel({ Size = UDim2.new(0, 210, 1, 0), Position = UDim2.new(1, -210, 0, 0), Parent = root })
+	-- On phones the move list narrows so the board keeps most of the width.
+	local function fitSide()
+		local width = root.AbsoluteSize.X
+		local sideW = if width < 560 then 140 elseif width < 760 then 170 else 210
+		side.Size = UDim2.new(0, sideW, 1, 0)
+		side.Position = UDim2.new(1, -sideW, 0, 0)
+		boardArea.Size = UDim2.new(1, -(sideW + 20), 1, 0)
+	end
+	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitSide)
+	fitSide()
 	local capturedLabel = Kit.label("", { TextSize = 14, TextColor3 = Theme.SubText, Size = UDim2.new(1, 0, 0, 44), TextYAlignment = Enum.TextYAlignment.Top, Parent = side })
 	local moves = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
