@@ -284,7 +284,7 @@ local function fillLights(room: Model)
 		light.Face = Enum.NormalId.Bottom
 		light.Angle = 70
 		light.Range = 36
-		light.Brightness = 0.9
+		light.Brightness = 0.6
 		light.Color = Color3.fromRGB(255, 246, 236)
 		light.Shadows = false
 		light.Parent = panel

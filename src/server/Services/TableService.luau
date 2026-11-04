@@ -413,7 +413,7 @@ local function guardSeat(t: TableEntry, tableSeat: number, seat: Seat)
 	end)
 end
 
--- A sign post at the table's edge, between seats 1 and 2, with the text on both faces.
+-- A sign post at the table's edge, between two seats, with the text on both faces.
 -- It used to be a BillboardGui over the table: billboards always face the camera, so
 -- from the spawn the five signs of a row lined up into one long bar. A real sign stands
 -- in the world, gets smaller with distance and is hidden by whatever is in front of it.
@@ -422,7 +422,10 @@ local function makeSign(model: Model): { TextLabel }
 	local boxCF, size = model:GetBoundingBox()
 	local floorY = boxCF.Position.Y - size.Y / 2
 	local radius = math.max(size.X, size.Z) / 2 + 1.2
-	local angle = math.rad(22.5) -- between seat 1 (+Z) and seat 2
+	-- On the side facing the middle of the room, a little toward the spawn, between two
+	-- seats. Signs on the spawn side of the tables sat on the left screen edge from
+	-- the spawn, behind the HUD's side rail.
+	local angle = math.rad(if center.X > 0 then -67.5 else 67.5)
 	local outward = Vector3.new(math.sin(angle), 0, math.cos(angle))
 	local base = Vector3.new(center.X, floorY, center.Z) + outward * radius
 	local folder = Instance.new("Model")
