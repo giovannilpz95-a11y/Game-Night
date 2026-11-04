@@ -21,6 +21,7 @@ local HapticService = game:GetService("HapticService")
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Kit = require(script.Parent.Kit)
+local Audio = require(script.Parent.Parent.Audio)
 local HudKit = require(script.Parent.HudKit)
 local Layout = require(script.Parent.Layout)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
@@ -69,9 +70,6 @@ local DOCK: { [string]: { side: string, size: number } } = {
 
 local localPlayer = Players.LocalPlayer
 
-local TURN_SOUND = "rbxasset://sounds/electronicpingshort.wav"
-local TICK_SOUND = "rbxasset://sounds/clickfast.wav"
-
 local function hex(color: Color3): string
 	return string.format("#%02X%02X%02X", math.floor(color.R * 255), math.floor(color.G * 255), math.floor(color.B * 255))
 end
@@ -93,7 +91,8 @@ end
 
 -- openRules(gameId): shows that game's rules over the table (the ? in the header).
 -- openReactionShop(): the reaction packs in the shop (the wheel's 🛍️ button).
-function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: () -> boolean, walletWidth: (() -> number)?, openRules: ((string) -> ())?, openReactionShop: (() -> ())?)
+-- openSound(): the Sound window (⋯ > Sound).
+function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: () -> boolean, walletWidth: (() -> number)?, openRules: ((string) -> ())?, openReactionShop: (() -> ())?, openSound: (() -> ())?)
 	local root = Kit.new("Frame", {
 		Name = "MatchView",
 		BackgroundColor3 = Color3.new(1, 1, 1), -- colored by the gradient below
@@ -104,12 +103,6 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	})
 	-- 2D backdrop: a soft purple light from the top, darker toward the bottom edge.
 	HudKit.gradient(Color3.fromRGB(46, 40, 76), Color3.fromRGB(16, 14, 28)).Parent = root
-
-	local function sound(id: string, volume: number): Sound
-		return Kit.new("Sound", { SoundId = id, Volume = volume, Parent = root })
-	end
-	local turnSound = sound(TURN_SOUND, 0.6)
-	local tickSound = sound(TICK_SOUND, 0.35)
 
 	---------------------------------------------------------------- header (in the top bar)
 	local header = Kit.new("Frame", {
@@ -278,6 +271,12 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Table3D.setCalm(not Table3D.isCalm())
 		calmButton.Text = calmText()
 	end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, ZIndex = 41, Parent = menu })
+	if openSound then
+		Kit.button("Sound", function()
+			closeMenu()
+			openSound()
+		end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 5, ZIndex = 41, Parent = menu })
+	end
 	menuButton.Activated:Connect(function()
 		menu.Visible = not menu.Visible
 		if menu.Visible then
@@ -293,6 +292,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	end
 	Avatars.onAction(function(tableId, point, kind)
 		table3D.focus(tableId, point, kind)
+		-- Sounds: flat at your own table, from where it happens at the others.
+		local mine = snapshot ~= nil and type(snapshot.table) == "table" and snapshot.table.id == tableId
+		Audio.action(kind, point, mine)
 	end)
 
 	---------------------------------------------------------------- seats and board
@@ -419,7 +421,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				HudKit.shine(banner, 32)
 			end
 		end)
-		turnSound:Play()
+		Audio.play("turn")
 		-- A short buzz on gamepads (phones without haptics just skip it).
 		pcall(function()
 			HapticService:SetMotor(Enum.UserInputType.Gamepad1, Enum.VibrationMotor.Small, 0.6)
@@ -801,7 +803,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			-- Tick for the last five seconds of your own turn.
 			if isMyTurn() and whole <= 5 and whole >= 1 and whole ~= lastTick then
 				lastTick = whole
-				tickSound:Play()
+				Audio.play("tick")
 			end
 		else
 			timerTrack.Visible = false
@@ -991,6 +993,17 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		for _, seat in (result and result.winners) or {} do
 			winners[seat] = true
 		end
+		if not wasShown and not snapshot.aborted and result then
+			if result.isDraw then
+				Audio.play("draw_game")
+			elseif snapshot.yourSeat and winners[snapshot.yourSeat] then
+				Audio.play("win")
+			elseif snapshot.yourSeat then
+				Audio.play("lose")
+			else
+				Audio.play("clap") -- watching: applaud the winner
+			end
+		end
 		-- Gold when you won, blue for a draw, plum when you lost or watched.
 		local outcome = "other"
 		resultLabel.TextColor3 = Theme.Text
@@ -1157,6 +1170,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			if newSnapshot.matchId ~= shownMatchId or (snapshot ~= nil and newSnapshot.gameId ~= snapshot.gameId) then
 				-- A new match (or a rematch): fresh end card and turn tracking.
 				shownMatchId = newSnapshot.matchId
+				if newSnapshot.result == nil and not newSnapshot.aborted then
+					Audio.play("start")
+				end
 				rewardLabel.Text = ""
 				rematchAsked = false
 				wasMyTurn = false

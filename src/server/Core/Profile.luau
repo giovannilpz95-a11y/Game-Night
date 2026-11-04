@@ -4,6 +4,8 @@
 -- Everything here must survive a DataStore round trip (JSON): only strings, numbers,
 -- booleans and tables, and dictionaries keyed by strings (user ids become strings).
 
+local AudioSettings = require(script.Parent.AudioSettings)
+
 local Profile = {}
 
 Profile.Version = 1
@@ -88,6 +90,7 @@ export type Data = {
 	},
 	-- Help already seen: the lobby tour, and how-to-play cards turned off (see Core/Tips).
 	tips: { lobbyTour: boolean, hideCard: { [string]: boolean } },
+	audio: { music: number, effects: number }, -- the Sound window's sliders (Core/AudioSettings)
 }
 
 local function newDaily(day: number): Daily
@@ -136,6 +139,7 @@ function Profile.new(now: number): Data
 		catalog = { purchases = 0, robux = 0 },
 		custom = { words = {}, decks = {} },
 		tips = { lobbyTour = false, hideCard = {} },
+		audio = AudioSettings.new(),
 	}
 end
 

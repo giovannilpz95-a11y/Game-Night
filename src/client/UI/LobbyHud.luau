@@ -1,7 +1,8 @@
 -- The lobby is the 3D room. On top of it there's only a small HUD:
 -- * one big Play button at the bottom center (opens the game picker),
 -- * a side rail of round icon buttons on the left: Party, Tables, Stats, Shop, Looks, Host, Voice,
--- * a round ? (Help) next to Play: every game's rules and the lobby tour.
+-- * a round ? (Help) right of Play: every game's rules and the lobby tour,
+-- * a round 🔊 (Sound) left of Play: the music and effects sliders.
 -- Everything else opens on demand and closes back to the room.
 -- Phones keep the bottom corners free for the thumbstick and jump button.
 
@@ -23,6 +24,7 @@ export type Actions = {
 	host: () -> (),
 	voice: () -> (),
 	help: () -> (),
+	sound: () -> (),
 }
 
 function LobbyHud.create(parent: Instance, actions: Actions)
@@ -136,6 +138,22 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 		helpCorner.CornerRadius = UDim.new(0.5, 0) -- round, like the rail
 	end
 	Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.75, Thickness = 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = help })
+	-- Sound mirrors Help on the other side of Play.
+	local sound = Kit.button("🔊", actions.sound, {
+		Name = "SoundButton",
+		AnchorPoint = Vector2.new(1, 1),
+		BackgroundColor3 = Theme.Panel,
+		BackgroundTransparency = 0.1,
+		TextColor3 = Theme.Text,
+		TextSize = 22,
+		ZIndex = 5,
+		Parent = parent,
+	})
+	local soundCorner = sound:FindFirstChildOfClass("UICorner")
+	if soundCorner then
+		soundCorner.CornerRadius = UDim.new(0.5, 0)
+	end
+	Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.75, Thickness = 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = sound })
 	-- One line above Play: what's going on ("Waiting for Mia to pick a game").
 	local hint = Kit.label("", {
 		Name = "PlayHint",
@@ -184,6 +202,8 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 		local helpSize = playH - 8
 		help.Size = UDim2.fromOffset(helpSize, helpSize)
 		help.Position = UDim2.new(0.5, playW / 2 + 10, 1, -(bottomGap + 4))
+		sound.Size = UDim2.fromOffset(helpSize, helpSize)
+		sound.Position = UDim2.new(0.5, -(playW / 2 + 10), 1, -(bottomGap + 4))
 		hint.Position = UDim2.new(0.5, 0, 1, -(bottomGap + playH + 4))
 		hint.Size = UDim2.fromOffset(math.min(420, info.width - 2 * (info.left + railSize + 24)), 24)
 	end)
@@ -195,6 +215,8 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 				return play
 			elseif key == "Help" then
 				return help
+			elseif key == "Sound" then
+				return sound
 			end
 			return buttons[key]
 		end,
