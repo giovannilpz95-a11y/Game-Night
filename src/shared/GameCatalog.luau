@@ -88,11 +88,13 @@ local entries: { Entry } = {
 	{
 		id = "ColorClash",
 		name = "Color Clash",
+		module = "ColorClash",
 		category = "Cards",
 		description = "Match colors and numbers, empty your hand first.",
 		minSeats = 2,
 		maxSeats = 8,
-		status = "soon",
+		turnSeconds = 20,
+		status = "ready",
 		coin = "colorclash",
 		typicalMinutes = 8,
 		minMinutes = 1,
@@ -101,10 +103,13 @@ local entries: { Entry } = {
 	{
 		id = "SketchGuess",
 		name = "Sketch & Guess",
+		module = "SketchGuess",
 		category = "Party",
-		description = "One draws, everyone guesses.",
+		description = "One draws, everyone guesses. Best with friends: bots guess but don't draw.",
 		minSeats = 3,
 		maxSeats = 8,
+		-- Off for launch (Giovanni, 2026-11-04). The game is built and tested; set this to
+		-- "ready" to turn it back on.
 		status = "soon",
 		coin = "party",
 		typicalMinutes = 10,
@@ -114,11 +119,12 @@ local entries: { Entry } = {
 	{
 		id = "TriviaNight",
 		name = "Trivia Night",
+		module = "TriviaNight",
 		category = "Party",
 		description = "Race to answer questions across categories.",
 		minSeats = 1,
 		maxSeats = 8,
-		status = "soon",
+		status = "ready",
 		coin = "party",
 		typicalMinutes = 8,
 		minMinutes = 1,

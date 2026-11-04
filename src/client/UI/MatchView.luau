@@ -52,13 +52,14 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end
 	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 100, 0, 36), Position = UDim2.new(1, -410, 0, 2), Parent = header })
 
-	local seatsPanel = Kit.panel({ Size = UDim2.new(0, 220, 1, -124), Position = UDim2.new(0, 20, 0, 104), Parent = root })
+	local seatsPanel = Kit.panel({ Size = UDim2.new(0, 220, 1, -178), Position = UDim2.new(0, 20, 0, 104), Parent = root })
 	Kit.list(6).Parent = seatsPanel
 
 	local board = Kit.new("Frame", {
 		Name = "Board",
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -280, 1, -124),
+		-- 54px gap at the bottom: the wallet bar sits bottom-left while at a table.
+		Size = UDim2.new(1, -280, 1, -178),
 		Position = UDim2.new(0, 260, 0, 104),
 		Parent = root,
 	})
@@ -109,7 +110,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end
 		local active = snapshot.activeSeats
 		local text
-		if table.find(active, snapshot.yourSeat) then
+		local status = snapshot.view and snapshot.view.status
+		if type(status) == "string" then
+			-- Party games describe their own phase ("Sam is drawing", "Question 3 of 10").
+			text = status
+		elseif table.find(active, snapshot.yourSeat) then
 			text = "Your turn!"
 		elseif #active == 1 then
 			local s = snapshot.seats[active[1]]
@@ -117,7 +122,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		else
 			text = "Waiting for other players..."
 		end
-		if snapshot.turnEndsAt and table.find(active, snapshot.yourSeat) then
+		if snapshot.turnEndsAt and (snapshot.timed or table.find(active, snapshot.yourSeat)) then
 			local left = math.max(0, math.ceil(snapshot.turnEndsAt - workspace:GetServerTimeNow()))
 			text ..= `  ({left}s)`
 		end
@@ -128,10 +133,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Kit.clear(seatsPanel)
 		for index, s in snapshot.seats do
 			local active = table.find(snapshot.activeSeats, index) ~= nil
+			local info = snapshot.seatInfo and snapshot.seatInfo[index]
 			local frame = Kit.new("Frame", {
 				BackgroundColor3 = if active then Theme.PanelLight else Theme.Panel,
 				BorderSizePixel = 0,
-				Size = UDim2.new(1, 0, 0, 40),
+				Size = UDim2.new(1, 0, 0, if info then 52 else 40),
 				LayoutOrder = index,
 				Parent = seatsPanel,
 			}, { Kit.corner(8) })
@@ -144,12 +150,22 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			}, { Kit.corner(3) })
 			local icon = if s.kind == "bot" then "🤖 " else ""
 			Kit.label(`{icon}{nameOf(index)}{if active then "  ◀" else ""}`, {
-				Position = UDim2.new(0, 20, 0, 0),
-				Size = UDim2.new(1, -24, 1, 0),
+				Position = UDim2.new(0, 20, 0, if info then 4 else 0),
+				Size = UDim2.new(1, -24, 0, if info then 24 else 40),
 				Font = if active then Theme.FontBold else Theme.Font,
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				Parent = frame,
 			})
+			if info then
+				Kit.label(info, {
+					Position = UDim2.new(0, 20, 0, 26),
+					Size = UDim2.new(1, -24, 0, 20),
+					TextSize = 14,
+					TextColor3 = Theme.SubText,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					Parent = frame,
+				})
+			end
 		end
 	end
 

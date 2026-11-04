@@ -9,6 +9,7 @@ local Config = {
 	MaxSeats = 8, -- hard cap on seats at any table (players + bots)
 	BotMoveDelay = 1.2, -- seconds a bot "thinks" before moving
 	TurnSeconds = 45, -- a player who takes longer has a bot move for them
+	MaxTypedText = 60, -- longest typed guess the server will filter
 
 	-- Saved progress (DataService). Changing the store name starts everyone from zero.
 	ProfileStoreName = "Profiles_v1",
