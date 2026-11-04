@@ -125,7 +125,7 @@ end
 local KINDS: { [string]: { [string]: string } } = {
 	ColorClash = { play = "card", draw = "draw" },
 	TriviaNight = { answer = "buzz" },
-	SketchGuess = { choose = "point", giveUp = "pass", voteSkip = "pass" }, -- strokes and guesses: none
+	SketchGuess = { choose = "point", giveUp = "pass", voteSkip = "pass" }, -- strokes, shapes, guesses and reports: none
 	Whodunit = { move = "place", suggest = "point", accuse = "slap", show = "card", ["end"] = "pass" },
 	Estates = {
 		roll = "dice", buy = "draw", build = "place", sell = "draw", bid = "knock", payJail = "card",
