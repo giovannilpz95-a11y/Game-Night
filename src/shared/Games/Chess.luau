@@ -960,6 +960,27 @@ function Chess.chooseBotMove(state, seat: number, rng: Random): any?
 		return nil
 	end
 	local best = ranked[1].score
+	-- When ahead, don't walk into a repeated position (a draw by repetition throws the
+	-- win away). Only the best score is exact, so re-rank shallowly with exact scores and
+	-- take the best new position that isn't much worse.
+	local function repeats(m: Move): boolean
+		local undo = makeMove(state.pos, m)
+		local seen = state.history[positionKey(state.pos)] or 0
+		unmakeMove(state.pos, m, undo)
+		return seen > 0
+	end
+	if best > 50 and best < MATE - 100 and repeats(ranked[1].move) then
+		local alt = Chess.rankMoves(state.pos, 2, 0.1, true)
+		local altBest = if alt[1] then alt[1].score else 0
+		for _, entry in alt do
+			if entry.score < altBest - 100 then
+				break
+			end
+			if not repeats(entry.move) then
+				return toWire(entry.move)
+			end
+		end
+	end
 	local pool = {}
 	for _, entry in ranked do
 		if entry.score >= best - level.slack then
