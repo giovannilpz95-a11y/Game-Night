@@ -29,7 +29,7 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 	}, { Kit.new("UIPadding", { PaddingRight = UDim.new(0, 8) }) })
 	Kit.list(8).Parent = root
 
-	local title = Kit.label("Your party", { TextSize = 22, Font = Theme.FontBold, Size = UDim2.new(1, -44, 0, 28), LayoutOrder = 1, Parent = root })
+	local title = Kit.label("Your party", { TextSize = 22, Font = Theme.FontTitle, Size = UDim2.new(1, -44, 0, 28), LayoutOrder = 1, Parent = root })
 	local members = Kit.new("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = 2, Parent = root }, { Kit.list(4) })
 	local leaveButton = Kit.button("Leave party", function()
 		send({ action = "leave" })
@@ -74,14 +74,15 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 
 	-- A name row with a 📊 button that opens that player's stats.
 	local function row(text: string, color: Color3?, userId: number?): Frame
-		local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, Size = UDim2.new(1, 0, 0, 34), BorderSizePixel = 0 }, { Kit.corner(8) })
-		Kit.label(text, { Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -126, 1, 0), TextColor3 = color or Theme.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame })
+		local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, Size = UDim2.new(1, 0, 0, 40), BorderSizePixel = 0 }, { Kit.corner(10), Kit.shade(0.12) })
+		Kit.avatar(userId, 30, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 6, 0.5, 0), Parent = frame })
+		Kit.label(text, { Position = UDim2.new(0, 44, 0, 0), Size = UDim2.new(1, -160, 1, 0), TextColor3 = color or Theme.Text, TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = frame })
 		if userId and hooks.viewStats then
 			Kit.button("📊", function()
 				hooks.viewStats(userId)
 			end, {
-				Size = UDim2.new(0, 30, 0, 26),
-				Position = UDim2.new(1, -112, 0.5, -13),
+				Size = UDim2.new(0, 32, 0, 28),
+				Position = UDim2.new(1, -114, 0.5, -14),
 				TextSize = 14,
 				BackgroundColor3 = Theme.Panel,
 				TextColor3 = Theme.Text,
@@ -93,8 +94,8 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 
 	local function smallButton(text: string, onClick: () -> (), color: Color3?): TextButton
 		return Kit.button(text, onClick, {
-			Size = UDim2.new(0, 70, 0, 26),
-			Position = UDim2.new(1, -76, 0.5, -13),
+			Size = UDim2.new(0, 72, 0, 28),
+			Position = UDim2.new(1, -78, 0.5, -14),
 			TextSize = 14,
 			BackgroundColor3 = color or Theme.Accent,
 		})

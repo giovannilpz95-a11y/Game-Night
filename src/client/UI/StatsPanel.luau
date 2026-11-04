@@ -67,7 +67,7 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 	local window = Kit.modal(parent, { name = "StatsWindow", maxSize = Vector2.new(860, 640) })
 	local body = window.body
 
-	local title = Kit.label("Stats", { TextSize = 22, Font = Theme.FontBold, Size = UDim2.new(1, -48, 0, 28), Parent = body })
+	local title = Kit.label("Stats", { TextSize = 22, Font = Theme.FontTitle, Size = UDim2.new(1, -48, 0, 28), Parent = body })
 	local tabRow = Kit.new("Frame", {
 		BackgroundTransparency = 1,
 		Position = UDim2.new(0, 0, 0, 34),

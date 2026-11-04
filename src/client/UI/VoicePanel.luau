@@ -17,7 +17,7 @@ local localPlayer = Players.LocalPlayer
 function VoicePanel.create(lobby: Instance, screen: Instance, send: (any) -> ())
 	local window = Kit.modal(lobby, { name = "VoiceWindow", maxSize = Vector2.new(440, 230) })
 	local bar = window.body
-	Kit.label("🎙 Voice servers", { TextSize = 22, Font = Theme.FontBold, Size = UDim2.new(1, -44, 0, 28), Parent = bar })
+	Kit.label("🎙 Voice servers", { TextSize = 22, Font = Theme.FontTitle, Size = UDim2.new(1, -44, 0, 28), Parent = bar })
 	local text = Kit.label("", {
 		Position = UDim2.new(0, 0, 0, 36),
 		Size = UDim2.new(1, 0, 1, -36 - 48),

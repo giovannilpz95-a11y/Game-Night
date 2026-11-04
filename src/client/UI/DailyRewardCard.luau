@@ -32,8 +32,9 @@ function DailyRewardCard.create(parent: Instance)
 		Parent = overlay,
 	})
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(560, 330) }).Parent = panel
+	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.2 }).Parent = panel
 
-	local title = Kit.label("Daily reward", { Font = Theme.FontBold, TextSize = 24, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 30), ZIndex = 42, Parent = panel })
+	local title = Kit.label("Daily reward", { Font = Theme.FontTitle, TextSize = 26, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 30), ZIndex = 42, Parent = panel })
 	local subtitle = Kit.label("", { TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 32), Size = UDim2.new(1, 0, 0, 22), ZIndex = 42, Parent = panel })
 
 	-- Seven tiles; on narrow screens they wrap to two rows.
@@ -53,7 +54,7 @@ function DailyRewardCard.create(parent: Instance)
 	local function close()
 		overlay.Visible = false
 	end
-	Kit.button("Collect", close, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.new(0, 180, 0, 38), BackgroundColor3 = Theme.Good, ZIndex = 42, Parent = panel })
+	Kit.button("Collect", close, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.new(0, 200, 0, 42), BackgroundColor3 = Theme.Good, Font = Theme.FontTitle, TextSize = 22, ZIndex = 42, Parent = panel })
 
 	local function tile(index: number, entry: any, state: "past" | "today" | "next", coinKey: string)
 		local isToday = state == "today"
@@ -64,14 +65,23 @@ function DailyRewardCard.create(parent: Instance)
 			LayoutOrder = index,
 			ZIndex = 43,
 			Parent = tiles,
-		}, { Kit.corner(10) })
+		}, { Kit.corner(10), Kit.shade(0.15) })
+		if isToday then
+			Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = frame })
+		end
 		local textColor = if isToday then Theme.AccentText else Theme.Text
 		Kit.label(`Day {index}`, { TextSize = 13, TextColor3 = textColor, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 4), Size = UDim2.new(1, 0, 0, 16), ZIndex = 44, Parent = frame })
 		local isGems = (entry.gems or 0) > 0
 		local amount = if isGems then entry.gems else entry.coins
 		local color = if isToday then Theme.AccentText elseif isGems then GEM_COLOR else Economy.UniversalCoin.color
 		Kit.label(tostring(amount), { Font = Theme.FontBold, TextSize = 22, TextColor3 = color, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 22), Size = UDim2.new(1, 0, 0, 26), ZIndex = 44, Parent = frame })
-		Kit.label(if isGems then Economy.GemsName else "Coins", { TextSize = 12, TextColor3 = textColor, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 48), Size = UDim2.new(1, 0, 0, 14), ZIndex = 44, Parent = frame })
+		-- The currency's icon under the amount.
+		local iconProps = { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 50), ZIndex = 44, Parent = frame }
+		if isGems then
+			Kit.gemIcon(16, iconProps)
+		else
+			Kit.coinIcon(Economy.UniversalCoin.color, 14, iconProps)
+		end
 		if state == "past" then
 			Kit.label("✓", { Font = Theme.FontBold, TextSize = 14, TextColor3 = Theme.Good, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, -18), Size = UDim2.new(1, 0, 0, 16), ZIndex = 44, Parent = frame })
 		end
@@ -98,6 +108,7 @@ function DailyRewardCard.create(parent: Instance)
 		end
 		footer.Text = footerText
 		overlay.Visible = true
+		Kit.popIn(panel)
 	end
 
 	return {

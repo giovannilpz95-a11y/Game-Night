@@ -32,7 +32,7 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 	window.overlay.BackgroundTransparency = 0.7 -- lighter: the game is still on behind it
 	local body = window.body
 
-	local title = Kit.label("", { Font = Theme.FontBold, TextSize = 22, Size = UDim2.new(1, -96, 0, 28), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = Z + 1, Parent = body })
+	local title = Kit.label("", { Font = Theme.FontTitle, TextSize = 22, Size = UDim2.new(1, -96, 0, 28), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = Z + 1, Parent = body })
 	local subtitle = Kit.label("", { TextSize = 13, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 0, 28), Size = UDim2.new(1, -48, 0, 18), ZIndex = Z + 1, Parent = body })
 	local backButton: TextButton
 	local list = Kit.new("ScrollingFrame", {
