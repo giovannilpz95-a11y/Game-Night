@@ -23,6 +23,8 @@ local TableActions = require(ReplicatedStorage.Shared.TableActions)
 
 local Avatars = {}
 
+local actionListeners: { (any, Vector3, string) -> () } = {}
+
 local MAX_DISTANCE = 140 -- studs from the camera; further tables don't animate
 local DOWN = Vector3.new(0, -1, 0)
 local UP = Vector3.new(0, 1, 0)
@@ -886,6 +888,12 @@ local function play(payload: any)
 			return
 		end
 		stop(body)
+		-- Tell the table camera where the action is: the hand's target, or the face for
+		-- reactions and emotes.
+		local focusPoint = if icon and rig.head then rig.head.Position else target :: Vector3
+		for _, listener in actionListeners do
+			task.spawn(listener, payload.table, focusPoint, payload.kind)
+		end
 		playing[body] = {
 			gesture = gesture,
 			ctx = { rig = rig, center = center, front = front, target = target :: Vector3, from = from, to = to, fired = {} },
@@ -898,6 +906,11 @@ local function play(payload: any)
 	else
 		start()
 	end
+end
+
+-- Calls `listener(tableId, point, kind)` whenever a gesture starts at any table.
+function Avatars.onAction(listener: (any, Vector3, string) -> ())
+	table.insert(actionListeners, listener)
 end
 
 local started = false
