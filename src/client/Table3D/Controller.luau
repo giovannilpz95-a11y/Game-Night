@@ -116,7 +116,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		if upright then
 			back, up, lift = 9.5, 5, 2.4
 		elseif screen then
-			back, up, lift = 9, 4.5, 4.4
+			back, up, lift = 9, 4.5, 4.9
 		elseif BIG_BOARD[snapshot.gameId] then
 			-- Wide boards (Property Party's loop): sit higher so the near corners stay in view.
 			back, up, lift = 9, 12, 0

@@ -89,7 +89,7 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 
 		-- Your table cards: face-down slots with face-up cards on top, along the felt bottom.
 		if me then
-			local row = Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -4), Size = UDim2.fromScale(0.5, 0.32), ZIndex = 6, Parent = ui.content })
+			local row = Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.fromScale(0.5, 0.3), ZIndex = 6, Parent = ui.content })
 			local list = Kit.list(6, true)
 			list.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			list.Parent = row

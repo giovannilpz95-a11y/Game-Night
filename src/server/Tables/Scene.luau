@@ -165,23 +165,25 @@ local function cardText(parent: Instance, text: string, position: UDim2, size: U
 end
 
 -- The patterned side of a card or pile top, lying on `cf`.
-local function cardBack(parent: Instance, cf: CFrame)
-	Models.block(parent, "BackPanel", Vector3.new(Scene.CARD_W * 0.84, 0.006, Scene.CARD_H * 0.88), cf * CFrame.new(0, 0.003, 0), CARD_BACK)
-	Models.block(parent, "BackEmblem", Vector3.new(Scene.CARD_W * 0.42, 0.006, Scene.CARD_W * 0.42), cf * CFrame.new(0, 0.006, 0) * CFrame.Angles(0, math.rad(45), 0), Models.GOLD)
+local function cardBack(parent: Instance, cf: CFrame, scale: number?)
+	local k = scale or 1
+	Models.block(parent, "BackPanel", Vector3.new(Scene.CARD_W * 0.84 * k, 0.006, Scene.CARD_H * 0.88 * k), cf * CFrame.new(0, 0.003, 0), CARD_BACK)
+	Models.block(parent, "BackEmblem", Vector3.new(Scene.CARD_W * 0.42 * k, 0.006, Scene.CARD_W * 0.42 * k), cf * CFrame.new(0, 0.006, 0) * CFrame.Angles(0, math.rad(45), 0), Models.GOLD)
 end
 
 -- One card lying flat at `cf` (its long side along the seat's view). `front` is
 -- { text, color, background, corner } for a face-up card; nil draws the back. `text` fills
--- the middle of the card, `corner` goes in two opposite corners.
-function Scene.card(parent: Instance, cf: CFrame, front: { text: string, color: Color3?, background: Color3?, corner: string? }?): Part
-	local part = Models.block(parent, "Card", Vector3.new(Scene.CARD_W, Scene.CARD_T, Scene.CARD_H), cf * CFrame.new(0, Scene.CARD_T / 2, 0), CARD_EDGE)
+-- the middle of the card, `corner` goes in two opposite corners. `scale` makes it bigger.
+function Scene.card(parent: Instance, cf: CFrame, front: { text: string, color: Color3?, background: Color3?, corner: string? }?, scale: number?): Part
+	local k = scale or 1
+	local part = Models.block(parent, "Card", Vector3.new(Scene.CARD_W * k, Scene.CARD_T, Scene.CARD_H * k), cf * CFrame.new(0, Scene.CARD_T / 2, 0), CARD_EDGE)
 	local top = cf * CFrame.new(0, Scene.CARD_T, 0)
 	if not front then
-		cardBack(parent, top)
+		cardBack(parent, top, k)
 		return part
 	end
 	local color = front.color or INK
-	local gui = Scene.flatGui(parent, top * CFrame.new(0, 0.006, 0), Scene.CARD_W, Scene.CARD_H, 200)
+	local gui = Scene.flatGui(parent, top * CFrame.new(0, 0.006, 0), Scene.CARD_W * k, Scene.CARD_H * k, 200 / k)
 	local face = Instance.new("Frame")
 	face.Position = UDim2.fromScale(0.05, 0.035)
 	face.Size = UDim2.fromScale(0.9, 0.93)
@@ -199,13 +201,13 @@ function Scene.card(parent: Instance, cf: CFrame, front: { text: string, color: 
 	return part
 end
 
--- A face-down pile of `count` cards (drawn as a block, at most 2 studs tall) with the
+-- A face-down pile of `count` cards (drawn as a block, at most 0.6 studs tall) with the
 -- count written on top if `showCount`. Returns the top CFrame.
 function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: boolean?): CFrame
 	if count <= 0 then
 		return cf
 	end
-	local height = math.min(2, 0.05 + count * 0.02)
+	local height = math.min(0.6, 0.05 + count * 0.012)
 	Models.block(parent, "Pile", Vector3.new(Scene.CARD_W, height, Scene.CARD_H), cf * CFrame.new(0, height / 2, 0), CARD_EDGE:Lerp(Color3.new(0, 0, 0), 0.08))
 	local top = cf * CFrame.new(0, height, 0)
 	cardBack(parent, top)

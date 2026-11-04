@@ -92,7 +92,9 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		if not action then
 			return "Ask for a rank you hold. Got any?"
 		end
-		local who, target = nameOf(action.seat), nameOf(action.target)
+		local who = nameOf(action.seat)
+		-- "You" leads a sentence; as the one being asked it's "you".
+		local target = if action.target == snapshot.yourSeat then "you" else nameOf(action.target)
 		local plural = PlayingCards.rankPlural[action.rank]
 		local text
 		if action.got > 0 then
@@ -145,7 +147,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 					AutoButtonColor = canAsk,
 					BackgroundColor3 = if canAsk then Theme.Accent elseif view.turn == seat then Theme.PanelLight else Theme.Panel,
 					BorderSizePixel = 0,
-					Size = UDim2.new(0, 150, 1, -4),
+					Size = UDim2.new(0, 150, 0, 66),
 					LayoutOrder = seat,
 					Parent = opponents,
 				}, { Kit.corner(10), Kit.padding(6) })
@@ -185,7 +187,8 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		else
 			prompt.Text = "Your turn! Tap a card to ask for that rank."
 		end
-		myBooks.Text = if me then `Your {booksText(view.books[me])}` else ""
+		local myList = if me then view.books[me] or {} else {}
+		myBooks.Text = if not me then "" elseif #myList == 0 then "You have no books yet" else `Your {booksText(myList)}`
 
 		local cards = {}
 		for _, id in view.hand or {} do

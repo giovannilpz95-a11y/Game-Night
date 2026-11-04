@@ -79,7 +79,10 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			local myBid = if me then view.bids[tostring(me)] else nil
 			local partnerBid = if me then view.bids[tostring(Spades.partnerOf(me))] else nil
 			CardTable.feltText(ui.content, "Bidding", 0.3, 22).TextColor3 = Theme.Accent
-			CardTable.feltText(ui.content, `You: {bidText(myBid)} · Partner: {bidText(partnerBid)}`, 0.5, 16)
+			local function said(b: number?): string
+				return if b == nil then "not bid yet" else `bid {bidText(b)}`
+			end
+			CardTable.feltText(ui.content, `You: {said(myBid)} · Partner: {said(partnerBid)}`, 0.5, 16)
 		else
 			local plays = view.trick
 			local winner = nil

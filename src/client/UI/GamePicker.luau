@@ -103,16 +103,22 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		seats = math.clamp(seats, math.max(chosen.minSeats, members), maxSeats)
 	end
 
-	local minus = Kit.button("−", function()
-		seats -= 1
-		clampSeats()
-		render()
-	end, { Size = UDim2.new(0, 40, 0, 40), LayoutOrder = 2, Parent = bar })
-	local plus = Kit.button("+", function()
-		seats += 1
-		clampSeats()
-		render()
-	end, { Size = UDim2.new(0, 40, 0, 40), LayoutOrder = 4, Parent = bar })
+	local renderBar: () -> ()
+	-- The seat stepper counts every press (not every completed click), and only redraws
+	-- the bar, so fast taps on + all land.
+	local function stepper(text: string, delta: number, order: number): TextButton
+		local button = Kit.button(text, function() end, { Size = UDim2.new(0, 40, 0, 40), LayoutOrder = order, Parent = bar })
+		button.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch or input.KeyCode == Enum.KeyCode.ButtonA then
+				seats += delta
+				clampSeats()
+				renderBar()
+			end
+		end)
+		return button
+	end
+	local minus = stepper("-", -1, 2)
+	local plus = stepper("+", 1, 4)
 	local startButton = Kit.button("Start", function()
 		if chosen then
 			sendMatch({ action = "start", gameId = chosen.id, seats = seats, botLevel = botLevel, rules = picks, custom = customSlot })
@@ -309,6 +315,10 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		if sheet.Visible then
 			renderSheet()
 		end
+		renderBar()
+	end
+
+	function renderBar()
 		if chosen then
 			seatsLabel.Text = `{seats} seats`
 			minus.Visible = chosen.minSeats ~= chosen.maxSeats
