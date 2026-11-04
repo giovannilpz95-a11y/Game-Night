@@ -13,6 +13,7 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Launch]]: store page settings, maturity questionnaire, products, soft launch, analytics and the pre-publish checklist
 - [[Dressing Room]]: trying on and buying Roblox catalog items, saved looks
 - [[Party Host]]: VIP and Party Host perks (private and password tables, house rules, custom word lists and quiz decks)
+- [[Party chat]]: the chat box shows only your party's messages, with a switch to All
 - [[Voice Servers]]: voice-only servers and teleporting the party there and back
 - [[Card games]]: the shared 52-card deck, Card Coins, and why poker and blackjack are left out
 - [[CardGameIdeas]]: card game backlog with build priorities
