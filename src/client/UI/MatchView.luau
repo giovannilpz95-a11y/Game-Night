@@ -42,14 +42,15 @@ local MatchView = {}
 -- side panel takes (the dock is sized to show all of it). Unlisted games dock their
 -- bottom 40%.
 local DOCK_DEFAULT = { side = "bottom", size = 0.4 }
-local DOCK: { [string]: { side: string, size: number } } = {
+local DOCK: { [string]: { side: string, size: number, held: boolean? } } = {
 	Hexlands = { side = "right", size = 0.42 },
 	Conquest = { side = "right", size = 0.32 },
 	Estates = { side = "right", size = 0.4 },
 	Whodunit = { side = "right", size = 0.44 },
 	SketchGuess = { side = "right", size = 0.32 },
 	WordTiles = { side = "bottom", size = 96 },
-	ColorClash = { side = "bottom", size = 0.45 }, -- the "+2 waiting" line, buttons and hand
+	-- held: no tray behind the strip, so the hand reads as cards held up in front of you.
+	ColorClash = { side = "bottom", size = 0.45, held = true },
 	TriviaNight = { side = "bottom", size = 0.26 }, -- answers only (the screen shows the question)
 	Werewolf = { side = "bottom", size = 0.44 }, -- the village row and what to do now (the screen shows the phase)
 	Spoons = { side = "bottom", size = 0.41 },
@@ -215,7 +216,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local viewButton: TextButton
 	local applyMode: () -> ()
 	local relayout: () -> ()
-	local dockSpec: () -> { side: string, size: number }
+	local dockSpec: () -> { side: string, size: number, held: boolean? }
 	local table3D = Table3D.create(parent :: ScreenGui, function(move: any)
 		sendMatch({ action = "move", move = move })
 	end, function()
@@ -614,7 +615,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	end
 
 	---------------------------------------------------------------- layout
-	function dockSpec(): { side: string, size: number }
+	function dockSpec(): { side: string, size: number, held: boolean? }
 		return (snapshot and DOCK[snapshot.gameId]) or DOCK_DEFAULT
 	end
 
@@ -685,6 +686,12 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				-- gets a sensible width (280 px at least, half the board at most) and the
 				-- board is drawn just wide enough that its side panel exactly fills it, so
 				-- the panel is never cut off on small screens.
+				dock.BackgroundTransparency = 0.1
+				local rim = dock:FindFirstChild("Rim")
+				if rim and rim:IsA("UIStroke") then
+					rim.Enabled = true
+				end
+				dockLip.Visible = true
 				local w = math.floor(math.clamp(boardW * 0.3, math.min(280, boardW * 0.5), boardW * 0.5))
 				local virtualW = math.floor(w / spec.size)
 				board.Size = UDim2.fromOffset(virtualW, boardH)
@@ -697,6 +704,14 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				table3D.setInsets((w + right) / info.width, 0)
 			else
 				local h = if spec.size > 1 then spec.size else math.floor(boardH * spec.size)
+				-- Held hands float over the table: no tray, no glowing edge.
+				local held = spec.held == true
+				dock.BackgroundTransparency = if held then 1 else 0.1
+				local rim = dock:FindFirstChild("Rim")
+				if rim and rim:IsA("UIStroke") then
+					rim.Enabled = not held
+				end
+				dockLip.Visible = not held
 				dock.Position = UDim2.fromOffset(boardX, top + boardH - h)
 				dock.Size = UDim2.fromOffset(boardW, h)
 				board.Position = UDim2.fromOffset(0, h - boardH)

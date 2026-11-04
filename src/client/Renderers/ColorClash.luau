@@ -21,6 +21,9 @@ local COLORS = {
 local WILD_COLOR = Color3.fromRGB(40, 36, 56)
 local SYMBOLS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "★", wild4 = "+4" }
 local CARD_RATIO = 0.68 -- width / height
+-- Card height as a share of the hand strip: the rest is headroom for a hovered card to
+-- rise into (the strip scrolls, so it clips anything above it).
+local HAND_CARD = 0.76
 
 local function cardLabel(card: Rules.Card): string
 	if card.kind == "number" then
@@ -244,7 +247,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				count += 1
 			end
 		end
-		local cardW = hand.AbsoluteSize.Y * 0.9 * CARD_RATIO
+		local cardW = hand.AbsoluteSize.Y * HAND_CARD * CARD_RATIO
 		local room = hand.AbsoluteSize.X - 48
 		if count < 2 or cardW <= 0 or room <= 0 then
 			handList.Padding = UDim.new(0, -18)
@@ -365,23 +368,32 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		for _, id in view.playable or {} do
 			playable[id] = true
 		end
+		local count = #(view.hand or {})
 		for index, id in view.hand or {} do
 			local canPlay = myTurn and playable[id] == true
+			-- Held like real cards: fanned out, the outer cards turned and a little lower.
+			local offset = index - (count + 1) / 2
+			local spread = if count > 1 then math.min(4, 28 / (count - 1)) else 0
 			-- Width comes from the hand's height (RelativeYY), so cards keep their shape.
 			local slot = Kit.new("Frame", {
 				BackgroundTransparency = 1,
-				Size = UDim2.new(0.9 * CARD_RATIO, 0, 0.9, 0),
+				Size = UDim2.new(HAND_CARD * CARD_RATIO, 0, HAND_CARD, 0),
 				SizeConstraint = Enum.SizeConstraint.RelativeYY,
 				LayoutOrder = index,
 				Parent = hand,
 			})
 			local face = cardVisual(id)
 			face.Parent = slot
-			face.Position = if canPlay then UDim2.fromScale(0, -0.08) else UDim2.fromScale(0, 0)
+			local drop = (offset * spread / 28) ^ 2 * 0.5 -- the fan's curve, in card heights
+			local rest = UDim2.fromScale(0, drop + (if canPlay then -0.08 else 0))
+			face.Position = rest
+			face.Rotation = offset * spread
+			-- Cards you can't play now are only a touch darker: never looking switched off.
+			local shade: Frame? = nil
 			if myTurn and not canPlay then
-				Kit.new("Frame", {
+				shade = Kit.new("Frame", {
 					BackgroundColor3 = Color3.new(0, 0, 0),
-					BackgroundTransparency = 0.5,
+					BackgroundTransparency = 0.8,
 					BorderSizePixel = 0,
 					Size = UDim2.fromScale(1, 1),
 					ZIndex = 3,
@@ -392,6 +404,23 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 5, Parent = face })
 			end
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
+			-- Hover: the card comes up out of the hand, straightens, sits on top of its
+			-- neighbours and shows at full brightness.
+			local lift = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			button.MouseEnter:Connect(function()
+				slot.ZIndex = 10
+				if shade then
+					shade.Visible = false
+				end
+				TweenService:Create(face, lift, { Position = UDim2.fromScale(0, -0.22), Rotation = 0 }):Play()
+			end)
+			button.MouseLeave:Connect(function()
+				slot.ZIndex = 1
+				if shade then
+					shade.Visible = true
+				end
+				TweenService:Create(face, lift, { Position = rest, Rotation = offset * spread }):Play()
+			end)
 			button.Activated:Connect(function()
 				if not canPlay then
 					return
@@ -417,17 +446,35 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		-- current color are on the 3D table, so only the buttons and your hand show. The
 		-- "+2 waiting" warning isn't on the table, so it moves just above the buttons, and
 		-- the wild color picker moves down into the dock.
+		-- Docked, it's laid out like cards held in front of you at the table (the dock
+		-- behind it is see-through): a big fan along the bottom edge, running a little off
+		-- the screen, and the Draw / Pass buttons in the bottom-right corner.
 		setDocked = function(docked: boolean)
 			felt.Visible = not docked
 			if docked then
 				pendingLabel.Parent = root
-				pendingLabel.Position = UDim2.new(0, 0, 0.6, -28)
-				picker.Position = UDim2.fromScale(0.5, 0.8)
+				pendingLabel.Position = UDim2.new(0, 0, 0.58, 0)
+				picker.Position = UDim2.fromScale(0.5, 0.74)
+				hand.Position = UDim2.new(0.14, 0, 0.6, 0)
+				hand.Size = UDim2.new(0.72, 0, 0.47, 0)
+				hand.ScrollBarThickness = 0
+				actions.AnchorPoint = Vector2.new(1, 1)
+				actions.Position = UDim2.new(1, -14, 1, -14)
+				actions.Size = UDim2.new(0, 360, 0, 44)
+				actionList.HorizontalAlignment = Enum.HorizontalAlignment.Right
 			else
 				pendingLabel.Parent = felt
 				pendingLabel.Position = UDim2.new(0, 0, 1, -34)
 				picker.Position = UDim2.fromScale(0.5, 0.42)
+				hand.Position = UDim2.new(0, 0, 0.6, 48)
+				hand.Size = UDim2.new(1, 0, 0.4, -48)
+				hand.ScrollBarThickness = 6
+				actions.AnchorPoint = Vector2.new(0, 0)
+				actions.Position = UDim2.new(0, 0, 0.6, 0)
+				actions.Size = UDim2.new(1, 0, 0, 40)
+				actionList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			end
+			squeezeHand()
 		end,
 		destroy = function()
 			root:Destroy()

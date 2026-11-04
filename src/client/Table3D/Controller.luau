@@ -18,6 +18,8 @@ local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 
+local Kit = require(script.Parent.Parent.UI.Kit)
+
 local Controller = {}
 
 -- Camera life at the table (all off with Calm camera, Controller.setCalm):
@@ -56,6 +58,15 @@ local KEEP_VISIBLE = {
 
 local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true, Werewolf = true }
 local BIG_BOARD = { Estates = true }
+-- Card games are seen from your own eyes on the chair (first person): across the felt to
+-- the others, with your hand held up in front of you (the docked 2D hand).
+local FIRST_PERSON = {
+	ColorClash = true, Speed = true, Spoons = true, War = true, GoFish = true, Cheat = true,
+	President = true, SlapStack = true, Hearts = true, Spades = true, ThirtyOne = true,
+	Palace = true, OldMaid = true, Snap = true, GinRummy = true, OhHell = true,
+}
+local EYE_HEIGHT = 2.55 -- studs above the seat's top: a seated R15 avatar's eyes
+local FIRST_PERSON_FOV = 68
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
 
 local function findTable(id: string): Model?
@@ -110,6 +121,76 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local home: CFrame? = nil
 	local shown: CFrame? = nil
 	local moment: { point: Vector3, strength: number, at: number }? = nil
+	local firstPerson = false -- seated eye-level camera (card games)
+	-- First person: a small badge over each other player (name and what the game shows
+	-- for them, like "6 cards"), lit up on their turn. Only on this screen.
+	local badges: { [number]: BillboardGui } = {}
+	local function clearBadges()
+		for _, badge in badges do
+			badge:Destroy()
+		end
+		table.clear(badges)
+	end
+	local function updateBadges()
+		if not (active and firstPerson and tableModel and snapshot and snapshot.table) then
+			clearBadges()
+			return
+		end
+		local playerGui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not playerGui then
+			return
+		end
+		local seen = {}
+		for matchSeat, s in snapshot.seats or {} do
+			local tableSeat = (snapshot.table.seats or {})[matchSeat]
+			local seat = tableSeat and tableModel:FindFirstChild(`Seat{tableSeat}`, true)
+			if matchSeat ~= snapshot.yourSeat and seat and seat:IsA("BasePart") then
+				seen[matchSeat] = true
+				local badge = badges[matchSeat]
+				if not badge or badge.Adornee ~= seat then
+					if badge then
+						badge:Destroy()
+					end
+					badge = Instance.new("BillboardGui")
+					badge.Name = "GameNightSeatBadge"
+					badge.Size = UDim2.fromOffset(150, 46)
+					badge.StudsOffset = Vector3.new(0, 5.4, 0)
+					badge.AlwaysOnTop = true
+					badge.MaxDistance = 60
+					badge.Adornee = seat
+					badge.ResetOnSpawn = false
+					local pill = Kit.new("Frame", {
+						Name = "Pill",
+						BackgroundColor3 = Kit.Theme.Panel,
+						BackgroundTransparency = 0.15,
+						Size = UDim2.fromScale(1, 1),
+						Parent = badge,
+					}, {
+						Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+						Kit.new("UIStroke", { Name = "Turn", Color = Kit.Theme.Accent, Thickness = 3, Enabled = false }),
+					})
+					Kit.label("", { Name = "Who", Font = Kit.Theme.FontBold, TextScaled = true, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromScale(0.08, 0.08), Size = UDim2.fromScale(0.84, 0.5), Parent = pill })
+					Kit.label("", { Name = "Info", TextScaled = true, TextColor3 = Kit.Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromScale(0.1, 0.56), Size = UDim2.fromScale(0.8, 0.36), Parent = pill })
+					badge.Parent = playerGui
+					badges[matchSeat] = badge
+				end
+				local pill = badge:FindFirstChild("Pill") :: Frame
+				local info = snapshot.seatInfo and snapshot.seatInfo[matchSeat]
+				local who = pill:FindFirstChild("Who") :: TextLabel
+				local infoLabel = pill:FindFirstChild("Info") :: TextLabel
+				who.Text = (if s.kind == "bot" then "🤖 " else "") .. tostring(s.name)
+				infoLabel.Text = if type(info) == "string" then info else ""
+				local turn = pill:FindFirstChild("Turn") :: UIStroke
+				turn.Enabled = table.find(snapshot.activeSeats or {}, matchSeat) ~= nil
+			end
+		end
+		for matchSeat, badge in badges do
+			if not seen[matchSeat] then
+				badge:Destroy()
+				badges[matchSeat] = nil
+			end
+		end
+	end
 	-- Parts of the screen MatchView covers (the docked hand), as fractions of the
 	-- viewport: the camera aims the table at the middle of what's left.
 	local insetRight, insetBottom = 0, 0
@@ -256,6 +337,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			camera.CameraType = if savedCameraType and savedCameraType ~= Enum.CameraType.Scriptable then savedCameraType else Enum.CameraType.Custom
 			camera.FieldOfView = savedFieldOfView
 			home, shown, moment = nil, nil, nil
+			clearBadges()
 			marks.Parent = nil
 			marks:ClearAllChildren()
 		end
@@ -303,6 +385,28 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local scale = 1 + inset * 0.6
 			back, up = back * scale, up * scale
 		end
+		if FIRST_PERSON[snapshot.gameId] and seat and seat:IsA("BasePart") then
+			-- Your eyes on your chair, looking a little past the middle of the table so the
+			-- piles and the players across from you are both in view. Then tilt down until
+			-- that sits in the middle of the screen left above the docked hand (a slide
+			-- would move your eyes out of your head).
+			local seatTop = seat.Position.Y + seat.Size.Y / 2
+			local eye = Vector3.new(seat.Position.X, seatTop + EYE_HEIGHT, seat.Position.Z) - toSeat.Unit * 0.35
+			local look = anchor - toSeat.Unit * 1.2 + Vector3.new(0, 0.4, 0)
+			local cf = CFrame.lookAt(eye, look)
+			camera.FieldOfView = FIRST_PERSON_FOV
+			local viewport = camera.ViewportSize
+			local halfV = math.rad(FIRST_PERSON_FOV / 2)
+			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
+			local tilt = math.atan(math.max(insetBottom - topBar, 0) * math.tan(halfV))
+			home = cf * CFrame.Angles(-tilt, 0, 0)
+			firstPerson = true
+			if not shown then
+				shown = camera.CFrame
+			end
+			return
+		end
+		firstPerson = false
 		local focus = anchor + Vector3.new(0, lift, 0) - toSeat.Unit * 0.6
 		local cf = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
 		camera.FieldOfView = 55
@@ -382,7 +486,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 					moment = nil
 				elseif w > 0 then
 					target = turnToward(target, moment.point, MOMENT_TURN * w)
-					target += target.LookVector * MOMENT_PUSH * w
+					-- From your own eyes a lean in, not a dolly across the table.
+					target += target.LookVector * MOMENT_PUSH * w * (if firstPerson then 0.35 else 1)
 				end
 			end
 			local t = os.clock()
@@ -487,6 +592,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			setActive(true)
 			showSign(false)
 			placeCamera()
+			updateBadges()
 			if handler then
 				handler.update(snapshot)
 			end
