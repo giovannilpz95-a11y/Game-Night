@@ -22,6 +22,8 @@ local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
+local Avatars = require(script.Parent.Parent.Table3D.Avatars)
+local EmoteWheel = require(script.Parent.EmoteWheel)
 local Theme = Kit.Theme
 
 local Renderers = script.Parent.Parent.Renderers
@@ -35,7 +37,7 @@ local DOCK_DEFAULT = { side = "bottom", size = 0.4 }
 local DOCK: { [string]: { side: string, size: number } } = {
 	Hexlands = { side = "right", size = 0.42 },
 	Conquest = { side = "right", size = 0.32 },
-	Estates = { side = "right", size = 0.4 },
+	Estates = { side = "right", size = 0.3 },
 	Whodunit = { side = "right", size = 0.44 },
 	SketchGuess = { side = "right", size = 0.32 },
 	WordTiles = { side = "bottom", size = 96 },
@@ -78,7 +80,8 @@ local function timerColor(left: number): Color3
 	return Theme.Good
 end
 
-function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: () -> boolean, walletWidth: (() -> number)?)
+-- openRules(gameId): shows that game's rules over the table (the ? in the header).
+function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: () -> boolean, walletWidth: (() -> number)?, openRules: ((string) -> ())?)
 	local root = Kit.new("Frame", {
 		Name = "MatchView",
 		BackgroundColor3 = Theme.Background,
@@ -159,6 +162,22 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		local info = snapshot and snapshot.table
 		return if info and not info.board3D then wantScene else want3D
 	end
+	-- Rules for this game, any time. A window over the table: the match keeps going.
+	local rulesButton = Kit.button("?", function()
+		if snapshot and openRules then
+			openRules(snapshot.gameId)
+		end
+	end, {
+		Name = "Rules",
+		AnchorPoint = Vector2.new(1, 0.5),
+		BackgroundColor3 = Theme.PanelLight,
+		TextColor3 = Theme.Text,
+		TextSize = 20,
+		Visible = openRules ~= nil,
+		ZIndex = 21,
+		Parent = header,
+	})
+
 	local viewButton: TextButton
 	local applyMode: () -> ()
 	local relayout: () -> ()
@@ -419,6 +438,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = header,
 	})
 
+	-- Emotes for your avatar at the table (shown only while you're seated at one).
+	local emotes = EmoteWheel.create(root, header, Avatars.emote)
+
 	local function nameOf(seat: number): string
 		local s = snapshot.seats[seat]
 		if not s then
@@ -465,10 +487,18 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		local buttonH = math.min(36, barH - 8)
 		menuButton.Size = UDim2.fromOffset(40, buttonH)
 		menuButton.Position = UDim2.new(1, -4, 0.5, -1)
+		local rulesW = if rulesButton.Visible then 40 else 0
+		rulesButton.Size = UDim2.fromOffset(36, buttonH)
+		rulesButton.Position = UDim2.new(1, -48, 0.5, -1)
 		local viewW = if compact then 84 else 110
 		viewButton.Size = UDim2.fromOffset(viewW, buttonH)
-		viewButton.Position = UDim2.new(1, -48, 0.5, -1)
-		local textRight = 52 + (if viewButton.Visible then viewW + 4 else 0)
+		viewButton.Position = UDim2.new(1, -48 - rulesW, 0.5, -1)
+		local textRight = 52 + rulesW + (if viewButton.Visible then viewW + 4 else 0)
+		emotes.button.Size = UDim2.fromOffset(40, buttonH)
+		emotes.button.Position = UDim2.new(1, -textRight, 0.5, -1)
+		if emotes.button.Visible then
+			textRight += 44
+		end
 		turnLabel.Size = UDim2.new(1, -(12 + textRight), 1, -4)
 		turnLabel.TextSize = if compact then 16 else 19
 		menu.Position = UDim2.fromOffset(info.barX + barW, info.barY + 2 + barH + 4)
@@ -552,6 +582,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		board.Visible = not in3D or docked
 		dock.Visible = docked
 		viewButton.Visible = table3D.available() and snapshot ~= nil and not isOver()
+		emotes.setEnabled(snapshot ~= nil and snapshot.table ~= nil and snapshot.yourSeat ~= nil and not isOver())
 		local compact = Layout.get().compact
 		if table3D.playable() then
 			viewButton.Text = if in3D then "2D view" else "3D view"
@@ -862,6 +893,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			endButton.Visible = not over and isLeader()
 			resignButton.Visible = not over and #snapshot.seats == 2 and snapshot.yourSeat ~= nil
 			menuButton.Visible = not over
+			rulesButton.Visible = openRules ~= nil and not over
 			if over then
 				closeMenu()
 			end

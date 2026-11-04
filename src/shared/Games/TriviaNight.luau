@@ -165,6 +165,8 @@ function TriviaNight.applyMove(state, seat: number, move: any)
 	if move.choice == state.correct then
 		state.correctCount += 1
 		state.streaks[seat] += 1
+		GameModule.addStat(state, seat, "correct")
+		GameModule.maxStat(state, seat, "streak", state.streaks[seat])
 		local points = math.max(500, 1000 - 100 * (state.correctCount - 1))
 		points += math.min(MAX_STREAK_BONUS, STREAK_BONUS * (state.streaks[seat] - 1))
 		state.scores[seat] += points

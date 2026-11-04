@@ -19,8 +19,11 @@ local DressingRoomPanel = require(script.Parent.UI.DressingRoomPanel)
 local TableList = require(script.Parent.UI.TableList)
 local HostPanel = require(script.Parent.UI.HostPanel)
 local VoicePanel = require(script.Parent.UI.VoicePanel)
+local StatsPanel = require(script.Parent.UI.StatsPanel)
 local Layout = require(script.Parent.UI.Layout)
 local LobbyHud = require(script.Parent.UI.LobbyHud)
+local RulesPanel = require(script.Parent.UI.RulesPanel)
+local LobbyTour = require(script.Parent.UI.LobbyTour)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 
@@ -33,6 +36,7 @@ local purchaseRequest = Net.event(Net.Names.PurchaseRequest)
 local dressingRequest = Net.event(Net.Names.DressingRoomRequest)
 local hostRequest = Net.event(Net.Names.HostRequest)
 local voiceRequest = Net.event(Net.Names.VoiceRequest)
+local statsRequest = Net.event(Net.Names.StatsRequest)
 
 local function sendParty(request: any)
 	partyRequest:FireServer(request)
@@ -52,6 +56,7 @@ local screen = Kit.new("ScreenGui", {
 
 Layout.init(screen)
 require(script.Parent.Table3D.FaceViewer).start()
+require(script.Parent.Table3D.Avatars).start()
 
 -- See-through: the room is the lobby.
 local lobby = Kit.new("Frame", {
@@ -74,12 +79,30 @@ function hostHooks.needHost(reason: string?)
 	purchaseRequest:FireServer({ action = "buyPass", key = "partyHost" })
 end
 
+-- Help: rules for every game, the how-to-play card at match start, and the lobby tour.
+local startTour: () -> ()
+local rulesPanel = RulesPanel.create(screen, {
+	replayTour = function()
+		startTour()
+	end,
+})
+hostHooks.showRules = rulesPanel.open
+
 local tableList = TableList.create(screen, sendParty)
 local hostPanel = HostPanel.create(screen, function(request)
 	hostRequest:FireServer(request)
 end, hostHooks)
 hostHooks.openTables = tableList.open
 hostHooks.openHostTools = hostPanel.open
+-- The Party window's 📊 buttons; set once the stats window exists (below).
+local openStats: (number?) -> () = function() end
+function hostHooks.viewStats(userId: number)
+	openStats(userId)
+end
+
+local statsPanel = StatsPanel.create(lobby, function(request)
+	statsRequest:FireServer(request)
+end)
 
 local partyWindow = Kit.modal(lobby, { name = "PartyWindow", maxSize = Vector2.new(420, 600) })
 local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = Vector2.new(1000, 680) })
@@ -98,18 +121,23 @@ end)
 local dressingRoom = DressingRoomPanel.create(screen, function(request)
 	dressingRequest:FireServer(request)
 end)
+openStats = function(userId: number?)
+	partyWindow.close()
+	statsPanel.open(userId)
+end
 -- One big window at a time.
 local function closeWindows()
 	partyWindow.close()
 	pickerWindow.close()
 	tableList.close()
+	statsPanel.close()
 	dressingRoom.close()
 	shopPanel.root.Visible = false
 end
 local walletBar = WalletBar.create(screen)
 local matchView = MatchView.create(screen, sendMatch, function()
 	return currentParty ~= nil and currentParty.leaderId == localPlayer.UserId
-end, walletBar.width)
+end, walletBar.width, rulesPanel.open)
 walletBar.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(matchView.relayout)
 local voicePanel = VoicePanel.create(lobby, screen, function(request)
 	voiceRequest:FireServer(request)
@@ -128,6 +156,10 @@ local hud = LobbyHud.create(lobby, {
 		closeWindows()
 		tableList.open()
 	end,
+	stats = function()
+		closeWindows()
+		statsPanel.open()
+	end,
 	shop = function()
 		closeWindows()
 		shopPanel.open(nil)
@@ -144,7 +176,47 @@ local hud = LobbyHud.create(lobby, {
 		closeWindows()
 		voicePanel.open()
 	end,
+	help = function()
+		closeWindows()
+		rulesPanel.openHelp()
+	end,
 })
+
+-- First-time lobby tour. The server remembers it's done (profile tips), so it runs once;
+-- Help > Replay the lobby tour runs it again.
+local tour = LobbyTour.create(screen)
+local function railStep(key: string, title: string, text: string): LobbyTour.Step
+	return {
+		target = function()
+			return hud.target(key)
+		end,
+		title = title,
+		text = text,
+	}
+end
+function startTour()
+	closeWindows()
+	tour.start({
+		{ title = "Welcome to Game Night!", text = "Board games, card games and party games, all in one place. Here's a quick look around." },
+		railStep("Play", "Play", "Pick a game here. Empty seats are filled with bots, so you can play alone or with friends."),
+		railStep("Party", "Party", "Invite friends to your party. The party leader picks the game and everyone plays together."),
+		railStep("Tables", "Tables", "See other tables in this server and join one."),
+		railStep("Stats", "Stats", "Your level, badges, every game's record and this week's leaderboards."),
+		{
+			target = function()
+				return walletBar.root
+			end,
+			title = "Gems and Coins",
+			text = "Every game pays its own Coins when you play. Gems work everywhere.",
+		},
+		railStep("Shop", "Shop", "Spend Coins on pieces, card backs and more for that game."),
+		railStep("Looks", "Looks", "Try on outfits and save your look in the Dressing Room."),
+		railStep("Host", "Party Host", "House rules and your own word lists and quiz decks."),
+		railStep("Help", "Help", "Forgot how a game works? Every game's rules are here. In a match, tap ? at the top."),
+	}, function()
+		economyRequest:FireServer({ action = "tips", tip = "lobbyTour" })
+	end)
+end
 voicePanel.onChange(hud.setVoice)
 
 -- The Play button says who decides, and the rail shows how many are in your party.
@@ -184,12 +256,29 @@ RunService.RenderStepped:Connect(function()
 		walletBar.setContext(if entry then entry.coin or Economy.DefaultCoin else nil, gameId ~= nil)
 		if gameId then
 			closeWindows() -- a game started: get out of the way
+			tour.stop()
+		else
+			rulesPanel.close()
 		end
 	end
 end)
 
 local wasHost: boolean? = nil
+local tips: any = nil -- what help this player has seen (server profile)
+local tourChecked = false
 Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
+	tips = state.tips
+	-- First visit: show the lobby tour once the room is on screen.
+	if not tourChecked and type(tips) == "table" then
+		tourChecked = true
+		if not tips.lobbyTour then
+			task.delay(2, function()
+				if not matchView.isOpen() and not tour.isRunning() then
+					startTour()
+				end
+			end)
+		end
+	end
 	walletBar.setWallet(state)
 	shopPanel.setWallet(state)
 	local isHost = state.passes ~= nil and state.passes.partyHost == true
@@ -238,12 +327,33 @@ Net.event(Net.Names.PartyState).OnClientEvent:Connect(function(party)
 end)
 
 Net.event(Net.Names.VoiceState).OnClientEvent:Connect(voicePanel.setState)
+Net.event(Net.Names.StatsState).OnClientEvent:Connect(statsPanel.setState)
 
 Net.event(Net.Names.PartyInvite).OnClientEvent:Connect(popups.invite)
 Net.event(Net.Names.Notify).OnClientEvent:Connect(popups.toast)
 
+-- How to play: a short card when you sit down for a new match, unless you turned it off
+-- for that game.
+local cardShownFor: any = nil
 Net.event(Net.Names.MatchState).OnClientEvent:Connect(function(snapshot)
 	matchView.setSnapshot(snapshot)
+	if type(snapshot) ~= "table" then
+		rulesPanel.closeCard() -- left the match
+		return
+	end
+	local over = snapshot.result ~= nil or snapshot.aborted == true
+	if over then
+		rulesPanel.closeCard()
+	elseif snapshot.matchId ~= cardShownFor and snapshot.yourSeat ~= nil then
+		cardShownFor = snapshot.matchId
+		local gameId = snapshot.gameId
+		local hidden = type(tips) == "table" and type(tips.hideCard) == "table" and tips.hideCard[gameId] == true
+		if not hidden then
+			rulesPanel.showCard(gameId, false, function(hide: boolean)
+				economyRequest:FireServer({ action = "tips", tip = "hideCard", gameId = gameId, hidden = hide })
+			end)
+		end
+	end
 end)
 
 -- Ask for current state in case the server sent it before we were listening.

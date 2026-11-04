@@ -17,7 +17,7 @@ local GamePicker = {}
 
 local localPlayer = Players.LocalPlayer
 
--- hooks: needHost(reason)
+-- hooks: needHost(reason), showRules(gameId)
 function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 	-- Fills `parent` (the Play window). Phones get a 2-column grid; wide screens get more.
 	local root = Kit.new("Frame", {
@@ -271,7 +271,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 				Parent = grid,
 			}, { Kit.corner(12), Kit.padding(10) })
 			local textColor = if selected then Theme.AccentText else Theme.Text
-			Kit.label(entry.name, { Font = Theme.FontBold, TextSize = 18, TextColor3 = textColor, Parent = card })
+			Kit.label(entry.name, { Font = Theme.FontBold, TextSize = 18, TextColor3 = textColor, Size = UDim2.new(1, -28, 0, 22), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = card })
 			Kit.label(entry.description, {
 				TextSize = 13,
 				TextColor3 = if selected then Theme.AccentText else Theme.SubText,
@@ -288,6 +288,22 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 				Position = UDim2.new(0, 0, 1, -20),
 				Parent = card,
 			})
+			if ready and hooks.showRules then
+				-- How to play, for everyone (not just the leader).
+				Kit.button("?", function()
+					hooks.showRules(entry.id)
+				end, {
+					Name = "Rules",
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, 4, 0, -4),
+					Size = UDim2.fromOffset(30, 30),
+					TextSize = 16,
+					BackgroundColor3 = if selected then Theme.AccentText else Theme.Panel,
+					TextColor3 = if selected then Theme.Accent else Theme.Text,
+					ZIndex = 2,
+					Parent = card,
+				})
+			end
 			if ready and isLeader then
 				card.Activated:Connect(function()
 					if not chosen or chosen.id ~= entry.id then

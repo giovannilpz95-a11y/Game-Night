@@ -258,7 +258,7 @@ local function signText(gameName: string, seats: { any }): string
 	if #seats == 2 then
 		return `{gameName} · {seats[1].name} vs {seats[2].name}`
 	end
-	return `{gameName} · {#seats} players`
+	return `{gameName} · {#seats} {if #seats == 1 then "player" else "players"}`
 end
 
 -- Puts the party's match on a free table. Returns { id, seats, board3D } for the

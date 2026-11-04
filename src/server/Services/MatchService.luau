@@ -14,6 +14,7 @@ local HouseRules = require(ReplicatedStorage.Shared.HouseRules)
 local Match = require(script.Parent.Parent.Core.Match)
 local TableService = require(script.Parent.TableService)
 local HostService = require(script.Parent.HostService)
+local TableActionService = require(script.Parent.TableActionService)
 
 local MatchService = {}
 
@@ -27,6 +28,8 @@ type Entry = {
 	timerId: number?, -- the game's phase clock that is currently running
 	botPending: { [number]: boolean }, -- bot seats that already have a move scheduled
 	table: any?, -- the 3D table it's played at: { id, seats, board3D }; nil = 2D overflow
+	botLevel: string?, -- the checked bot difficulty (stats and the weekly board read it)
+	acted: number, -- the last move number the avatars at the table acted out
 }
 
 local partyService: any = nil
@@ -79,6 +82,9 @@ local function finish(entry: Entry)
 	entry.turnEndsAt = nil
 	entry.timerId = nil
 	broadcast(entry) -- clients keep showing the final board and result
+	if not entry.match.aborted then
+		TableActionService.finished(entry.table, entry.match.seats, entry.match.result)
+	end
 	TableService.release(entry.match.id)
 	matches[entry.match.id] = nil
 	for userId, matchId in matchOfUser do
@@ -98,6 +104,8 @@ local function finish(entry: Entry)
 		minutes = (os.clock() - entry.startedAt) / 60,
 		moves = match.moveNumber,
 		scores = match:getScores(), -- party games: final points per seat (nil for others)
+		stats = match:getMatchStats(), -- per seat, for the stats profile (see StatsCatalog)
+		botLevel = entry.botLevel,
 	}
 	for _, callback in finishedCallbacks do
 		task.spawn(callback, summary)
@@ -105,7 +113,8 @@ local function finish(entry: Entry)
 end
 
 -- Runs `callback(summary)` after every match ends. summary has gameId, result, aborted,
--- seats (with userId and left), minutes, moves and scores (party games only).
+-- seats (with userId and left), minutes, moves, scores (games with getScores), stats (per
+-- seat, see Match.getMatchStats) and botLevel (nil without bots).
 -- EconomyService pays out from this.
 function MatchService.onMatchFinished(callback: (any) -> ())
 	table.insert(finishedCallbacks, callback)
@@ -128,6 +137,13 @@ end
 local scheduleTurn: (Entry) -> ()
 
 local function afterMove(entry: Entry)
+	-- The avatar who moved acts it out (a phase timeout isn't anyone's move).
+	local last = entry.match.lastMove
+	if last and last.number == entry.match.moveNumber and last.number ~= entry.acted then
+		entry.acted = last.number
+		local catalogEntry = GameCatalog.get(entry.match.gameId)
+		TableActionService.moved(entry.table, entry.match.seats, catalogEntry and catalogEntry.module, last.seat, last.move)
+	end
 	if entry.match:isOver() then
 		finish(entry)
 	else
@@ -147,7 +163,11 @@ function scheduleTurn(entry: Entry)
 	for _, seat in match:getActiveSeats() do
 		if match:isBot(seat) and not entry.botPending[seat] then
 			entry.botPending[seat] = true
-			task.delay(match:botDelay(seat, Config.BotMoveDelay), function()
+			local delay = match:botDelay(seat, Config.BotMoveDelay)
+			if delay >= 1.2 and not match:getTimer() then
+				TableActionService.thinking(entry.table, match.seats, seat)
+			end
+			task.delay(delay, function()
 				entry.botPending[seat] = nil
 				if entry.ended then
 					return
@@ -300,6 +320,8 @@ local function startMatch(leader: Player, request: any)
 		timerId = nil,
 		botPending = {},
 		table = nil,
+		botLevel = options.botLevel,
+		acted = 0,
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
@@ -503,6 +525,16 @@ function handlers.sync(player: Player, _request: any)
 	else
 		matchStateRemote:FireClient(player, nil)
 	end
+end
+
+-- The table and match seat a player is playing at, for emotes: (tableInfo, seats, seat),
+-- or nil when they aren't in a match at a table.
+function MatchService.tableSeatOf(player: Player): (any?, { any }?, number?)
+	local entry = entryFor(player)
+	if not entry or entry.ended or not entry.table then
+		return nil, nil, nil
+	end
+	return entry.table, entry.match.seats, entry.match:seatOf(player.UserId)
 end
 
 function MatchService.handleRequest(player: Player, request: any)

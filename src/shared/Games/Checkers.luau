@@ -227,6 +227,10 @@ function Checkers.applyMove(state, seat: number, move: any)
 	local piece = state.board[clean.from[1]][clean.from[2]]
 	local capture = apply(state.board, clean)
 	state.lastMove = clean
+	local landed = clean.path[#clean.path]
+	if landed and not isKing(piece) and isKing(state.board[landed[1]][landed[2]]) then
+		GameModule.addStat(state, seat, "kings")
+	end
 	if capture or not isKing(piece) then
 		state.quietPlies = 0
 	else
@@ -384,6 +388,21 @@ function Checkers.chooseBotMove(state, seat: number, rng: Random): any?
 		end
 	end
 	return pool[rng:NextInteger(1, #pool)]
+end
+
+-- Stats for the profile (see shared/StatsCatalog.luau): each side starts with 12 pieces.
+function Checkers.getMatchStats(state): { [number]: { [string]: number } }
+	local left = { 0, 0 }
+	for r = 1, SIZE do
+		for c = 1, SIZE do
+			local v = state.board[r][c]
+			if v ~= 0 then
+				local who = owner(v)
+				left[who] += 1
+			end
+		end
+	end
+	return { { captures = 12 - left[2] }, { captures = 12 - left[1] } }
 end
 
 return Checkers

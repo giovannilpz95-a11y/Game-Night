@@ -954,4 +954,16 @@ function Chess.chooseBotMove(state, seat: number, rng: Random): any?
 	return toWire(pool[rng:NextInteger(1, #pool)])
 end
 
+-- Stats for the profile (see shared/StatsCatalog.luau).
+function Chess.getMatchStats(state): { [number]: { [string]: number } }
+	local out = {}
+	for seat = 1, 2 do
+		out[seat] = {
+			captures = #state.captured[seat],
+			checkmates = if state.winner == seat and state.reason == "Checkmate" then 1 else 0,
+		}
+	end
+	return out
+end
+
 return Chess

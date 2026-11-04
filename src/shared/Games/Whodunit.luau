@@ -826,4 +826,16 @@ function Whodunit.chooseBotMove(state, seat: number, rng: Random): any?
 	return nil
 end
 
+-- Stats for the profile (see shared/StatsCatalog.luau).
+function Whodunit.getMatchStats(state): { [number]: { [string]: number } }
+	local out = {}
+	for seat = 1, state.seatCount do
+		out[seat] = {
+			solved = if state.winner == seat then 1 else 0,
+			wrong = if state.eliminated[seat] then 1 else 0,
+		}
+	end
+	return out
+end
+
 return Whodunit

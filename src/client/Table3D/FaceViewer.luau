@@ -24,7 +24,10 @@ local function textUp(cf: CFrame): Vector3
 end
 
 function FaceViewer.start()
-	local base: { [BasePart]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
+	-- A plain (strong) table: Roblox can collect an Instance's Lua wrapper while the
+	-- Instance lives on, so a weak-keyed table silently loses its plates. Entries are
+	-- removed when the tag goes away or the plate leaves the world.
+	local base: { [BasePart]: CFrame } = {}
 
 	local function track(inst: Instance)
 		if inst:IsA("BasePart") and base[inst] == nil then
@@ -53,6 +56,7 @@ function FaceViewer.start()
 		local eye = camera.CFrame.Position
 		for part, original in base do
 			if not part.Parent then
+				base[part] = nil
 				continue
 			end
 			local away = (original.Position - eye) * Vector3.new(1, 0, 1)

@@ -264,6 +264,9 @@ local function endRound(state)
 	end
 	state.roundPoints = roundPoints
 	state.moon = moon
+	if moon then
+		GameModule.addStat(state, moon, "moons")
+	end
 	for seat = 1, 4 do
 		if state.scores[seat] >= state.target then
 			state.over = true

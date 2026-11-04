@@ -121,6 +121,11 @@ local function orderSeats(model: Model, center: Vector3)
 		local pos = seat.Position
 		local toCenter = Vector3.new(center.X - pos.X, 0, center.Z - pos.Z)
 		if toCenter.Magnitude > 0.1 then
+			-- Keep the seat's top surface where it was: a seat that came in on its side
+			-- would otherwise drop and sit people inside the cushion.
+			local cf, size = seat.CFrame, seat.Size
+			local top = pos.Y + 0.5 * (math.abs(cf.RightVector.Y) * size.X + math.abs(cf.UpVector.Y) * size.Y + math.abs(cf.LookVector.Y) * size.Z)
+			pos = Vector3.new(pos.X, top - size.Y / 2, pos.Z)
 			seat.CFrame = CFrame.lookAt(pos, pos + toCenter.Unit)
 			-- The chair model shows the cushion; the leveled Seat part would poke out of
 			-- it (and through whoever sits there), so it only does the sitting.
