@@ -79,11 +79,11 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 					local offset = if squad == 1 then CFrame.new() else CFrame.new(math.cos(a) * 0.16, 0, math.sin(a) * 0.16)
 					Models.soldier(dynamic, top * CFrame.new(0.04, 0, -0.08) * offset, color, 0.46)
 				end
-				-- The count sits on a plate at the front of the island, facing seat 1's side.
+				-- The count floats over a plate at the front of the island, facing every viewer.
 				local plate = top * CFrame.new(0, 0, 0.32)
 				Models.cyl(dynamic, "CountPlate", 0.42, 0.03, plate, Color3.fromRGB(38, 34, 60))
 				Models.cyl(dynamic, "CountRing", 0.46, 0.015, plate, color)
-				Scene.flatText(dynamic, plate * CFrame.new(0, 0.035, 0), 0.3, 0.26, tostring(armies), { TextColor3 = Color3.new(1, 1, 1) })
+				Scene.floatText(dynamic, plate * CFrame.new(0, 0.22, 0), 0.42, 0.34, tostring(armies), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
 			end
 		end,
 		destroy = function()
