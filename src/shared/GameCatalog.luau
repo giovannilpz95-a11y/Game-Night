@@ -108,7 +108,9 @@ local entries: { Entry } = {
 		description = "One draws, everyone guesses. Best with friends: bots guess but don't draw.",
 		minSeats = 3,
 		maxSeats = 8,
-		status = "ready",
+		-- Off for launch (Giovanni, 2026-11-04). The game is built and tested; set this to
+		-- "ready" to turn it back on.
+		status = "soon",
 		coin = "party",
 		typicalMinutes = 10,
 		minMinutes = 2,

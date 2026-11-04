@@ -4,6 +4,8 @@ Back to [[Home]].
 
 One player draws a secret word and everyone else races to guess it. 3-8 seats.
 
+**Status: switched off for launch** (`status = "soon"` in `shared/GameCatalog.luau`, so it shows as Coming soon and the server won't start it). The code and tests stay in place; set it to `"ready"` to turn it on.
+
 - Rules: `src/shared/Games/SketchGuess.luau`. Words: `src/shared/Games/Data/SketchWords.luau` (our own kid-safe list, easy/medium/hard; `a|b` lists other accepted spellings).
 - Phases (phase clock): choose a word (12 s, then the first word is picked), draw (4 x 20 s; a hint letter appears after each 20 s, at most half the letters), reveal (5 s).
 - Only seats that start as players draw (bots can't). Each drawer gets 2 turns, or 3 when there are only one or two drawers. A seat whose player left skips its drawing turn.
