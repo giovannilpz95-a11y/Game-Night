@@ -17,6 +17,7 @@ type Entry = {
 	partyId: string,
 	ended: boolean,
 	turnEndsAt: number?,
+	turnSeconds: number,
 }
 
 local partyService: any = nil
@@ -102,8 +103,8 @@ function scheduleTurn(entry: Entry)
 	end
 
 	if hasHumanTurn then
-		entry.turnEndsAt = workspace:GetServerTimeNow() + Config.TurnSeconds
-		task.delay(Config.TurnSeconds, function()
+		entry.turnEndsAt = workspace:GetServerTimeNow() + entry.turnSeconds
+		task.delay(entry.turnSeconds, function()
 			if entry.ended or match.moveNumber ~= token then
 				return
 			end
@@ -167,12 +168,19 @@ local function startMatch(leader: Player, request: any)
 		seats[i], seats[j] = seats[j], seats[i]
 	end
 
+	-- Only pass options we've checked; never forward the client's table as-is.
+	local options = { botLevel = Config.DefaultBotLevel }
+	if type(request.botLevel) == "string" and table.find(Config.BotLevels, request.botLevel) then
+		options.botLevel = request.botLevel
+	end
+
 	local matchId = HttpService:GenerateGUID(false)
 	local entry: Entry = {
-		match = Match.new(matchId, rules, seats, request.options, rng),
+		match = Match.new(matchId, rules, seats, options, rng),
 		partyId = party.id,
 		ended = false,
 		turnEndsAt = nil,
+		turnSeconds = catalogEntry.turnSeconds or Config.TurnSeconds,
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
@@ -225,6 +233,22 @@ function handlers.move(player: Player, request: any)
 		return
 	end
 	local ok, err = entry.match:submitMove(seat, request.move)
+	if not ok then
+		return notify(player, err :: string)
+	end
+	afterMove(entry)
+end
+
+function handlers.resign(player: Player, _request: any)
+	local entry = entryFor(player)
+	if not entry then
+		return
+	end
+	local seat = entry.match:seatOf(player.UserId)
+	if not seat then
+		return
+	end
+	local ok, err = entry.match:resign(seat)
 	if not ok then
 		return notify(player, err :: string)
 	end

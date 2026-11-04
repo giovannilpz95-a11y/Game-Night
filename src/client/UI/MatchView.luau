@@ -34,6 +34,23 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local endButton = Kit.button("End for everyone", function()
 		sendMatch({ action = "endForAll" })
 	end, { BackgroundColor3 = Theme.Bad, TextColor3 = Theme.Text, Size = UDim2.new(0, 160, 0, 36), Position = UDim2.new(1, -300, 0, 2), Parent = header })
+	local resignConfirm = false
+	local resignButton: TextButton
+	resignButton = Kit.button("Resign", function()
+		if resignConfirm then
+			resignConfirm = false
+			resignButton.Text = "Resign"
+			sendMatch({ action = "resign" })
+		else
+			-- Ask twice so a stray tap doesn't throw the game.
+			resignConfirm = true
+			resignButton.Text = "Sure?"
+			task.delay(3, function()
+				resignConfirm = false
+				resignButton.Text = "Resign"
+			end)
+		end
+	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 100, 0, 36), Position = UDim2.new(1, -410, 0, 2), Parent = header })
 
 	local seatsPanel = Kit.panel({ Size = UDim2.new(0, 220, 1, -124), Position = UDim2.new(0, 20, 0, 104), Parent = root })
 	Kit.list(6).Parent = seatsPanel
@@ -54,7 +71,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ZIndex = 10,
 		Parent = root,
 	})
-	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 80), ZIndex = 11, Parent = resultOverlay })
+	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 56), ZIndex = 11, Parent = resultOverlay })
+	local reasonLabel = Kit.label("", { TextSize = 16, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 56), ZIndex = 11, Parent = resultOverlay })
 	local closeButton: TextButton
 
 	local snapshot: any = nil
@@ -138,6 +156,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			end
 			resultLabel.Text = `{table.concat(names, ", ")} won`
 		end
+		reasonLabel.Text = if result and result.reason then result.reason else ""
 		resultOverlay.Visible = result ~= nil or snapshot.aborted == true
 	end
 
@@ -188,6 +207,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			local over = snapshot.result ~= nil or snapshot.aborted == true
 			leaveButton.Visible = not over
 			endButton.Visible = not over and isLeader()
+			resignButton.Visible = not over and #snapshot.seats == 2 and snapshot.yourSeat ~= nil
 			renderSeats()
 			updateTurnText()
 			if renderer then

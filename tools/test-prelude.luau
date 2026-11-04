@@ -63,7 +63,11 @@ game = dataModel
 Random = {}
 Random.__index = Random
 function Random.new(seed)
-	return setmetatable({ s = (seed or 12345) % 2147483647 }, Random)
+	local r = setmetatable({ s = ((seed or 12345) * 7919 + 104729) % 2147483646 + 1 }, Random)
+	for _ = 1, 8 do
+		r:NextNumber() -- small seeds start with tiny values; warm up the generator
+	end
+	return r
 end
 function Random:NextNumber(min, max)
 	self.s = (self.s * 48271) % 2147483647

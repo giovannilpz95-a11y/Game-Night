@@ -49,6 +49,8 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> ())
 	local party: any = nil
 	local chosen: GameCatalog.Entry? = nil
 	local seats = 2
+	local botLevel = Config.DefaultBotLevel
+	local BOT_LEVEL_NAMES = { easy = "Easy bots", medium = "Medium bots", hard = "Hard bots" }
 
 	local render: () -> ()
 
@@ -73,9 +75,16 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> ())
 	end, { Position = UDim2.new(0.4, 180, 0, 10), Size = UDim2.new(0, 40, 0, 36), Parent = bar })
 	local startButton = Kit.button("Start game", function()
 		if chosen then
-			sendMatch({ action = "start", gameId = chosen.id, seats = seats })
+			sendMatch({ action = "start", gameId = chosen.id, seats = seats, botLevel = botLevel })
 		end
 	end, { BackgroundColor3 = Theme.Good, Position = UDim2.new(1, -170, 0, 10), Size = UDim2.new(0, 170, 0, 36), Parent = bar })
+	-- Tapping cycles Easy -> Medium -> Hard. Only shown when bots will play.
+	local levelButton: TextButton
+	levelButton = Kit.button("", function()
+		local index = table.find(Config.BotLevels, botLevel) or 1
+		botLevel = Config.BotLevels[index % #Config.BotLevels + 1]
+		render()
+	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Position = UDim2.new(1, -330, 0, 10), Size = UDim2.new(0, 150, 0, 36), Parent = bar })
 
 	function render()
 		local isLeader = party ~= nil and party.leaderId == localPlayer.UserId
@@ -139,7 +148,11 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> ())
 			minus.Visible = chosen.minSeats ~= chosen.maxSeats
 			plus.Visible = minus.Visible
 			startButton.Visible = true
+			local members = if party then #party.members else 1
+			levelButton.Visible = seats > members
+			levelButton.Text = BOT_LEVEL_NAMES[botLevel] or botLevel
 		else
+			levelButton.Visible = false
 			chosenLabel.Text = "Choose a game"
 			seatsLabel.Text = ""
 			minus.Visible = false

@@ -14,6 +14,10 @@ local Config = {
 	RequestsPerWindow = 20,
 	RequestWindowSeconds = 2,
 
+	-- Bot difficulty the party leader can pick. Each game decides what these mean.
+	BotLevels = { "easy", "medium", "hard" },
+	DefaultBotLevel = "medium",
+
 	BotNames = {
 		"Bot Ava",
 		"Bot Milo",

@@ -9,7 +9,8 @@
 	      (The name players see lives only in GameCatalog.luau.)
 
 	  new(seatCount, options, rng) -> state
-	      Fresh game state. Seats are numbered 1..seatCount.
+	      Fresh game state. Seats are numbered 1..seatCount. options.botLevel is
+	      "easy" | "medium" | "hard" (the server only passes options it has checked).
 
 	  getActiveSeats(state) -> { seat }
 	      Seats allowed to move right now. Turn-based games return one seat;
@@ -24,8 +25,8 @@
 	  applyMove(state, seat, move)
 	      Mutates state. Only called after validateMove succeeded.
 
-	  getResult(state) -> nil | { winners = { seat }, isDraw = boolean }
-	      nil while the game is still going.
+	  getResult(state) -> nil | { winners = { seat }, isDraw = boolean, reason = string? }
+	      nil while the game is still going. reason is shown to players ("Checkmate").
 
 	  getView(state, seat) -> table
 	      What that seat may see. Hide other hands, the deck, the secret word, etc.
@@ -42,6 +43,7 @@ local GameModule = {}
 export type Result = {
 	winners: { number },
 	isDraw: boolean,
+	reason: string?,
 }
 
 -- Picks a bot move: the game's own bot if it has one, else a random legal move.

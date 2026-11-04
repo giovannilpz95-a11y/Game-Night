@@ -18,6 +18,9 @@ When the leader starts a game, `MatchService` builds the seats: party members fi
 - A bot thinks for `Config.BotMoveDelay` seconds, then moves.
 - A player has `Config.TurnSeconds` seconds; after that a bot moves for them.
 - If a player leaves, a bot takes their seat. If every player leaves, the game ends.
+- In two-player games, either player can resign.
+- The leader picks the bot difficulty (easy, medium or hard). The server checks it before passing it to the game. Never forward the client's options table as-is.
+- Each game sets its own turn time with `turnSeconds` in the catalog.
 
 `server/Core/Match.luau` holds one game's state and has no timers, so it's unit tested.
 

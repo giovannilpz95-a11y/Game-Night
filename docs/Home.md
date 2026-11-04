@@ -4,4 +4,4 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 
 - [[Architecture]]: how parties, tables, turns and bots work
 - [[Adding a game]]: the checklist for every new game
-- Per-game technical notes: `Games/`
+- Per-game technical notes: [[Tic-Tac-Toe]], [[Chess]], [[Checkers]], [[Four-in-a-Row]]
