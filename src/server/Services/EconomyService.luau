@@ -24,6 +24,7 @@ local Rewards = require(script.Parent.Parent.Core.Rewards)
 local Shop = require(script.Parent.Parent.Core.Shop)
 local Looks = require(script.Parent.Parent.Core.Looks)
 local Tips = require(script.Parent.Parent.Core.Tips)
+local AudioSettings = require(script.Parent.Parent.Core.AudioSettings)
 local DataService = require(script.Parent.DataService)
 local AnalyticsService = require(script.Parent.AnalyticsService)
 
@@ -94,6 +95,7 @@ function EconomyService.push(player: Player)
 		lookSlots = Looks.slotCount(data, vip),
 		saving = DataService.isPersistent(player),
 		tips = data.tips,
+		audio = data.audio,
 		studio = RunService:IsStudio(),
 	})
 end
@@ -407,6 +409,15 @@ function handlers.tips(player: Player, request: any)
 	local data = DataService.get(player)
 	if data and Tips.apply(data.tips, request) then
 		EconomyService.push(player)
+	end
+end
+
+-- The Sound window's sliders. The client already plays at the new levels, so there's
+-- nothing to send back; the profile saves with the next autosave.
+function handlers.audio(player: Player, request: any)
+	local data = DataService.get(player)
+	if data then
+		AudioSettings.apply(data.audio, request)
 	end
 end
 

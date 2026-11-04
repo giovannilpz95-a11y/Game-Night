@@ -5,6 +5,8 @@
 
 local TweenService = game:GetService("TweenService")
 
+local Audio = require(script.Parent.Parent.Audio)
+
 local Kit = {}
 
 Kit.Theme = {
@@ -147,9 +149,14 @@ function Kit.button(text: string, onClick: () -> (), props: { [string]: any }?):
 	return button
 end
 
--- Buttons sink a little while pressed, so a tap feels like it landed.
+-- Buttons sink a little while pressed and click, so a tap feels like it landed. The
+-- sound is the button's "Sfx" attribute (a shared/Sounds.Effects name), "click" if unset.
 function Kit.pressable(button: GuiButton)
 	local scale = Kit.new("UIScale", { Name = "PressScale", Parent = button })
+	button.Activated:Connect(function()
+		local sfx = button:GetAttribute("Sfx")
+		Audio.play(if type(sfx) == "string" then sfx else "click")
+	end)
 	local function to(value: number)
 		if scale.Parent then
 			TweenService:Create(scale, PRESS_INFO, { Scale = value }):Play()
@@ -195,6 +202,7 @@ function Kit.closeButton(onClick: () -> (), props: { [string]: any }?): TextButt
 		TextColor3 = Kit.Theme.Text,
 		TextSize = 18,
 	})
+	button:SetAttribute("Sfx", "close")
 	local corner = button:FindFirstChildOfClass("UICorner")
 	if corner then
 		corner.CornerRadius = UDim.new(0.5, 0)
@@ -230,6 +238,7 @@ function Kit.chip(text: string, onClick: () -> (), props: { [string]: any }?): T
 		BackgroundColor3 = Kit.Theme.PanelLight,
 		TextColor3 = Kit.Theme.Text,
 	})
+	chip:SetAttribute("Sfx", "toggle")
 	local corner = chip:FindFirstChildOfClass("UICorner")
 	if corner then
 		corner.CornerRadius = UDim.new(0.5, 0)
