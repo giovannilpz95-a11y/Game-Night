@@ -96,28 +96,9 @@ local function calendarDay(streak: number): number
 end
 Daily.calendarDay = calendarDay
 
--- The Coins a player cares about most: the coin kind of the game they've played most.
--- coinOf maps a game id to its coin key (nil for unknown games).
-function Daily.favoriteCoin(data: Profile.Data, coinOf: (string) -> string?): string
-	local best, bestPlayed = Economy.DefaultCoin, 0
-	local ids = {}
-	for gameId in data.stats.games do
-		table.insert(ids, gameId)
-	end
-	table.sort(ids) -- ties go to the same game every time
-	for _, gameId in ids do
-		local played = data.stats.games[gameId].played
-		local coinKey = coinOf(gameId)
-		if coinKey and Economy.Coins[coinKey] and played > bestPlayed then
-			best, bestPlayed = coinKey, played
-		end
-	end
-	return best
-end
-
 -- Claims today's login reward if not claimed yet. Returns nil if it was already claimed.
--- Coin days pay `coinKey` (see favoriteCoin). VIP doubles the calendar reward.
-function Daily.login(data: Profile.Data, day: number, vip: boolean, coinKey: string?): LoginReward?
+-- Coin days pay Universal Coins. VIP doubles the calendar reward.
+function Daily.login(data: Profile.Data, day: number, vip: boolean): LoginReward?
 	local login = data.login
 	if login.lastDay == day then
 		return nil
@@ -131,7 +112,7 @@ function Daily.login(data: Profile.Data, day: number, vip: boolean, coinKey: str
 	local multiplier = if vip then Economy.VipDailyLoginMultiplier else 1
 	local gems = (entry.gems or 0) * multiplier
 	local coins = (entry.coins or 0) * multiplier
-	local key = if coinKey and Economy.Coins[coinKey] then coinKey else Economy.DefaultCoin
+	local key = Economy.UniversalCoin.key
 	local milestone = Economy.StreakMilestones[login.streak] or 0
 
 	Profile.addGems(data, gems + milestone)

@@ -51,6 +51,7 @@ One event per currency change, sent only from `EconomyService` and `PurchaseServ
 | Friend invite Gems (inviter / new player) | Source | Onboarding | `FriendInvite` / `FriendWelcome` |
 | Gem pack / Starter Pack | Source | IAP | pack key / `starter` |
 | Shop purchase | Sink | Shop | item id |
+| Universal Coins converted (Sink of `universal`, Source of the game coin) | both | Shop | `Convert_<coinKey>` |
 
 The Studio test grant isn't logged. New things that spend or give currency must log too: take `AnalyticsService.snapshot(data)` before the change and call `AnalyticsService.logChange(player, data, before, transaction, sku)` after.
 

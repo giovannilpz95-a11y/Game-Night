@@ -6,6 +6,7 @@ Back to [[Home]] · see [[Architecture]]. The design (prices, earn targets, why)
 - **Gems** are universal and the only thing sold for Robux.
 - **Coins** are earned only by playing. Each game pays one kind (`coin` in `GameCatalog`); quick games share **Arcade Coins**.
 - Gems can pay for coin items at **1 Gem = 10 Coins**. Coins never turn into Gems.
+- **Universal Coins** come from the daily login calendar and convert 1:1 into any game's Coins, one way (see [[Friends]]).
 - Nothing either currency buys changes a match. Shop items are cosmetic only.
 - The server decides every reward and every purchase. Clients only ask.
 

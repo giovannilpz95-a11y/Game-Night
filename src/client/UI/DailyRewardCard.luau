@@ -69,7 +69,7 @@ function DailyRewardCard.create(parent: Instance)
 		Kit.label(`Day {index}`, { TextSize = 13, TextColor3 = textColor, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 4), Size = UDim2.new(1, 0, 0, 16), ZIndex = 44, Parent = frame })
 		local isGems = (entry.gems or 0) > 0
 		local amount = if isGems then entry.gems else entry.coins
-		local color = if isToday then Theme.AccentText elseif isGems then GEM_COLOR else (Economy.Coins[coinKey] and Economy.Coins[coinKey].color or Theme.Text)
+		local color = if isToday then Theme.AccentText elseif isGems then GEM_COLOR else Economy.UniversalCoin.color
 		Kit.label(tostring(amount), { Font = Theme.FontBold, TextSize = 22, TextColor3 = color, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 22), Size = UDim2.new(1, 0, 0, 26), ZIndex = 44, Parent = frame })
 		Kit.label(if isGems then Economy.GemsName else "Coins", { TextSize = 12, TextColor3 = textColor, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 48), Size = UDim2.new(1, 0, 0, 14), ZIndex = 44, Parent = frame })
 		if state == "past" then
@@ -92,7 +92,7 @@ function DailyRewardCard.create(parent: Instance)
 		title.Text = if daily.streak > 1 then `{daily.streak}-day streak!` else "Daily reward"
 		subtitle.Text = if daily.streak > 1 then "Come back tomorrow to keep it going." else "Log in every day for bigger rewards."
 		today.Text = `Today: {table.concat(reward.lines or {}, ", ")}`
-		local footerText = `Coin days pay {Economy.coinName(daily.coinKey or Economy.DefaultCoin)}.`
+		local footerText = `Turn {Economy.UniversalCoin.name} into any game's Coins in the Shop.`
 		if daily.nextMilestoneIn then
 			footerText ..= ` Streak bonus in {daily.nextMilestoneIn} day{if daily.nextMilestoneIn == 1 then "" else "s"}: +{daily.nextMilestoneGems} {Economy.GemsName}`
 		end

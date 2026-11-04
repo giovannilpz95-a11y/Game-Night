@@ -107,11 +107,6 @@ end
 -- For other services that change a profile themselves (FriendService): the reward toast.
 EconomyService.sendReward = sendReward
 
-local function coinOf(gameId: string): string?
-	local entry = GameCatalog.get(gameId)
-	return if entry then entry.coin or Economy.DefaultCoin else nil
-end
-
 -- What the daily reward card needs: the calendar, where the streak is, and what's next.
 function EconomyService.loginState(data: Profile.Data): any
 	local calendar = {}
@@ -125,7 +120,7 @@ function EconomyService.loginState(data: Profile.Data): any
 		streakDay = Daily.calendarDay(data.login.streak),
 		claimedToday = data.login.lastDay == today(),
 		calendar = calendar,
-		coinKey = Daily.favoriteCoin(data, coinOf),
+		coinKey = Economy.UniversalCoin.key,
 		nextMilestoneIn = inDays,
 		nextMilestoneGems = milestoneGems,
 	}
@@ -136,7 +131,7 @@ local function checkDay(player: Player, data: Profile.Data)
 	local day = today()
 	Daily.roll(data, day, readyGames(), Random.new())
 	local before = AnalyticsService.snapshot(data)
-	local reward = Daily.login(data, day, isVip(player), Daily.favoriteCoin(data, coinOf))
+	local reward = Daily.login(data, day, isVip(player))
 	if reward then
 		local lines = {}
 		if reward.coins > 0 then
@@ -321,6 +316,22 @@ function handlers.buy(player: Player, request: any)
 	EconomyService.push(player)
 end
 
+-- { toKey, amount }: Universal Coins into one game's Coins. Can't be undone.
+function handlers.convert(player: Player, request: any)
+	local data = DataService.get(player)
+	if not data then
+		return
+	end
+	local before = AnalyticsService.snapshot(data)
+	local ok, err = Shop.convertUniversal(data, request.toKey, request.amount)
+	if not ok then
+		return notify(player, err :: string)
+	end
+	AnalyticsService.logChange(player, data, before, "Shop", `Convert_{request.toKey}`)
+	notify(player, `Converted {request.amount} {Economy.UniversalCoin.name} into {Economy.coinName(request.toKey)}`)
+	EconomyService.push(player)
+end
+
 function handlers.equip(player: Player, request: any)
 	local data = DataService.get(player)
 	if not data then
@@ -346,6 +357,7 @@ function handlers.studioGrant(player: Player, _request: any)
 	for coinKey in Economy.Coins do
 		Profile.addCoins(data, coinKey, 2000)
 	end
+	Profile.addCoins(data, Economy.UniversalCoin.key, 500)
 	notify(player, "Studio test: +500 Gems and +2000 of every Coin")
 	EconomyService.push(player)
 end

@@ -67,6 +67,25 @@ function Shop.buy(data: Profile.Data, itemId: any, currency: any, vip: boolean):
 	return true
 end
 
+-- Turns Universal Coins into one game's Coins, 1:1. One way: game Coins never turn back.
+-- amount must be a whole number the player has.
+Shop.MaxConvert = 1000000
+function Shop.convertUniversal(data: Profile.Data, toKey: any, amount: any): (boolean, string?)
+	if type(toKey) ~= "string" or not Economy.Coins[toKey] then
+		return false, "Pick a game's Coins"
+	end
+	if type(amount) ~= "number" or amount ~= amount or amount < 1 or amount > Shop.MaxConvert or amount ~= math.floor(amount) then
+		return false, "Pick an amount"
+	end
+	local key = Economy.UniversalCoin.key
+	if Profile.coins(data, key) < amount then
+		return false, `Not enough {Economy.UniversalCoin.name}`
+	end
+	Profile.addCoins(data, key, -amount)
+	Profile.addCoins(data, toKey, amount)
+	return true
+end
+
 -- Equips an owned item in its slot, or unequips it if it is already equipped.
 function Shop.toggleEquip(data: Profile.Data, itemId: any): (boolean, string?)
 	local item = if type(itemId) == "string" then ShopCatalog.get(itemId) else nil

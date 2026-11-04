@@ -83,14 +83,14 @@ return function(T)
 		local data = fresh()
 		local gems, coins = 0, 0
 		for d = 1, 7 do
-			local reward = Daily.login(data, DAY + d, false, "chess")
+			local reward = Daily.login(data, DAY + d, false)
 			T.ok(reward ~= nil)
 			T.eq(reward.streakDay, d)
 			T.eq(reward.streak, d)
 			gems += reward.gems
 			coins += reward.coins
 			if reward.coins > 0 then
-				T.eq(reward.coinKey, "chess")
+				T.eq(reward.coinKey, Economy.UniversalCoin.key)
 			end
 		end
 		local wantGems, wantCoins = 0, 0
@@ -101,12 +101,12 @@ return function(T)
 		T.eq(gems, wantGems)
 		T.eq(coins, wantCoins)
 		T.eq(data.gems, wantGems)
-		T.eq(data.coins.chess, wantCoins)
-		T.eq(Daily.login(data, DAY + 7, false, "chess"), nil, "same day pays once")
-		local day8 = Daily.login(data, DAY + 8, false, "chess")
+		T.eq(data.coins[Economy.UniversalCoin.key], wantCoins)
+		T.eq(Daily.login(data, DAY + 7, false), nil, "same day pays once")
+		local day8 = Daily.login(data, DAY + 8, false)
 		T.eq(day8.streak, 8)
 		T.eq(day8.streakDay, 1, "calendar repeats")
-		local again = Daily.login(data, DAY + 10, false, "chess")
+		local again = Daily.login(data, DAY + 10, false)
 		T.eq(again.streak, 1, "missed a day")
 		T.eq(again.streakDay, 1)
 		T.eq(data.login.best, 8)
@@ -114,10 +114,9 @@ return function(T)
 
 	T.test("VIP doubles the calendar reward", function()
 		local data = fresh()
-		local reward = Daily.login(data, DAY, true, nil)
+		local reward = Daily.login(data, DAY, true)
 		T.eq(reward.coins, (Economy.DailyCalendar[1].coins or 0) * Economy.VipDailyLoginMultiplier)
-		T.eq(reward.coinKey, Economy.DefaultCoin, "unknown coin falls back")
-		local day2 = Daily.login(data, DAY + 1, true, nil)
+		local day2 = Daily.login(data, DAY + 1, true)
 		T.eq(day2.gems, (Economy.DailyCalendar[2].gems or 0) * Economy.VipDailyLoginMultiplier)
 	end)
 
@@ -131,7 +130,7 @@ return function(T)
 		local first = milestoneDays[1]
 		local paid = 0
 		for d = 1, first + 1 do
-			local reward = Daily.login(data, DAY + d, false, nil)
+			local reward = Daily.login(data, DAY + d, false)
 			if reward.milestoneGems > 0 then
 				T.eq(reward.streak, first)
 				paid += reward.milestoneGems
@@ -144,16 +143,24 @@ return function(T)
 		T.eq((Daily.nextMilestone(100000)), nil)
 	end)
 
-	T.test("coin days pay the Coins of the game you play most", function()
+	T.test("Universal Coins turn into any game's Coins, one way", function()
 		local data = fresh()
-		local coinOf = function(gameId)
-			return ({ Chess = "chess", Checkers = "checkers", TicTacToe = "arcade" })[gameId]
-		end
-		T.eq(Daily.favoriteCoin(data, coinOf), Economy.DefaultCoin, "new players get the default")
-		data.stats.games.Chess = { played = 2, wins = 0 }
-		data.stats.games.Checkers = { played = 5, wins = 1 }
-		data.stats.games.Gone = { played = 50, wins = 0 } -- removed game: ignored
-		T.eq(Daily.favoriteCoin(data, coinOf), "checkers")
+		local U = Economy.UniversalCoin.key
+		T.eq(Economy.Coins[U], nil, "not a game coin, so no shop of its own")
+		Profile.addCoins(data, U, 100)
+		T.ok(Shop.convertUniversal(data, "chess", 60))
+		T.eq(Profile.coins(data, U), 40)
+		T.eq(Profile.coins(data, "chess"), 60)
+		T.ok(not Shop.convertUniversal(data, "chess", 41), "not more than you have")
+		T.ok(not Shop.convertUniversal(data, U, 10), "can't convert into itself")
+		T.ok(not Shop.convertUniversal(data, "nope", 10))
+		T.ok(not Shop.convertUniversal(data, "chess", 0))
+		T.ok(not Shop.convertUniversal(data, "chess", 1.5))
+		T.ok(not Shop.convertUniversal(data, "chess", 0 / 0))
+		T.ok(not Shop.convertUniversal(data, "chess", "10"))
+		T.eq(Profile.coins(data, U), 40)
+		T.eq(Profile.coins(data, "chess"), 60)
+		T.eq(Economy.coinName(U), Economy.UniversalCoin.name)
 	end)
 
 	T.test("three challenges, one of them a game you haven't played", function()

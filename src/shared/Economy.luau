@@ -26,6 +26,11 @@ Economy.Coins = {
 }
 Economy.DefaultCoin = "arcade"
 
+-- Universal Coins: paid by the daily login calendar, never sold. They can be turned into
+-- any game's Coins 1:1 (Shop.convertUniversal), and that can't be undone. They aren't in
+-- Economy.Coins on purpose: no game pays them and there is no Universal shop.
+Economy.UniversalCoin = { key = "universal", name = "Universal Coins", color = Color3.fromRGB(255, 214, 102) }
+
 Economy.GemsName = "Gems"
 Economy.CoinsPerGem = 10 -- a 500-coin item also costs 50 Gems
 
@@ -42,7 +47,7 @@ Economy.CoinMultipliers = {} -- events, e.g. { colorclash = 2 } for a launch wee
 
 -- Gems (target: about 25 a day for an active free player)
 -- Daily login calendar: day N of a login streak pays entry N, then it repeats from day 1.
--- Coin days pay the Coins of the game the player has played most (Arcade Coins at first).
+-- Coin days pay Universal Coins, which the player turns into any game's Coins.
 -- Missing a day starts the streak again. 50 Gems and 225 Coins a week.
 Economy.DailyCalendar = {
 	{ coins = 50 },
@@ -135,7 +140,7 @@ Economy.Passes = {
 }
 
 function Economy.coinName(coinKey: string): string
-	local coin = Economy.Coins[coinKey]
+	local coin = if coinKey == Economy.UniversalCoin.key then Economy.UniversalCoin else Economy.Coins[coinKey]
 	return if coin then coin.name else "Coins"
 end
 

@@ -7,14 +7,14 @@ The first time a player joins on a new UTC day they get that day's calendar rewa
 
 | Day | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |---|---|---|---|---|---|---|---|
-| Reward | 50 Coins | 5 Gems | 75 Coins | 5 Gems | 100 Coins | 10 Gems | 30 Gems |
+| Reward | 50 Universal Coins | 5 Gems | 75 Universal Coins | 5 Gems | 100 Universal Coins | 10 Gems | 30 Gems |
 
-- **Coin days** pay the Coins of the game the player has played most (`Daily.favoriteCoin`), Arcade Coins for new players. Coins still only come from playing Game Night, never from Robux or Gems.
+- **Coin days** pay **Universal Coins** (`Economy.UniversalCoin`). In the Shop's Wallet tab, **Convert** turns them into any game's Coins, 1:1, and it can't be undone (`Shop.convertUniversal`, `client/UI/CoinConvertPanel.luau`). They're never sold and no game pays them, so Coins still only come from playing; there's no Universal shop.
 - **Streak bonus**: extra Gems the day a streak reaches 14, 30, 60 and 100 days (`Economy.StreakMilestones`).
 - **VIP** doubles the calendar reward (not the streak bonus).
 - The best streak is saved as `login.best` for a future badge or leaderboard.
 
-Code: `server/Core/Daily.luau` (`login`, `favoriteCoin`, `nextMilestone`, tested in `tests/Economy.spec.luau`), paid in `EconomyService` (`checkDay`). The reward goes out as a normal `Reward` with a `daily` field (`EconomyService.loginState`), and `client/UI/DailyRewardCard.luau` draws it. `WalletState.login` has the same data for any future "daily" screen.
+Code: `server/Core/Daily.luau` (`login`, `nextMilestone`, tested in `tests/Economy.spec.luau`), paid in `EconomyService` (`checkDay`). The reward goes out as a normal `Reward` with a `daily` field (`EconomyService.loginState`), and `client/UI/DailyRewardCard.luau` draws it. `WalletState.login` has the same data for any future "daily" screen.
 
 ## Friends window
 **Party panel > Friends** opens `client/UI/FriendsPanel.luau`:
