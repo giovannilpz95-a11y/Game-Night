@@ -445,8 +445,10 @@ local function makeSign(model: Model): { TextLabel }
 	local facing = CFrame.lookAt(base, base + outward) -- Front face looks away from the table
 	local wood = Color3.fromRGB(82, 54, 36)
 	piece("Foot", Vector3.new(1.4, 0.3, 1.4), facing + Vector3.new(0, 0.15, 0), wood, Enum.Material.Wood)
-	piece("Post", Vector3.new(0.3, 5.6, 0.3), facing + Vector3.new(0, 2.9, 0), wood, Enum.Material.Wood)
-	local board = piece("Board", Vector3.new(5.6, 1.5, 0.25), facing + Vector3.new(0, 6.2, 0), Color3.fromRGB(38, 34, 60), Enum.Material.SmoothPlastic)
+	-- Low, about chest height: it reads as you walk up but doesn't stack up with the
+	-- other tables' signs (or sit under the HUD's side rail) when seen from the spawn.
+	piece("Post", Vector3.new(0.3, 3.6, 0.3), facing + Vector3.new(0, 1.9, 0), wood, Enum.Material.Wood)
+	local board = piece("Board", Vector3.new(5, 1.3, 0.25), facing + Vector3.new(0, 4.3, 0), Color3.fromRGB(38, 34, 60), Enum.Material.SmoothPlastic)
 	board.CanCollide = false
 	local labels = {}
 	for _, face in { Enum.NormalId.Front, Enum.NormalId.Back } do
@@ -455,6 +457,7 @@ local function makeSign(model: Model): { TextLabel }
 		gui.Face = face
 		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 		gui.PixelsPerStud = 50
+		gui.MaxDistance = 45 -- far signs go blank instead of crowding the view
 		gui.LightInfluence = 0.2
 		local label = Instance.new("TextLabel")
 		label.Size = UDim2.fromScale(1, 1)

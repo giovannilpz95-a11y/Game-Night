@@ -262,6 +262,35 @@ local function props(room: Model): { [string]: Model }
 	return found
 end
 
+-- Soft, near-white light from the ceiling over every zone. It's what lights the room
+-- under Voxel and ShadowMap, where the lamps alone leave it dark, and it keeps the
+-- pieces on the tables their true colors.
+local function fillLights(room: Model)
+	local f = folder("FillLights", room)
+	for _, zone in L.zones do
+		local a = zone.area
+		local w, d = a.maxX - a.minX, a.maxZ - a.minZ
+		local panel = part(f, {
+			Name = `{zone.id}Fill`,
+			Size = Vector3.new(w, 0.2, d),
+			Position = Vector3.new((a.minX + a.maxX) / 2, L.CEILING_Y - 0.2, (a.minZ + a.maxZ) / 2),
+			Transparency = 1,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = false,
+			CastShadow = false,
+		})
+		local light = Instance.new("SurfaceLight")
+		light.Face = Enum.NormalId.Bottom
+		light.Angle = 70
+		light.Range = 36
+		light.Brightness = 0.9
+		light.Color = Color3.fromRGB(255, 246, 236)
+		light.Shadows = false
+		light.Parent = panel
+	end
+end
+
 -- Invisible camera markers for the store thumbnails and trailer: each Part looks from
 -- the shot's camera spot toward its subject. In Studio, select one and use
 -- View > "Camera to part" (or set workspace.CurrentCamera.CFrame to its CFrame).
@@ -282,6 +311,7 @@ function Room.build(parent: Instance): (Model, { [string]: Model })
 	stage(room)
 	banners(room)
 	stringLights(room)
+	fillLights(room)
 	local found = props(room)
 	shots(room)
 	room.Parent = parent

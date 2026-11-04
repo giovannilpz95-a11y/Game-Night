@@ -18,8 +18,10 @@ local LobbyService = {}
 
 -- Lamp colors over a table, by its State attribute (TableService sets it).
 local LAMP_COLORS = {
-	Free = Color3.fromRGB(255, 214, 160),
-	Playing = Color3.fromRGB(255, 186, 96),
+	-- Near white, so the pieces keep their colors (orange light made white pieces
+	-- yellow and dark pieces black).
+	Free = Color3.fromRGB(255, 240, 222),
+	Playing = Color3.fromRGB(255, 248, 238),
 }
 
 local function lobbyFolder(): Folder
@@ -35,13 +37,15 @@ end
 local function setLighting()
 	-- Lighting.Technology can't be set from a script: set it to Future in Studio
 	-- (Lighting > Technology) for the lamp shadows. Everything else is set here.
-	Lighting.ClockTime = 20.6 -- night outside the windows
-	Lighting.Brightness = 1.2
-	Lighting.Ambient = Color3.fromRGB(78, 62, 54)
-	Lighting.OutdoorAmbient = Color3.fromRGB(60, 62, 96)
-	Lighting.EnvironmentDiffuseScale = 0.35
+	-- Night outside, but the room has to read under every Technology (Voxel and
+	-- ShadowMap barely use the lamps), so the base ambient is fairly bright and neutral.
+	Lighting.ClockTime = 20.6
+	Lighting.Brightness = 2
+	Lighting.Ambient = Color3.fromRGB(150, 140, 130)
+	Lighting.OutdoorAmbient = Color3.fromRGB(118, 118, 138)
+	Lighting.EnvironmentDiffuseScale = 0.6
 	Lighting.EnvironmentSpecularScale = 0.4
-	Lighting.ExposureCompensation = 0.15
+	Lighting.ExposureCompensation = 0.35
 	Lighting.GlobalShadows = true
 
 	local function effect(className: string, name: string): Instance
@@ -55,10 +59,10 @@ local function setLighting()
 		return e
 	end
 	local cc = effect("ColorCorrectionEffect", "LobbyWarmth") :: ColorCorrectionEffect
-	cc.TintColor = Color3.fromRGB(255, 242, 226)
-	cc.Saturation = 0.12
-	cc.Contrast = 0.06
-	cc.Brightness = 0.02
+	cc.TintColor = Color3.fromRGB(255, 250, 244)
+	cc.Saturation = 0.08
+	cc.Contrast = 0.05
+	cc.Brightness = 0.04
 	local bloom = effect("BloomEffect", "Bloom") :: BloomEffect
 	bloom.Intensity = 0.7
 	bloom.Size = 26

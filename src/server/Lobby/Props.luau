@@ -14,7 +14,8 @@ Props.Colors = {
 	lightWood = Color3.fromRGB(176, 128, 86),
 	cream = Color3.fromRGB(246, 232, 204),
 	brass = Color3.fromRGB(214, 168, 82),
-	lampWarm = Color3.fromRGB(255, 196, 128),
+	lampWarm = Color3.fromRGB(255, 214, 168),
+	tableLight = Color3.fromRGB(255, 242, 226), -- near white over play areas
 	ink = Color3.fromRGB(38, 34, 60),
 	purple = Color3.fromRGB(110, 70, 190),
 	leaf = Color3.fromRGB(70, 140, 72),
@@ -592,12 +593,12 @@ function Props.pendant(at: Vector3, ceilingY: number, parent: Instance): (Model,
 	local light = Instance.new("SpotLight")
 	light.Face = Enum.NormalId.Bottom
 	light.Angle = 100
-	light.Range = 22
-	light.Brightness = 2.2
-	light.Color = C.lampWarm
+	light.Range = 24
+	light.Brightness = 2.4
+	light.Color = C.tableLight
 	light.Shadows = true
 	light.Parent = bulb
-	local glow = lamp(bulb, 14, 0.5)
+	local glow = lamp(bulb, 14, 0.5, C.tableLight)
 	glow.Shadows = false
 	local _ = shade
 	return m, glow, bulb
