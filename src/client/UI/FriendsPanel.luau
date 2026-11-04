@@ -61,13 +61,13 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 	})
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(480, 520) }).Parent = panel
 
-	Kit.label("Friends", { Font = Theme.FontBold, TextSize = 22, Size = UDim2.new(1, -100, 0, 28), ZIndex = 32, Parent = panel })
+	Kit.title("Friends", { ZIndex = 32, Parent = panel })
 	local openToken = 0
 	local function close()
 		overlay.Visible = false
 		openToken += 1
 	end
-	Kit.button("Close", close, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 90, 0, 30), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, ZIndex = 32, Parent = panel })
+	Kit.closeButton(close, { ZIndex = 33, Parent = panel })
 
 	Kit.button("Invite friends to Game Night", function()
 		if not promptInvite(nil) then
@@ -216,6 +216,7 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 
 	local function open()
 		overlay.Visible = true
+		Kit.popIn(panel)
 		openToken += 1
 		local token = openToken
 		loadedOnline = false

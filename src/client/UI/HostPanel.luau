@@ -22,7 +22,7 @@ function HostPanel.create(parent: Instance, sendHost: (any) -> (), hooks: any)
 		Text = "",
 		AutoButtonColor = false,
 		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.45,
+		BackgroundTransparency = 0.55,
 		Size = UDim2.fromScale(1, 1),
 		Visible = false,
 		ZIndex = 30,
@@ -37,10 +37,10 @@ function HostPanel.create(parent: Instance, sendHost: (any) -> (), hooks: any)
 	})
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(620, 540) }).Parent = panel
 
-	Kit.label("Host tools", { Font = Theme.FontBold, TextSize = 22, Size = UDim2.new(1, -100, 0, 28), ZIndex = 32, Parent = panel })
-	Kit.button("Close", function()
+	Kit.title("👑 Host tools", { ZIndex = 32, Parent = panel })
+	Kit.closeButton(function()
 		overlay.Visible = false
-	end, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 90, 0, 30), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, ZIndex = 32, Parent = panel })
+	end, { ZIndex = 33, Parent = panel })
 
 	local kindBar = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 36), Size = UDim2.new(1, 0, 0, 32), ZIndex = 32, Parent = panel }, { Kit.list(6, true) })
 	local slotBar = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 74), Size = UDim2.new(1, 0, 0, 30), ZIndex = 32, Parent = panel }, { Kit.list(6, true) })
@@ -206,6 +206,7 @@ function HostPanel.create(parent: Instance, sendHost: (any) -> (), hooks: any)
 	return {
 		open = function()
 			overlay.Visible = true
+			Kit.popIn(panel)
 			load()
 			render()
 		end,
