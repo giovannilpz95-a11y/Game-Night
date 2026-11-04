@@ -214,6 +214,11 @@ local function knock(state, seat: number)
 		kind, winner, points = "knock", seat, defense.value - kArr.value
 	end
 	state.scores[winner] += points
+	if kind == "gin" then
+		GameModule.addStat(state, seat, "gins")
+	elseif kind == "undercut" then
+		GameModule.addStat(state, defender, "undercuts")
+	end
 	state.handsWon[winner] += 1
 	local layoffs = {}
 	for _, l in defense.layoffs do

@@ -327,6 +327,15 @@ function OhHell.getScores(state): { [number]: number }
 	return table.clone(state.scores)
 end
 
+-- Stats for the profile (see shared/StatsCatalog.luau).
+function OhHell.getMatchStats(state): { [number]: { [string]: number } }
+	local out = {}
+	for seat = 1, state.seatCount do
+		out[seat] = { exact = state.made[seat] }
+	end
+	return out
+end
+
 -- Bots ------------------------------------------------------------------------
 
 -- A rough count of the tricks a hand will take with this trump and this many players.

@@ -10,4 +10,5 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Table: `src/client/Renderers/GinRummy.luau`. Hand sorted melds first with a green bar under meld cards; deadwood in the prompt. Knock button, then tap the card to knock with. Showdown lays both hands out (deadwood dimmed).
 - Scene: `src/server/Tables/Boards/GinRummy.luau`: hands, stock, discard pile; both hands face up during the showdown.
 - Bot: takes the discard only when it makes or grows a meld and lowers deadwood; throws the card leaving least deadwood, highest first. Easy sometimes throws a random deadwood card and knocks at once. Medium knocks at 6 or less (any legal knock late). Hard knocks at 3 or less early, avoids feeding ranks the opponent picked up.
+- Stats: gins, undercuts (`addStat` in the showdown), best score.
 - Tests: `tests/GinRummy.spec.luau`.

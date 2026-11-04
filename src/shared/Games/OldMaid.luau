@@ -257,6 +257,15 @@ function OldMaid.getScores(state): { [number]: number }
 	return scores
 end
 
+-- Stats for the profile (see shared/StatsCatalog.luau).
+function OldMaid.getMatchStats(state): { [number]: { [string]: number } }
+	local out = {}
+	for seat = 1, state.seatCount do
+		out[seat] = { pairs = #state.pairs[seat], stuck = if seat == state.loser then 1 else 0 }
+	end
+	return out
+end
+
 -- Bots ------------------------------------------------------------------------
 -- Old Maid is a game of luck: the giver's hand is shuffled before every draw, so no pick
 -- is better than another. Bots differ only in how quickly they pick.

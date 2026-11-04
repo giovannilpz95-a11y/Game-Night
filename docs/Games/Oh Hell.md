@@ -8,4 +8,5 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Table: `src/client/Renderers/OhHell.luau`. Round, hand size and the trump card top left; trick spots for any seat count (`CardTable.trick(..., seatCount)`); - / Bid N / + with the dealer's banned bid greyed out; the prompt says how many tricks you still need.
 - Scene: `src/server/Tables/Boards/OhHell.luau`: the shared trick scene (`_Tricks`) on a plum mat with the trump card in the middle.
 - Bot: bids from a trick estimate (`OhHell.estimate`: high trumps, side Aces and guarded Kings, weaker with more players); a hooked dealer moves toward its estimate. Plays to hit its bid: wins cheaply when it needs tricks, throws its biggest losing card when it doesn't. Hard wins high when others still have to play. Easy plays at random.
+- Stats: bids made exactly (`getMatchStats`), best score.
 - Tests: `tests/OhHell.spec.luau`.

@@ -9,4 +9,5 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Table: `src/client/Renderers/Snap.luau`. Every face-up pile across the felt with names and card counts, a big SNAP! button (Space too), your face-down pile at the bottom (tap or Flip). Matches are never highlighted.
 - Scene: `src/server/Tables/Boards/Snap.luau`: each seat's face-down pile (count on top) and face-up pile with its top card.
 - Bot: always sees a match; easy / medium / hard react in about 1.2-2.1 s / 0.7-1.2 s / 0.4-0.7 s.
+- Stats: good snaps (`addStat`).
 - Tests: `tests/Snap.spec.luau`.

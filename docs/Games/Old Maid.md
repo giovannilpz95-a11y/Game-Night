@@ -10,4 +10,5 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Table: `src/client/Renderers/OldMaid.luau`. The hand you draw from is a fan of card backs on the felt; tap one. Your Old Maid is raised and outlined red.
 - Scene: `src/server/Tables/Boards/OldMaid.luau`: hands in holders, each seat's pairs as one stack with the last pair's card on top, the Old Maid face up in the middle at the end.
 - Bot: random pick (nothing to know). Levels differ only in pick speed (`getBotDelay`).
+- Stats: pairs made, times stuck with the Old Maid (`getMatchStats`).
 - Tests: `tests/OldMaid.spec.luau`.

@@ -189,6 +189,7 @@ function Snap.applyMove(state, seat: number, move: any)
 				state.up[s] = {}
 			end
 			state.lastAction = { kind = "snap", seat = seat, count = won, piles = matched }
+			GameModule.addStat(state, seat, "snaps")
 			state.pause = true
 			state.phaseId += 1
 		else
