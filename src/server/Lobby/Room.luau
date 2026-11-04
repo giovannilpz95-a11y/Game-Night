@@ -208,10 +208,9 @@ local function banners(room: Model)
 	for _, zone in L.zones do
 		if zone.id ~= "Foyer" and zone.id ~= "Lounge" then
 			local a = zone.area
-			local cx, cz = (a.minX + a.maxX) / 2, (a.minZ + a.maxZ) / 2
-			if zone.id == "Party" then
-				cz = a.maxZ - 2 -- over the stage front, the TV is behind it
-			end
+			-- Over the zone's front edge (the side facing the spawn), clear of the table
+			-- lamps and, on the stage, of the TV.
+			local cx, cz = (a.minX + a.maxX) / 2, a.maxZ - 4
 			local w = math.clamp(#zone.label * 1.3 + 3, 10, 18)
 			-- Face the spawn (both sides have text).
 			local cf = CFrame.new(cx, 21, cz) * CFrame.Angles(0, math.pi, 0)

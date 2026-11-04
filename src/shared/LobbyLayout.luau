@@ -76,7 +76,8 @@ LobbyLayout.windows = {
 }
 
 -- Strands of string lights hung across the room (east to west), by z.
-LobbyLayout.stringLights = { -14, -40, -66, -92, -118, -140 }
+-- Kept off the rows of tables, so they never cross a table lamp's cord.
+LobbyLayout.stringLights = { -4, -36, -72, -108, -142 }
 
 -- Props. `kind` picks the builder in server/Lobby/Props.luau.
 LobbyLayout.props = {

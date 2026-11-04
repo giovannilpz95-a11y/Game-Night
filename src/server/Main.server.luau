@@ -20,9 +20,14 @@ local HostService = require(script.Parent.Services.HostService)
 local VoiceService = require(script.Parent.Services.VoiceService)
 
 Net.init()
-LobbyService.init() -- the room first, so the tables stand in it
+-- The room first, so the tables stand in it. It's decor: if it ever fails, the games
+-- still start.
+local lobbyOk, lobbyErr = pcall(LobbyService.init)
+if not lobbyOk then
+	warn(`[GameNight] lobby room failed to build: {lobbyErr}`)
+end
 TableService.init()
-LobbyService.afterTables()
+pcall(LobbyService.afterTables)
 MatchService.init(PartyService)
 PartyService.init(MatchService)
 EconomyService.init()
