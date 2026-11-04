@@ -45,6 +45,14 @@ local items: { Item } = {
 	{ id = "reactions_animals", name = "Animal Pack", shop = "hub", slot = "reactions", tier = "Common", gems = 120, universal = 1200 },
 	{ id = "reactions_talk", name = "Table Talk", shop = "hub", slot = "reactions", tier = "Rare", gems = 200, universal = 2000 },
 	{ id = "reactions_trash", name = "Friendly Trash Talk", shop = "hub", slot = "reactions", tier = "Epic", gems = 250, universal = 2500 },
+	{ id = "reactions_boardtalk", name = "Board Game Talk", shop = "hub", slot = "reactions", tier = "Rare", gems = 200, universal = 2000 },
+	{ id = "reactions_goodsport", name = "Good Sport", shop = "hub", slot = "reactions", tier = "Common", gems = 120, universal = 1200 },
+	{ id = "reactions_hype", name = "Hype", shop = "hub", slot = "reactions", tier = "Epic", gems = 250, universal = 2500 },
+	{ id = "reactions_pieces", name = "Game Pieces", shop = "hub", slot = "reactions", tier = "Rare", gems = 150, universal = 1500 },
+	{ id = "reactions_spooky", name = "Spooky Pack", shop = "hub", slot = "reactions", tier = "Epic", gems = 200, universal = 2000 },
+	{ id = "reactions_winter", name = "Winter Pack", shop = "hub", slot = "reactions", tier = "Epic", gems = 200, universal = 2000 },
+	{ id = "reactions_love", name = "Sweethearts", shop = "hub", slot = "reactions", tier = "Rare", gems = 150, universal = 1500 },
+	{ id = "reactions_summer", name = "Summer Pack", shop = "hub", slot = "reactions", tier = "Rare", gems = 150, universal = 1500 },
 
 	-- Chess shop
 	{ id = "chess_walnut_board", name = "Walnut Board", shop = "chess", slot = "board", tier = "Common", coins = 400 },
@@ -53,6 +61,8 @@ local items: { Item } = {
 	{ id = "chess_crown_confetti", name = "Crown Confetti", shop = "chess", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "chess_crystal_pieces", name = "Crystal Pieces", shop = "chess", slot = "pieces", tier = "Legendary", gems = 1000 },
 	{ id = "chess_tournament_board", name = "Tournament Board", shop = "chess", slot = "board", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	{ id = "reactions_chess", name = "Chess Club", shop = "chess", slot = "reactions", tier = "Rare", coins = 1500, universal = 1500 },
 
 	-- Checkers shop
 	{ id = "checkers_picnic_board", name = "Picnic Board", shop = "checkers", slot = "board", tier = "Common", coins = 300 },

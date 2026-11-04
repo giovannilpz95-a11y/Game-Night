@@ -438,7 +438,12 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				table.insert(bundleIds, pack.reactions[1])
 			end
 		end
-		local _, bundleButtons = packCard(2, "Every reaction pack", `{#bundle.items} packs, {#bundle.items * Reactions.PerPage} reactions`, bundleIds, TIER_COLORS.Legendary)
+		local bundleReactions = 0
+		for _, id in bundle.items do
+			local pack = Reactions.pack(id)
+			bundleReactions += if pack then #pack.reactions else 0
+		end
+		local _, bundleButtons = packCard(2, "Every Gem reaction pack", `{#bundle.items} packs, {bundleReactions} reactions`, bundleIds, TIER_COLORS.Legendary)
 		if missing == 0 then
 			Kit.label("Owned", { TextColor3 = Theme.Good, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = bundleButtons })
 		else
@@ -460,11 +465,14 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		local _, freeButtons = packCard(3, "Free reactions", "Everyone has these", Reactions.free, nil)
 		Kit.label("Free", { TextColor3 = Theme.Good, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = freeButtons })
 
-		for index, pack in Reactions.packs do
+		-- Seasonal packs that are in season this month go first, with their tag.
+		local month = os.date("*t").month
+		for index, pack in Reactions.shopOrder(month) do
 			local item = ShopCatalog.get(pack.id)
 			if item then
 				local coinShop = item.shop ~= "hub"
-				local sub = `{item.tier} · {#pack.reactions} reactions{if coinShop then ` · {Economy.coinName(item.shop)}` else ""}`
+				local seasonTag = if Reactions.inSeason(pack, month) and pack.season then `{pack.season} · In season · ` else ""
+				local sub = `{seasonTag}{item.tier} · {#pack.reactions} reactions{if coinShop then ` · {Economy.coinName(item.shop)}` else ""}`
 				local _, buttons = packCard(10 + index, `{pack.icon} {pack.name}`, sub, pack.reactions, TIER_COLORS[item.tier])
 				if ownedSet[item.id] then
 					Kit.label("On your wheel", { TextColor3 = Theme.Good, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = buttons })

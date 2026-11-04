@@ -22,11 +22,12 @@ return function(T)
 	T.test("every reaction has a known animation and something to show", function()
 		for _, reaction in Reactions.list do
 			T.ok(Reactions.Styles[reaction.style], `{reaction.id} has unknown style {reaction.style}`)
-			if reaction.style == "text" then
+			if Reactions.isText(reaction) then
 				T.ok(type(reaction.text) == "string" and #reaction.text > 0, `{reaction.id} needs text`)
 				T.ok(#reaction.text <= 14, `{reaction.id} is too long for the bubble`)
 			else
 				T.ok(type(reaction.icon) == "string", `{reaction.id} needs an icon`)
+				T.ok(reaction.text == nil, `{reaction.id} has text but an emoji style`)
 			end
 			T.ok(#reaction.label > 0, `{reaction.id} needs a label`)
 		end
@@ -119,5 +120,57 @@ return function(T)
 		Economy.ReactionBundle.productId = saved
 		T.eq(kind, "reactions")
 		T.eq(product.key, "reactionsAll")
+	end)
+	T.test("every pack's Universal Coin price follows its Gem or Coin price", function()
+		for _, pack in Reactions.packs do
+			local item = ShopCatalog.get(pack.id)
+			if item.shop == "hub" then
+				T.eq(item.universal, item.gems * Economy.CoinsPerGem, pack.id)
+			else
+				T.eq(item.universal, item.coins, pack.id)
+				T.ok(Economy.Coins[item.shop], `{pack.id} is in unknown coin shop {item.shop}`)
+			end
+		end
+	end)
+
+	T.test("seasonal packs are featured in their months and still sold all year", function()
+		local spooky = Reactions.pack("reactions_spooky")
+		local winter = Reactions.pack("reactions_winter")
+		T.ok(spooky and winter)
+		T.eq(Reactions.inSeason(spooky, 10), true)
+		T.eq(Reactions.inSeason(spooky, 11), false)
+		T.eq(Reactions.inSeason(winter, 1), true)
+		T.eq(Reactions.inSeason(Reactions.pack("reactions_party"), 10), false)
+		for _, pack in Reactions.packs do
+			if pack.months then
+				T.ok(type(pack.season) == "string", `{pack.id} needs a season tag`)
+				for _, m in pack.months do
+					T.ok(m >= 1 and m <= 12, `{pack.id} month {m}`)
+				end
+			end
+		end
+		for month = 1, 12 do
+			local order = Reactions.shopOrder(month)
+			T.eq(#order, #Reactions.packs, "shop order keeps every pack")
+			local seenRest = false
+			for _, pack in order do
+				if Reactions.inSeason(pack, month) then
+					T.ok(not seenRest, `in-season {pack.id} comes before the rest in month {month}`)
+				else
+					seenRest = true
+				end
+			end
+		end
+		T.eq(Reactions.shopOrder(10)[1].id, "reactions_spooky")
+		T.eq(Reactions.shopOrder(11)[1].id, Reactions.packs[1].id)
+	end)
+
+	T.test("Chess Club buys with Chess Coins and isn't in the Robux bundle", function()
+		local data = Profile.new(0)
+		data.coins.chess = 1500
+		T.ok(Shop.buy(data, "reactions_chess", "coins", false))
+		T.ok(Reactions.canUse("checkmate", data.owned))
+		T.eq(table.find(Economy.ReactionBundle.items, "reactions_chess"), nil)
+		T.eq(table.find(Economy.ReactionBundle.items, "reactions_cards"), nil)
 	end)
 end
