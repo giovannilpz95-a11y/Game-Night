@@ -64,6 +64,8 @@ Server security
 - Purchases: Robux grants happen only in `ProcessReceipt`, saved before reporting success. Fixed: a purchase retried after a failed save (or on a profile that isn't saving) was reported as granted without being saved. Fixed: a finished game pass prompt is now confirmed with `UserOwnsGamePassAsync` before perks turn on.
 - The Studio-only buttons (`studioGrant`, `studioPass`) check `RunService:IsStudio()` on the server, so they do nothing in a live game.
 - Fixed: two quick taps on "Voice server" could reserve two servers.
+- Fixed: an invite read from a link's LaunchData (which anyone can write) let a stranger skip a private or password table. Now only a Roblox friend's invite lets you straight in; anyone else asks the leader.
+- Universal Coin conversion and the friend invite rewards check amounts, friendship and daily caps on the server.
 
 Saving (DataStore)
 - Session locking (`Core/SessionLock`) with `UpdateAsync`, 3 tries with backoff, autosave every 60 s, release on leave and `BindToClose`.

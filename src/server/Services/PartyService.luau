@@ -319,7 +319,13 @@ function handlers.joinFriend(player: Player, request: any)
 
 	-- Straight in: the leader invited you here, or it's a friends-only table of your friend.
 	local arrival = arrivals[player.UserId]
-	local invitedByLeader = linked and arrival ~= nil and arrival.invited and party.leaderId == friend.UserId
+	-- The invite can come from LaunchData, which anyone can put in a link, so a stranger's
+	-- "invite" only gets them as far as asking the leader.
+	local invitedByLeader = linked
+		and arrival ~= nil
+		and arrival.invited
+		and party.leaderId == friend.UserId
+		and isFriend(player, friend.UserId)
 	local friendsTable = effectivePrivacy(party) == "friends" and isFriend(player, party.leaderId)
 	if invitedByLeader or friendsTable then
 		local ok, err
