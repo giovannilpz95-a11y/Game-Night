@@ -5,6 +5,7 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Architecture]]: how parties, tables, turns and bots work
 - [[Tables]]: 3D tables, seated avatars and boards
 - [[Meshes]]: the detailed code-built tables and stools, and the optional smooth meshes to import
+- [[Performance]]: low-end phone settings, low-detail mode, streaming, and what to measure in Studio
 - [[Lobby]]: the furnished lobby room, its lighting, and camera spots for filming
 - [[UI]]: phone-first layout, the lobby HUD, the match screen and Rematch
 - [[Adding a game]]: the checklist for every new game

@@ -18,6 +18,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local LobbyLayout = require(ReplicatedStorage.Shared.LobbyLayout)
 local Furniture = require(script.Parent.Furniture)
 local Pieces = require(script.Parent.Pieces)
+local Optimize = require(script.Parent.Parent.Lobby.Optimize)
 
 local Builder = {}
 
@@ -294,6 +295,9 @@ function Builder.getTables(): { Model }
 			elseif template then fromTemplate(template, spec.shape, at)
 			else buildPlain(spec.shape, at)
 		Builder.smoothCylinders(model)
+		Optimize.decor(model)
+		-- A table arrives on a phone whole: stools, seats, board anchor and pieces.
+		Optimize.atomic(model)
 		counts[spec.zone] = (counts[spec.zone] or 0) + 1
 		local id = `{spec.zone}-{counts[spec.zone]}`
 		model.Name = id
