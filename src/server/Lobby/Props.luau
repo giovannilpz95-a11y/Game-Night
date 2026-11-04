@@ -504,13 +504,13 @@ function Props.SnackBar(origin: CFrame, w: number, d: number, parent: Instance):
 	end
 	-- Menu sign above the back bar.
 	local sign = box(m, origin, 0, 10.2, backZ - 0.2, w * 0.7, 3, 0.3, { Color = C.ink })
-	Props.text(sign, Enum.NormalId.Front, "Snack Bar", { color = Color3.fromRGB(255, 214, 120), stroke = Color3.fromRGB(150, 60, 30), lightInfluence = 0, padding = 0.1 })
+	Props.text(sign, Enum.NormalId.Front, "Snack Bar · Shop", { color = Color3.fromRGB(255, 214, 120), stroke = Color3.fromRGB(150, 60, 30), lightInfluence = 0, padding = 0.1 })
 	lamp(sign, 16, 0.8)
 	-- The bar doubles as the shop: a chalkboard on the counter and a prompt to open it.
 	local board = box(m, origin, w / 4, 5.3, counterZ - 0.4, 4.2, 2.6, 0.2, { Color = Color3.fromRGB(34, 44, 40), Material = Enum.Material.Slate })
 	board.CFrame *= CFrame.Angles(math.rad(-12), 0, 0)
 	box(m, origin, w / 4, 5.3, counterZ - 0.3, 4.6, 3, 0.15, { Color = C.lightWood, Material = Enum.Material.Wood }).CFrame *= CFrame.Angles(math.rad(-12), 0, 0)
-	Props.text(board, Enum.NormalId.Front, '<font color="#FFD978">SHOP</font>\nPieces · Card backs\nReactions · Gems', { color = Color3.fromRGB(236, 240, 230), rich = true, padding = 0.1, lightInfluence = 0.5 })
+	Props.text(board, Enum.NormalId.Front, '<font color="#FFD978">SHOP</font>\nPieces · Cards\nReactions · Gems', { color = Color3.fromRGB(236, 240, 230), rich = true, padding = 0.1, lightInfluence = 0.5 })
 	local holder = box(m, origin, 0, 3, counterZ - 2.6, 1, 1, 1, {
 		Name = "ShopPromptHolder",
 		Transparency = 1,

@@ -135,8 +135,8 @@ LobbyLayout.props = {
 	{ kind = "Plant", x = 36, z = -144, w = 3, d = 3, yaw = 0 },
 
 	-- Foyer wayfinding: a signpost pointing to every zone and shop, and a floor map.
-	{ kind = "Signpost", x = -7, z = -8, w = 2, d = 2, yaw = 0 },
-	{ kind = "Directory", x = -14, z = -8, w = 8, d = 1.6, yaw = 180 },
+	{ kind = "Signpost", x = -6, z = -10, w = 2, d = 2, yaw = 0 },
+	{ kind = "Directory", x = -16, z = -6, w = 8, d = 1.6, yaw = 180 },
 
 	-- A jukebox at the side of the Party Stage.
 	{ kind = "Jukebox", x = 72, z = -147, w = 4, d = 3, yaw = 180 },
