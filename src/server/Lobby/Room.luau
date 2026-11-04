@@ -200,7 +200,6 @@ local function stage(room: Model)
 			part(f, { Size = Vector3.new(1.6, L.CEILING_Y - L.STAGE_Y, 1), Position = Vector3.new(side * (25 + i * 1.5), (L.CEILING_Y + L.STAGE_Y) / 2, s.minZ + 1 + (i % 2) * 0.5), Color = Color3.fromRGB(140, 30, 50), Material = Enum.Material.Fabric, CastShadow = false })
 		end
 	end
-	part(f, { Size = Vector3.new(w, 3, 1.2), Position = Vector3.new(cx, L.CEILING_Y - 1.5, s.minZ + 1.5), Color = Color3.fromRGB(140, 30, 50), Material = Enum.Material.Fabric, CastShadow = false })
 end
 
 local function banners(room: Model)

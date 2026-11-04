@@ -215,11 +215,11 @@ end
 function Props.Bench(origin: CFrame, w: number, d: number, parent: Instance): Model
 	local m = newModel("Bench", parent)
 	box(m, origin, 0, 1.6, 0, w, 0.4, d, { Color = C.lightWood, Material = Enum.Material.Wood })
-	box(m, origin, 0, 2.2, 0.4, w - 0.4, 0.8, d - 0.8, { Color = Color3.fromRGB(150, 52, 62), Material = Enum.Material.Fabric })
+	box(m, origin, 0, 1.95, 0, w - 0.4, 0.3, d - 0.4, { Color = Color3.fromRGB(150, 52, 62), Material = Enum.Material.Fabric })
 	for _, lx in { -w / 2 + 0.6, w / 2 - 0.6 } do
 		box(m, origin, lx, 0.7, 0, 0.5, 1.4, d - 0.4, { Color = C.darkWood, Material = Enum.Material.Wood })
 	end
-	seat(m, origin, 0, 1.9, 0, w - 1, d - 0.6)
+	seat(m, origin, 0, 2.2, 0, w - 1, d - 0.6)
 	return m
 end
 
@@ -289,7 +289,7 @@ end
 function Props.TV(origin: CFrame, w: number, d: number, parent: Instance): Model
 	local m = newModel("TV", parent)
 	local h = w * 9 / 16
-	local bottom = 9
+	local bottom = 8 -- screen from 8 to 26 studs over the stage for a 32-wide TV
 	-- Low media console under it.
 	box(m, origin, 0, 1.4, -0.5, w * 0.6, 2.8, d + 1, { Color = C.darkWood, Material = Enum.Material.Wood })
 	box(m, origin, 0, 2.9, -0.5, w * 0.6 + 0.4, 0.2, d + 1.2, { Color = C.wood, Material = Enum.Material.Wood })

@@ -93,7 +93,7 @@ LobbyLayout.props = {
 	{ kind = "PartyBoard", x = 0, z = -84, w = 16, d = 1.6, yaw = 180 },
 
 	-- Back wall over the Party Stage: the big TV, trophy case and arcade cabinets.
-	{ kind = "TV", x = 0, z = -148.5, w = 40, d = 2, yaw = 180, y = 1.1 },
+	{ kind = "TV", x = 0, z = -148.5, w = 32, d = 2, yaw = 180 },
 	{ kind = "TrophyCase", x = -50, z = -148, w = 14, d = 3, yaw = 180 },
 	{ kind = "Arcade", x = 82, z = -147.5, w = 4, d = 4, yaw = 180 },
 	{ kind = "Arcade", x = 88, z = -147.5, w = 4, d = 4, yaw = 180 },
@@ -132,8 +132,8 @@ LobbyLayout.props = {
 	{ kind = "Plant", x = 36, z = -144, w = 3, d = 3, yaw = 0 },
 
 	-- Benches in the foyer, facing the room.
-	{ kind = "Bench", x = -18, z = 2, w = 8, d = 2.4, yaw = 90 },
-	{ kind = "Bench", x = 18, z = 2, w = 8, d = 2.4, yaw = -90 },
+	{ kind = "Bench", x = -18, z = 2, w = 8, d = 2.4, yaw = -90 },
+	{ kind = "Bench", x = 18, z = 2, w = 8, d = 2.4, yaw = 90 },
 }
 
 -- Camera spots for the store thumbnails and trailer (docs/Store page.md shot list).
