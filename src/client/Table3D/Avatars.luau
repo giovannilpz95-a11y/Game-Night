@@ -111,10 +111,20 @@ end
 local baseOf: { [any]: CFrame } = {}
 local wroteOf: { [any]: CFrame } = {}
 
+-- AnimationConstraint.Transform doesn't read back bit-for-bit what was written, so "is
+-- it still what we wrote" has to allow a little rounding. Without this, every frame took
+-- our own last pose as the new base and the gesture never fully went back.
+local function same(a: CFrame, b: CFrame): boolean
+	if (a.Position - b.Position).Magnitude > 1e-3 then
+		return false
+	end
+	return a.LookVector:Dot(b.LookVector) > 0.99999 and a.UpVector:Dot(b.UpVector) > 0.99999
+end
+
 local function currentBase(motor: any): CFrame
 	local now = motor.Transform
 	local wrote = wroteOf[motor]
-	if wrote and now == wrote then
+	if wrote and same(now, wrote) then
 		return baseOf[motor] or CFrame.identity
 	end
 	baseOf[motor] = now
@@ -126,8 +136,11 @@ local function write(motor: any, value: CFrame)
 	wroteOf[motor] = value
 end
 
+-- Puts the joint back as it was before the gesture (unless an Animator has already
+-- written over it this frame, in which case its value stands).
 local function restore(motor: any)
-	if wroteOf[motor] and motor.Transform == wroteOf[motor] then
+	local wrote = wroteOf[motor]
+	if wrote and same(motor.Transform, wrote) then
 		motor.Transform = baseOf[motor] or CFrame.identity
 	end
 	wroteOf[motor] = nil
