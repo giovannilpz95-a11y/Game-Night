@@ -5,13 +5,15 @@
 -- Attachment or a part) at the center of the table top. In that order of preference:
 --   1. Tables already in Workspace with the tag (placed by hand in Studio).
 --   2. A table model from ReplicatedStorage.Assets whose name has "Square" or "Round"
---      in it, cloned along Config.TableOrigin. Seats and an anchor are added if missing.
+--      in it, cloned onto the spots in shared/LobbyLayout. Seats and an anchor are added
+--      if missing.
 --   3. Plain tables built from parts, so 3D play works before any art exists.
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local LobbyLayout = require(ReplicatedStorage.Shared.LobbyLayout)
 local Pieces = require(script.Parent.Pieces)
 
 local Builder = {}
@@ -113,6 +115,39 @@ local function orderSeats(model: Model, center: Vector3)
 	end)
 	for i, seat in seats do
 		seat.Name = `Seat{i}`
+		-- Level the seat and turn it to face the middle. Template chairs can come in
+		-- tilted or turned sideways, and whoever sits there (bots too) takes the seat's
+		-- angle: side seats had their sitters leaning forward through the chair.
+		local pos = seat.Position
+		local toCenter = Vector3.new(center.X - pos.X, 0, center.Z - pos.Z)
+		if toCenter.Magnitude > 0.1 then
+			-- Keep the seat's top surface where it was: a seat that came in on its side
+			-- would otherwise drop and sit people inside the cushion.
+			local cf, size = seat.CFrame, seat.Size
+			local top = pos.Y + 0.5 * (math.abs(cf.RightVector.Y) * size.X + math.abs(cf.UpVector.Y) * size.Y + math.abs(cf.LookVector.Y) * size.Z)
+			-- The chair's own cushion may sit higher than the Seat part (or be tilted, so
+			-- one side sticks up): sit on the highest chair part right around the seat,
+			-- so no cushion shows through the hips.
+			for _, d in model:GetDescendants() do
+				if d:IsA("BasePart") and d ~= seat and not d:IsA("Seat") then
+					local flat = Vector3.new(d.Position.X - pos.X, 0, d.Position.Z - pos.Z).Magnitude
+					local big = math.max(d.Size.X, d.Size.Y, d.Size.Z)
+					if flat < 1.3 and big < 4 then
+						local dcf, dsize = d.CFrame, d.Size
+						local dTop = d.Position.Y + 0.5 * (math.abs(dcf.RightVector.Y) * dsize.X + math.abs(dcf.UpVector.Y) * dsize.Y + math.abs(dcf.LookVector.Y) * dsize.Z)
+						-- Cushion height only: not the chair back rising behind the seat.
+						if dTop > top and dTop < top + 0.8 then
+							top = dTop
+						end
+					end
+				end
+			end
+			pos = Vector3.new(pos.X, top + 0.1 - size.Y / 2, pos.Z)
+			seat.CFrame = CFrame.lookAt(pos, pos + toCenter.Unit)
+			-- The chair model shows the cushion; the leveled Seat part would poke out of
+			-- it (and through whoever sits there), so it only does the sitting.
+			seat.Transparency = 1
+		end
 	end
 	return #seats
 end
@@ -199,7 +234,10 @@ function Builder.getTables(): { Model }
 	for i, spec in Config.DefaultTables do
 		local columns = Config.TableColumns or #Config.DefaultTables
 		local col, row = (i - 1) % columns, (i - 1) // columns
-		local at = Config.TableOrigin + Vector3.new((col - (columns - 1) / 2) * Config.TableSpacing, 0, -row * Config.TableSpacing)
+		local sx, sy, sz = LobbyLayout.tableSpot(i)
+		local at = if sx and sy and sz
+			then Vector3.new(sx, sy, sz)
+			else Config.TableOrigin + Vector3.new((col - (columns - 1) / 2) * Config.TableSpacing, 0, -row * Config.TableSpacing)
 		local template = findTemplate(spec.shape)
 		local model = if template then fromTemplate(template, spec.shape, at) else buildPlain(spec.shape, at)
 		counts[spec.zone] = (counts[spec.zone] or 0) + 1

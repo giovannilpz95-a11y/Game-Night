@@ -25,6 +25,7 @@ export type Match = typeof(setmetatable(
 		result: GameModule.Result?,
 		moveNumber: number,
 		aborted: boolean,
+		lastMove: { seat: number, move: any, number: number }?,
 	},
 	Match
 ))
@@ -41,6 +42,7 @@ function Match.new(id: string, rules: any, seats: { Seat }, options: any?, rng: 
 		result = nil,
 		moveNumber = 0,
 		aborted = false,
+		lastMove = nil,
 	}, Match)
 end
 
@@ -95,6 +97,8 @@ function Match.submitMove(self: Match, seat: number, move: any): (boolean, strin
 	end
 	self.rules.applyMove(self.state, seat, move)
 	self.moveNumber += 1
+	-- Who moved and how, for the avatars at the table (MatchService reads it after moves).
+	self.lastMove = { seat = seat, move = move, number = self.moveNumber }
 	self.result = self.rules.getResult(self.state)
 	return true
 end
@@ -131,6 +135,39 @@ end
 
 function Match.getScores(self: Match): { [number]: number }?
 	return if self.rules.getScores then self.rules.getScores(self.state) else nil
+end
+
+-- Per-seat stats for the profile: counters the game kept (GameModule.addStat) with
+-- getMatchStats(state) on top. Values are whatever the game said; the server's Stats
+-- module keeps only the keys StatsCatalog lists and clamps the numbers.
+function Match.getMatchStats(self: Match): { [number]: { [string]: number } }
+	local out = {}
+	for seat in self.seats do
+		out[seat] = {}
+	end
+	local counters = type(self.state) == "table" and self.state.matchStats
+	if type(counters) == "table" then
+		for seat, row in counters do
+			if out[seat] and type(row) == "table" then
+				for key, value in row do
+					out[seat][key] = value
+				end
+			end
+		end
+	end
+	if self.rules.getMatchStats then
+		local ok, final = pcall(self.rules.getMatchStats, self.state)
+		if ok and type(final) == "table" then
+			for seat, row in final do
+				if out[seat] and type(row) == "table" then
+					for key, value in row do
+						out[seat][key] = value
+					end
+				end
+			end
+		end
+	end
+	return out
 end
 
 -- Lets a bot (or the AFK timer) move for a seat. Returns true if a move was made.

@@ -8,7 +8,7 @@ When a match starts, the party is moved to a free table in the room and everyone
 
 | Game | What's on the table |
 |---|---|
-| Color Clash, Go Fish, Speed, War, Spoons | Everyone's hand face down in front of them (count shown on big hands), draw piles, and the face-up cards: discard top in the current color, Speed's center piles, War's flipped cards, Go Fish books and the pond, Spoons' spoons |
+| Color Clash, Go Fish, Speed, War, Spoons, I Doubt It, President, Slap Stack, Hearts, Spades, Thirty-One, Palace, Old Maid, Snap, Gin Rummy, Oh Hell | Everyone's hand face down in front of them (count shown on big hands), draw piles, and the face-up cards: discard top in the current color, Speed's center piles, War's flipped cards, Go Fish books and the pond, Spoons' spoons |
 | Property Party | The 40-space loop with street colors, owner markers (dim when mortgaged), houses and hotels, every pawn, the dice |
 | Hexlands | The 19-hex island with number tokens, roads, camps, towns, the Bandit, the dice |
 | Conquest Isles | The map as region-colored lands with borders and sea lanes, an army stack with its count on every territory |
@@ -25,17 +25,18 @@ When a match starts, the party is moved to a free table in the room and everyone
 | `server/Tables/Bots.luau` | Seated bodies for bots (HumanoidDescription colors picked from the bot's name). |
 | `server/Tables/Pieces.luau` | Clones piece models from `ReplicatedStorage.Assets`, scales a whole set by one factor, places them on cells. |
 | `server/Tables/Boards/<module>.luau` | One board or scene per game, built from the **spectator** view so nothing hidden (hands, the secret word, answers) is in the world. |
-| `server/Tables/Scene.luau` | Building blocks for scenes: text on parts, cards, piles, hands in front of seats, pawns, the party screen. |
+| `server/Tables/Scene.luau` | Building blocks for scenes: flat text, cards, piles, hands in holders in front of seats, the party screen. Use `Scene.flatText` for text lying on the table: a Top face SurfaceGui is turned 90 degrees from its part. |
+| `server/Tables/Models.luau` | Small models built from parts in code, so they ship with the scripts: pawns, Property Party tokens, dice, houses, hotels, soldiers, flags. Game-only scenery (Hexlands land dioramas, Whodunit furniture, hats and items) lives in that game's board file. |
 | `client/Table3D/Controller.luau` | Camera from your seat, taps on the board turned into cell clicks, your own highlights. |
 | `client/Table3D/<module>.luau` | Per-game input (select a piece, pick a target), same logic as the 2D renderer. |
 
 ## Where tables come from
 In this order:
 1. **Tables placed in Studio:** any Model in Workspace tagged `GameTable` (CollectionService). Give it attributes `TableId` (e.g. `Quick-1`) and `Zone` (`Quick`, `Strategy`, `Cards`, `Party`, matching `GameCatalog.category`), `Seat` parts, and a `BoardAnchor` (Attachment or part) at the center of the table top. Seats are renamed `Seat1..N` in order around the table, starting from the +Z side.
-2. **A template from Assets:** if nothing is tagged, a Model under `ReplicatedStorage.Assets` whose name has "Square" or "Round" in it (and "Table" in its name or its folder's) is cloned for each entry in `Config.DefaultTables` (13 tables: 4-seat and 8-seat, one zone per catalog category), in rows of `Config.TableColumns` from `Config.TableOrigin`. Seats are added around it if it has none, and the anchor goes on top of its bounding box.
-3. **Plain tables built in code**, same layout, so 3D play works before any art exists.
+2. **A template from Assets:** if nothing is tagged, a Model under `ReplicatedStorage.Assets` whose name has "Square" or "Round" in it (and "Table" in its name or its folder's) is cloned for each entry in `Config.DefaultTables` (13 tables: 4-seat and 8-seat, one zone per catalog category), each on its spot in the lobby room (`shared/LobbyLayout.luau`, see [[Lobby]]). Seats are added around it if it has none, and the anchor goes on top of its bounding box.
+3. **Plain tables built in code**, same spots, so 3D play works before any art exists.
 
-`Config.TableOrigin` is a guess (60 studs behind the spawn). Once the lobby room exists, tag its tables and the code-built ones go away.
+Every table gets a sign post at its edge with its state on both faces, and a pendant lamp over it (see [[Lobby]]).
 
 ## How a match uses a table
 - `MatchService` calls `TableService.claim` after building the seats. It picks the party's previous table if it's free, then a table in the game's zone, then the smallest table that fits. No free table means the match plays in the 2D view, like before (overflow).
@@ -58,5 +59,13 @@ Cells are parts in the board's `Cells` folder with `Row`/`Col` attributes (Four 
 - **Played on the table:** the same, plus a `Cells` folder of clickable parts with `Row`/`Col` attributes (`Boards/Square.luau` does this for grids), and `client/Table3D/<module>.luau` with `create(ctx)` returning `{ update(snapshot), click(cellPart), destroy? }`. Add the id to `Config.Boards3D`.
 - Pieces are built from parts. Chess, Checkers and Four in a Row use the models in `ReplicatedStorage.Assets` when they exist (`Pieces.find`); other games can do the same for showcase models later.
 
+## Avatars act out the game
+Seated avatars (players and bots) act out every move, for everyone in the room:
+- `shared/TableActions.luau` (pure, tested in `tests/TableActions.spec.luau`) turns a move into a gesture: `move` (chess, checkers: reach the piece, carry it to its square), `place` (a cell, a column or the board), `card`, `draw`, `dice`, `slap`, `grab`, `point` (at the player you ask), `knock`, `pass`, `buzz`. Also `think` (bots before a slow move), the end-of-game reactions (`cheer` for winners, `groan` for the rest, `shrug` on a draw) and the eight emotes on the wheel.
+- `server/Services/TableActionService.luau` fires the `TableAction` remote to all clients with the table, the table seat, who sits there (userId or bot body name) and the target. `Match.lastMove` is how `MatchService` knows who just moved, so bot, AFK and player moves all animate. Emote requests are checked (on the wheel, seated in a match at a table, 3 per 4 s).
+- `client/Table3D/Avatars.luau` plays it: procedural poses on the R15 upper-body joints (`Motor6D.Transform`, written after the Animator so the sit pose stays), the arm aimed at the real cell or pile, plus small client-only props (a flying card, two dice, a spoon) and an emoji over the head for emotes and reactions. No animation assets needed. Block-figure bots only get the emoji.
+- `client/UI/EmoteWheel.luau`: the 😀 button in the match header opens the wheel.
+- To add a game: give it an entry in `TableActions` (a `KINDS` line, or a function for cell targets). The spec fails if a game's moves never animate.
+
 ## Not in this version
-From the lobby design, still to build: walking up and sitting to claim a table, the "Join?" toast and fade, spectator camera and Watch button, emotes and seat animations, avatar headshots in the 2D view, the rematch / another game card at the table, and the 60 s party hold.
+From the lobby design, still to build: walking up and sitting to claim a table, the "Join?" toast and fade, spectator camera and Watch button, avatar headshots in the 2D view, the rematch / another game card at the table, and the 60 s party hold.

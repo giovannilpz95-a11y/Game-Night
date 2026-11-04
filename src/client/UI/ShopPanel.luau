@@ -1,11 +1,13 @@
 -- The shop window: your wallet and daily challenges, Gems & passes (Robux), the hub shop
--- (Gems) and one shop per kind of Coin. Basic on purpose; the polish step restyles it.
+-- (Gems), reaction packs (Gems, Coins or the Robux bundle) and one shop per kind of Coin. Basic on purpose; the polish step restyles it.
 -- The server checks every purchase, this only asks.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
+local Reactions = require(ReplicatedStorage.Shared.Reactions)
+local ReactionFx = require(script.Parent.ReactionFx)
 local Kit = require(script.Parent.Kit)
 local CoinConvertPanel = require(script.Parent.CoinConvertPanel)
 local Analytics = require(script.Parent.Parent.Analytics)
@@ -80,7 +82,12 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 	local tab = "wallet"
 	local converter = CoinConvertPanel.create(parent, sendEconomy)
 
-	local tabs = { { key = "wallet", name = "Wallet & daily" }, { key = "robux", name = "Gems & passes" }, { key = "hub", name = "Hub shop" } }
+	local tabs = {
+		{ key = "wallet", name = "Wallet & daily" },
+		{ key = "robux", name = "Gems & passes" },
+		{ key = "hub", name = "Hub shop" },
+		{ key = "reactions", name = "😀 Reactions" },
+	}
 	-- Every coin kind, for the wallet list; only kinds with items get a shop tab.
 	local coinKeys = {}
 	for key in Economy.Coins do
@@ -237,6 +244,9 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		local vip = wallet.vip == true
 		local equipped = wallet.equipped and wallet.equipped[shop] or {}
 		for index, item in ShopCatalog.forShop(shop) do
+			if item.slot == "reactions" then
+				continue -- on the Reactions tab
+			end
 			local c = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, BorderSizePixel = 0, LayoutOrder = index, Parent = content }, { Kit.corner(10), Kit.padding(8) })
 			Kit.new("UIStroke", { Color = TIER_COLORS[item.tier] or Theme.SubText, Thickness = 2 }).Parent = c
 			Kit.label(item.name, { Font = Theme.FontBold, TextSize = 15, Size = UDim2.new(1, 0, 0, 36), TextYAlignment = Enum.TextYAlignment.Top, Parent = c })
@@ -267,6 +277,215 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 						Size = UDim2.new(1, 0, 0, 32),
 						Parent = c,
 					})
+				end
+			end
+		end
+	end
+
+	-- Reaction packs: tap any reaction to see it play in the preview on the left.
+	local function renderReactions()
+		Kit.list(8).Parent = content
+		local vip = wallet.vip == true
+		local ownedSet = wallet.owned or {}
+
+		local function packCard(order: number, name: string, sub: string, ids: { string }, tierColor: Color3?): (Frame, Frame)
+			local c = Kit.new("Frame", {
+				BackgroundColor3 = Theme.PanelLight,
+				BorderSizePixel = 0,
+				Size = UDim2.new(1, -8, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				LayoutOrder = order,
+				Parent = content,
+			}, { Kit.corner(10), Kit.padding(10) })
+			if tierColor then
+				Kit.new("UIStroke", { Color = tierColor, Thickness = 2, Parent = c })
+			end
+			local preview = Kit.new("Frame", {
+				Name = "Preview",
+				BackgroundColor3 = Theme.Panel,
+				BorderSizePixel = 0,
+				ClipsDescendants = true,
+				Size = UDim2.fromOffset(72, 72),
+				Parent = c,
+			}, { Kit.corner(12) })
+			local middle = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(82, 0),
+				Size = UDim2.new(1, -82 - 136, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Parent = c,
+			}, { Kit.list(4) })
+			Kit.label(name, { Font = Theme.FontBold, LayoutOrder = 1, Parent = middle })
+			Kit.label(sub, { TextSize = 13, TextColor3 = tierColor or Theme.SubText, LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 16), Parent = middle })
+			local icons = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				LayoutOrder = 3,
+				Parent = middle,
+			})
+			Kit.new("UIGridLayout", { CellSize = UDim2.fromOffset(34, 34), CellPadding = UDim2.fromOffset(4, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = icons })
+			-- A still picture of the last reaction shown, so the thumbnail is never blank
+			-- (before an animation starts, after it ends, or while the shop redraws).
+			local still = Kit.label("", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromScale(0.8, 0.8),
+				Font = Theme.FontBold,
+				TextScaled = true,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Parent = preview,
+			})
+			local function setStill(reaction: Reactions.Reaction)
+				still.Text = reaction.icon or reaction.text or reaction.label
+				still.TextColor3 = if reaction.icon then Theme.Text else (reaction.color or Theme.Text)
+				still.Size = if reaction.icon then UDim2.fromScale(0.62, 0.62) else UDim2.fromScale(0.9, 0.5)
+			end
+			local current: Frame? = nil
+			local function show(reaction: Reactions.Reaction)
+				if current then
+					current:Destroy()
+				end
+				setStill(reaction)
+				still.Visible = false
+				local size = ReactionFx.size(reaction, 64)
+				local scaleDown = math.min(1, 68 / size.X)
+				local holder = Kit.new("Frame", {
+					BackgroundTransparency = 1,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.5),
+					Size = UDim2.fromOffset(size.X * scaleDown, size.Y * scaleDown),
+					Parent = preview,
+				})
+				current = holder
+				holder.Destroying:Once(function()
+					if current == holder then
+						current = nil
+						still.Visible = true
+					end
+				end)
+				ReactionFx.play(holder, reaction)
+			end
+			for i, id in ids do
+				local reaction = Reactions.get(id)
+				if reaction then
+					local b = Kit.button(reaction.icon or "", function()
+						show(reaction)
+					end, {
+						BackgroundColor3 = Theme.Panel,
+						TextColor3 = reaction.color or Theme.Text,
+						TextSize = 20,
+						LayoutOrder = i,
+						Parent = icons,
+					})
+					if not reaction.icon then
+						-- Text reactions: the words, small.
+						b.Text = reaction.text or reaction.label
+						b.TextScaled = true
+						b.Font = Theme.FontBold
+						b.TextColor3 = Theme.Text
+						Kit.new("UIStroke", { Color = reaction.color or Theme.Accent, Thickness = 1, Parent = b })
+						Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2), Parent = b })
+					end
+				end
+			end
+			local first = Reactions.get(ids[1])
+			if first then
+				setStill(first)
+			end
+			local buttons = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, 0, 0, 0),
+				Size = UDim2.fromOffset(130, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Parent = c,
+			}, { Kit.list(6) })
+			return c, buttons
+		end
+
+		local function buyButton(parent: Instance, text: string, color: Color3, order: number, onClick: () -> ())
+			Kit.button(text, onClick, {
+				BackgroundColor3 = color,
+				TextColor3 = Theme.AccentText,
+				TextSize = 14,
+				LayoutOrder = order,
+				Size = UDim2.new(1, 0, 0, 32),
+				Parent = parent,
+			})
+		end
+
+		line("Tap 😀 in any game to pop a reaction over your head (or next to your seat in the 2D view).", 1, Theme.SubText)
+		if wallet.studio then
+			-- Same as the Wallet tab's button, here so buying packs can be tested in place.
+			Kit.button("Studio test: free Gems and Coins", function()
+				sendEconomy({ action = "studioGrant" })
+			end, { LayoutOrder = 1, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.Accent, TextColor3 = Theme.AccentText, Parent = content })
+		end
+
+		-- Every Gem pack for Robux.
+		local bundle = Economy.ReactionBundle
+		local missing = 0
+		for _, id in bundle.items do
+			if not ownedSet[id] then
+				missing += 1
+			end
+		end
+		local bundleIds = {}
+		for _, id in bundle.items do
+			local pack = Reactions.pack(id)
+			if pack then
+				table.insert(bundleIds, pack.reactions[1])
+			end
+		end
+		local _, bundleButtons = packCard(2, "Every reaction pack", `{#bundle.items} packs, {#bundle.items * Reactions.PerPage} reactions`, bundleIds, TIER_COLORS.Legendary)
+		if missing == 0 then
+			Kit.label("Owned", { TextColor3 = Theme.Good, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = bundleButtons })
+		else
+			local ready = bundle.productId ~= 0
+			Kit.button(if ready then `R$ {bundle.robux}` else "Coming soon", function()
+				if ready then
+					sendPurchase({ action = "buyReactionBundle" })
+				end
+			end, {
+				BackgroundColor3 = if ready then Theme.Good else Theme.Panel,
+				TextColor3 = if ready then Theme.AccentText else Theme.SubText,
+				TextSize = 14,
+				Size = UDim2.new(1, 0, 0, 32),
+				Parent = bundleButtons,
+			})
+		end
+
+		-- The free ones, so players can preview them too.
+		local _, freeButtons = packCard(3, "Free reactions", "Everyone has these", Reactions.free, nil)
+		Kit.label("Free", { TextColor3 = Theme.Good, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = freeButtons })
+
+		for index, pack in Reactions.packs do
+			local item = ShopCatalog.get(pack.id)
+			if item then
+				local coinShop = item.shop ~= "hub"
+				local sub = `{item.tier} · {#pack.reactions} reactions{if coinShop then ` · {Economy.coinName(item.shop)}` else ""}`
+				local _, buttons = packCard(10 + index, `{pack.icon} {pack.name}`, sub, pack.reactions, TIER_COLORS[item.tier])
+				if ownedSet[item.id] then
+					Kit.label("On your wheel", { TextColor3 = Theme.Good, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = buttons })
+				else
+					if item.coins and coinShop then
+						local coinColor = Economy.Coins[item.shop] and Economy.Coins[item.shop].color or Theme.Accent
+						buyButton(buttons, `{item.coins} Coins`, coinColor, 1, function()
+							sendEconomy({ action = "buy", itemId = item.id, currency = "coins" })
+						end)
+					end
+					local gems = gemPrice(item, vip)
+					if gems then
+						buyButton(buttons, `{gems} Gems`, Color3.fromRGB(110, 220, 255), 2, function()
+							sendEconomy({ action = "buy", itemId = item.id, currency = "gems" })
+						end)
+					end
+					if item.universal and not item.notForSale then
+						buyButton(buttons, `{item.universal} Universal`, Economy.UniversalCoin.color, 3, function()
+							sendEconomy({ action = "buy", itemId = item.id, currency = "universal" })
+						end)
+					end
 				end
 			end
 		end
@@ -308,6 +527,9 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		elseif tab == "robux" then
 			title.Text = "Gems & passes"
 			renderRobux()
+		elseif tab == "reactions" then
+			title.Text = `Reactions  ·  {wallet.gems} {Economy.GemsName}`
+			renderReactions()
 		else
 			if tab == "hub" then
 				title.Text = `Hub shop  ·  {wallet.gems} {Economy.GemsName}`
@@ -320,9 +542,13 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 
 	return {
 		root = root,
-		-- Opens on a coin's shop (from a game table) or the wallet.
+		-- Opens on a coin's shop (from a game table), "reactions" (the 😀 wheel) or the wallet.
 		open = function(coinKey: string?)
-			tab = if coinKey and #ShopCatalog.forShop(coinKey) > 0 then coinKey else "wallet"
+			if coinKey == "reactions" then
+				tab = "reactions"
+			else
+				tab = if coinKey and #ShopCatalog.forShop(coinKey) > 0 then coinKey else "wallet"
+			end
 			root.Visible = true
 			Analytics.shop("Opened", tab)
 			render()

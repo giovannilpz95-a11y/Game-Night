@@ -37,12 +37,32 @@ export type Data = {
 	xp: number,
 	level: number,
 	winStreak: { [string]: number }, -- per coin key
+	-- See Core/Stats for what each field means.
 	stats: {
 		matches: number,
 		wins: number,
+		losses: number,
+		draws: number,
 		minutes: number,
-		games: { [string]: { played: number, wins: number } },
+		streak: number,
+		bestStreak: number,
+		humanMatches: number,
+		humanWins: number,
+		botMatches: number,
+		daysPlayed: number,
+		lastDay: number,
+		games: { [string]: any }, -- Stats.GameRow per game id
+		currency: {
+			gemsEarned: number,
+			gemsBought: number,
+			gemsSpent: number,
+			coinsEarned: { [string]: number },
+			coinsSpent: { [string]: number },
+		},
+		social: { invitesSent: number, friendsJoined: number, partiesJoined: number },
 	},
+	badges: { [string]: number }, -- badge id -> os.time() it was earned (shared/Badges)
+	weekly: { week: number, points: { [string]: number } }, -- this week's leaderboard points (Core/Weekly)
 	login: { lastDay: number, streak: number, best: number },
 	-- Friend invites (see Core/Referrals): who brought this player, and who they brought.
 	friends: {
@@ -66,6 +86,8 @@ export type Data = {
 		words: { [string]: { name: string, words: { string } } },
 		decks: { [string]: { name: string, questions: { { q: string, a: { string } } } } },
 	},
+	-- Help already seen: the lobby tour, and how-to-play cards turned off (see Core/Tips).
+	tips: { lobbyTour: boolean, hideCard: { [string]: boolean } },
 }
 
 local function newDaily(day: number): Daily
@@ -84,7 +106,25 @@ function Profile.new(now: number): Data
 		xp = 0,
 		level = 1,
 		winStreak = {},
-		stats = { matches = 0, wins = 0, minutes = 0, games = {} },
+		stats = {
+			matches = 0,
+			wins = 0,
+			losses = 0,
+			draws = 0,
+			minutes = 0,
+			streak = 0,
+			bestStreak = 0,
+			humanMatches = 0,
+			humanWins = 0,
+			botMatches = 0,
+			daysPlayed = 0,
+			lastDay = 0,
+			games = {},
+			currency = { gemsEarned = 0, gemsBought = 0, gemsSpent = 0, coinsEarned = {}, coinsSpent = {} },
+			social = { invitesSent = 0, friendsJoined = 0, partiesJoined = 0 },
+		},
+		badges = {},
+		weekly = { week = 0, points = {} },
 		login = { lastDay = 0, streak = 0, best = 0 },
 		friends = { invitedBy = 0, welcomed = false, invited = {}, payDay = 0, paidToday = 0 },
 		daily = newDaily(0),
@@ -95,6 +135,7 @@ function Profile.new(now: number): Data
 		currentLook = nil,
 		catalog = { purchases = 0, robux = 0 },
 		custom = { words = {}, decks = {} },
+		tips = { lobbyTour = false, hideCard = {} },
 	}
 end
 
@@ -112,6 +153,11 @@ end
 function Profile.reconcile(data: any, now: number): Data
 	if type(data) ~= "table" then
 		return Profile.new(now)
+	end
+	-- Saves from before Core/Stats counted wins and matches only: everything that wasn't a
+	-- win becomes a loss (draws weren't counted then).
+	if type(data.stats) == "table" and data.stats.losses == nil and type(data.stats.matches) == "number" then
+		data.stats.losses = math.max(0, data.stats.matches - (data.stats.wins or 0))
 	end
 	fill(data, Profile.new(now))
 	data.version = Profile.Version

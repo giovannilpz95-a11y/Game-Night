@@ -211,8 +211,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		ScrollBarThickness = 6,
 		Parent = root,
 	})
-	-- Cards overlap a little, like a fan. Left-aligned: a centered list wider than the
-	-- frame would push cards off the left edge, where scrolling can't reach them.
+	-- Cards overlap a little, like a fan. Left-aligned when scrolling: a centered list wider
+	-- than the frame would push cards off the left edge, where scrolling can't reach them.
 	local handList = Kit.list(-18, true)
 	handList.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	handList.VerticalAlignment = Enum.VerticalAlignment.Bottom
@@ -224,6 +224,30 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	end
 	handList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitHand)
 	fitHand()
+	-- Big hands squeeze together first (down to about a third of each card showing) and
+	-- only scroll after that, so on a phone you rarely have to scroll to find a card.
+	local function squeezeHand()
+		local count = 0
+		for _, child in hand:GetChildren() do
+			if child:IsA("Frame") then
+				count += 1
+			end
+		end
+		local cardW = hand.AbsoluteSize.Y * 0.9 * CARD_RATIO
+		local room = hand.AbsoluteSize.X - 48
+		if count < 2 or cardW <= 0 or room <= 0 then
+			handList.Padding = UDim.new(0, -18)
+			handList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			return
+		end
+		local gap = math.min(-18, (room - cardW) / (count - 1) - cardW)
+		gap = math.max(gap, -cardW * 0.65)
+		handList.Padding = UDim.new(0, math.floor(gap))
+		local fits = count * cardW + (count - 1) * gap <= room + 1
+		-- Centered when it all fits; left-aligned when scrolling, so the first cards stay reachable.
+		handList.HorizontalAlignment = if fits then Enum.HorizontalAlignment.Center else Enum.HorizontalAlignment.Left
+	end
+	hand:GetPropertyChangedSignal("AbsoluteSize"):Connect(squeezeHand)
 	-- One padding for the hand (a second UIPadding would be ignored). The bottom keeps
 	-- the cards clear of the scroll bar.
 	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 24), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 10), Parent = hand })
@@ -370,6 +394,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				end
 			end)
 		end
+		squeezeHand()
 	end
 
 	return {

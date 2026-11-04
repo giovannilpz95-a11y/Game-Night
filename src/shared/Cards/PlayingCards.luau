@@ -1,4 +1,6 @@
--- The standard 52-card deck shared by the classic card games (Speed, Spoons, War, Go Fish).
+-- The standard 52-card deck shared by the classic card games (Speed, Spoons, War, Go Fish,
+-- I Doubt It, President, Slap Stack, Hearts, Spades, Thirty-One, Palace, Old Maid,
+-- Snap, Gin Rummy, Oh Hell).
 -- Cards are ids 1..52. rank 1 = Ace ... 11 = Jack, 12 = Queen, 13 = King.
 -- suit 1 = Spades, 2 = Hearts, 3 = Diamonds, 4 = Clubs.
 -- Pure Luau, like the game rules, so it is shared by server, client and tests.
@@ -92,6 +94,96 @@ function PlayingCards.rankCounts(hand: { number }): { [number]: number }
 		counts[r] = (counts[r] or 0) + 1
 	end
 	return counts
+end
+
+-- A list of 1..maxCount different card ids from the network (a plain array, no extra keys).
+function PlayingCards.isCardList(value: any, maxCount: number): boolean
+	if type(value) ~= "table" then
+		return false
+	end
+	local n = #value
+	if n < 1 or n > maxCount then
+		return false
+	end
+	local keys = 0
+	for _ in value do
+		keys += 1
+	end
+	if keys ~= n then
+		return false
+	end
+	local seen = {}
+	for _, id in value do
+		if not PlayingCards.isCardId(id) or seen[id] then
+			return false
+		end
+		seen[id] = true
+	end
+	return true
+end
+
+-- True if every card in `cards` is in `hand`.
+function PlayingCards.holdsAll(hand: { number }, cards: { number }): boolean
+	for _, id in cards do
+		if not table.find(hand, id) then
+			return false
+		end
+	end
+	return true
+end
+
+-- Takes `cards` out of `hand` (in place). Cards that aren't there are ignored.
+function PlayingCards.removeCards(hand: { number }, cards: { number })
+	for _, id in cards do
+		local i = table.find(hand, id)
+		if i then
+			table.remove(hand, i)
+		end
+	end
+end
+
+-- True if all the cards share one rank.
+function PlayingCards.sameRank(cards: { number }): boolean
+	for _, id in cards do
+		if PlayingCards.rank(id) ~= PlayingCards.rank(cards[1]) then
+			return false
+		end
+	end
+	return true
+end
+
+-- Sorts by a custom rank power (low to high), then suit. power(id) -> number.
+function PlayingCards.sortBy(hand: { number }, power: (number) -> number): { number }
+	local out = table.clone(hand)
+	table.sort(out, function(a, b)
+		local pa, pb = power(a), power(b)
+		if pa ~= pb then
+			return pa < pb
+		end
+		return a < b
+	end)
+	return out
+end
+
+-- Sorts a hand by suit (Spades, Hearts, Clubs, Diamonds so colors alternate), then by
+-- power inside each suit. For trick-taking games.
+local SUIT_ORDER = { 1, 2, 4, 3 }
+function PlayingCards.sortBySuit(hand: { number }, power: (number) -> number): { number }
+	local out = table.clone(hand)
+	table.sort(out, function(a, b)
+		local sa, sb = SUIT_ORDER[PlayingCards.suit(a)], SUIT_ORDER[PlayingCards.suit(b)]
+		if sa ~= sb then
+			return sa < sb
+		end
+		return power(a) < power(b)
+	end)
+	return out
+end
+
+-- Aces high: 2 = 2 ... King = 13, Ace = 14.
+function PlayingCards.aceHigh(id: number): number
+	local r = PlayingCards.rank(id)
+	return if r == 1 then 14 else r
 end
 
 return PlayingCards

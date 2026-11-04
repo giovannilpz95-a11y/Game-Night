@@ -100,6 +100,27 @@ local function buildBlock(name: string, seat: Seat): Model
 	return model
 end
 
+-- Bots have no Animate script, so sitting doesn't bend their legs: they stood straight
+-- down through the chair. Bend hips forward and knees down by turning each joint's
+-- frame (a Motor6D's C0, an AnimationConstraint's Attachment0). Both replicate, and
+-- neither is the Transform the client's gestures (Table3D/Avatars) write and restore.
+local SIT_BEND = { RightHip = 90, LeftHip = 90, RightKnee = -90, LeftKnee = -90 }
+
+local function sitPose(rig: Model)
+	for _, d in rig:GetDescendants() do
+		local degrees = SIT_BEND[d.Name]
+		if degrees then
+			local bend = CFrame.Angles(math.rad(degrees), 0, 0)
+			if d:IsA("Motor6D") then
+				d.C0 *= bend
+			elseif d:IsA("AnimationConstraint") and d.Attachment0 then
+				local a0 = d.Attachment0 :: Attachment
+				a0.CFrame *= bend
+			end
+		end
+	end
+end
+
 -- Sits a bot named `name` in `seat`. Returns the body (parented to `parent`).
 function Bots.seat(name: string, seat: Seat, parent: Instance): Model
 	local rig = buildRig(name)
@@ -118,6 +139,15 @@ function Bots.seat(name: string, seat: Seat, parent: Instance): Model
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 	end
 	rig:PivotTo(seat.CFrame * CFrame.new(0, 3, 0))
+	-- Rigs with the newer avatar joints (AnimationConstraints) are physics-driven unless
+	-- kinematic: a pose written to them (client/Table3D/Avatars) would fold the body.
+	-- Kinematic joints hold their pose exactly, like Motor6Ds.
+	for _, d in rig:GetDescendants() do
+		if d:IsA("AnimationConstraint") then
+			d.IsKinematic = true
+		end
+	end
+	sitPose(rig)
 	rig.Parent = parent
 	local root = rig:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if root then

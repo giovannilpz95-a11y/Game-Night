@@ -1,11 +1,15 @@
 # Card games and the gambling rule
 
-Back to [[Home]] · games: [[Speed]], [[Spoons]], [[War]], [[Go Fish]] · backlog: [[CardGameIdeas]].
+Back to [[Home]] · games: [[Speed]], [[Spoons]], [[War]], [[Go Fish]], [[I Doubt It]], [[President]], [[Slap Stack]], [[Hearts]], [[Spades]], [[Thirty-One]], [[Palace]], [[Old Maid]], [[Snap]], [[Gin Rummy]], [[Oh Hell]] · backlog: [[CardGameIdeas]].
 
 ## Shared deck
 - `src/shared/Cards/PlayingCards.luau`: the standard 52-card deck. Card ids 1-52, `rank` 1 (Ace) to 13 (King), `suit` 1-4 (Spades, Hearts, Diamonds, Clubs). Helpers for shuffling, sorting, rank counts and validating ids from the network.
+- `src/shared/Cards/Tricks.luau`: trick-taking helpers (follow suit, trick winner with or without trump) for Hearts, Spades and Oh Hell.
+- `src/shared/Cards/Melds.luau`: rummy melds (sets and Ace-low runs), the least-deadwood arrangement of a hand, and laying off on another hand's melds. Used by Gin Rummy; ready for other rummy games.
 - `src/client/UI/PlayingCard.luau`: draws faces and backs in code, card-shaped slots, empty spots, the green felt, and a hand row that overlaps cards when a hand gets big.
-- All four games pay **Card Coins** (`cards` in `shared/Economy.luau`) and share one **Card shop** (`ShopCatalog`, `shop = "cards"`). New 52-card games should pay Card Coins too.
+- `src/client/UI/CardTable.luau`: the shared screen layout for the newer card games (seat chips, felt, prompt, action buttons, hand, trick spots).
+- `tests/CardSim.luau`: plays a whole game with bots (random seat order, phase clocks) for the specs.
+- All the card games pay **Card Coins** (`cards` in `shared/Economy.luau`) and share one **Card shop** (`ShopCatalog`, `shop = "cards"`). New 52-card games should pay Card Coins too.
 - Views send seat-keyed maps with string keys: sparse number keys don't survive RemoteEvents.
 
 ## Poker, blackjack and other casino games: not allowed

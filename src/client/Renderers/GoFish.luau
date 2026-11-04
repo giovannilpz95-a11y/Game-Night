@@ -67,6 +67,12 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		Size = UDim2.new(1, 0, 0, 18),
 		Parent = root,
 	})
+	-- "Ask <name>" buttons in the same spot as your books line, once you've picked a rank,
+	-- so Table view (which keeps only the bottom of the screen) can ask too.
+	local askRow = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.65, 22), Size = UDim2.new(1, 0, 0, 26), Visible = false, Parent = root })
+	local askList = Kit.list(6, true)
+	askList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	askList.Parent = askRow
 	local hand = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.74, 0), Size = UDim2.new(1, 0, 0.26, 0), Parent = root })
 
 	local function nameOf(seat: number): string
@@ -92,7 +98,9 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		if not action then
 			return "Ask for a rank you hold. Got any?"
 		end
-		local who, target = nameOf(action.seat), nameOf(action.target)
+		local who = nameOf(action.seat)
+		-- "You" leads a sentence; as the one being asked it's "you".
+		local target = if action.target == snapshot.yourSeat then "you" else nameOf(action.target)
 		local plural = PlayingCards.rankPlural[action.rank]
 		local text
 		if action.got > 0 then
@@ -145,7 +153,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 					AutoButtonColor = canAsk,
 					BackgroundColor3 = if canAsk then Theme.Accent elseif view.turn == seat then Theme.PanelLight else Theme.Panel,
 					BorderSizePixel = 0,
-					Size = UDim2.new(0, 150, 1, -4),
+					Size = UDim2.new(0, 150, 0, 66),
 					LayoutOrder = seat,
 					Parent = opponents,
 				}, { Kit.corner(10), Kit.padding(6) })
@@ -181,11 +189,30 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		elseif not myTurn then
 			prompt.Text = `{nameOf(view.turn)} is asking...`
 		elseif selectedRank then
-			prompt.Text = `Who do you ask for {PlayingCards.rankPlural[selectedRank]}? Tap a player.`
+			prompt.Text = `Who do you ask for {PlayingCards.rankPlural[selectedRank]}?`
 		else
 			prompt.Text = "Your turn! Tap a card to ask for that rank."
 		end
-		myBooks.Text = if me then `Your {booksText(view.books[me])}` else ""
+		local myList = if me then view.books[me] or {} else {}
+		myBooks.Text = if not me then "" elseif #myList == 0 then "You have no books yet" else `Your {booksText(myList)}`
+		Kit.clear(askRow)
+		local choosing = myTurn and selectedRank ~= nil
+		if choosing then
+			for _, seat in targets do
+				if view.handCounts[seat] > 0 then
+					Kit.button(`Ask {nameOf(seat)}`, function()
+						ask(seat)
+					end, {
+						Size = UDim2.new(0, math.max(90, #nameOf(seat) * 8 + 50), 1, 0),
+						TextSize = 14,
+						LayoutOrder = seat,
+						Parent = askRow,
+					})
+				end
+			end
+		end
+		askRow.Visible = choosing
+		myBooks.Visible = not choosing
 
 		local cards = {}
 		for _, id in view.hand or {} do

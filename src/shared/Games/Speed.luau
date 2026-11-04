@@ -291,4 +291,9 @@ function Speed.chooseBotMove(state, seat: number, rng: Random): any?
 	return best
 end
 
+-- Stats for the profile (see shared/StatsCatalog.luau).
+function Speed.getMatchStats(state): { [number]: { [string]: number } }
+	return { { cards = state.plays[1] }, { cards = state.plays[2] } }
+end
+
 return Speed

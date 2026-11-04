@@ -9,13 +9,16 @@ local Config = {
 	MaxSeats = 8, -- hard cap on seats at any table (players + bots)
 	BotMoveDelay = 1.2, -- seconds a bot "thinks" before moving
 	TurnSeconds = 45, -- a player who takes longer has a bot move for them
+	FirstTurnGrace = 30, -- extra seconds on each player's first turn (time to read how to play)
 	MaxTypedText = 60, -- longest typed guess the server will filter
 
 	-- 3D tables (TableService). Tables tagged "GameTable" in Workspace are used first;
 	-- otherwise a template from ReplicatedStorage.Assets (a model whose name has "Square"
 	-- or "Round" in it) is placed, or plain tables are built in code at TableOrigin.
 	TableTag = "GameTable",
-	TableOrigin = Vector3.new(0, 0, -60), -- where code-built tables go if none exist
+	-- Code-built / template tables stand on the spots in shared/LobbyLayout. Any past the
+	-- end of that list go in rows from TableOrigin.
+	TableOrigin = Vector3.new(0, 0, -60),
 	TableSpacing = 22,
 	-- Code-built / template tables: { zone, shape } in order. Square4 = 4 seats, Round8 = 8.
 	DefaultTables = {
@@ -33,9 +36,13 @@ local Config = {
 		{ zone = "Party", shape = "Round8" },
 		{ zone = "Party", shape = "Round8" },
 	},
+	-- The furnished lobby room (server/Lobby, docs/Lobby.md). It's built in code unless
+	-- Workspace.Lobby.Room already exists (placed by hand). `lighting` sets the warm night
+	-- look in Lighting either way.
+	Lobby = { buildRoom = true, lighting = true },
 	TableColumns = 5, -- code-built tables are laid out in rows of this many
 	BoardSize = 6, -- studs across a square 3D board
-	TableHoldSeconds = 10, -- after a match: board and seated avatars stay this long
+	TableHoldSeconds = 4, -- after a match: the final board and bots stay this long
 	-- Games with a 3D board on the table (client/Table3D and server/Tables/Boards).
 	-- Other games still seat everyone at the table, but play in the 2D view.
 	Boards3D = { Chess = true, Checkers = true, FourInARow = true, TicTacToe = true },
@@ -47,6 +54,17 @@ local Config = {
 		Spoons = true,
 		War = true,
 		GoFish = true,
+		Cheat = true,
+		President = true,
+		SlapStack = true,
+		Hearts = true,
+		Spades = true,
+		ThirtyOne = true,
+		Palace = true,
+		OldMaid = true,
+		Snap = true,
+		GinRummy = true,
+		OhHell = true,
 		Estates = true,
 		Hexlands = true,
 		Conquest = true,

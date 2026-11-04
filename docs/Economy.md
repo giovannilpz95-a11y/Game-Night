@@ -36,7 +36,7 @@ minMinutes = 0.25,      -- shorter matches pay nothing
 minMoves = 7,           -- matches with fewer moves pay nothing
 ```
 
-Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The daily login calendar pays Gems or Coins (see [[Friends]]). The first win of the day and each daily challenge pay Gems; XP from time played levels the account up, and level-ups pay Gems.
+Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The daily login calendar pays Gems or Universal Coins (see [[Friends]]). The first win of the day and each daily challenge pay Gems; XP from time played levels the account up, and level-ups pay Gems. Badges pay Gems once each (see [[Progression]]).
 
 For bonuses inside a game, or for games that don't use `MatchService`, call `EconomyService` from server code:
 
@@ -54,6 +54,8 @@ Never give currency any other way, so all the anti-farm limits stay in one place
 ## Saving
 One DataStore (`Config.ProfileStoreName`), one key per player (`player_<userId>`), saved with `UpdateAsync` every `Config.AutosaveSeconds`, when the player leaves, and on shutdown. The record holds a lock with the server's JobId: another server waits for it to be released (and asks the player to rejoin after about 30 seconds), and a lock older than 10 minutes counts as a crashed server. New profile fields go in `Profile.new`; `Profile.reconcile` adds them to old saves.
 
+Pressing Stop in Studio waits at most 3 seconds for the final save (live servers wait up to 25). If that save gets cut short, the next Play in Studio takes over the leftover lock after about 5 seconds.
+
 In Studio, turn on **Game Settings > Security > Enable Studio Access to API Services** to test saving. Without it you play on a fresh profile that doesn't save, and a message says so. The Wallet tab has a Studio-only button for free Gems and Coins.
 
 ## Robux products
@@ -63,6 +65,7 @@ Create these in the Creator Hub (your experience > Monetization), then paste eac
 |---|---|---|---|
 | 50 / 110 / 300 / 650 / 1,400 Gems | Developer product | 49 / 99 / 249 / 499 / 999 R$ | `Economy.GemPacks[i].productId` |
 | Starter Pack (first 3 days) | Developer product | 79 R$ | `Economy.StarterPack.productId` |
+| All Reaction Packs (see [[Reactions]]) | Developer product | 299 R$ | `Economy.ReactionBundle.productId` |
 | VIP | Game pass | 399 R$ | `Economy.Passes.vip.gamePassId` |
 | Party Host | Game pass | 199 R$ | `Economy.Passes.partyHost.gamePassId` |
 

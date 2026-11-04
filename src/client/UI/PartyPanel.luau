@@ -1,5 +1,5 @@
--- Left-side panel: who's in your party, invite people in this server, and Friends (invite
--- Roblox friends, join a friend's table: see FriendsPanel).
+-- Party window (opened from the side rail): who's in your party, invite people in this
+-- server, invite Roblox friends. Everything scrolls, so it fits on a phone.
 -- Also the table setting (invite only / private for friends / password, Party Host only),
 -- "Find a table" and "Host tools".
 
@@ -15,17 +15,21 @@ local localPlayer = Players.LocalPlayer
 local PRIVACY_ORDER = { "invite", "friends", "password" }
 local PRIVACY_NAMES = { invite = "Invite only", friends = "Private (friends)", password = "Password" }
 
--- hooks: openTables(), openHostTools(), openFriends(), needHost(reason)
+-- hooks: needHost(reason), viewStats(userId), openFriends()
 function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
-	local root = Kit.panel({
+	local root = Kit.new("ScrollingFrame", {
 		Name = "PartyPanel",
-		Size = UDim2.new(0, 260, 1, -40),
-		Position = UDim2.new(0, 20, 0, 20),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(),
+		ScrollBarThickness = 4,
 		Parent = parent,
-	})
+	}, { Kit.new("UIPadding", { PaddingRight = UDim.new(0, 8) }) })
 	Kit.list(8).Parent = root
 
-	local title = Kit.label("Your party", { TextSize = 22, Font = Theme.FontBold, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1, Parent = root })
+	local title = Kit.label("Your party", { TextSize = 22, Font = Theme.FontBold, Size = UDim2.new(1, -44, 0, 28), LayoutOrder = 1, Parent = root })
 	local members = Kit.new("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = 2, Parent = root }, { Kit.list(4) })
 	local leaveButton = Kit.button("Leave party", function()
 		send({ action = "leave" })
@@ -54,21 +58,12 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 		send({ action = "setPrivacy", privacy = "password", newCode = true })
 	end, { Size = UDim2.new(0, 90, 0, 26), Position = UDim2.new(1, -90, 0, 1), TextSize = 13, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = codeRow })
 
-	Kit.button("Find a table", function()
-		hooks.openTables()
-	end, { LayoutOrder = 9, Parent = root })
-	Kit.button("Host tools", function()
-		hooks.openHostTools()
-	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, LayoutOrder = 10, Parent = root })
 
 	Kit.label("Invite players here", { TextColor3 = Theme.SubText, LayoutOrder = 4, Parent = root })
-	local others = Kit.new("ScrollingFrame", {
+	local others = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, -430),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		CanvasSize = UDim2.new(),
-		ScrollBarThickness = 4,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
 		LayoutOrder = 5,
 		Parent = root,
 	}, { Kit.list(4) })
@@ -77,9 +72,22 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 		hooks.openFriends()
 	end, { LayoutOrder = 6, Parent = root })
 
-	local function row(text: string, color: Color3?): Frame
+	-- A name row with a 📊 button that opens that player's stats.
+	local function row(text: string, color: Color3?, userId: number?): Frame
 		local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, Size = UDim2.new(1, 0, 0, 34), BorderSizePixel = 0 }, { Kit.corner(8) })
-		Kit.label(text, { Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -90, 1, 0), TextColor3 = color or Theme.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame })
+		Kit.label(text, { Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -126, 1, 0), TextColor3 = color or Theme.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame })
+		if userId and hooks.viewStats then
+			Kit.button("📊", function()
+				hooks.viewStats(userId)
+			end, {
+				Size = UDim2.new(0, 30, 0, 26),
+				Position = UDim2.new(1, -112, 0.5, -13),
+				TextSize = 14,
+				BackgroundColor3 = Theme.Panel,
+				TextColor3 = Theme.Text,
+				Parent = frame,
+			})
+		end
 		return frame
 	end
 
@@ -109,7 +117,7 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 			inParty[member.userId] = true
 			local isMe = member.userId == localPlayer.UserId
 			local crown = if member.userId == party.leaderId then "👑 " else ""
-			local frame = row(`{crown}{member.name}{if isMe then " (you)" else ""}`)
+			local frame = row(`{crown}{member.name}{if isMe then " (you)" else ""}`, nil, member.userId)
 			frame.LayoutOrder = index
 			if isLeader and not isMe then
 				smallButton("Remove", function()
@@ -129,7 +137,7 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 
 		for _, player in Players:GetPlayers() do
 			if not inParty[player.UserId] then
-				local frame = row(player.DisplayName, Theme.SubText)
+				local frame = row(player.DisplayName, Theme.SubText, player.UserId)
 				if isLeader and #party.members < party.maxSize then
 					smallButton("Invite", function()
 						send({ action = "invite", userId = player.UserId })

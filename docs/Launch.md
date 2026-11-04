@@ -61,6 +61,7 @@ Create each one under Creator Hub > your experience > Monetization, then paste i
 | 650 Gems | 499 R$ | 650 Gems (+30%) | `Economy.GemPacks[4].productId` (`gems650`) |
 | 1,400 Gems | 999 R$ | 1,400 Gems (+40%) | `Economy.GemPacks[5].productId` (`gems1400`) |
 | Starter Pack | 79 R$ | 300 Gems, Cozy Cabin Table, Cozy Nameplate | `Economy.StarterPack.productId` |
+| All Reaction Packs | 299 R$ | Party, Drama, Animal, Table Talk and Friendly Trash Talk reaction packs | `Economy.ReactionBundle.productId` |
 
 The Starter Pack is a developer product so the game can limit it to a player's first 3 days (`windowDays`).
 

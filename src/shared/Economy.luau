@@ -21,7 +21,9 @@ Economy.Coins = {
 	wordtiles = { name = "Word Tiles Coins", color = Color3.fromRGB(232, 180, 96), order = 8 },
 	conquest = { name = "Conquest Coins", color = Color3.fromRGB(226, 116, 84), order = 9 },
 	hexlands = { name = "Hexlands Coins", color = Color3.fromRGB(196, 140, 72), order = 10 },
-	-- Shared by the classic 52-card games: Speed, Spoons, Go Fish, War.
+	-- Shared by the classic 52-card games: Speed, Spoons, Go Fish, War, I Doubt It,
+	-- President, Slap Stack, Hearts, Spades, Thirty-One, Palace, Old Maid, Snap,
+	-- Gin Rummy, Oh Hell.
 	cards = { name = "Card Coins", color = Color3.fromRGB(46, 160, 100), order = 11 },
 }
 Economy.DefaultCoin = "arcade"
@@ -80,6 +82,9 @@ function Economy.levelUpGems(newLevel: number): number
 	return math.min(25, 10 + (newLevel - 2))
 end
 
+-- Badges (shared/Badges.luau): one-time Gems for bronze, silver and gold badges
+Economy.BadgeGems = { 5, 15, 40 }
+
 -- VIP perks that touch numbers
 Economy.VipPlayBonus = 0.25 -- +25% Gems and Coins from play
 Economy.VipDailyLoginMultiplier = 2
@@ -113,6 +118,15 @@ Economy.StarterPack = {
 	windowDays = 3,
 }
 
+-- Every reaction pack sold for Gems, in one Robux purchase (a developer product). Packs
+-- the player already owns are skipped; Card Sharp stays a Card Coins pack.
+Economy.ReactionBundle = {
+	key = "reactionsAll",
+	productId = 0,
+	robux = 299,
+	items = { "reactions_party", "reactions_drama", "reactions_animals", "reactions_talk", "reactions_trash" },
+}
+
 -- Game passes (one-time)
 Economy.Passes = {
 	vip = {
@@ -144,7 +158,8 @@ function Economy.coinName(coinKey: string): string
 	return if coin then coin.name else "Coins"
 end
 
--- Finds what a Robux purchase was for: ("gems", pack) or ("starter", pack) or nil.
+-- Finds what a Robux purchase was for: ("gems", pack), ("starter", pack),
+-- ("reactions", bundle) or nil.
 function Economy.productById(productId: number): (string?, any)
 	if productId == 0 then
 		return nil, nil
@@ -156,6 +171,9 @@ function Economy.productById(productId: number): (string?, any)
 	end
 	if Economy.StarterPack.productId == productId then
 		return "starter", Economy.StarterPack
+	end
+	if Economy.ReactionBundle.productId == productId then
+		return "reactions", Economy.ReactionBundle
 	end
 	return nil, nil
 end

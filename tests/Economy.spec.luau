@@ -163,6 +163,27 @@ return function(T)
 		T.eq(Economy.coinName(U), Economy.UniversalCoin.name)
 	end)
 
+	T.test("reaction packs can be bought with Universal Coins", function()
+		local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
+		local U = Economy.UniversalCoin.key
+		local priced = 0
+		for _, item in ShopCatalog.items do
+			if item.slot == "reactions" and not item.notForSale then
+				T.ok(item.universal ~= nil, `{item.id} has no Universal price`)
+				priced += 1
+			end
+		end
+		T.ok(priced > 0)
+		local data = fresh()
+		Profile.addCoins(data, U, 1499)
+		T.ok(not Shop.buy(data, "reactions_party", "universal", false), "not enough")
+		Profile.addCoins(data, U, 1)
+		T.ok(Shop.buy(data, "reactions_party", "universal", false))
+		T.eq(Profile.coins(data, U), 0)
+		T.ok(data.owned.reactions_party)
+		T.ok(not Shop.buy(data, "hub_neon_table", "universal", false), "only items with a Universal price")
+	end)
+
 	T.test("three challenges, one of them a game you haven't played", function()
 		local data = fresh()
 		data.stats.games.Chess = { played = 10, wins = 2 }

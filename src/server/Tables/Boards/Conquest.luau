@@ -1,81 +1,89 @@
--- Conquest Isles at the table: the Shattered Isles map as land patches in region colors,
--- borders and sea lanes, and on every territory a stack of armies in its owner's color
--- with the count on top. Play stays in the 2D view.
+-- Conquest Isles at the table: the Shattered Isles map as raised island patches in region
+-- colors, land bridges and sea lanes, and on every territory toy soldiers in its owner's
+-- color with the army count on a flag-side plate. Play stays in the 2D view.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Rules = require(ReplicatedStorage.Shared.Games.Conquest)
-local Pieces = require(script.Parent.Parent.Pieces)
+local Models = require(script.Parent.Parent.Models)
 local Scene = require(script.Parent.Parent.Scene)
 
 local Conquest = {}
 
 local W, D = 8.4, 7 -- map size in studs (territory x/y are 0..1)
 local SEA = Color3.fromRGB(64, 128, 190)
+local NEUTRAL = Color3.fromRGB(200, 200, 200)
+local LAND_Y = 0.24 -- bottom of an island patch
+local TOP_Y = LAND_Y + 0.16
 
 local function pos(boardCF: CFrame, t: any, height: number): CFrame
 	return boardCF * CFrame.new((t.x - 0.5) * W, height, (t.y - 0.5) * D)
 end
 
+-- How many soldiers stand for an army: more troops, a bigger squad.
+local function squadSize(armies: number): number
+	if armies >= 10 then
+		return 3
+	elseif armies >= 4 then
+		return 2
+	end
+	return 1
+end
+
 function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout)
 	local model = Instance.new("Model")
 	model.Name = "GameBoard"
-	Pieces.part({ Name = "Sea", Size = Vector3.new(W + 0.4, 0.2, D + 0.4), CFrame = boardCF * CFrame.new(0, 0.1, 0), Color = SEA, CanQuery = false, Parent = model })
+	Models.block(model, "Frame", Vector3.new(W + 0.8, 0.14, D + 0.8), boardCF * CFrame.new(0, 0.07, 0), Models.WALNUT, Enum.Material.Wood)
+	Models.block(model, "Sea", Vector3.new(W + 0.4, 0.2, D + 0.4), boardCF * CFrame.new(0, 0.1, 0), SEA)
 	for _, link in Rules.links do
 		local a, b = Rules.territories[link[1]], Rules.territories[link[2]]
-		local pa, pb = pos(boardCF, a, 0.24).Position, pos(boardCF, b, 0.24).Position
-		Pieces.part({
-			Name = if link.sea then "SeaLane" else "Border",
-			Size = Vector3.new(if link.sea then 0.05 else 0.6, 0.04, (pb - pa).Magnitude),
-			CFrame = CFrame.lookAt((pa + pb) / 2, pb, boardCF.UpVector),
-			Color = if link.sea then Color3.fromRGB(230, 240, 255) else Rules.regions[a.region].color:Lerp(Rules.regions[b.region].color, 0.5),
-			Transparency = if link.sea then 0.3 else 0,
-			CanQuery = false,
-			Parent = model,
-		})
+		local pa, pb = pos(boardCF, a, 0.27).Position, pos(boardCF, b, 0.27).Position
+		local cf = CFrame.lookAt((pa + pb) / 2, pb, boardCF.UpVector)
+		local length = (pb - pa).Magnitude
+		if link.sea then
+			-- A dashed line of buoys across the water.
+			local dashes = math.max(2, math.floor(length / 0.4))
+			for i = 1, dashes do
+				Models.block(model, "SeaLane", Vector3.new(0.06, 0.03, 0.2), cf * CFrame.new(0, 0, (i - (dashes + 1) / 2) * length / dashes), Color3.fromRGB(235, 244, 255))
+			end
+		else
+			Models.block(model, "Border", Vector3.new(0.6, 0.06, length), cf, Rules.regions[a.region].color:Lerp(Rules.regions[b.region].color, 0.5), Enum.Material.Grass)
+		end
 	end
 	for _, t in Rules.territories do
-		Pieces.part({
-			Name = t.name,
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.1, 1.05, 1.05),
-			CFrame = pos(boardCF, t, 0.25) * CFrame.Angles(0, 0, math.rad(90)),
-			Color = Rules.regions[t.region].color,
-			Material = Enum.Material.Grass,
-			CanQuery = false,
-			Parent = model,
-		})
+		local color = Rules.regions[t.region].color
+		local base = pos(boardCF, t, LAND_Y)
+		Models.cyl(model, "Beach", 1.2, 0.08, base, Color3.fromRGB(232, 214, 160), Enum.Material.Sand)
+		Models.cyl(model, t.name, 1.05, 0.16, base, color, Enum.Material.Grass)
+		-- A hill so the patches don't read as flat coins.
+		Models.egg(model, "Hill", Vector3.new(0.5, 0.2, 0.4), base * CFrame.new(-0.26, TOP_Y - LAND_Y, 0.26), color:Lerp(Color3.new(0, 0, 0), 0.15), Enum.Material.Grass)
 	end
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent
+	local memo = {}
 
 	return {
 		model = model,
 		update = function(view: any, _snapshot: any)
+			if not Scene.changed(memo, view) then
+				return
+			end
 			dynamic:ClearAllChildren()
 			for i, t in Rules.territories do
 				local owner = (view.owner or {})[i] or 0
 				local armies = (view.armies or {})[i] or 0
-				local color = Scene.SEAT_COLORS[owner] or Color3.fromRGB(200, 200, 200)
-				local height = 0.12 + math.min(armies, 10) * 0.05
-				local stack = Pieces.part({
-					Name = "Armies",
-					Shape = Enum.PartType.Cylinder,
-					Size = Vector3.new(height, 0.5, 0.5),
-					CFrame = pos(boardCF, t, 0.3 + height / 2) * CFrame.Angles(0, 0, math.rad(90)),
-					Color = color,
-					CanQuery = false,
-					Parent = dynamic,
-				})
-				stack.Name = "Armies"
-				local face = Pieces.part({
-					Name = "Count",
-					Size = Vector3.new(0.4, 0.01, 0.4),
-					CFrame = pos(boardCF, t, 0.3 + height + 0.01),
-					Transparency = 1,
-					CanQuery = false,
-					Parent = dynamic,
-				})
-				Scene.text(face, Enum.NormalId.Top, tostring(armies), { TextColor3 = Color3.fromRGB(20, 20, 24) })
+				local color = Scene.SEAT_COLORS[owner] or NEUTRAL
+				local top = pos(boardCF, t, TOP_Y)
+				local squad = squadSize(armies)
+				for k = 1, squad do
+					local a = (k - 1) / squad * math.pi * 2 + 0.8
+					local offset = if squad == 1 then CFrame.new() else CFrame.new(math.cos(a) * 0.16, 0, math.sin(a) * 0.16)
+					Models.soldier(dynamic, top * CFrame.new(0.04, 0, -0.08) * offset, color, 0.46)
+				end
+				-- The count floats over a plate at the front of the island, facing every viewer.
+				local plate = top * CFrame.new(0, 0, 0.32)
+				Models.cyl(dynamic, "CountPlate", 0.42, 0.03, plate, Color3.fromRGB(38, 34, 60))
+				Models.cyl(dynamic, "CountRing", 0.46, 0.015, plate, color)
+				Scene.floatText(dynamic, plate * CFrame.new(0, 0.22, 0), 0.42, 0.34, tostring(armies), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
 			end
 		end,
 		destroy = function()

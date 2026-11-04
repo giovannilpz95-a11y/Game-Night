@@ -9,7 +9,7 @@ The first time a player joins on a new UTC day they get that day's calendar rewa
 |---|---|---|---|---|---|---|---|
 | Reward | 50 Universal Coins | 5 Gems | 75 Universal Coins | 5 Gems | 100 Universal Coins | 10 Gems | 30 Gems |
 
-- **Coin days** pay **Universal Coins** (`Economy.UniversalCoin`). In the Shop's Wallet tab, **Convert** turns them into any game's Coins, 1:1, and it can't be undone (`Shop.convertUniversal`, `client/UI/CoinConvertPanel.luau`). They're never sold and no game pays them, so Coins still only come from playing; there's no Universal shop.
+- **Coin days** pay **Universal Coins** (`Economy.UniversalCoin`). In the Shop's Wallet tab, **Convert** turns them into any game's Coins, 1:1, and it can't be undone (`Shop.convertUniversal`, `client/UI/CoinConvertPanel.luau`). They're never sold and no game pays them, so Coins still only come from playing; there's no Universal shop. Reaction packs can also be bought with them directly (`universal` price in `shared/ShopCatalog`: the Gem price x 10, or the Coin price).
 - **Streak bonus**: extra Gems the day a streak reaches 14, 30, 60 and 100 days (`Economy.StreakMilestones`).
 - **VIP** doubles the calendar reward (not the streak bonus).
 - The best streak is saved as `login.best` for a future badge or leaderboard.

@@ -2,9 +2,12 @@
 --
 --   shop       "hub" (Gems only, works everywhere) or a coin key from Economy.Coins
 --   slot       what it replaces: pieces, cards, dice, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
+--              ("reactions" = a reaction pack from shared/Reactions: owning it puts it on the 😀 wheel, nothing to equip)
 --   tier       Common | Rare | Epic | Legendary
 --   coins      price in that shop's Coins (nil = not sold for Coins)
 --   gems       Gem price. If nil and coins is set, the Gem price is coins / Economy.CoinsPerGem.
+--   universal  price in Universal Coins (from the daily calendar). Reaction packs only for now,
+--              priced at their Gem price x Economy.CoinsPerGem (or their Coin price).
 --   earnedOnly true = Coins only, no Gem price (prestige items that prove you play)
 --   notForSale true = only granted (Starter Pack, rank rewards), never bought
 --
@@ -19,6 +22,7 @@ export type Item = {
 	tier: "Common" | "Rare" | "Epic" | "Legendary",
 	coins: number?,
 	gems: number?,
+	universal: number?, -- price in Universal Coins (daily calendar), nil = not sold for them
 	earnedOnly: boolean?,
 	notForSale: boolean?,
 }
@@ -33,6 +37,14 @@ local items: { Item } = {
 	-- Starter Pack only
 	{ id = "hub_cozy_cabin", name = "Cozy Cabin Table", shop = "hub", slot = "theme", tier = "Epic", notForSale = true },
 	{ id = "hub_nameplate_cozy", name = "Cozy Nameplate", shop = "hub", slot = "nameplate", tier = "Rare", notForSale = true },
+
+	-- Reaction packs (shared/Reactions lists what's in each). All the Gem ones together are
+	-- also a Robux product: Economy.ReactionBundle.
+	{ id = "reactions_party", name = "Party Pack", shop = "hub", slot = "reactions", tier = "Rare", gems = 150, universal = 1500 },
+	{ id = "reactions_drama", name = "Drama Pack", shop = "hub", slot = "reactions", tier = "Rare", gems = 150, universal = 1500 },
+	{ id = "reactions_animals", name = "Animal Pack", shop = "hub", slot = "reactions", tier = "Common", gems = 120, universal = 1200 },
+	{ id = "reactions_talk", name = "Table Talk", shop = "hub", slot = "reactions", tier = "Rare", gems = 200, universal = 2000 },
+	{ id = "reactions_trash", name = "Friendly Trash Talk", shop = "hub", slot = "reactions", tier = "Epic", gems = 250, universal = 2500 },
 
 	-- Chess shop
 	{ id = "chess_walnut_board", name = "Walnut Board", shop = "chess", slot = "board", tier = "Common", coins = 400 },
@@ -112,7 +124,7 @@ local items: { Item } = {
 	{ id = "hexlands_fireworks", name = "Harbor Fireworks Win", shop = "hexlands", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "hexlands_founder_title", name = "Title: Island Founder", shop = "hexlands", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
 
-	-- Card shop (Speed, Spoons, Go Fish, War)
+	-- Card shop (every 52-card game)
 	{ id = "cards_ruby_backs", name = "Ruby Card Backs", shop = "cards", slot = "cards", tier = "Common", coins = 300 },
 	{ id = "cards_blue_felt", name = "Blue Felt Table", shop = "cards", slot = "board", tier = "Common", coins = 350 },
 	{ id = "cards_golden_spoons", name = "Golden Spoons", shop = "cards", slot = "pieces", tier = "Rare", coins = 1200 },
@@ -120,6 +132,7 @@ local items: { Item } = {
 	{ id = "cards_starry_backs", name = "Starry Night Backs", shop = "cards", slot = "cards", tier = "Rare", coins = 1500 },
 	{ id = "cards_card_fountain", name = "Card Fountain Win", shop = "cards", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "cards_speed_demon_title", name = "Title: Speed Demon", shop = "cards", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
+	{ id = "reactions_cards", name = "Card Sharp", shop = "cards", slot = "reactions", tier = "Rare", coins = 1500, universal = 1500 },
 }
 
 local byId: { [string]: Item } = {}

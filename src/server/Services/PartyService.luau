@@ -204,7 +204,7 @@ function handlers.accept(player: Player, request: any)
 		return notify(player, err :: string)
 	end
 	local party = registry:getParty(player.UserId)
-	AnalyticsService.inviteAccepted(player, if party then #party.members else 1)
+	AnalyticsService.inviteAccepted(player, if party then #party.members else 1, if party then party.leaderId else nil)
 	flush()
 end
 
@@ -339,7 +339,8 @@ function handlers.joinFriend(player: Player, request: any)
 		if leader then
 			notify(leader, `{player.DisplayName} joined your table`)
 		end
-		AnalyticsService.inviteAccepted(player, #party.members)
+		-- Counts for the leader's "joined from your invite" only when they invited them here.
+		AnalyticsService.inviteAccepted(player, #party.members, if invitedByLeader then party.leaderId else nil)
 		flush()
 		return
 	end

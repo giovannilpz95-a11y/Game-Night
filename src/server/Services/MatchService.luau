@@ -14,6 +14,7 @@ local HouseRules = require(ReplicatedStorage.Shared.HouseRules)
 local Match = require(script.Parent.Parent.Core.Match)
 local TableService = require(script.Parent.TableService)
 local HostService = require(script.Parent.HostService)
+local TableActionService = require(script.Parent.TableActionService)
 
 local MatchService = {}
 
@@ -27,12 +28,20 @@ type Entry = {
 	timerId: number?, -- the game's phase clock that is currently running
 	botPending: { [number]: boolean }, -- bot seats that already have a move scheduled
 	table: any?, -- the 3D table it's played at: { id, seats, board3D }; nil = 2D overflow
+	botLevel: string?, -- the checked bot difficulty (stats and the weekly board read it)
+	acted: number, -- the last move number the avatars at the table acted out
+	graced: { [number]: boolean }, -- seats whose first turn already got Config.FirstTurnGrace
 }
 
 local partyService: any = nil
 local finishedCallbacks: { (any) -> () } = {}
 local matches: { [string]: Entry } = {}
 local matchOfUser: { [number]: string } = {}
+
+-- The last game each party started, so the end screen's Rematch can start it again.
+-- Only already-checked values are kept; startMatch checks them again anyway.
+local lastStarts: { [string]: { request: any, at: number } } = {}
+local REMATCH_MEMORY = 30 * 60 -- seconds
 
 local matchStateRemote: RemoteEvent
 local notifyRemote: RemoteEvent
@@ -74,6 +83,9 @@ local function finish(entry: Entry)
 	entry.turnEndsAt = nil
 	entry.timerId = nil
 	broadcast(entry) -- clients keep showing the final board and result
+	if not entry.match.aborted then
+		TableActionService.finished(entry.table, entry.match.seats, entry.match.result)
+	end
 	TableService.release(entry.match.id)
 	matches[entry.match.id] = nil
 	for userId, matchId in matchOfUser do
@@ -93,6 +105,8 @@ local function finish(entry: Entry)
 		minutes = (os.clock() - entry.startedAt) / 60,
 		moves = match.moveNumber,
 		scores = match:getScores(), -- party games: final points per seat (nil for others)
+		stats = match:getMatchStats(), -- per seat, for the stats profile (see StatsCatalog)
+		botLevel = entry.botLevel,
 	}
 	for _, callback in finishedCallbacks do
 		task.spawn(callback, summary)
@@ -100,7 +114,8 @@ local function finish(entry: Entry)
 end
 
 -- Runs `callback(summary)` after every match ends. summary has gameId, result, aborted,
--- seats (with userId and left), minutes, moves and scores (party games only).
+-- seats (with userId and left), minutes, moves, scores (games with getScores), stats (per
+-- seat, see Match.getMatchStats) and botLevel (nil without bots).
 -- EconomyService pays out from this.
 function MatchService.onMatchFinished(callback: (any) -> ())
 	table.insert(finishedCallbacks, callback)
@@ -123,6 +138,13 @@ end
 local scheduleTurn: (Entry) -> ()
 
 local function afterMove(entry: Entry)
+	-- The avatar who moved acts it out (a phase timeout isn't anyone's move).
+	local last = entry.match.lastMove
+	if last and last.number == entry.match.moveNumber and last.number ~= entry.acted then
+		entry.acted = last.number
+		local catalogEntry = GameCatalog.get(entry.match.gameId)
+		TableActionService.moved(entry.table, entry.match.seats, catalogEntry and catalogEntry.module, last.seat, last.move)
+	end
 	if entry.match:isOver() then
 		finish(entry)
 	else
@@ -142,7 +164,11 @@ function scheduleTurn(entry: Entry)
 	for _, seat in match:getActiveSeats() do
 		if match:isBot(seat) and not entry.botPending[seat] then
 			entry.botPending[seat] = true
-			task.delay(match:botDelay(seat, Config.BotMoveDelay), function()
+			local delay = match:botDelay(seat, Config.BotMoveDelay)
+			if delay >= 1.2 and not match:getTimer() then
+				TableActionService.thinking(entry.table, match.seats, seat)
+			end
+			task.delay(delay, function()
 				entry.botPending[seat] = nil
 				if entry.ended then
 					return
@@ -177,14 +203,20 @@ function scheduleTurn(entry: Entry)
 	-- Turn games: a player who takes too long has a bot move for them.
 	local token = match.moveNumber
 	local hasHumanTurn = false
+	local seconds = entry.turnSeconds
 	for _, seat in match:getActiveSeats() do
 		if not match:isBot(seat) then
 			hasHumanTurn = true
+			-- A player's first turn is longer: the how-to-play card is up at the start.
+			if not entry.graced[seat] then
+				entry.graced[seat] = true
+				seconds = entry.turnSeconds + Config.FirstTurnGrace
+			end
 		end
 	end
 	if hasHumanTurn then
-		entry.turnEndsAt = workspace:GetServerTimeNow() + entry.turnSeconds
-		task.delay(entry.turnSeconds, function()
+		entry.turnEndsAt = workspace:GetServerTimeNow() + seconds
+		task.delay(seconds, function()
 			if entry.ended or match.moveNumber ~= token then
 				return
 			end
@@ -295,6 +327,9 @@ local function startMatch(leader: Player, request: any)
 		timerId = nil,
 		botPending = {},
 		table = nil,
+		botLevel = options.botLevel,
+		acted = 0,
+		graced = {},
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
@@ -318,6 +353,27 @@ local function startMatch(leader: Player, request: any)
 	scheduleTurn(entry)
 	broadcast(entry)
 	emit("started", { matchId = matchId, gameId = catalogEntry.id, seats = seats, botLevel = options.botLevel })
+
+	-- Remember it for Rematch: the rule picks HouseRules accepted, not the client's table.
+	local now = os.clock()
+	for partyId, saved in lastStarts do
+		if now - saved.at > REMATCH_MEMORY then
+			lastStarts[partyId] = nil
+		end
+	end
+	local picks = {}
+	if type(request.rules) == "table" then
+		for _, rule in HouseRules.list(catalogEntry) do
+			local pick = request.rules[rule.key]
+			if type(pick) == "number" then
+				picks[rule.key] = pick
+			end
+		end
+	end
+	lastStarts[party.id] = {
+		at = now,
+		request = { gameId = catalogEntry.id, seats = seatCount, botLevel = options.botLevel, rules = picks, custom = customSlot },
+	}
 
 	local lines = HouseRules.describe(catalogEntry, ruleValues)
 	if customContent then
@@ -419,6 +475,27 @@ function handlers.move(player: Player, request: any)
 	emit("moved", { player = player, matchId = entry.match.id, gameId = entry.match.gameId })
 end
 
+-- "Rematch" on the end screen. The leader starts the same game again (same table size,
+-- bots and house rules); anyone else asks the leader.
+function handlers.rematch(player: Player, _request: any)
+	local party = partyService.getParty(player.UserId)
+	if not party or party.matchId then
+		return
+	end
+	if party.leaderId ~= player.UserId then
+		local leader = Players:GetPlayerByUserId(party.leaderId)
+		if leader then
+			notify(leader, `{player.DisplayName} wants a rematch! Tap Rematch or pick a new game.`)
+		end
+		return notify(player, "Asked your party leader for a rematch")
+	end
+	local saved = lastStarts[party.id]
+	if not saved then
+		return notify(player, "Pick a game to play")
+	end
+	startMatch(player, saved.request)
+end
+
 function handlers.resign(player: Player, _request: any)
 	local entry = entryFor(player)
 	if not entry then
@@ -462,6 +539,30 @@ function handlers.sync(player: Player, _request: any)
 	else
 		matchStateRemote:FireClient(player, nil)
 	end
+end
+
+-- The table and match seat a player is playing at, for emotes: (tableInfo, seats, seat),
+-- or nil when they aren't in a match at a table.
+function MatchService.tableSeatOf(player: Player): (any?, { any }?, number?)
+	local entry = entryFor(player)
+	if not entry or entry.ended or not entry.table then
+		return nil, nil, nil
+	end
+	return entry.table, entry.match.seats, entry.match:seatOf(player.UserId)
+end
+
+-- The match and seat a player is playing in, for reactions: (matchId, seat, tableInfo?),
+-- or nil when they aren't seated in a running match. tableInfo is nil in 2D-only matches.
+function MatchService.matchSeatOf(player: Player): (string?, number?, any?)
+	local entry = entryFor(player)
+	if not entry or entry.ended then
+		return nil, nil, nil
+	end
+	local seat = entry.match:seatOf(player.UserId)
+	if not seat then
+		return nil, nil, nil
+	end
+	return entry.match.id, seat, entry.table
 end
 
 function MatchService.handleRequest(player: Player, request: any)

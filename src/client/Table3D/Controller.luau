@@ -14,9 +14,21 @@ local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 
+local GuiService = game:GetService("GuiService")
+local Players = game:GetService("Players")
+
 local Controller = {}
 
+-- Parts of your own avatar that stay visible at the table (hands reaching for pieces);
+-- the rest is hidden so your body and accessories don't block the board.
+local KEEP_VISIBLE = {
+	LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+	RightUpperArm = true, RightLowerArm = true, RightHand = true,
+	["Left Arm"] = true, ["Right Arm"] = true,
+}
+
 local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true }
+local BIG_BOARD = { Estates = true }
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
 
 local function findTable(id: string): Model?
@@ -65,12 +77,114 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	marks.Name = "GameNightMarks"
 	local savedCameraType: Enum.CameraType? = nil
 	local savedFieldOfView = camera.FieldOfView
+	-- Parts of the screen MatchView covers (the docked hand), as fractions of the
+	-- viewport: the camera aims the table at the middle of what's left.
+	local insetRight, insetBottom = 0, 0
+
+	-- While the seat camera is on, your table's sign post and the name tags over the
+	-- people at the table hide locally: they sat behind the seat list on the left, and
+	-- the seat list already names everyone. Everything comes back when you leave.
+	local hidden: { () -> () } = {}
+	local function showSign(visible: boolean)
+		if visible then
+			for _, undo in hidden do
+				undo()
+			end
+			table.clear(hidden)
+			return
+		end
+		-- Safe to call again: only what is still showing gets hidden (and recorded), so
+		-- someone who sits down mid-match is covered on the next refresh.
+		if not tableModel then
+			return
+		end
+		local function hideGui(gui: Instance)
+			if (gui:IsA("BillboardGui") or gui:IsA("SurfaceGui")) and gui.Enabled then
+				gui.Enabled = false
+				table.insert(hidden, function()
+					gui.Enabled = true
+				end)
+			end
+		end
+		local sign = tableModel:FindFirstChild("TableSign", true)
+		if sign then
+			hideGui(sign)
+			for _, d in sign:GetDescendants() do
+				if d:IsA("BasePart") and d.LocalTransparencyModifier < 1 then
+					d.LocalTransparencyModifier = 1
+					table.insert(hidden, function()
+						d.LocalTransparencyModifier = 0
+					end)
+				else
+					hideGui(d)
+				end
+			end
+		end
+		-- The "<name>'s turn" tags over the seats float right over the board from the seat
+		-- camera (they covered chess pieces); the seat list and banner already show whose
+		-- turn it is. The server switches the tag's Enabled every turn, so hide its label.
+		for _, d in tableModel:GetDescendants() do
+			if d.Name == "Label" and d:IsA("TextLabel") and d.Visible and d.Parent and d.Parent.Name == "TurnTag" then
+				d.Visible = false
+				table.insert(hidden, function()
+					d.Visible = true
+				end)
+			end
+		end
+		-- Bodies at the table: bots (in the table's Bots folder) and whoever sits in a seat.
+		local bodies: { Instance } = {}
+		local bots = tableModel:FindFirstChild("Bots")
+		if bots then
+			for _, body in bots:GetChildren() do
+				table.insert(bodies, body)
+			end
+		end
+		for _, d in tableModel:GetDescendants() do
+			if d:IsA("Seat") and d.Occupant and d.Occupant.Parent and not table.find(bodies, d.Occupant.Parent) then
+				table.insert(bodies, d.Occupant.Parent)
+			end
+		end
+		for _, body in bodies do
+			for _, d in body:GetDescendants() do
+				if d:IsA("BillboardGui") then
+					hideGui(d)
+				elseif d:IsA("Humanoid") and d.DisplayDistanceType ~= Enum.HumanoidDisplayDistanceType.None then
+					local was = d.DisplayDistanceType
+					d.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+					table.insert(hidden, function()
+						d.DisplayDistanceType = was
+					end)
+				end
+			end
+		end
+	end
+
+	-- Hides your own body (not your arms) while the seat camera is on. Set every frame:
+	-- Roblox's camera scripts also write LocalTransparencyModifier.
+	local function fadeSelf(hidden: boolean)
+		local character = Players.LocalPlayer.Character
+		if not character then
+			return
+		end
+		for _, d in character:GetDescendants() do
+			if d:IsA("BasePart") then
+				local keep = KEEP_VISIBLE[d.Name] == true and d.Parent == character
+				d.LocalTransparencyModifier = if hidden and not keep then 1 else 0
+			elseif d:IsA("Decal") then
+				d.LocalTransparencyModifier = if hidden then 1 else 0
+			end
+		end
+	end
 
 	local function setActive(value: boolean)
 		if active == value then
 			return
 		end
 		active = value
+		if not value then
+			fadeSelf(false)
+			showSign(true)
+		end
 		if value then
 			savedCameraType = camera.CameraType
 			savedFieldOfView = camera.FieldOfView
@@ -112,13 +226,38 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		if upright then
 			back, up, lift = 9.5, 5, 2.4
 		elseif screen then
-			back, up, lift = 9, 4.5, 4.4
+			back, up, lift = 11, 4, 4.9
+		elseif BIG_BOARD[snapshot.gameId] then
+			-- Wide boards (Property Party's loop): sit higher so the near corners stay in view.
+			back, up, lift = 10, 11, 0
 		elseif not snapshot.table.board3D then
-			back, up, lift = 8.5, 9, 0.8
+			-- Aim a bit higher than the board: the far side's heads sat behind the top bar.
+			back, up, lift = 8.5, 9, 1.3
+		end
+		local inset = math.max(insetRight, insetBottom)
+		if inset > 0 then
+			-- Less screen to fill: step back a little.
+			local scale = 1 + inset * 0.6
+			back, up = back * scale, up * scale
 		end
 		local focus = anchor + Vector3.new(0, lift, 0) - toSeat.Unit * 0.6
-		camera.CFrame = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
+		local cf = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
 		camera.FieldOfView = 55
+		if inset > 0 then
+			-- Slide the camera (no turning, so the board stays square to your seat) until
+			-- the table sits in the middle of the uncovered part of the screen.
+			local viewport = camera.ViewportSize
+			local halfV = math.rad(camera.FieldOfView / 2)
+			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
+			local distance = (cf.Position - focus).Magnitude
+			local right = distance * insetRight * math.tan(halfV) * aspect
+			-- Center in the space between the bottom dock and Roblox's top bar (the match
+			-- header lives there), so the far players' heads stay below it.
+			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
+			local down = distance * math.max(insetBottom - topBar, 0) * math.tan(halfV)
+			cf = cf * CFrame.new(right, -down, 0)
+		end
+		camera.CFrame = cf
 	end
 
 	local function context(): Context
@@ -212,6 +351,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		if tryAttach() then
 			setActive(true)
+			showSign(false)
 			placeCamera()
 			if handler then
 				handler.update(snapshot)
@@ -220,6 +360,12 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			setActive(false)
 		end
 	end
+
+	RunService.RenderStepped:Connect(function()
+		if active then
+			fadeSelf(true)
+		end
+	end)
 
 	-- Keep looking while the board streams in, then give up and stay in 2D.
 	RunService.Heartbeat:Connect(function()
@@ -285,6 +431,15 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end,
 		isActive = function(): boolean
 			return active
+		end,
+		setInsets = function(right: number, bottom: number)
+			right, bottom = math.clamp(right, 0, 0.8), math.clamp(bottom, 0, 0.8)
+			if right ~= insetRight or bottom ~= insetBottom then
+				insetRight, insetBottom = right, bottom
+				if active then
+					placeCamera()
+				end
+			end
 		end,
 	}
 end

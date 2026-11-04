@@ -16,6 +16,8 @@ local SessionLock = require(script.Parent.Parent.Core.SessionLock)
 
 local DataService = {}
 
+local STUDIO_CLOSE_SECONDS = 3 -- how long Studio's Stop waits for the final saves
+
 type Session = {
 	data: Profile.Data,
 	persistent: boolean, -- false = DataStore unreachable, nothing is saved
@@ -90,10 +92,19 @@ local function loadProfile(player: Player): Session?
 		-- still saving (a fast rejoin or a voice-server hop), so we wait for it to let go.
 		-- Studio: wait the same way (the last Play session may still be writing), but on the
 		-- last try take the lock over instead of kicking, since a stopped Studio session never
-		-- comes back.
-		local stale = if RunService:IsStudio() and attempt == retries then 0 else nil
+		-- comes back. A lock left by an earlier Studio session (Stop cuts its final save short,
+		-- see BindToClose below) is taken over on the second try, about 5 seconds in.
+		local studio = RunService:IsStudio()
 		local status = "locked"
 		local ok, record = update(key, function(old)
+			local stale = nil
+			if studio then
+				local lock = type(old) == "table" and old.lock
+				local fromStudio = type(lock) == "table" and type(lock.jobId) == "string" and string.sub(lock.jobId, 1, 7) == "studio-"
+				if attempt == retries or (fromStudio and attempt >= 2) then
+					stale = 0
+				end
+			end
 			local claimed, result = SessionLock.claim(old, jobId, os.time(), stale)
 			status = result
 			return claimed
@@ -249,6 +260,10 @@ function DataService.init()
 		end
 	end)
 
+	-- Shutdown: save everyone. Live servers wait up to 25 seconds for it. Studio waits only
+	-- STUDIO_CLOSE_SECONDS, because Studio holds the Stop button until every BindToClose
+	-- returns and its DataStore calls are slow; a save cut short just leaves the lock, which
+	-- the next Studio session takes over (see loadProfile).
 	game:BindToClose(function()
 		local pending = 0
 		for userId, session in sessions do
@@ -258,7 +273,7 @@ function DataService.init()
 				pending -= 1
 			end)
 		end
-		local deadline = os.clock() + 25
+		local deadline = os.clock() + (if RunService:IsStudio() then STUDIO_CLOSE_SECONDS else 25)
 		while pending > 0 and os.clock() < deadline do
 			task.wait(0.1)
 		end

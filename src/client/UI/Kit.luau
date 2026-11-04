@@ -12,6 +12,7 @@ Kit.Theme = {
 	AccentText = Color3.fromRGB(40, 28, 0),
 	Good = Color3.fromRGB(88, 204, 120),
 	Bad = Color3.fromRGB(235, 87, 87),
+	Warn = Color3.fromRGB(255, 150, 60),
 	Text = Color3.fromRGB(245, 243, 255),
 	SubText = Color3.fromRGB(176, 170, 204),
 	Seat = {
@@ -111,6 +112,89 @@ function Kit.button(text: string, onClick: () -> (), props: { [string]: any }?):
 	end
 	button.Activated:Connect(onClick)
 	return button
+end
+
+-- A centered window over a dimmed screen. Tapping the dim area or the X closes it.
+-- Put content in `body`. opts: name, maxSize (Vector2), zIndex, onClose.
+function Kit.modal(parent: Instance, opts: { [string]: any }): any
+	local z = opts.zIndex or 25
+	local overlay = Kit.new("TextButton", {
+		Name = opts.name or "Modal",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.55,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		ZIndex = z,
+		Parent = parent,
+	})
+	-- A button that does nothing, so taps on the window don't reach the dim area behind it.
+	local panel = Kit.new("TextButton", {
+		Name = "Window",
+		Text = "",
+		AutoButtonColor = false,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, -24, 1, -24),
+		BackgroundColor3 = Kit.Theme.Panel,
+		BorderSizePixel = 0,
+		ZIndex = z,
+		Parent = overlay,
+	}, {
+		Kit.corner(14),
+		Kit.padding(12),
+		Kit.new("UISizeConstraint", { MaxSize = opts.maxSize or Vector2.new(900, 640) }),
+	})
+	local body = Kit.new("Frame", {
+		Name = "Body",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = z,
+		Parent = panel,
+	})
+
+	local modal: any = { overlay = overlay, panel = panel, body = body }
+	function modal.close()
+		if overlay.Visible then
+			overlay.Visible = false
+			if opts.onClose then
+				opts.onClose()
+			end
+		end
+	end
+	function modal.open()
+		overlay.Visible = true
+	end
+	function modal.toggle()
+		if overlay.Visible then
+			modal.close()
+		else
+			modal.open()
+		end
+	end
+	function modal.isOpen(): boolean
+		return overlay.Visible
+	end
+	-- Fit inside the free screen area (below Roblox's top bar).
+	function modal.fit(top: number, bottom: number)
+		panel.Position = UDim2.new(0.5, 0, 0.5, (top - bottom) / 2)
+		panel.Size = UDim2.new(1, -24, 1, -(top + bottom + 12))
+	end
+	overlay.Activated:Connect(modal.close)
+	Kit.button("X", modal.close, {
+		Name = "Close",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 4, 0, -4),
+		Size = UDim2.new(0, 36, 0, 36),
+		BackgroundColor3 = Kit.Theme.PanelLight,
+		TextColor3 = Kit.Theme.Text,
+		TextSize = 18,
+		ZIndex = z + 20,
+		Parent = panel,
+	})
+	return modal
 end
 
 function Kit.clear(container: Instance)

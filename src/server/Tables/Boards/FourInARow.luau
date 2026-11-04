@@ -11,7 +11,7 @@ local Pieces = require(script.Parent.Parent.Pieces)
 local FourInARow = {}
 
 local COLS, ROWS = Rules.columns, Rules.rows
-local FRAME_COLOR = Color3.fromRGB(92, 70, 140)
+local FRAME_COLOR = Color3.fromRGB(150, 102, 62)
 local SEAT_COLORS = { Color3.fromRGB(255, 99, 132), Color3.fromRGB(255, 206, 86) }
 local WIN = Color3.fromRGB(255, 255, 255)
 local BASE_HEIGHT = 0.6

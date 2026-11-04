@@ -165,6 +165,8 @@ function TriviaNight.applyMove(state, seat: number, move: any)
 	if move.choice == state.correct then
 		state.correctCount += 1
 		state.streaks[seat] += 1
+		GameModule.addStat(state, seat, "correct")
+		GameModule.maxStat(state, seat, "streak", state.streaks[seat])
 		local points = math.max(500, 1000 - 100 * (state.correctCount - 1))
 		points += math.min(MAX_STREAK_BONUS, STREAK_BONUS * (state.streaks[seat] - 1))
 		state.scores[seat] += points
@@ -227,6 +229,16 @@ function TriviaNight.getSeatInfo(state): { [number]: string }
 	return info
 end
 
+-- How the four answers look everywhere (2D buttons and the screen over the table), so
+-- "B" is the same color in both.
+TriviaNight.ANSWER_LETTERS = { "A", "B", "C", "D" }
+TriviaNight.ANSWER_COLORS = {
+	Color3.fromRGB(240, 110, 100), -- coral
+	Color3.fromRGB(245, 190, 70), -- honey
+	Color3.fromRGB(60, 190, 170), -- teal
+	Color3.fromRGB(150, 110, 230), -- violet
+}
+
 function TriviaNight.getView(state, seat: number?)
 	local view: any = {
 		phase = state.phase,
@@ -249,6 +261,14 @@ function TriviaNight.getView(state, seat: number?)
 	end
 	view.answers = answers
 	view.yourAnswer = if seat then state.answers[seat] else nil
+	-- Who has locked in (not what they picked), so the buzzers at the table can light up.
+	local answeredSeats = {}
+	for s = 1, state.seatCount do
+		if state.answers[s] ~= nil then
+			table.insert(answeredSeats, s)
+		end
+	end
+	view.answeredSeats = answeredSeats
 	if state.phase == "reveal" then
 		view.correct = state.correct
 		view.answersBySeat = table.clone(state.answers)
