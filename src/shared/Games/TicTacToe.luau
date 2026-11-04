@@ -1,4 +1,7 @@
--- Tic-Tac-Toe: the smallest real game, used to prove the table, turn and bot systems.
+-- Tic-Tac-Toe, "infinite" style: each player keeps at most 3 marks. Placing a 4th
+-- removes that player's oldest mark, so the board never fills and someone wins.
+-- The mark that will vanish on a player's next turn is listed in `fading` so boards
+-- can show it fading the turn before it goes.
 -- Board cells are numbered 1..9, left to right, top to bottom. 0 = empty, else the seat.
 -- House rule "misere" (Upside down): whoever makes three in a row loses.
 
@@ -10,6 +13,10 @@ TicTacToe.id = "TicTacToe"
 TicTacToe.minSeats = 2
 TicTacToe.maxSeats = 2
 TicTacToe.marks = { "X", "O" }
+TicTacToe.maxMarks = 3
+-- Safety net so a game can't run forever (two bots, or two players who only block).
+-- 60 moves is 30 each, about 10 minutes at the 20 second turn clock.
+TicTacToe.maxMoves = 60
 
 local LINES = {
 	{ 1, 2, 3 },
@@ -24,10 +31,13 @@ local LINES = {
 
 export type State = {
 	board: { number },
+	placed: { { number } }, -- per seat, its marks' cells, oldest first
+	fading: { number }, -- per seat, the cell that vanishes on its next move (0 = none)
 	turn: number,
+	moves: number,
 	winner: number?,
 	winningLine: { number }?,
-	isDraw: boolean,
+	isDraw: boolean, -- only when the move cap is hit
 	misere: boolean,
 }
 
@@ -41,12 +51,26 @@ local function findWinner(board: { number }): (number?, { number }?)
 	return nil, nil
 end
 
+local function other(seat: number): number
+	return if seat == 1 then 2 else 1
+end
+
+local function refreshFading(state: State)
+	for seat = 1, 2 do
+		local placed = state.placed[seat]
+		state.fading[seat] = if #placed >= TicTacToe.maxMarks then placed[1] else 0
+	end
+end
+
 function TicTacToe.new(seatCount: number, options: any?, _rng: Random?): State
 	assert(seatCount == 2, "Tic-Tac-Toe needs exactly 2 seats")
 	local rules = (options and options.rules) or {}
 	return {
 		board = table.create(9, 0),
+		placed = { {}, {} },
+		fading = { 0, 0 },
 		turn = 1,
+		moves = 0,
 		winner = nil,
 		winningLine = nil,
 		isDraw = false,
@@ -99,16 +123,25 @@ function TicTacToe.validateMove(state: State, seat: number, move: any): (boolean
 end
 
 function TicTacToe.applyMove(state: State, seat: number, move: any)
+	local placed = state.placed[seat]
+	-- The oldest mark leaves first, so it can't count toward the new line.
+	if #placed >= TicTacToe.maxMarks then
+		state.board[table.remove(placed, 1) :: number] = 0
+	end
 	state.board[move.cell] = seat
+	table.insert(placed, move.cell)
+	state.moves += 1
+	refreshFading(state)
+
 	local winner, line = findWinner(state.board)
 	if winner then
 		-- Upside down: the line's maker loses, so the other seat wins.
-		state.winner = if state.misere then (if winner == 1 then 2 else 1) else winner
+		state.winner = if state.misere then other(winner) else winner
 		state.winningLine = line
-	elseif not table.find(state.board, 0) then
+	elseif state.moves >= TicTacToe.maxMoves then
 		state.isDraw = true
 	else
-		state.turn = if seat == 1 then 2 else 1
+		state.turn = other(seat)
 	end
 end
 
@@ -117,7 +150,7 @@ function TicTacToe.getResult(state: State): GameModule.Result?
 		local reason = if state.misere then "Made three in a row (upside down rules)" else "Three in a row"
 		return { winners = { state.winner }, isDraw = false, reason = reason }
 	elseif state.isDraw then
-		return { winners = {}, isDraw = true, reason = "The board is full" }
+		return { winners = {}, isDraw = true, reason = `No winner after {TicTacToe.maxMoves} moves` }
 	end
 	return nil
 end
@@ -127,64 +160,116 @@ function TicTacToe.getView(state: State, _seat: number?): any
 	return GameModule.copy(state)
 end
 
--- Bot: win if it can, block if it must, else center, corner, edge (with a little randomness).
-function TicTacToe.chooseBotMove(state: State, seat: number, rng: Random): any?
-	local opponent = if seat == 1 then 2 else 1
-	local board = state.board
+-- Bot ---------------------------------------------------------------------------
+-- Looks one move ahead on a scratch copy: win if it can, never hand the opponent an
+-- instant win (remember our own oldest mark leaves and frees its square), and prefer
+-- moves that set up a win. A little randomness keeps two bots from looping forever.
 
-	local function completingCell(who: number): number?
-		for _, line in LINES do
-			local mine, empty = 0, nil
-			for _, cell in line do
-				if board[cell] == who then
-					mine += 1
-				elseif board[cell] == 0 then
-					empty = cell
-				end
-			end
-			if mine == 2 and empty then
-				return empty
+local function simulate(state: State, seat: number, cell: number): State
+	local s = {
+		board = table.clone(state.board),
+		placed = { table.clone(state.placed[1]), table.clone(state.placed[2]) },
+		fading = table.clone(state.fading),
+		turn = seat,
+		moves = 0, -- the cap doesn't matter for look-ahead
+		winner = nil,
+		winningLine = nil,
+		isDraw = false,
+		misere = state.misere,
+	}
+	TicTacToe.applyMove(s :: any, seat, { cell = cell })
+	return s :: any
+end
+
+-- Cells where `seat` would complete a line of its own (a win, or a loss upside down).
+local function linesFor(state: State, seat: number): { number }
+	local out = {}
+	for cell = 1, 9 do
+		if state.board[cell] == 0 then
+			local s = simulate(state, seat, cell)
+			if s.winningLine and s.board[s.winningLine[1]] == seat then
+				table.insert(out, cell)
 			end
 		end
+	end
+	return out
+end
+
+local CASUAL = 0.25 -- chance of a random safe move instead of the best one
+local BLUNDER = 0.1 -- chance of a random move that may ignore a threat
+
+local function pick(rng: Random, pool: { number }): any
+	return { cell = pool[rng:NextInteger(1, #pool)] }
+end
+
+function TicTacToe.chooseBotMove(state: State, seat: number, rng: Random): any?
+	local opponent = other(seat)
+	local open = {}
+	for c = 1, 9 do
+		if state.board[c] == 0 then
+			table.insert(open, c)
+		end
+	end
+	if #open == 0 then
 		return nil
 	end
 
 	if state.misere then
 		-- Upside down: never finish a line of our own; anything else is fine.
-		local safe, open = {}, {}
-		for c = 1, 9 do
-			if board[c] == 0 then
-				table.insert(open, c)
-				board[c] = seat
-				if not findWinner(board) then
-					table.insert(safe, c)
-				end
-				board[c] = 0
+		local mine = linesFor(state, seat)
+		local safe = {}
+		for _, c in open do
+			if not table.find(mine, c) then
+				table.insert(safe, c)
 			end
 		end
-		local pool = if #safe > 0 then safe else open
-		return if #pool > 0 then { cell = pool[rng:NextInteger(1, #pool)] } else nil
+		return pick(rng, if #safe > 0 then safe else open)
 	end
 
-	local cell = completingCell(seat) or completingCell(opponent)
-	if cell then
-		return { cell = cell }
+	local wins = linesFor(state, seat)
+	if #wins > 0 then
+		return pick(rng, wins)
 	end
-	if board[5] == 0 then
+
+	-- Safe moves leave the opponent no instant win; threats also set up our own win.
+	-- (Forks can't happen here: after our oldest mark leaves, only two of ours remain.)
+	local safe, threats = {}, {}
+	for _, c in open do
+		local s = simulate(state, seat, c)
+		if #linesFor(s, opponent) == 0 then
+			table.insert(safe, c)
+			if #linesFor(s, seat) > 0 then
+				table.insert(threats, c)
+			end
+		end
+	end
+	-- Now and then the bot misses the danger, like a person would. This keeps it
+	-- beatable and stops two careful players blocking each other forever.
+	if #safe == 0 or rng:NextNumber() < BLUNDER then
+		return pick(rng, open)
+	end
+	-- Some moves are "casual" safe moves so bots don't play the same loop forever.
+	if rng:NextNumber() < CASUAL then
+		return pick(rng, safe)
+	end
+	if #threats > 0 then
+		return pick(rng, threats)
+	end
+	if table.find(safe, 5) then
 		return { cell = 5 }
 	end
 	for _, group in { { 1, 3, 7, 9 }, { 2, 4, 6, 8 } } do
-		local open = {}
+		local pool = {}
 		for _, c in group do
-			if board[c] == 0 then
-				table.insert(open, c)
+			if table.find(safe, c) then
+				table.insert(pool, c)
 			end
 		end
-		if #open > 0 then
-			return { cell = open[rng:NextInteger(1, #open)] }
+		if #pool > 0 then
+			return pick(rng, pool)
 		end
 	end
-	return nil
+	return pick(rng, safe)
 end
 
 return TicTacToe
