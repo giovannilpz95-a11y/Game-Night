@@ -40,7 +40,7 @@ local DOCK: { [string]: { side: string, size: number } } = {
 	SketchGuess = { side = "right", size = 0.32 },
 	WordTiles = { side = "bottom", size = 96 },
 	ColorClash = { side = "bottom", size = 0.72 },
-	TriviaNight = { side = "bottom", size = 0.62 },
+	TriviaNight = { side = "bottom", size = 0.26 }, -- answers only (the screen shows the question)
 	Spoons = { side = "bottom", size = 0.41 },
 	War = { side = "bottom", size = 0.2 },
 	GoFish = { side = "bottom", size = 0.36 },
@@ -545,6 +545,10 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		-- Scenes keep your hand docked on screen; games played on the table don't need it.
 		local docked = in3D and not table3D.playable()
 		board.Parent = if docked then dock else root
+		if renderer and renderer.setDocked then
+			-- Some games lay out a compact strip for the dock (Trivia: just the answers).
+			renderer.setDocked(docked)
+		end
 		board.Visible = not in3D or docked
 		dock.Visible = docked
 		viewButton.Visible = table3D.available() and snapshot ~= nil and not isOver()
@@ -823,7 +827,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				end
 				return
 			end
-			if newSnapshot.matchId ~= shownMatchId then
+			if newSnapshot.matchId ~= shownMatchId or (snapshot ~= nil and newSnapshot.gameId ~= snapshot.gameId) then
 				-- A new match (or a rematch): fresh end card and turn tracking.
 				shownMatchId = newSnapshot.matchId
 				want3D = default3D()
