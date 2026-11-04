@@ -1,4 +1,4 @@
--- Draws standard playing cards (Speed, Spoons, Go Fish, War) in code: white face, rank
+-- Draws standard playing cards for every card game in code: white face, rank
 -- and suit in the corners, a big suit in the middle. A nil id draws the card back.
 -- Also builds a hand row: cards keep their shape at any screen size.
 

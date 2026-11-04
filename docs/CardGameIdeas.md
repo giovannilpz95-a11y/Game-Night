@@ -2,9 +2,9 @@
 
 Back to [[Home]] · see [[Card games]] for the shared deck and the gambling rule.
 
-Giovanni's list of card games to consider, ranked for Game Night (parties of friends on Roblox, bots fill seats, all ages). Built so far: Color Clash (the Crazy Eights family), [[Speed]], [[Spoons]], [[War]], [[Go Fish]]. Names with crude words get clean names in the lobby (set in `GameCatalog`).
+Giovanni's list of card games to consider, ranked for Game Night (parties of friends on Roblox, bots fill seats, all ages). Built so far: Color Clash (the Crazy Eights family), [[Speed]], [[Spoons]], [[War]], [[Go Fish]], and all of Tier 1: [[I Doubt It]], [[President]], [[Slap Stack]], [[Hearts]], [[Spades]], [[Thirty-One]], [[Palace]]. Names with crude words get clean names in the lobby (set in `GameCatalog`).
 
-## Tier 1: build next (best fit for Roblox parties)
+## Tier 1: built (best fit for Roblox parties)
 | Game | Players | Category | Why | Lobby name |
 |---|---|---|---|---|
 | Cheat | 3-8 | Social | Bluffing is great with friends; bots can bluff with simple odds | "I Doubt It" |
