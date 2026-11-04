@@ -314,11 +314,29 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				Parent = middle,
 			})
 			Kit.new("UIGridLayout", { CellSize = UDim2.fromOffset(34, 34), CellPadding = UDim2.fromOffset(4, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = icons })
+			-- A still picture of the last reaction shown, so the thumbnail is never blank
+			-- (before an animation starts, after it ends, or while the shop redraws).
+			local still = Kit.label("", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromScale(0.8, 0.8),
+				Font = Theme.FontBold,
+				TextScaled = true,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Parent = preview,
+			})
+			local function setStill(reaction: Reactions.Reaction)
+				still.Text = reaction.icon or reaction.text or reaction.label
+				still.TextColor3 = if reaction.icon then Theme.Text else (reaction.color or Theme.Text)
+				still.Size = if reaction.icon then UDim2.fromScale(0.62, 0.62) else UDim2.fromScale(0.9, 0.5)
+			end
 			local current: Frame? = nil
 			local function show(reaction: Reactions.Reaction)
 				if current then
 					current:Destroy()
 				end
+				setStill(reaction)
+				still.Visible = false
 				local size = ReactionFx.size(reaction, 64)
 				local scaleDown = math.min(1, 68 / size.X)
 				local holder = Kit.new("Frame", {
@@ -329,6 +347,12 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 					Parent = preview,
 				})
 				current = holder
+				holder.Destroying:Once(function()
+					if current == holder then
+						current = nil
+						still.Visible = true
+					end
+				end)
 				ReactionFx.play(holder, reaction)
 			end
 			for i, id in ids do
@@ -356,7 +380,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			end
 			local first = Reactions.get(ids[1])
 			if first then
-				task.defer(show, first)
+				setStill(first)
 			end
 			local buttons = Kit.new("Frame", {
 				BackgroundTransparency = 1,
@@ -385,7 +409,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			-- Same as the Wallet tab's button, here so buying packs can be tested in place.
 			Kit.button("Studio test: free Gems and Coins", function()
 				sendEconomy({ action = "studioGrant" })
-			end, { LayoutOrder = 1, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Parent = content })
+			end, { LayoutOrder = 1, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.Accent, TextColor3 = Theme.AccentText, Parent = content })
 		end
 
 		-- Every Gem pack for Robux.
