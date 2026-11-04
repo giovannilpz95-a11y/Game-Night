@@ -27,6 +27,8 @@ local LobbyHud = require(script.Parent.UI.LobbyHud)
 local RulesPanel = require(script.Parent.UI.RulesPanel)
 local LobbyTour = require(script.Parent.UI.LobbyTour)
 local PartyChat = require(script.Parent.UI.PartyChat)
+local SoundPanel = require(script.Parent.UI.SoundPanel)
+local Audio = require(script.Parent.Audio)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 
@@ -154,11 +156,17 @@ local function closeWindows()
 	shopPanel.root.Visible = false
 end
 local walletBar = WalletBar.create(screen)
+local soundPanel = SoundPanel.create(screen, function(request)
+	economyRequest:FireServer(request)
+end)
+Layout.onChange(function(info)
+	soundPanel.fit(info.top, info.bottom)
+end)
 local matchView = MatchView.create(screen, sendMatch, function()
 	return currentParty ~= nil and currentParty.leaderId == localPlayer.UserId
 end, walletBar.width, rulesPanel.open, function()
 	shopPanel.open("reactions")
-end)
+end, soundPanel.open)
 walletBar.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(matchView.relayout)
 local voicePanel = VoicePanel.create(lobby, screen, function(request)
 	voiceRequest:FireServer(request)
@@ -201,7 +209,12 @@ local hud = LobbyHud.create(lobby, {
 		closeWindows()
 		rulesPanel.openHelp()
 	end,
+	sound = function()
+		closeWindows()
+		soundPanel.open()
+	end,
 })
+Audio.start()
 
 -- First-time lobby tour. The server remembers it's done (profile tips), so it runs once;
 -- Help > Replay the lobby tour runs it again.
@@ -279,6 +292,7 @@ RunService.RenderStepped:Connect(function()
 	-- The lobby menu hides while at a table, so the 3D view shows the room.
 	-- The Dressing Room has the whole screen too: its panel and your avatar on the stage.
 	lobby.Visible = not matchView.isOpen() and not dressingRoom.isOpen()
+	Audio.setInMatch(matchView.isOpen())
 	local gameId = matchView.gameId()
 	if gameId ~= shownGameId then
 		shownGameId = gameId
@@ -298,6 +312,7 @@ local tips: any = nil -- what help this player has seen (server profile)
 local tourChecked = false
 Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
 	tips = state.tips
+	soundPanel.load(state.audio)
 	-- First visit: show the lobby tour once the room is on screen.
 	if not tourChecked and type(tips) == "table" then
 		tourChecked = true

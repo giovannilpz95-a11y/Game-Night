@@ -26,6 +26,7 @@ Create each under Creator Hub > Game Night > Monetization, then paste the ID int
 - [ ] Private servers on (about 100 R$ a month), auto-translation on, devices: computer, phone, tablet
 - [ ] Maturity questionnaire filled in (answers in [[Launch]] section 3: social hangout = No, free-form creation = No while Sketch & Guess is off)
 - [ ] Genre Strategy > Board & Card Games; title and description from [[Store page]]
+- [ ] Optional: **import the smooth meshes** (`meshes/*.obj` in the project files) into `ReplicatedStorage.Assets.Meshes`, named as in [[Meshes]]. The game works without them; with them the round tables, stools, cards, dice and hex tiles look smooth and use fewer parts
 
 ## 3. Tests that need people or devices
 
@@ -34,6 +35,7 @@ Create each under Creator Hub > Game Night > Monetization, then paste the ID int
 - [ ] **iPhone check** with the Studio Device selector, and once on a real phone: lobby HUD, a card game, a board game
 - [ ] **Low-end phone check**: play one 8-seat card game on the oldest phone available. In the developer console (F9) look at Memory (client under 1.5 GB is safe) and the frame rate. If it struggles, the first things to drop are shadows on the table pendant lamps (`Props.pendant`, `light.Shadows = false`)
 - [ ] **Table view camera feel** (open in [[Tables]])
+- [ ] **Sound pass** (headphones, one card game and one board game): the music, the 🔊 sliders next to Play (and ⋯ > Sound in a match), button clicks, cards, pieces, dice, the turn ping, and the win / lose stings. Every sound is listed in `src/shared/Sounds.luau` with its Creator Store name; to swap one, change its id there. All are Roblox-licensed (APM, Pro Sound Effects, DistroKid, or Roblox's built-in sounds), so nothing needs uploading. If a track or sound is ever pulled from the store it just goes silent, nothing breaks
 
 ## 4. Publish
 
