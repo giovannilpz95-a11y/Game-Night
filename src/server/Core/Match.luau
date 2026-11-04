@@ -137,6 +137,39 @@ function Match.getScores(self: Match): { [number]: number }?
 	return if self.rules.getScores then self.rules.getScores(self.state) else nil
 end
 
+-- Per-seat stats for the profile: counters the game kept (GameModule.addStat) with
+-- getMatchStats(state) on top. Values are whatever the game said; the server's Stats
+-- module keeps only the keys StatsCatalog lists and clamps the numbers.
+function Match.getMatchStats(self: Match): { [number]: { [string]: number } }
+	local out = {}
+	for seat in self.seats do
+		out[seat] = {}
+	end
+	local counters = type(self.state) == "table" and self.state.matchStats
+	if type(counters) == "table" then
+		for seat, row in counters do
+			if out[seat] and type(row) == "table" then
+				for key, value in row do
+					out[seat][key] = value
+				end
+			end
+		end
+	end
+	if self.rules.getMatchStats then
+		local ok, final = pcall(self.rules.getMatchStats, self.state)
+		if ok and type(final) == "table" then
+			for seat, row in final do
+				if out[seat] and type(row) == "table" then
+					for key, value in row do
+						out[seat][key] = value
+					end
+				end
+			end
+		end
+	end
+	return out
+end
+
 -- Lets a bot (or the AFK timer) move for a seat. Returns true if a move was made.
 function Match.playForSeat(self: Match, seat: number): boolean
 	if not self:isSeatActive(seat) then

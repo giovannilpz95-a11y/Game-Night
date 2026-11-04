@@ -28,6 +28,7 @@ type Entry = {
 	timerId: number?, -- the game's phase clock that is currently running
 	botPending: { [number]: boolean }, -- bot seats that already have a move scheduled
 	table: any?, -- the 3D table it's played at: { id, seats, board3D }; nil = 2D overflow
+	botLevel: string?, -- the checked bot difficulty (stats and the weekly board read it)
 	acted: number, -- the last move number the avatars at the table acted out
 }
 
@@ -103,6 +104,8 @@ local function finish(entry: Entry)
 		minutes = (os.clock() - entry.startedAt) / 60,
 		moves = match.moveNumber,
 		scores = match:getScores(), -- party games: final points per seat (nil for others)
+		stats = match:getMatchStats(), -- per seat, for the stats profile (see StatsCatalog)
+		botLevel = entry.botLevel,
 	}
 	for _, callback in finishedCallbacks do
 		task.spawn(callback, summary)
@@ -110,7 +113,8 @@ local function finish(entry: Entry)
 end
 
 -- Runs `callback(summary)` after every match ends. summary has gameId, result, aborted,
--- seats (with userId and left), minutes, moves and scores (party games only).
+-- seats (with userId and left), minutes, moves, scores (games with getScores), stats (per
+-- seat, see Match.getMatchStats) and botLevel (nil without bots).
 -- EconomyService pays out from this.
 function MatchService.onMatchFinished(callback: (any) -> ())
 	table.insert(finishedCallbacks, callback)
@@ -316,6 +320,7 @@ local function startMatch(leader: Player, request: any)
 		timerId = nil,
 		botPending = {},
 		table = nil,
+		botLevel = options.botLevel,
 		acted = 0,
 	}
 	matches[matchId] = entry

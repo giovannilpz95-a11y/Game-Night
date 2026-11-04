@@ -46,12 +46,13 @@ One event per currency change, sent only from `EconomyService` and `PurchaseServ
 | Match Coins | Source | Gameplay | `MatchPayout` |
 | First-win and challenge Gems | Source | Gameplay | `FirstWinOrChallenge` |
 | Level-up Gems | Source | Gameplay | `LevelUp` |
+| Badge Gems | Source | Gameplay | `Badge` |
 | `EconomyService.award` bonus | Source | Gameplay | the award's `reason` |
 | Daily login Gems | Source | TimedReward | `DailyLogin` |
 | Gem pack / Starter Pack | Source | IAP | pack key / `starter` |
 | Shop purchase | Sink | Shop | item id |
 
-The Studio test grant isn't logged. New things that spend or give currency must log too: take `AnalyticsService.snapshot(data)` before the change and call `AnalyticsService.logChange(player, data, before, transaction, sku)` after.
+The Studio test grant isn't logged. Every logged change also goes into the player's saved stats (Gems/Coins earned and spent, see [[Progression]]), and `inviteSent` / `inviteAccepted` add to the social stats. New things that spend or give currency must log too: take `AnalyticsService.snapshot(data)` before the change and call `AnalyticsService.logChange(player, data, before, transaction, sku)` after.
 
 ## Progression (`LogProgressionCompleteEvent` / `LogProgressionStartEvent`)
 
