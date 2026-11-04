@@ -120,6 +120,9 @@ local function orderSeats(model: Model, center: Vector3)
 		local toCenter = Vector3.new(center.X - pos.X, 0, center.Z - pos.Z)
 		if toCenter.Magnitude > 0.1 then
 			seat.CFrame = CFrame.lookAt(pos, pos + toCenter.Unit)
+			-- The chair model shows the cushion; the leveled Seat part would poke out of
+			-- it (and through whoever sits there), so it only does the sitting.
+			seat.Transparency = 1
 		end
 	end
 	return #seats

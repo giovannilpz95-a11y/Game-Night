@@ -116,10 +116,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		if upright then
 			back, up, lift = 9.5, 5, 2.4
 		elseif screen then
-			back, up, lift = 9, 4.5, 4.9
+			back, up, lift = 11, 4, 4.9
 		elseif BIG_BOARD[snapshot.gameId] then
 			-- Wide boards (Property Party's loop): sit higher so the near corners stay in view.
-			back, up, lift = 9, 12, 0
+			back, up, lift = 10, 11, 0
 		elseif not snapshot.table.board3D then
 			back, up, lift = 8.5, 9, 0.8
 		end
@@ -133,13 +133,15 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		local cf = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
 		camera.FieldOfView = 55
 		if inset > 0 then
-			-- Turn so the table sits in the middle of the uncovered part of the screen.
+			-- Slide the camera (no turning, so the board stays square to your seat) until
+			-- the table sits in the middle of the uncovered part of the screen.
 			local viewport = camera.ViewportSize
 			local halfV = math.rad(camera.FieldOfView / 2)
 			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
-			local yaw = math.atan(insetRight * math.tan(halfV) * aspect)
-			local pitch = math.atan(insetBottom * math.tan(halfV))
-			cf = cf * CFrame.Angles(0, -yaw, 0) * CFrame.Angles(-pitch, 0, 0)
+			local distance = (cf.Position - focus).Magnitude
+			local right = distance * insetRight * math.tan(halfV) * aspect
+			local down = distance * insetBottom * math.tan(halfV)
+			cf = cf * CFrame.new(right, -down, 0)
 		end
 		camera.CFrame = cf
 	end

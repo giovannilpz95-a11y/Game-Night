@@ -71,7 +71,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		Position = UDim2.new(0, 0, 0.39, 0),
 		Parent = root,
 	})
-	Kit.new("UIGridLayout", {
+	local gridLayout = Kit.new("UIGridLayout", {
 		CellSize = UDim2.new(0.5, -6, 0.5, -6),
 		CellPadding = UDim2.fromOffset(12, 12),
 		SortOrder = Enum.SortOrder.LayoutOrder,
@@ -230,6 +230,23 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
 			render()
+		end,
+		-- Table view: the screen over the table shows the question, so the dock gets just
+		-- the four answers in one row.
+		setDocked = function(docked: boolean)
+			top.Visible = not docked
+			footer.Visible = not docked
+			if docked then
+				grid.Position = UDim2.new(0, 6, 1, -6)
+				grid.AnchorPoint = Vector2.new(0, 1)
+				grid.Size = UDim2.new(1, -12, 0.24, -12)
+				gridLayout.CellSize = UDim2.new(0.25, -9, 1, 0)
+			else
+				grid.Position = UDim2.new(0, 0, 0.39, 0)
+				grid.AnchorPoint = Vector2.new(0, 0)
+				grid.Size = UDim2.new(1, 0, 0.5, 0)
+				gridLayout.CellSize = UDim2.new(0.5, -6, 0.5, -6)
+			end
 		end,
 		destroy = function()
 			heartbeat:Disconnect()

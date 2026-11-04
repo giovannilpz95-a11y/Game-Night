@@ -89,7 +89,7 @@ function WalletBar.create(parent: Instance)
 		compact = info.compact
 		local height = math.clamp(info.barH - 8, 28, 36)
 		root.Size = UDim2.new(0, 0, 0, height)
-		root.Position = UDim2.fromOffset(info.barX + info.barW, info.barY + info.barH / 2)
+		root.Position = UDim2.fromOffset(info.barX + info.barW - 8, info.barY + info.barH / 2)
 		render()
 	end)
 
