@@ -21,6 +21,7 @@ local VoiceService = require(script.Parent.Services.VoiceService)
 local ProgressionService = require(script.Parent.Services.ProgressionService)
 local TableActionService = require(script.Parent.Services.TableActionService)
 local ReactionService = require(script.Parent.Services.ReactionService)
+local PartyChatService = require(script.Parent.Services.PartyChatService)
 
 Net.init()
 -- The room first, so the tables stand in it. It's decor: if it ever fails, the games
@@ -38,6 +39,7 @@ PurchaseService.init()
 DressingRoomService.init()
 HostService.init()
 VoiceService.init(PartyService)
+PartyChatService.init(PartyService)
 ProgressionService.init(EconomyService)
 DataService.init() -- last, so every onLoaded listener is in place before profiles load
 MatchService.onMatchFinished(EconomyService.onMatchFinished)
@@ -69,6 +71,7 @@ Net.event(Net.Names.DressingRoomRequest).OnServerEvent:Connect(guarded(DressingR
 Net.event(Net.Names.HostRequest).OnServerEvent:Connect(guarded(HostService.handleRequest))
 Net.event(Net.Names.VoiceRequest).OnServerEvent:Connect(guarded(VoiceService.handleRequest))
 Net.event(Net.Names.StatsRequest).OnServerEvent:Connect(guarded(ProgressionService.handleRequest))
+Net.event(Net.Names.ChatRequest).OnServerEvent:Connect(guarded(PartyChatService.handleRequest))
 Net.event(Net.Names.TableAction).OnServerEvent:Connect(guarded(TableActionService.init(MatchService)))
 Net.event(Net.Names.Reaction).OnServerEvent:Connect(guarded(ReactionService.init(MatchService)))
 

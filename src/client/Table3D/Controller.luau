@@ -14,6 +14,7 @@ local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 
 local Controller = {}
@@ -80,19 +81,69 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	-- viewport: the camera aims the table at the middle of what's left.
 	local insetRight, insetBottom = 0, 0
 
-	-- Your table's floating sign hangs right in front of the seat camera: hide it locally.
-	local hiddenSign: BillboardGui? = nil
+	-- While the seat camera is on, your table's sign post and the name tags over the
+	-- people at the table hide locally: they sat behind the seat list on the left, and
+	-- the seat list already names everyone. Everything comes back when you leave.
+	local hidden: { () -> () } = {}
 	local function showSign(visible: boolean)
 		if visible then
-			if hiddenSign then
-				hiddenSign.Enabled = true
-				hiddenSign = nil
+			for _, undo in hidden do
+				undo()
 			end
-		elseif tableModel and not hiddenSign then
-			local sign = tableModel:FindFirstChild("TableSign", true)
-			if sign and sign:IsA("BillboardGui") and sign.Enabled then
-				sign.Enabled = false
-				hiddenSign = sign
+			table.clear(hidden)
+			return
+		end
+		-- Safe to call again: only what is still showing gets hidden (and recorded), so
+		-- someone who sits down mid-match is covered on the next refresh.
+		if not tableModel then
+			return
+		end
+		local function hideGui(gui: Instance)
+			if (gui:IsA("BillboardGui") or gui:IsA("SurfaceGui")) and gui.Enabled then
+				gui.Enabled = false
+				table.insert(hidden, function()
+					gui.Enabled = true
+				end)
+			end
+		end
+		local sign = tableModel:FindFirstChild("TableSign", true)
+		if sign then
+			hideGui(sign)
+			for _, d in sign:GetDescendants() do
+				if d:IsA("BasePart") and d.LocalTransparencyModifier < 1 then
+					d.LocalTransparencyModifier = 1
+					table.insert(hidden, function()
+						d.LocalTransparencyModifier = 0
+					end)
+				else
+					hideGui(d)
+				end
+			end
+		end
+		-- Bodies at the table: bots (in the table's Bots folder) and whoever sits in a seat.
+		local bodies: { Instance } = {}
+		local bots = tableModel:FindFirstChild("Bots")
+		if bots then
+			for _, body in bots:GetChildren() do
+				table.insert(bodies, body)
+			end
+		end
+		for _, d in tableModel:GetDescendants() do
+			if d:IsA("Seat") and d.Occupant and d.Occupant.Parent and not table.find(bodies, d.Occupant.Parent) then
+				table.insert(bodies, d.Occupant.Parent)
+			end
+		end
+		for _, body in bodies do
+			for _, d in body:GetDescendants() do
+				if d:IsA("BillboardGui") then
+					hideGui(d)
+				elseif d:IsA("Humanoid") and d.DisplayDistanceType ~= Enum.HumanoidDisplayDistanceType.None then
+					local was = d.DisplayDistanceType
+					d.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+					table.insert(hidden, function()
+						d.DisplayDistanceType = was
+					end)
+				end
 			end
 		end
 	end
@@ -169,7 +220,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			-- Wide boards (Property Party's loop): sit higher so the near corners stay in view.
 			back, up, lift = 10, 11, 0
 		elseif not snapshot.table.board3D then
-			back, up, lift = 8.5, 9, 0.8
+			-- Aim a bit higher than the board: the far side's heads sat behind the top bar.
+			back, up, lift = 8.5, 9, 1.3
 		end
 		local inset = math.max(insetRight, insetBottom)
 		if inset > 0 then
@@ -188,7 +240,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
 			local distance = (cf.Position - focus).Magnitude
 			local right = distance * insetRight * math.tan(halfV) * aspect
-			local down = distance * insetBottom * math.tan(halfV)
+			-- Center in the space between the bottom dock and Roblox's top bar (the match
+			-- header lives there), so the far players' heads stay below it.
+			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
+			local down = distance * math.max(insetBottom - topBar, 0) * math.tan(halfV)
 			cf = cf * CFrame.new(right, -down, 0)
 		end
 		camera.CFrame = cf

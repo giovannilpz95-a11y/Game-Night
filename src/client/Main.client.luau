@@ -24,6 +24,7 @@ local Layout = require(script.Parent.UI.Layout)
 local LobbyHud = require(script.Parent.UI.LobbyHud)
 local RulesPanel = require(script.Parent.UI.RulesPanel)
 local LobbyTour = require(script.Parent.UI.LobbyTour)
+local PartyChat = require(script.Parent.UI.PartyChat)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 
@@ -37,6 +38,7 @@ local dressingRequest = Net.event(Net.Names.DressingRoomRequest)
 local hostRequest = Net.event(Net.Names.HostRequest)
 local voiceRequest = Net.event(Net.Names.VoiceRequest)
 local statsRequest = Net.event(Net.Names.StatsRequest)
+local chatRequest = Net.event(Net.Names.ChatRequest)
 
 local function sendParty(request: any)
 	partyRequest:FireServer(request)
@@ -308,13 +310,24 @@ Net.event(Net.Names.Reward).OnClientEvent:Connect(function(reward)
 	popups.toast(`{reward.title}: {table.concat(reward.lines, ", ")}`)
 end)
 
--- VIP chat tag. The server sets the VIP attribute; everyone's client draws the tag.
+-- Party chat: the server shows only your party's messages unless you switch to All.
+local partyChat = PartyChat.create(screen, function(request)
+	chatRequest:FireServer(request)
+end)
+
+-- Chat tags: [VIP] (the server sets the VIP attribute; everyone's client draws the tag) and
+-- [Party] on your party's messages while you see everyone.
 TextChatService.OnIncomingMessage = function(message: TextChatMessage)
 	local props = Instance.new("TextChatMessageProperties")
 	local source = message.TextSource
 	local player = source and Players:GetPlayerByUserId(source.UserId)
+	local prefix = message.PrefixText
 	if player and player:GetAttribute("VIP") then
-		props.PrefixText = `<font color="#FFC440">[VIP]</font> {message.PrefixText}`
+		prefix = `<font color="#FFC440">[VIP]</font> {prefix}`
+	end
+	prefix = partyChat.prefix(source and source.UserId, prefix)
+	if prefix ~= message.PrefixText then
+		props.PrefixText = prefix
 	end
 	return props
 end
@@ -327,6 +340,7 @@ Net.event(Net.Names.PartyState).OnClientEvent:Connect(function(party)
 	partyPanel.setParty(party)
 	gamePicker.setParty(party)
 	voicePanel.setParty(party)
+	partyChat.setParty(party)
 	renderHud()
 end)
 

@@ -158,6 +158,33 @@ function CardTable.buttons(frame: Frame, list: { any })
 	end
 end
 
+-- A big red action button (SNAP!, SLAP!) at the right end of the hand row, so it sits in
+-- the bottom strip Table view keeps on screen. Text is scaled but padded off the edges.
+function CardTable.bigButton(ui: Layout, text: string, onClick: () -> ()): TextButton
+	local button = Kit.button(text, onClick, {
+		-- Centered on the hand row (which starts 66 px under 62% and fills the rest). Parented
+		-- to the root, because the hand row is cleared on every redraw.
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(0.97, 0, 0.81, 33),
+		Size = UDim2.new(0.24, 0, 0.33, -57),
+		TextScaled = true,
+		BackgroundColor3 = Theme.Bad,
+		TextColor3 = Theme.Text,
+		ZIndex = 7,
+		Parent = ui.root,
+	})
+	Kit.new("UIPadding", {
+		PaddingLeft = UDim.new(0.14, 0),
+		PaddingRight = UDim.new(0.14, 0),
+		PaddingTop = UDim.new(0.2, 0),
+		PaddingBottom = UDim.new(0.2, 0),
+		Parent = button,
+	})
+	Kit.new("UITextSizeConstraint", { MaxTextSize = 34, Parent = button })
+	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(220, 120), Parent = button })
+	return button
+end
+
 -- A row of cards on the felt (no clicks). cards: { id or false (face down) }
 function CardTable.cardRow(parent: Instance, cards: { any }, props: { [string]: any }): Frame
 	local row = Kit.new("Frame", { BackgroundTransparency = 1 })
