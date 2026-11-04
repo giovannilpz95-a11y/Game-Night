@@ -100,6 +100,26 @@ StatsCatalog.games = {
 	Spades = {},
 	ThirtyOne = {},
 	Palace = {},
+	OldMaid = {
+		extra = {
+			{ key = "pairs", label = "Pairs made", kind = "sum" },
+			{ key = "stuck", label = "Stuck with the Old Maid", kind = "sum" },
+		},
+	},
+	Snap = {
+		extra = { { key = "snaps", label = "Good snaps", kind = "sum" } },
+	},
+	GinRummy = {
+		extra = {
+			{ key = "gins", label = "Gins", kind = "sum" },
+			{ key = "undercuts", label = "Undercuts", kind = "sum" },
+		},
+		score = { label = "Best score" },
+	},
+	OhHell = {
+		extra = { { key = "exact", label = "Bids made exactly", kind = "sum" } },
+		score = { label = "Best score" },
+	},
 } :: { [string]: GameStats }
 
 function StatsCatalog.get(gameId: string): GameStats

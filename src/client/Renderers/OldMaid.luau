@@ -1,0 +1,142 @@
+-- Old Maid table: players along the top (cards left and pairs down), and on the felt the
+-- face-down hand you're drawing from: tap any card to take it. Your hand is at the
+-- bottom, with the Old Maid outlined in red if you're holding her.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
+local Kit = require(script.Parent.Parent.UI.Kit)
+local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
+local CardTable = require(script.Parent.Parent.UI.CardTable)
+local Theme = Kit.Theme
+
+local OldMaid = {}
+
+local MAID_RED = Color3.fromRGB(235, 70, 90)
+
+function OldMaid.create(container: Frame, sendMove: (any) -> ())
+	local snapshot: any = nil
+	local ui = CardTable.layout(container)
+
+	local function nameOf(seat: number?): string
+		return CardTable.nameOf(snapshot, seat)
+	end
+
+	local function render()
+		local view = snapshot.view
+		local me = snapshot.yourSeat
+		local myTurn = CardTable.isActive(snapshot, me) and view.turn == me
+		local target = view.target
+
+		local chips = {}
+		for seat = 1, #snapshot.seats do
+			if seat ~= me then
+				local n = view.handCounts[seat] or 0
+				local pairs = #(view.pairs[seat] or {})
+				table.insert(chips, {
+					seat = seat,
+					bigLine = { text = if n == 0 then "Safe!" else `{n} cards`, color = if n == 0 then Theme.Good else nil },
+					lines = { `{pairs} {if pairs == 1 then "pair" else "pairs"}` },
+					turn = view.turn == seat and not view.over,
+					highlight = myTurn and seat == target,
+					dim = n == 0,
+				})
+			end
+		end
+		CardTable.seatChips(ui.seats, snapshot, chips)
+
+		Kit.clear(ui.content)
+		if view.over then
+			local loserText = if view.loser == me then "You're left with the Old Maid!" elseif view.loser then `{nameOf(view.loser)} is left with the Old Maid!` else "Game over"
+			CardTable.feltText(ui.content, loserText, 0.06, 20).TextColor3 = Theme.Accent
+			local slot = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.6), Size = UDim2.fromScale(1, 0.62), Parent = ui.content })
+			local face = PlayingCard.show(slot, view.oldMaid)
+			Kit.new("UIStroke", { Color = MAID_RED, Thickness = 4, Parent = face })
+		elseif target then
+			-- The hand being drawn from, face down. Tap one on your turn.
+			local count = view.handCounts[target] or 0
+			local picker = if view.turn == me then "Pick one of" else `{nameOf(view.turn)} picks from`
+			local owner = if target == me then "your" else `{nameOf(target)}'s`
+			CardTable.feltText(ui.content, `{picker} {owner} cards`, 0.04, 17).TextColor3 = if myTurn then Theme.Accent else Theme.Text
+			local row = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromScale(0.04, 0.2), Size = UDim2.fromScale(0.92, 0.6), ZIndex = 6, Parent = ui.content })
+			local cards = {}
+			for i = 1, count do
+				table.insert(cards, { id = nil, key = i, glow = myTurn, enabled = myTurn })
+			end
+			PlayingCard.renderHand(row, cards, function(index: number)
+				if myTurn then
+					sendMove({ kind = "draw", index = index })
+				end
+			end)
+		end
+
+		-- What just happened (the card itself only for the two players involved).
+		local a = view.lastAction
+		local seen = view.lastDrawn
+		local text = ""
+		if a and not view.over then
+			if seen and seen.seat == me then
+				text = `You took the {PlayingCards.name(seen.card)} from {nameOf(seen.from)}`
+			elseif seen and seen.from == me then
+				text = `{nameOf(seen.seat)} took your {PlayingCards.name(seen.card)}`
+			else
+				text = `{nameOf(a.seat)} took a card from {nameOf(a.from)}`
+			end
+			if a.rank then
+				text ..= ` · pair of {PlayingCards.rankPlural[a.rank]}!`
+			end
+			for _, s in a.out or {} do
+				text ..= ` · {nameOf(s)} {if s == me then "are" else "is"} safe`
+			end
+		end
+		CardTable.feltText(ui.content, text, 0.84, 14)
+
+		CardTable.buttons(ui.buttons, {})
+
+		local holding = false
+		for _, id in view.hand or {} do
+			if id == view.oldMaid then
+				holding = true
+			end
+		end
+		local myCount = if me then view.handCounts[me] or 0 else 0
+		if not me then
+			ui.prompt.Text = "Watching"
+		elseif snapshot.result then
+			ui.prompt.Text = ""
+		elseif myCount == 0 then
+			ui.prompt.Text = "You're safe! Watch who ends up with the Old Maid"
+		elseif myTurn then
+			ui.prompt.Text = `Your turn: tap one of {nameOf(target)}'s cards`
+		else
+			ui.prompt.Text = `{nameOf(view.turn)}'s turn` .. (if holding then " · you have the Old Maid, keep a straight face!" else "")
+		end
+
+		local cards = {}
+		for _, id in view.hand or {} do
+			table.insert(cards, { id = id, raised = id == view.oldMaid })
+		end
+		PlayingCard.renderHand(ui.hand, cards, nil)
+		-- Outline the Old Maid so you can't miss her.
+		for _, slot in ui.hand:GetChildren() do
+			if slot:IsA("Frame") and slot.LayoutOrder > 0 and cards[slot.LayoutOrder] and cards[slot.LayoutOrder].id == view.oldMaid then
+				local face = slot:FindFirstChildWhichIsA("Frame")
+				if face then
+					Kit.new("UIStroke", { Color = MAID_RED, Thickness = 4, Parent = face })
+				end
+			end
+		end
+	end
+
+	return {
+		update = function(newSnapshot: any)
+			snapshot = newSnapshot
+			render()
+		end,
+		destroy = function()
+			ui.root:Destroy()
+		end,
+	}
+end
+
+return OldMaid

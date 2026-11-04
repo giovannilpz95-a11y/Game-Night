@@ -150,6 +150,10 @@ local KINDS: { [string]: { [string]: string } } = {
 	ThirtyOne = { draw = "draw", discard = "card", knock = "knock" },
 	Palace = { play = "card", blind = "card", pickup = "draw", swap = "card" },
 	SlapStack = { flip = "card", slap = "slap" },
+	OldMaid = { draw = "draw" },
+	Snap = { flip = "card", snap = "slap" },
+	GinRummy = { draw = "draw", discard = "card", knock = "knock" },
+	OhHell = { play = "card", bid = "knock" },
 }
 
 local GENERIC = { play = "card", draw = "draw", roll = "dice", pass = "pass", endTurn = "pass", ["end"] = "pass" }

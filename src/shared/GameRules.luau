@@ -384,6 +384,64 @@ rules.Palace = {
 	},
 }
 
+rules.OldMaid = {
+	goal = "Get rid of all your cards. Whoever is left holding the Old Maid loses.",
+	card = {
+		"Pairs go down by themselves.",
+		"On your turn, tap one of your neighbor's face-down cards to take it.",
+		"Don't get stuck with the Queen of Spades: she never pairs.",
+	},
+	sections = {
+		{ title = "Setup", lines = { "One Queen is taken out, so the Queen of Spades (the Old Maid) has no partner.", "All the other cards are dealt out. Pairs (two of the same rank) go down straight away." } },
+		{ title = "Your turn", lines = { "Take one face-down card from the next player who still has cards.", "If it makes a pair, the pair goes down.", "Hands are shuffled after every pick, so nobody knows where the Old Maid is." } },
+		{ title = "Winning", lines = { "No cards left? You're safe.", "The last player holding cards has the Old Maid and loses. Everyone else wins." } },
+	},
+}
+
+rules.Snap = {
+	goal = "Win every card by being first to call SNAP.",
+	card = {
+		"On your turn, flip your top card onto your face-up pile.",
+		"When two face-up piles show the same rank, hit SNAP (or Space) first.",
+		"The snapper wins both piles. A wrong snap gives a card away.",
+	},
+	sections = {
+		{ title = "Your turn", lines = { "Tap your pile or Flip to turn your top card face up in front of you.", "When your face-down pile runs out, your face-up pile is turned over and used again." } },
+		{ title = "Snapping", lines = { "Anyone can snap any time two face-up top cards match, even if they aren't yours.", "First good snap takes every matching pile, and that player flips next.", "Snap when nothing matches and your top card goes to the player on your left." } },
+		{ title = "Winning", lines = { "Out of cards, out of the game. The last player with cards wins.", "A very long game ends after 500 flips: most cards wins." } },
+	},
+}
+
+rules.GinRummy = {
+	goal = "Be first to the target score by knocking or going Gin.",
+	card = {
+		"Draw from the stock or the discard pile, then throw one card away.",
+		"Make sets (3-4 of a rank) and runs (3+ in a row in one suit).",
+		"Deadwood of 10 or less? Knock. None at all is Gin.",
+	},
+	sections = {
+		{ title = "Melds", lines = { "Set: 3 or 4 cards of the same rank.", "Run: 3 or more cards in a row in one suit. Ace is low (A-2-3, not Q-K-A).", "Your hand is sorted into its best melds for you." } },
+		{ title = "Deadwood", lines = { "Cards not in a meld. Ace 1, number cards their number, faces 10." } },
+		{ title = "Your turn", lines = { "Take the top of the stock or the discard pile.", "Discard one card (not the one you just took from the discard pile).", "Or press Knock and pick the card to discard, if your deadwood is low enough." } },
+		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Stock down to 2 cards with no knock: nobody scores." } },
+	},
+}
+
+rules.OhHell = {
+	goal = "Have the highest score after the last round.",
+	card = {
+		"Bid exactly how many tricks you'll take this round.",
+		"Follow the suit that was led. The turned-up card's suit is trump.",
+		"Hit your bid exactly for 10 + your bid. Miss and you get nothing.",
+	},
+	sections = {
+		{ title = "Rounds", lines = { "Everyone gets one card fewer each round (7 down to 1 by default).", "After the deal one card is turned up: its suit is trump for the round." } },
+		{ title = "Bidding", lines = { "Bid 0 up to the hand size, starting left of the dealer.", "The dealer bids last and can't pick the number that makes all the bids add up to the hand size." } },
+		{ title = "Tricks", lines = { "Follow suit if you can. Otherwise play anything.", "The highest trump wins, or else the highest card of the led suit. The winner leads next." } },
+		{ title = "Scoring", lines = { "Exactly your bid: 10 + your bid (bid 0 and take none for 10).", "Any other number of tricks: 0 for the round." } },
+	},
+}
+
 ---------------------------------------------------------------- API
 
 local GameRules = {}

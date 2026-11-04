@@ -56,6 +56,10 @@ local DOCK: { [string]: { side: string, size: number } } = {
 	Spades = { side = "bottom", size = 0.39 },
 	ThirtyOne = { side = "bottom", size = 0.39 },
 	Palace = { side = "bottom", size = 0.39 },
+	OldMaid = { side = "bottom", size = 0.39 },
+	Snap = { side = "bottom", size = 0.39 },
+	GinRummy = { side = "bottom", size = 0.39 },
+	OhHell = { side = "bottom", size = 0.39 },
 }
 
 local localPlayer = Players.LocalPlayer
