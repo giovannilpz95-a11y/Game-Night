@@ -292,8 +292,91 @@ function styles.zzz(c: Ctx)
 	end)
 end
 
+function styles.float(c: Ctx)
+	-- Drifts side to side and up and down, fading in and out like a ghost.
+	c.face.Position = at(0.4, FACE_Y)
+	tween(c.face, 0.7, { Position = at(0.6, FACE_Y) }, Sine, InOut, -1, true)
+	tween(c.scale, 0.45, { Scale = 1.08 }, Sine, InOut, -1, true)
+	tween(c.face, 0.5, { TextTransparency = 0.45 }, Sine, InOut, -1, true)
+end
+
+function styles.dangle(c: Ctx)
+	-- Drops in on a thread from the top and bounces on it.
+	local thread = Instance.new("Frame")
+	thread.AnchorPoint = Vector2.new(0.5, 0)
+	thread.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
+	thread.BorderSizePixel = 0
+	thread.Position = at(0.5, -0.1)
+	thread.Size = UDim2.fromScale(0.015, 0.05)
+	thread.ZIndex = 2
+	thread.Parent = c.holder
+	c.face.Position = at(0.5, 0.05)
+	tween(c.face, 0.5, { Position = at(0.5, FACE_Y) }, Back, Out)
+	tween(thread, 0.5, { Size = UDim2.fromScale(0.015, FACE_Y - 0.15) }, Back, Out)
+	task.delay(0.5, function()
+		if c.holder.Parent then
+			tween(c.face, 0.35, { Position = at(0.5, FACE_Y + 0.06) }, Sine, InOut, -1, true)
+			tween(thread, 0.35, { Size = UDim2.fromScale(0.015, FACE_Y - 0.09) }, Sine, InOut, -1, true)
+			tween(c.face, 0.7, { Rotation = 10 }, Sine, InOut, -1, true)
+		end
+	end)
+end
+
+function styles.roll(c: Ctx)
+	-- Tumbles with little hops, like a die across the table.
+	local hop = 0
+	every(c.holder, 0.3, c.endsAt - 0.3, function()
+		hop += 1
+		local x = 0.5 + (if hop % 2 == 0 then -0.06 else 0.06)
+		tween(c.face, 0.15, { Position = at(x, FACE_Y - 0.12), Rotation = c.face.Rotation + 90 }, Quad, Out).Completed:Once(function()
+			if c.holder.Parent then
+				tween(c.face, 0.15, { Position = at(x, FACE_Y) }, Quad, In)
+			end
+		end)
+	end)
+end
+
+function styles.melt(c: Ctx)
+	-- Squishes down and wider, dripping as it goes.
+	tween(c.face, 1.4, { Size = UDim2.fromScale(0.7, 0.48), Position = at(0.5, FACE_Y + 0.06) }, Sine, InOut)
+	every(c.holder, 0.3, c.endsAt, function()
+		local x = 0.5 + rng:NextNumber(-0.15, 0.15)
+		local drop = label(c.holder, "💧", 0.08, at(x, FACE_Y + 0.18), 4)
+		fly(drop, 0.6, { Position = at(x, FACE_Y + 0.44), TextTransparency = 0.6 }, Quad, In)
+	end)
+end
+
+function styles.kiss(c: Ctx)
+	-- Leans in, then blows a heart off to the side.
+	every(c.holder, 0.6, c.endsAt - 0.4, function()
+		tween(c.scale, 0.15, { Scale = 1.15 }, Back, Out).Completed:Once(function()
+			if c.holder.Parent then
+				tween(c.scale, 0.2, { Scale = 1 }, Sine, InOut)
+			end
+		end)
+		local heart = label(c.holder, "❤️", 0.1, at(0.66, FACE_Y + 0.04), 4)
+		fly(heart, 0.9, { Position = at(0.98, FACE_Y - 0.3), Size = UDim2.fromScale(0.2, 0.2), TextTransparency = 1, Rotation = 20 }, Sine, Out)
+	end)
+end
+
+function styles.snow(c: Ctx)
+	-- Sways gently while snow drifts down around it.
+	c.face.Rotation = -6
+	tween(c.face, 0.6, { Rotation = 6 }, Sine, InOut, -1, true)
+	every(c.holder, 0.1, c.endsAt, function()
+		local flake = dot(c.holder, Color3.fromRGB(255, 255, 255), rng:NextNumber(0.03, 0.06), at(rng:NextNumber(0.05, 0.95), 0.02), 0.1, 4)
+		fly(flake, 1.2, { Position = at(flake.Position.X.Scale + rng:NextNumber(-0.08, 0.08), 1), BackgroundTransparency = 1 }, Sine, In)
+	end)
+end
+
+function styles.flap(c: Ctx)
+	-- Quick wing beats: squashes and stretches while bobbing.
+	tween(c.face, 0.09, { Size = UDim2.fromScale(0.72, 0.44) }, Sine, InOut, -1, true)
+	tween(c.face, 0.4, { Position = at(0.5, FACE_Y - 0.1) }, Sine, InOut, -1, true)
+end
+
 -- Text reactions: a speech bubble that springs in and wiggles.
-local function playText(holder: Frame, reaction: Reactions.Reaction)
+local function playText(holder: Frame, reaction: Reactions.Reaction, duration: number)
 	local color = reaction.color or Color3.fromRGB(54, 140, 235)
 	local bubble = Instance.new("Frame")
 	bubble.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -329,6 +412,22 @@ local function playText(holder: Frame, reaction: Reactions.Reaction)
 	local scale = Instance.new("UIScale")
 	scale.Scale = 0.2
 	scale.Parent = bubble
+	if reaction.style == "shout" then
+		-- Shouted: thicker outline, bigger spring, then shakes and throbs.
+		stroke.Thickness = 5
+		text.Font = Enum.Font.GothamBlack
+		tween(scale, 0.3, { Scale = 1.15 }, Back, Out).Completed:Once(function()
+			if bubble.Parent then
+				tween(scale, 0.18, { Scale = 1.02 }, Sine, InOut, -1, true)
+			end
+		end)
+		local endsAt = os.clock() + duration - 0.2
+		every(bubble, 0.04, endsAt, function()
+			bubble.Position = at(0.5 + rng:NextNumber(-0.02, 0.02), 0.45 + rng:NextNumber(-0.03, 0.03))
+			bubble.Rotation = rng:NextNumber(-4, 4)
+		end)
+		return
+	end
 	tween(scale, 0.35, { Scale = 1 }, Back, Out)
 	bubble.Rotation = -5
 	tween(bubble, 0.3, { Rotation = 5 }, Sine, InOut, -1, true)
@@ -339,8 +438,8 @@ end
 function ReactionFx.play(holder: Frame, reaction: Reactions.Reaction, seconds: number?, cleanup: Instance?)
 	local duration = seconds or Reactions.Duration
 	holder.ClipsDescendants = false
-	if reaction.style == "text" or not reaction.icon then
-		playText(holder, reaction)
+	if Reactions.isText(reaction) then
+		playText(holder, reaction, duration)
 	else
 		local face = label(holder, reaction.icon, 0.58, at(0.5, FACE_Y), 3)
 		local scale = Instance.new("UIScale")
@@ -379,7 +478,7 @@ end
 
 -- Size (pixels) to give a holder for `reaction` when `base` is the emoji size.
 function ReactionFx.size(reaction: Reactions.Reaction, base: number): Vector2
-	if reaction.style == "text" or not reaction.icon then
+	if Reactions.isText(reaction) then
 		return Vector2.new(math.floor(base * 2.3), math.floor(base * 0.9))
 	end
 	return Vector2.new(base, base)
