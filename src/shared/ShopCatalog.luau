@@ -112,7 +112,7 @@ local items: { Item } = {
 	{ id = "hexlands_fireworks", name = "Harbor Fireworks Win", shop = "hexlands", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "hexlands_founder_title", name = "Title: Island Founder", shop = "hexlands", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
 
-	-- Card shop (Speed, Spoons, Go Fish, War)
+	-- Card shop (every 52-card game)
 	{ id = "cards_ruby_backs", name = "Ruby Card Backs", shop = "cards", slot = "cards", tier = "Common", coins = 300 },
 	{ id = "cards_blue_felt", name = "Blue Felt Table", shop = "cards", slot = "board", tier = "Common", coins = 350 },
 	{ id = "cards_golden_spoons", name = "Golden Spoons", shop = "cards", slot = "pieces", tier = "Rare", coins = 1200 },
