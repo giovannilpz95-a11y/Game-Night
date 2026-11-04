@@ -261,26 +261,21 @@ function handlers.sync(player: Player, _request: any)
 	sendState(player, { eligible = checkEligible(player) })
 end
 
--- Leader: take the party to a voice server.
-function handlers.join(player: Player, request: any)
+-- Leader: take the party to a voice server. The party is marked busy for the whole
+-- request, because the voice checks below yield and a second tap must not reserve a
+-- second server.
+local function joinVoice(player: Player, request: any, party: any)
 	if not cfg.Enabled then
 		return notify(player, "Voice servers are switched off right now")
 	end
 	if isVoiceServer then
 		return notify(player, "You're already in a voice server")
 	end
-	local party = partyService.getParty(player.UserId)
-	if not party then
-		return
-	end
 	if party.leaderId ~= player.UserId then
 		return notify(player, "Only the party leader can take the party to a voice server")
 	end
 	if party.matchId then
 		return notify(player, "Finish or leave your game first")
-	end
-	if busyParties[party.id] then
-		return
 	end
 
 	-- Everyone must be able to use voice chat. The server asks Roblox; clients can't fake it.
@@ -304,7 +299,6 @@ function handlers.join(player: Player, request: any)
 		return
 	end
 
-	busyParties[party.id] = true
 	local travellers = playersOf(going)
 	for _, member in playersOf(staying) do
 		partyService.split(member.UserId)
@@ -322,7 +316,6 @@ function handlers.join(player: Player, request: any)
 	options.ReservedServerId = key
 	options:SetTeleportData(PartyTransfer.teleportData(token, nil))
 	local ok, err = teleport(voicePlaceId(), travellers, options)
-	busyParties[party.id] = nil
 	if not ok then
 		warn(`[GameNight] voice teleport failed: {err}`)
 		releaseSeats(key, token)
@@ -332,6 +325,19 @@ function handlers.join(player: Player, request: any)
 				notify(member, "Couldn't reach a voice server. Please try again in a moment.")
 			end
 		end
+	end
+end
+
+function handlers.join(player: Player, request: any)
+	local party = partyService.getParty(player.UserId)
+	if not party or busyParties[party.id] then
+		return
+	end
+	busyParties[party.id] = true
+	local ok, err = pcall(joinVoice, player, request, party)
+	busyParties[party.id] = nil
+	if not ok then
+		error(err, 0)
 	end
 end
 

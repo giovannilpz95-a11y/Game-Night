@@ -193,12 +193,41 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 
 	-- Hides your own body (not your arms) while the seat camera is on. Set every frame:
 	-- Roblox's camera scripts also write LocalTransparencyModifier.
+	-- The parts and decals are cached per character (rebuilt when something is added or
+	-- removed), so low-end phones don't walk the whole avatar every frame.
+	local fadeCharacter: Model? = nil
+	local fadeList: { Instance }? = nil
+	local fadeConnections: { RBXScriptConnection } = {}
+	local function fadeTargets(character: Model): { Instance }
+		if character ~= fadeCharacter then
+			for _, c in fadeConnections do
+				c:Disconnect()
+			end
+			fadeCharacter = character
+			fadeList = nil
+			local function dirty()
+				fadeList = nil
+			end
+			fadeConnections = { character.DescendantAdded:Connect(dirty), character.DescendantRemoving:Connect(dirty) }
+		end
+		if not fadeList then
+			local list = {}
+			for _, d in character:GetDescendants() do
+				if d:IsA("BasePart") or d:IsA("Decal") then
+					table.insert(list, d)
+				end
+			end
+			fadeList = list
+		end
+		return fadeList :: { Instance }
+	end
+
 	local function fadeSelf(hidden: boolean)
 		local character = Players.LocalPlayer.Character
 		if not character then
 			return
 		end
-		for _, d in character:GetDescendants() do
+		for _, d in fadeTargets(character) do
 			if d:IsA("BasePart") then
 				local keep = KEEP_VISIBLE[d.Name] == true and d.Parent == character
 				d.LocalTransparencyModifier = if hidden and not keep then 1 else 0
