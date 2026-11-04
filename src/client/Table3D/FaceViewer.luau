@@ -7,7 +7,8 @@
 -- cards) only 0/180 so they stay inside their spot.
 
 local CollectionService = game:GetService("CollectionService")
-local RunService = game:GetService("RunService")
+
+local Frame = require(script.Parent.Parent.Frame)
 
 local FaceViewer = {}
 
@@ -42,13 +43,7 @@ function FaceViewer.start()
 		base[inst :: BasePart] = nil
 	end)
 
-	local elapsed = 0
-	RunService.RenderStepped:Connect(function(dt)
-		elapsed += dt
-		if elapsed < INTERVAL then
-			return
-		end
-		elapsed = 0
+	Frame.every("FaceViewer", INTERVAL, function()
 		local camera = workspace.CurrentCamera
 		if not camera then
 			return

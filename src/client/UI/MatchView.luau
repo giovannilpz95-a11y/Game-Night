@@ -13,7 +13,6 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local HapticService = game:GetService("HapticService")
@@ -21,6 +20,7 @@ local HapticService = game:GetService("HapticService")
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Kit = require(script.Parent.Kit)
+local Frame = require(script.Parent.Parent.Frame)
 local Audio = require(script.Parent.Parent.Audio)
 local HudKit = require(script.Parent.HudKit)
 local Layout = require(script.Parent.Layout)
@@ -1146,7 +1146,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = resultOverlay,
 	})
 
-	RunService.Heartbeat:Connect(function()
+	-- 30 times a second is smooth for the timer bars and a third of the work on a 90 Hz phone.
+	Frame.every("TurnText", 1 / 30, function()
 		if root.Visible then
 			updateTurnText()
 		end

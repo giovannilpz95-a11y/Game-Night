@@ -13,6 +13,7 @@ local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local L = require(ReplicatedStorage.Shared.LobbyLayout)
 local Room = require(script.Parent.Parent.Lobby.Room)
 local Props = require(script.Parent.Parent.Lobby.Props)
+local Optimize = require(script.Parent.Parent.Lobby.Optimize)
 
 local LobbyService = {}
 
@@ -142,6 +143,7 @@ local function tableLamps(lobby: Instance)
 			local at = if anchor and anchor:IsA("Attachment") then anchor.WorldPosition elseif anchor and anchor:IsA("BasePart") then anchor.Position else model:GetPivot().Position
 			local lamp, _, bulb = Props.pendant(Vector3.new(at.X, at.Y + 12.5, at.Z), L.CEILING_Y, f)
 			lamp.Name = model.Name
+			Optimize.decor(lamp)
 			local function paint()
 				local color = LAMP_COLORS[model:GetAttribute("State") or "Free"] or LAMP_COLORS.Free
 				bulb.Color = color
@@ -250,11 +252,14 @@ local function runPartyBoard(board: Model)
 			local rows = tableRows()
 			for i, label in labels do
 				local row = rows[i]
-				if row then
-					label.Text = `{row.id}   {row.text}`
-					label.TextColor3 = if row.playing then Color3.fromRGB(255, 220, 130) else Color3.fromRGB(200, 214, 204)
-				else
-					label.Text = ""
+				-- Only write what changed: every property write is sent to every player.
+				local text = if row then `{row.id}   {row.text}` else ""
+				local color = if row and row.playing then Color3.fromRGB(255, 220, 130) else Color3.fromRGB(200, 214, 204)
+				if label.Text ~= text then
+					label.Text = text
+				end
+				if label.TextColor3 ~= color then
+					label.TextColor3 = color
 				end
 			end
 			task.wait(2)

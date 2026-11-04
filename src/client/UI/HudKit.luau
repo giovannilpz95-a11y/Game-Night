@@ -319,7 +319,13 @@ local PULSE_INFO = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirectio
 -- A ring that breathes (whose turn it is). Stops by itself when the stroke is destroyed.
 function HudKit.pulse(stroke: UIStroke, low: number?, high: number?)
 	stroke.Transparency = low or 0
-	TweenService:Create(stroke, PULSE_INFO, { Transparency = high or 0.65 }):Play()
+	local tween = TweenService:Create(stroke, PULSE_INFO, { Transparency = high or 0.65 })
+	tween:Play()
+	-- A forever tween holds on to its stroke; let both go when the stroke does.
+	stroke.Destroying:Once(function()
+		tween:Cancel()
+		tween:Destroy()
+	end)
 end
 
 -- "Sam is thinking" dots: cycles . .. ... on a label until it's destroyed or hidden.

@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local L = require(ReplicatedStorage.Shared.LobbyLayout)
 local Props = require(script.Parent.Props)
+local Optimize = require(script.Parent.Optimize)
 
 local Room = {}
 
@@ -122,7 +123,12 @@ local function wall(parent: Instance, along: string, fixed: number, from: number
 end
 
 local function shell(room: Model)
-	local f = folder("Shell", room)
+	-- A Model (not a Folder) so it can stream as Persistent: walls, floor and ceiling
+	-- always reach phones that stream a small radius.
+	local f = Instance.new("Model")
+	f.Name = "Shell"
+	Optimize.persistent(f)
+	f.Parent = room
 	local r = L.room
 	local cx, cz = (r.minX + r.maxX) / 2, (r.minZ + r.maxZ) / 2
 	local w, d = r.maxX - r.minX, r.maxZ - r.minZ
@@ -391,6 +397,13 @@ function Room.build(parent: Instance): (Model, { [string]: Model })
 	Props.chandelier(Vector3.new(0, 21, -58), L.CEILING_Y, room)
 	local found = props(room)
 	shots(room)
+	-- The Looks button opens the Dressing Room from anywhere, so its corner is always there.
+	local corner = room:FindFirstChild("DressingCorner", true)
+	if corner then
+		Optimize.persistent(corner)
+	end
+	local parts, shadowsOff = Optimize.decor(room)
+	print(`[GameNight] lobby room: {parts} parts, {shadowsOff} small ones without shadows`)
 	room.Parent = parent
 	return room, found
 end
