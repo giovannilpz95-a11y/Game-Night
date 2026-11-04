@@ -159,8 +159,11 @@ function Profile.reconcile(data: any, now: number): Data
 	if type(data.stats) == "table" and data.stats.losses == nil and type(data.stats.matches) == "number" then
 		data.stats.losses = math.max(0, data.stats.matches - (data.stats.wins or 0))
 	end
+	-- A save written by a newer build (after a rollback to an older one) keeps its version,
+	-- so that build doesn't run its migrations a second time when it's back.
+	local savedVersion = if type(data.version) == "number" and data.version == data.version then data.version else 0
 	fill(data, Profile.new(now))
-	data.version = Profile.Version
+	data.version = math.max(savedVersion, Profile.Version)
 	return data
 end
 
