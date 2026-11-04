@@ -80,6 +80,12 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		Size = UDim2.new(1, 0, 0, 18),
 		Parent = root,
 	})
+	-- When a card fits both piles: "Left" / "Right" buttons over your draw-pile line, so
+	-- Table view (which keeps only the bottom of the screen) can pick a pile too.
+	local pileRow = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.65, 0), Size = UDim2.new(1, 0, 0.065, 0), Visible = false, Parent = root })
+	local pileList = Kit.list(8, true)
+	pileList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	pileList.Parent = pileRow
 	local hand = Kit.new("Frame", {
 		BackgroundTransparency = 1,
 		Position = UDim2.new(0, 0, 0.72, 0),
@@ -136,10 +142,21 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		if selected and not playable[tostring(selected)] then
 			selected = nil
 		end
+		Kit.clear(pileRow)
 		for pile = 1, 2 do
 			local piles = selected and playable[tostring(selected)]
-			glows[pile].Enabled = piles ~= nil and table.find(piles, pile) ~= nil
+			local fits = piles ~= nil and table.find(piles, pile) ~= nil
+			glows[pile].Enabled = fits
+			if fits then
+				local card = selected :: number
+				Kit.button(`{if pile == 1 then "Left" else "Right"} pile ({PlayingCards.short(view.tops[pile])})`, function()
+					selected = nil
+					sendMove({ kind = "play", card = card, pile = pile })
+				end, { Size = UDim2.new(0, 150, 1, 0), TextSize = 14, LayoutOrder = pile, Parent = pileRow })
+			end
 		end
+		pileRow.Visible = selected ~= nil
+		myLabel.Visible = selected == nil
 		local cards = {}
 		for _, id in view.hand or {} do
 			local piles = playable[tostring(id)]
@@ -171,5 +188,4 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 	}
 end
 
-local _ = PlayingCards
 return Speed

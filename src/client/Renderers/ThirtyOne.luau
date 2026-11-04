@@ -5,12 +5,12 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
 local Theme = Kit.Theme
 
-local _ = ReplicatedStorage
 local ThirtyOne = {}
 
 function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
@@ -96,6 +96,17 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		local buttons = {}
+		if drawing then
+			-- Also as buttons, so Table view (which only keeps the bottom on screen) can draw.
+			table.insert(buttons, { text = "Draw from stock", onClick = function()
+				sendMove({ kind = "draw", from = "stock" })
+			end })
+			if view.discardTop then
+				table.insert(buttons, { text = `Take {PlayingCards.short(view.discardTop)}`, color = Theme.PanelLight, onClick = function()
+					sendMove({ kind = "draw", from = "discard" })
+				end })
+			end
+		end
 		if drawing and view.canKnock then
 			table.insert(buttons, { text = "Knock", color = Theme.Good, onClick = function()
 				sendMove({ kind = "knock" })
