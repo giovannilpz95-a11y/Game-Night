@@ -36,6 +36,8 @@ In this order:
 2. **A template from Assets:** if nothing is tagged, a Model under `ReplicatedStorage.Assets` whose name has "Square" or "Round" in it (and "Table" in its name or its folder's) is cloned for each entry in `Config.DefaultTables` (13 tables: 4-seat and 8-seat, one zone per catalog category), each on its spot in the lobby room (`shared/LobbyLayout.luau`, see [[Lobby]]). Seats are added around it if it has none, and the anchor goes on top of its bounding box.
 3. **Plain tables built in code**, same spots, so 3D play works before any art exists.
 
+With `Config.TableFurniture = "Detailed"` (the default), 2 and 3 are replaced by the detailed tables and stools built in `server/Tables/Furniture.luau` (see [[Meshes]]).
+
 Every table gets a sign post at its edge with its state on both faces, and a pendant lamp over it (see [[Lobby]]).
 
 ## How a match uses a table

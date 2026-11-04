@@ -119,6 +119,10 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 	local function hex(h: number, color: Color3)
 		local center = Rules.hexes[h]
 		local cf = at(boardCF, center.x, center.y, TILE_Y)
+		-- One beveled hex mesh when it's imported (docs/Meshes.md), else three bars.
+		if Models.mesh(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2, 2 * S * 0.96), cf, color, Enum.Material.Grass) then
+			return
+		end
 		for i = 0, 2 do
 			Models.block(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2, S * 0.96), cf * CFrame.Angles(0, math.rad(60 * i), 0), color, Enum.Material.Grass)
 		end
