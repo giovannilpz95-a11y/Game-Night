@@ -19,6 +19,7 @@
 --        { kind = "blind", index = 1..3 }  (hand and face-up empty)
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 local PlayingCards = require(script.Parent.Parent.Cards.PlayingCards)
 
 local Palace = {}
@@ -518,7 +519,13 @@ function Palace.chooseBotMove(state, seat: number, rng: Random): any?
 	if #moves == 0 then
 		return nil
 	end
-	if state.botLevel == "easy" or moves[1].kind ~= "play" then
+	if moves[1].kind ~= "play" then
+		return moves[rng:NextInteger(1, #moves)]
+	end
+	-- Easy bots often play a random card, and judge the rest roughly. (Fully random
+	-- play wasted their 2s and 10s and made 2-player games drag on for 10 minutes.)
+	local easy = state.botLevel == "easy"
+	if easy and rng:NextNumber() < 0.3 then
 		return moves[rng:NextInteger(1, #moves)]
 	end
 	local best, bestScore = nil, math.huge
@@ -532,13 +539,18 @@ function Palace.chooseBotMove(state, seat: number, rng: Random): any?
 			end
 			-- Play every copy of a rank at once.
 			score -= #move.cards * 0.5
-			score += rng:NextNumber() * 0.3
+			score += rng:NextNumber() * (if easy then 4 else 0.3)
 			if score < bestScore then
 				best, bestScore = move, score
 			end
 		end
 	end
 	return best
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function Palace.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #Palace.getLegalMoves(state, seat))
 end
 
 return Palace

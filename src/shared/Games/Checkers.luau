@@ -15,6 +15,7 @@
 -- is started still has to be finished).
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 
 local Checkers = {}
 
@@ -346,8 +347,8 @@ end
 
 local LEVELS = {
 	easy = { depth = 2, seconds = 0.05, slack = 60 },
-	medium = { depth = 5, seconds = 0.3, slack = 0 },
-	hard = { depth = 9, seconds = 0.9, slack = 0 },
+	medium = { depth = 5, seconds = 0.25, slack = 0 },
+	hard = { depth = 9, seconds = 0.45, slack = 0 }, -- the search blocks the server: keep it short
 }
 
 function Checkers.chooseBotMove(state, seat: number, rng: Random): any?
@@ -403,6 +404,11 @@ function Checkers.getMatchStats(state): { [number]: { [string]: number } }
 		end
 	end
 	return { { captures = 12 - left[2] }, { captures = 12 - left[1] } }
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function Checkers.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #Checkers.getLegalMoves(state, seat), { base = 0.9, perDoubling = 0.25, jitter = 0.7, max = 3.0 })
 end
 
 return Checkers

@@ -47,6 +47,7 @@ function Cheat.new(seatCount: number, options: any?, rng: Random?)
 		rng = random,
 		hands = hands,
 		pile = {}, -- face down, newest last
+		pileFrom = {}, -- pileFrom[i] = who put pile[i] down (bots remember their own cards)
 		called = 1, -- the rank the next play must claim (1 = Aces)
 		turn = 1,
 		phase = "play", -- "play" | "doubt" | "reveal"
@@ -116,6 +117,7 @@ local function resolveDoubt(state, doubter: number)
 		table.insert(state.hands[loser], id)
 	end
 	state.pile = {}
+	state.pileFrom = {}
 	state.reveal = {
 		seat = player,
 		doubter = doubter,
@@ -213,8 +215,10 @@ end
 function Cheat.applyMove(state, seat: number, move: any)
 	if move.kind == "play" then
 		PlayingCards.removeCards(state.hands[seat], move.cards)
+		state.pileFrom = state.pileFrom or {}
 		for _, id in move.cards do
 			table.insert(state.pile, id)
+			state.pileFrom[#state.pile] = seat
 		end
 		state.plays += 1
 		state.lastPlay = { seat = seat, count = #move.cards, rank = state.called }
@@ -307,9 +311,17 @@ function Cheat.getBotDelay(state, _seat: number, rng: Random): number
 	return 1 + rng:NextNumber() * 0.8
 end
 
--- How many plays until `r` is called again (0 = it's called now).
+-- How many of our own turns until we're asked for `r` (0 = it's called now). We play
+-- every seatCount plays, so with 5 seats we're asked for every 5th rank, not the next one.
 local function distance(state, r: number): number
-	return (r - state.called) % 13
+	local wanted = state.called
+	for k = 0, 12 do
+		if wanted == r then
+			return k
+		end
+		wanted = (wanted - 1 + state.seatCount) % 13 + 1
+	end
+	return 13
 end
 
 local function chooseBluff(state, hand: { number }, rng: Random): number
@@ -327,39 +339,135 @@ local function chooseBluff(state, hand: { number }, rng: Random): number
 	return best
 end
 
+local function choose(n: number, k: number): number
+	if k < 0 or k > n then
+		return 0
+	end
+	local out = 1
+	for i = 1, k do
+		out = out * (n - k + i) / i
+	end
+	return out
+end
+
+-- Rough odds that a player with no card of the called rank bluffs with n cards, and
+-- that a player slips one extra card in with honest ones. (Bots play like this; people
+-- mostly do too.)
+local BLUFF_SIZE = { 0.85, 0.2, 0.05, 0.03 }
+local SNEAK = 0.15
+
+-- Chance the last play was honest, from what this seat knows: its own hand and (hard
+-- bots only) the cards it put on the pile itself. Players lay down every card of the
+-- called rank they hold, so a claim of `count` is honest when they held exactly that
+-- many of the ranks we can't see, and a lie when they held none (a bluff) or one fewer
+-- (an extra card slipped in).
+function Cheat.honestChance(state, seat: number): number
+	local claim = state.lastPlay
+	local known = 0
+	local seen = #state.hands[seat]
+	for _, id in state.hands[seat] do
+		if rank(id) == claim.rank then
+			known += 1
+		end
+	end
+	if state.botLevel == "hard" and state.pileFrom then
+		for i, id in state.pile do
+			if state.pileFrom[i] == seat then
+				seen += 1
+				if rank(id) == claim.rank then
+					known += 1
+				end
+			end
+		end
+	end
+	local count = claim.count
+	if known + count > 4 then
+		return 0
+	end
+	local left = 4 - known -- of that rank, somewhere we can't see
+	local unseen = math.max(1, 52 - seen)
+	local had = math.min(unseen, #state.hands[claim.seat] + count) -- their hand before the play
+	local total = choose(unseen, had)
+	if total <= 0 then
+		return 0.5
+	end
+	local function held(x: number): number -- P(they held exactly x of that rank)
+		return choose(left, x) * choose(unseen - left, had - x) / total
+	end
+	local honest = held(count)
+	local lie = BLUFF_SIZE[count] * held(0) + (if count >= 2 then SNEAK * held(count - 1) else 0)
+	if honest + lie <= 0 then
+		return 0.5
+	end
+	return honest / (honest + lie)
+end
+
+local function shouldDoubt(state, seat: number, rng: Random): boolean
+	local claim = state.lastPlay
+	local level = state.botLevel
+	-- Their last cards: if it's true they win anyway, so doubting costs nothing.
+	if #state.hands[claim.seat] == 0 then
+		return level ~= "easy" or rng:NextNumber() < 0.6
+	end
+	local honest = Cheat.honestChance(state, seat)
+	if honest <= 0 then
+		return level ~= "easy" or rng:NextNumber() < 0.6
+	end
+	if level == "easy" then
+		return rng:NextNumber() < 0.12
+	end
+	-- Short of a sure thing, a doubt is close to a coin flip (simulations put lies at
+	-- about 40% whatever the odds look like), and being wrong means taking the pile while
+	-- being right only hurts one rival. So smart bots doubt only when it's cheap or when
+	-- the player is about to win.
+	local lie = 1 - honest
+	local left = #state.hands[claim.seat]
+	-- At a big table hands are small, so "nearly out" means less (and a rival will
+	-- probably doubt anyway).
+	if left <= (if state.seatCount >= 6 then 1 else 2) and #state.pile <= 8 then
+		return lie >= (if level == "hard" then 0.3 else 0.4)
+	end
+	-- A small pile is cheap to take, but catching one rival is worth less the more
+	-- rivals there are.
+	if #state.pile <= 2 and state.seatCount <= 4 then
+		return lie >= 0.6 and (level == "hard" or rng:NextNumber() < 0.5)
+	end
+	return false
+end
+
 function Cheat.chooseBotMove(state, seat: number, rng: Random): any?
 	if state.winners then
 		return nil
 	end
+	local level = state.botLevel
 	if state.phase == "play" then
 		if seat ~= state.turn then
 			return nil
 		end
 		local hand = state.hands[seat]
-		local honest = {}
+		local honest, others = {}, {}
 		for _, id in hand do
 			if rank(id) == state.called then
 				table.insert(honest, id)
+			else
+				table.insert(others, id)
 			end
 		end
+		-- Getting caught costs the whole pile, so smart bots only take risks while it's small.
+		-- Each extra rival is another chance to be doubted, so bluff less at a big table.
+		local smallPile = #state.pile <= (if state.seatCount <= 4 then 2 else 0)
 		if #honest > 0 then
 			local cards = table.clone(honest)
 			-- Sometimes slip in one extra card with the honest ones.
-			local sneak = if state.botLevel == "hard" then 0.3 elseif state.botLevel == "medium" then 0.15 else 0
-			if #cards < Cheat.MAX_CARDS and #hand > #cards and rng:NextNumber() < sneak then
-				local others = {}
-				for _, id in hand do
-					if rank(id) ~= state.called then
-						table.insert(others, id)
-					end
-				end
+			local sneak = if level == "hard" then 0.3 elseif level == "medium" then 0.15 else 0
+			if #cards < Cheat.MAX_CARDS and #others > 0 and smallPile and rng:NextNumber() < sneak then
 				table.insert(cards, chooseBluff(state, others, rng))
 			end
 			return { kind = "play", cards = cards }
 		end
 		local first = chooseBluff(state, hand, rng)
 		local cards = { first }
-		if #hand > 2 and state.botLevel ~= "easy" and rng:NextNumber() < 0.25 then
+		if #hand > 2 and level ~= "easy" and smallPile and rng:NextNumber() < 0.25 then
 			local rest = table.clone(hand)
 			table.remove(rest, table.find(rest, first) :: number)
 			table.insert(cards, chooseBluff(state, rest, rng))
@@ -370,29 +478,7 @@ function Cheat.chooseBotMove(state, seat: number, rng: Random): any?
 		if not table.find(doubters(state), seat) then
 			return nil
 		end
-		local claim = state.lastPlay
-		local held = 0
-		for _, id in state.hands[seat] do
-			if rank(id) == claim.rank then
-				held += 1
-			end
-		end
-		-- Can't be true: we hold too many of that rank.
-		if held + claim.count > 4 then
-			return { kind = if state.botLevel == "easy" and rng:NextNumber() < 0.4 then "pass" else "doubt" }
-		end
-		local chance
-		if state.botLevel == "easy" then
-			chance = 0.12
-		else
-			chance = 0.05 + claim.count * 0.07 + held * 0.08
-			if #state.hands[claim.seat] == 0 then
-				chance = 0.9 -- they're about to win
-			elseif #state.pile > 10 then
-				chance *= if state.botLevel == "hard" then 0.5 else 0.8
-			end
-		end
-		return { kind = if rng:NextNumber() < chance then "doubt" else "pass" }
+		return { kind = if shouldDoubt(state, seat, rng) then "doubt" else "pass" }
 	end
 	return nil
 end

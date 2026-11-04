@@ -19,6 +19,7 @@
 --        { kind = "knock", card = id }                  (discard phase: discard and knock)
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 local PlayingCards = require(script.Parent.Parent.Cards.PlayingCards)
 local Melds = require(script.Parent.Parent.Cards.Melds)
 
@@ -436,6 +437,11 @@ function GinRummy.chooseBotMove(state, seat: number, rng: Random): any?
 		return { kind = if shouldKnock(state, dw) then "knock" else "discard", card = card }
 	end
 	return nil
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function GinRummy.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #GinRummy.getLegalMoves(state, seat))
 end
 
 return GinRummy

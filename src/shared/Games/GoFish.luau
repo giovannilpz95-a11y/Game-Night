@@ -10,6 +10,7 @@
 -- Moves: { kind = "ask", target = seat, rank = 1..13 }
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 local PlayingCards = require(script.Parent.Parent.Cards.PlayingCards)
 
 local GoFish = {}
@@ -304,8 +305,9 @@ function GoFish.chooseBotMove(state, seat: number, rng: Random): any?
 	local bestMove, bestScore = nil, -math.huge
 	for _, move in moves do
 		local score = counts[move.rank] + rng:NextNumber() * 0.9
-		if state.botLevel == "hard" and state.asked[move.target][move.rank] then
-			score += 10 -- they asked for it, so they have it
+		-- They asked for it, so they have it. Hard bots always remember; medium half the time.
+		if state.asked[move.target][move.rank] and (state.botLevel == "hard" or rng:NextNumber() < 0.5) then
+			score += 10
 		end
 		score += #state.hands[move.target] * 0.05 -- bigger hands are better odds
 		if score > bestScore then
@@ -322,6 +324,11 @@ function GoFish.getMatchStats(state): { [number]: { [string]: number } }
 		out[seat] = { books = #state.books[seat] }
 	end
 	return out
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function GoFish.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #GoFish.getLegalMoves(state, seat))
 end
 
 return GoFish

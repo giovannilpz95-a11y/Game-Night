@@ -6,6 +6,7 @@
 -- House rule "misere" (Upside down): whoever makes three in a row loses.
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 
 local TicTacToe = {}
 
@@ -39,6 +40,7 @@ export type State = {
 	winningLine: { number }?,
 	isDraw: boolean, -- only when the move cap is hit
 	misere: boolean,
+	botLevel: string,
 }
 
 local function findWinner(board: { number }): (number?, { number }?)
@@ -75,6 +77,7 @@ function TicTacToe.new(seatCount: number, options: any?, _rng: Random?): State
 		winningLine = nil,
 		isDraw = false,
 		misere = rules.misere == true,
+		botLevel = (options and options.botLevel) or "medium",
 	}
 end
 
@@ -195,14 +198,21 @@ local function linesFor(state: State, seat: number): { number }
 	return out
 end
 
-local CASUAL = 0.25 -- chance of a random safe move instead of the best one
-local BLUNDER = 0.1 -- chance of a random move that may ignore a threat
+-- Per bot level: CASUAL is the chance of a random safe move instead of the best one,
+-- BLUNDER the chance of a random move that may ignore a threat. Even hard bots slip now
+-- and then, so two bots (or a careful player) can't block each other forever.
+local LEVELS = {
+	easy = { casual = 0.5, blunder = 0.3 },
+	medium = { casual = 0.25, blunder = 0.1 },
+	hard = { casual = 0.1, blunder = 0.04 },
+}
 
 local function pick(rng: Random, pool: { number }): any
 	return { cell = pool[rng:NextInteger(1, #pool)] }
 end
 
 function TicTacToe.chooseBotMove(state: State, seat: number, rng: Random): any?
+	local level = LEVELS[state.botLevel] or LEVELS.medium
 	local opponent = other(seat)
 	local open = {}
 	for c = 1, 9 do
@@ -223,11 +233,14 @@ function TicTacToe.chooseBotMove(state: State, seat: number, rng: Random): any?
 				table.insert(safe, c)
 			end
 		end
-		return pick(rng, if #safe > 0 then safe else open)
+		if #safe == 0 or rng:NextNumber() < level.blunder then
+			return pick(rng, open)
+		end
+		return pick(rng, safe)
 	end
 
 	local wins = linesFor(state, seat)
-	if #wins > 0 then
+	if #wins > 0 and rng:NextNumber() >= level.blunder / 2 then
 		return pick(rng, wins)
 	end
 
@@ -245,11 +258,11 @@ function TicTacToe.chooseBotMove(state: State, seat: number, rng: Random): any?
 	end
 	-- Now and then the bot misses the danger, like a person would. This keeps it
 	-- beatable and stops two careful players blocking each other forever.
-	if #safe == 0 or rng:NextNumber() < BLUNDER then
+	if #safe == 0 or rng:NextNumber() < level.blunder then
 		return pick(rng, open)
 	end
 	-- Some moves are "casual" safe moves so bots don't play the same loop forever.
-	if rng:NextNumber() < CASUAL then
+	if rng:NextNumber() < level.casual then
 		return pick(rng, safe)
 	end
 	if #threats > 0 then
@@ -270,6 +283,11 @@ function TicTacToe.chooseBotMove(state: State, seat: number, rng: Random): any?
 		end
 	end
 	return pick(rng, safe)
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function TicTacToe.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #TicTacToe.getLegalMoves(state, seat), { base = 0.7, perDoubling = 0.15, max = 2.0 })
 end
 
 return TicTacToe

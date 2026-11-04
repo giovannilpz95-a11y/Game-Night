@@ -15,7 +15,7 @@ Every player is always in a party, even if it's just themselves. The leader invi
 ## Tables and turns
 When the leader starts a game, `MatchService` builds the seats: party members first, then bots up to the table size the leader picked. Seat order is shuffled. Then:
 - Moves are checked by the game's rules on the server. Clients only ask.
-- A bot thinks for `Config.BotMoveDelay` seconds (or the game's `getBotDelay`), then moves. Each bot seat has at most one move pending, and other players' moves don't cancel it.
+- A bot thinks for `Config.BotMoveDelay` seconds (or the game's `getBotDelay`, usually from `shared/BotThink.luau`), then moves. Each bot seat has at most one move pending, and other players' moves don't cancel it.
 - A player has `Config.TurnSeconds` seconds; after that a bot moves for them.
 - If a player leaves, a bot takes their seat. If every player leaves, the game ends.
 - In two-player games, either player can resign.

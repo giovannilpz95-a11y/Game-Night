@@ -9,5 +9,5 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Hand empty and no draw pile: play face-up cards; then flip face-down cards blind (`blind` move). A blind card that can't go on the pile is picked up with it.
 - First out of cards wins. After 500 turns the fewest cards win.
 - Table: `src/client/Renderers/Palace.luau`. Your table cards sit at the bottom of the felt. Setup: tap a hand card, then a face-up card to swap.
-- Bot: puts 10s, 2s and high cards face up. Plays the lowest rank it can (all copies), saves 2s and 10s, uses a 10 on a big pile. Easy plays at random.
+- Bot: puts 10s, 2s and high cards face up. Plays the lowest rank it can (all copies), saves 2s and 10s, uses a 10 on a big pile. Easy plays a random card 30% of the time and judges the rest roughly (fully random play made 2-player games last 7-10 minutes).
 - Tests: `tests/Palace.spec.luau`.

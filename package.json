@@ -4,7 +4,8 @@
   "description": "Game Night (Roblox). Node is only used to run the Luau unit tests.",
   "type": "module",
   "scripts": {
-    "test": "node tools/run-tests.mjs"
+    "test": "node tools/run-tests.mjs",
+    "bot-audit": "node tools/run-tests.mjs --audit"
   },
   "devDependencies": {
     "luau-web": "1.5.1"
