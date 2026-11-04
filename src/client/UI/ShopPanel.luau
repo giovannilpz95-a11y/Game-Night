@@ -381,6 +381,12 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		end
 
 		line("Tap 😀 in any game to pop a reaction over your head (or next to your seat in the 2D view).", 1, Theme.SubText)
+		if wallet.studio then
+			-- Same as the Wallet tab's button, here so buying packs can be tested in place.
+			Kit.button("Studio test: free Gems and Coins", function()
+				sendEconomy({ action = "studioGrant" })
+			end, { LayoutOrder = 1, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Parent = content })
+		end
 
 		-- Every Gem pack for Robux.
 		local bundle = Economy.ReactionBundle
