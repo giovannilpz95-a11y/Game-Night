@@ -16,6 +16,10 @@ Coordinates are offsets in the main ScreenGui, which has `IgnoreGuiInset = true`
 ## Kit (`UI/Kit`)
 Shared look for every window. Use these instead of hand-made copies:
 - `Theme.TextSize` (Title 22, Heading 18, Body 16, Small 14, Tiny 12), `Theme.Radius`, `Theme.Stroke`.
+- `Theme.FontTitle` (FredokaOne) for window titles and the Play button; `Theme.Font`/`FontBold` (Gotham) for everything else. `Theme.Gem` is the Gem color.
+- Every `Kit.button` has a darker rim in its own color (`Kit.edge`, a UIStroke named `Edge`). It removes itself when you add your own UIStroke to the button.
+- `Kit.panel`, `Kit.modal` and `Kit.card` (a lighter card inside a window) have a soft top-to-bottom shade (`Kit.shade`, a UIGradient named `Shade`).
+- `Kit.gemIcon(size)` and `Kit.coinIcon(color, size)` draw currency icons. `Kit.progress(color)` returns a bar and a setter (0..1). `Kit.tag(text, color)` is a small pill label ("BEST VALUE", "OWNED").
 - `Kit.button` sinks a little while pressed (`Kit.pressable` adds the same to any button). `Kit.secondary` is the panel-colored button.
 - `Kit.title(text)` for a window title, `Kit.closeButton(fn)` for the round ✕ in the top-right corner.
 - `Kit.chip(text, fn)` + `Kit.setChip(chip, selected)` for pill tabs and filters.
