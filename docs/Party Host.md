@@ -8,7 +8,7 @@ Every perk listed on the two passes in `shared/Economy.luau` (`Economy.Passes`) 
 | Perk | Where |
 |---|---|
 | +25% Gems and Coins from play | `Economy.VipPlayBonus`, used in `server/Core/Rewards.luau` and `EconomyService.award` |
-| Double daily login Gems | `Economy.VipDailyLoginMultiplier`, `server/Core/Daily.luau` |
+| Double daily login rewards | `Economy.VipDailyLoginMultiplier`, `server/Core/Daily.luau` |
 | 10% off Gem prices | `Economy.VipGemDiscount`, `server/Core/Shop.luau` (and the shop UI) |
 | VIP chat tag | The server sets the `VIP` attribute on the player; `client/Main.client.luau` adds a gold `[VIP]` in front of their chat messages (`TextChatService.OnIncomingMessage`) |
 | 20 saved looks | `Economy.VipLookSlots`, used by the Dressing Room (`Looks.slotCount`, Dressing Room PR) |

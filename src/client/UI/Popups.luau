@@ -1,4 +1,4 @@
--- Toast messages and party invite prompts.
+-- Toast messages, party invite prompts and yes/no prompts ("Let Sam join?").
 
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
@@ -99,9 +99,50 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 		task.delay(data.expiresIn or 30, close)
 	end
 
+	-- A question with two buttons that goes away by itself after `seconds` (counts as no).
+	local function ask(text: string, yesText: string, noText: string, onYes: () -> (), onNo: (() -> ())?, seconds: number?)
+		local frame = Kit.panel({
+			BackgroundColor3 = Theme.PanelLight,
+			Size = UDim2.new(1, 0, 0, 100),
+			ZIndex = 50,
+			Parent = stack,
+		})
+		Kit.label(text, { Size = UDim2.new(1, 0, 0, 44), ZIndex = 51, Parent = frame })
+		local answered = false
+		local function close()
+			answered = true
+			if frame.Parent then
+				frame:Destroy()
+			end
+		end
+		Kit.button(yesText, function()
+			if not answered then
+				close()
+				onYes()
+			end
+		end, { BackgroundColor3 = Theme.Good, Size = UDim2.new(0.5, -4, 0, 34), Position = UDim2.new(0, 0, 1, -34), ZIndex = 51, Parent = frame })
+		Kit.button(noText, function()
+			if not answered then
+				close()
+				if onNo then
+					onNo()
+				end
+			end
+		end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(0.5, -4, 0, 34), Position = UDim2.new(0.5, 4, 1, -34), ZIndex = 51, Parent = frame })
+		task.delay(seconds or 30, function()
+			if not answered then
+				close()
+				if onNo then
+					onNo()
+				end
+			end
+		end)
+	end
+
 	return {
 		toast = toast,
 		invite = invite,
+		ask = ask,
 		setAtBottom = function(bottom: boolean)
 			atBottom = bottom
 			place()
