@@ -11,7 +11,7 @@ local Dictionary = require(ServerScriptService.Server.Core.Dictionary)
 local BotSim = require(script.Parent.BotSim)
 
 -- Search bots (a time-capped tree search per move) are too slow to play whole games in
--- the test run, so they play the opening only.
+-- the test run, so they play a few opening moves only (their own specs play full games).
 local SEARCH = { Chess = true, Checkers = true, FourInARow = true }
 
 local MAX_THINK = 6 -- seconds; longer looks like the bot froze
@@ -40,7 +40,7 @@ return function(T)
 							levels = level,
 							seed = seed * 31 + seats,
 							options = { rules = ruleValues },
-							maxEvents = if search then 24 else nil,
+							maxEvents = if search then (if level == "easy" then 16 else 4) else nil,
 						})
 						T.eq(#r.errors, 0, `error: {r.errors[1]}`)
 						T.eq(r.rejected, 0, `bot move rejected: {r.rejectReasons[1]}`)
