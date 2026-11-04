@@ -125,8 +125,24 @@ local function orderSeats(model: Model, center: Vector3)
 			-- would otherwise drop and sit people inside the cushion.
 			local cf, size = seat.CFrame, seat.Size
 			local top = pos.Y + 0.5 * (math.abs(cf.RightVector.Y) * size.X + math.abs(cf.UpVector.Y) * size.Y + math.abs(cf.LookVector.Y) * size.Z)
-			-- (plus a little, so the chair's own cushion doesn't show through the hips)
-			pos = Vector3.new(pos.X, top + 0.15 - size.Y / 2, pos.Z)
+			-- The chair's own cushion may sit higher than the Seat part (or be tilted, so
+			-- one side sticks up): sit on the highest chair part right around the seat,
+			-- so no cushion shows through the hips.
+			for _, d in model:GetDescendants() do
+				if d:IsA("BasePart") and d ~= seat and not d:IsA("Seat") then
+					local flat = Vector3.new(d.Position.X - pos.X, 0, d.Position.Z - pos.Z).Magnitude
+					local big = math.max(d.Size.X, d.Size.Y, d.Size.Z)
+					if flat < 1.3 and big < 4 then
+						local dcf, dsize = d.CFrame, d.Size
+						local dTop = d.Position.Y + 0.5 * (math.abs(dcf.RightVector.Y) * dsize.X + math.abs(dcf.UpVector.Y) * dsize.Y + math.abs(dcf.LookVector.Y) * dsize.Z)
+						-- Cushion height only: not the chair back rising behind the seat.
+						if dTop > top and dTop < top + 0.8 then
+							top = dTop
+						end
+					end
+				end
+			end
+			pos = Vector3.new(pos.X, top + 0.1 - size.Y / 2, pos.Z)
 			seat.CFrame = CFrame.lookAt(pos, pos + toCenter.Unit)
 			-- The chair model shows the cushion; the leveled Seat part would poke out of
 			-- it (and through whoever sits there), so it only does the sitting.
