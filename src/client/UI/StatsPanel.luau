@@ -10,6 +10,7 @@ local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local StatsCatalog = require(ReplicatedStorage.Shared.StatsCatalog)
 local Badges = require(ReplicatedStorage.Shared.Badges)
 local Economy = require(ReplicatedStorage.Shared.Economy)
+local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
 local Theme = Kit.Theme
@@ -106,6 +107,10 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 			end
 			render()
 		end, { Size = UDim2.new(0, 110, 1, 0), TextSize = 15, LayoutOrder = i, Parent = tabRow })
+		local corner = tabButtons[t.key]:FindFirstChildOfClass("UICorner")
+		if corner then
+			corner.CornerRadius = UDim.new(0.5, 0)
+		end
 	end
 
 	-- Building blocks -----------------------------------------------------------------
@@ -149,9 +154,9 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 	end
 
 	local function tile(container: Instance, value: string, label: string, index: number)
-		local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, BorderSizePixel = 0, LayoutOrder = index, Parent = container }, { Kit.corner(10) })
+		local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, BorderSizePixel = 0, LayoutOrder = index, Parent = container }, { Kit.corner(10), Kit.shade(0.14) })
 		Kit.label(value, {
-			Font = Theme.FontBold,
+			Font = Theme.FontTitle,
 			TextSize = 22,
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Position = UDim2.new(0, 4, 0, 6),
@@ -170,8 +175,8 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 	end
 
 	local function bar(parentFrame: Instance, fraction: number, color: Color3, position: UDim2, size: UDim2)
-		local back = Kit.new("Frame", { BackgroundColor3 = Theme.Background, BorderSizePixel = 0, Position = position, Size = size, Parent = parentFrame }, { Kit.corner(6) })
-		Kit.new("Frame", { BackgroundColor3 = color, BorderSizePixel = 0, Size = UDim2.new(math.clamp(fraction, 0, 1), 0, 1, 0), Parent = back }, { Kit.corner(6) })
+		local _, set = Kit.progress(color, { Position = position, Size = size, Parent = parentFrame })
+		set(fraction)
 	end
 
 	local function card(height: number): Frame
@@ -181,7 +186,7 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 			Size = UDim2.new(1, 0, 0, height),
 			LayoutOrder = nextOrder(),
 			Parent = content,
-		}, { Kit.corner(10) })
+		}, { Kit.corner(10), Kit.shade(0.12) })
 	end
 
 	-- Tabs ----------------------------------------------------------------------------
@@ -189,7 +194,7 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 	local function renderOverview(p: any)
 		local t = p.totals
 		local head = card(64)
-		Kit.label(`Level {p.level}`, { Font = Theme.FontBold, TextSize = 22, Position = UDim2.new(0, 12, 0, 6), Size = UDim2.new(0.5, 0, 0, 28), Parent = head })
+		Kit.label(`Level {p.level}`, { Font = Theme.FontTitle, TextSize = 24, Position = UDim2.new(0, 12, 0, 6), Size = UDim2.new(0.5, 0, 0, 28), Parent = head })
 		Kit.label(`{p.xp} / {p.xpNeeded} XP to level {p.level + 1}`, {
 			TextColor3 = Theme.SubText,
 			TextSize = 14,
@@ -300,7 +305,7 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 				table.insert(lines, table.concat(extras, " · "))
 			end
 			local frame = card(34 + 20 * #lines)
-			Kit.label(gameName(gameId), { Font = Theme.FontBold, TextSize = 17, Position = UDim2.new(0, 12, 0, 6), Size = UDim2.new(1, -24, 0, 22), Parent = frame })
+			Kit.label(`{GameArt.icon(gameId)}  {gameName(gameId)}`, { Font = Theme.FontBold, TextSize = 17, Position = UDim2.new(0, 12, 0, 6), Size = UDim2.new(1, -24, 0, 22), Parent = frame })
 			for i, text in lines do
 				Kit.label(text, {
 					TextColor3 = if i == 1 then Theme.Text else Theme.SubText,
