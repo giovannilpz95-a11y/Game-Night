@@ -252,7 +252,17 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, ZIndex = 41, Parent = menu })
 	menuButton.Activated:Connect(function()
 		menu.Visible = not menu.Visible
+		if menu.Visible then
+			Kit.popIn(menu)
+		end
 	end)
+	-- Header buttons are pills, like the lobby's round buttons.
+	for _, button in { menuButton, rulesButton } do
+		local corner = button:FindFirstChildOfClass("UICorner")
+		if corner then
+			corner.CornerRadius = UDim.new(0.5, 0)
+		end
+	end
 	Avatars.onAction(function(tableId, point, kind)
 		table3D.focus(tableId, point, kind)
 	end)
