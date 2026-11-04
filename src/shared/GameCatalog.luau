@@ -129,7 +129,7 @@ local entries: { Entry } = {
 		name = "Sketch & Guess",
 		module = "SketchGuess",
 		category = "Party",
-		description = "One draws, everyone guesses. Best with friends: bots guess but don't draw.",
+		description = "One draws, everyone guesses. Best with friends; with fewer than 3 players, bots draw doodles too.",
 		minSeats = 3,
 		maxSeats = 8,
 		-- Off for launch (Giovanni, 2026-11-04). The game is built and tested; set this to
@@ -154,6 +154,13 @@ local entries: { Entry } = {
 				name = "Drawing time",
 				choices = { { label = "60 s", value = 60 }, { label = "80 s", value = 80 }, { label = "120 s", value = 120 } },
 				default = 2,
+			},
+			{
+				key = "tools",
+				name = "Drawing tools",
+				hint = "Shapes only: lines, boxes and ovals, no free pen.",
+				choices = { { label = "Pen and shapes", value = "all" }, { label = "Shapes only", value = "shapes" } },
+				default = 1,
 			},
 		},
 		custom = "words",
