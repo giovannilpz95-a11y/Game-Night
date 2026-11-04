@@ -56,7 +56,7 @@ About 790 characters. *verify* the description limit (believed to be 1,000 chara
 
 Rules for keeping it right:
 - **Only list games with `status = "ready"` in `GameCatalog`.** Sketch & Guess stays out until it's turned back on (and turning it on makes the game 16+, see [[Launch]]). Update the count ("15") when a game is added.
-- **Voice servers:** add `• Voice servers for players with voice chat` under HOW IT WORKS only after voice is enabled in Creator Hub and tested live (see [[Voice Servers]]).
+- **Voice servers:** add `• Voice servers for players with voice chat` under HOW IT WORKS once voice servers pass a live test with two voice accounts. Voice is enabled in Creator Hub (2026-11-04); the live test is what remains (see [[Voice Servers]]).
 - **Party Host:** if you want to mention it, add `• Party Hosts get private tables and house rules`. Leave it out until the pass ID is set.
 - Never use "hangout", "chill", "vibe", "free Robux", or the real names of the games ours are inspired by.
 - First two lines matter most: on phones only the start of the description shows before "See more".
