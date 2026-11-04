@@ -21,6 +21,7 @@
 --   { kind = "pass" }                            (only after drawing a playable card)
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 
 local ColorClash = {}
 
@@ -493,6 +494,11 @@ function ColorClash.chooseBotMove(state, seat: number, rng: Random): any?
 		end
 	end
 	return playMove(bestId :: number)
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function ColorClash.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #ColorClash.getLegalMoves(state, seat))
 end
 
 return ColorClash

@@ -1312,7 +1312,9 @@ end
 
 -- Bots --------------------------------------------------------------------------
 
-local RESERVE = { easy = 50, medium = 150, hard = 200 }
+-- Cash a bot keeps back. Holding a lot back costs more than it saves: simulations had
+-- 200-reserve hard bots losing 16-44 to easy ones because they bought and built less.
+local RESERVE = { easy = 50, medium = 50, hard = 30 }
 
 -- How much a deed is worth to `seat`: its price, plus a lot more if it finishes (or
 -- nearly finishes) a color set for them.
@@ -1550,7 +1552,7 @@ function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 	elseif phase == "auction" then
 		local a = state.auction
 		local value = deedValue(state, seat, a.pos)
-		local factor = if level == "easy" then 0.6 + rng:NextNumber() * 0.6 elseif level == "hard" then 1.0 else 0.85
+		local factor = if level == "easy" then 0.6 + rng:NextNumber() * 0.6 elseif level == "hard" then 1.2 else 0.95
 		local step = if a.high < 100 then 10 else 20
 		local bid = a.high + step
 		if a.leader ~= seat and bid <= value * factor and p.cash - bid >= reserve // 2 then
@@ -1567,6 +1569,11 @@ function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 		local price = spaces[pos].price :: number
 		local wanted = p.cash - price >= reserve
 		if level ~= "easy" and p.cash >= price then
+			-- Deeds earn rent and count at full price in net worth, so smart bots buy
+			-- almost everything early. Later they keep enough cash to pay rent.
+			local share = ownedShare(state)
+			local cushion = if share < 0.4 then 0 elseif share < 0.75 then reserve // 2 else reserve
+			wanted = wanted or p.cash - price >= cushion
 			-- Always grab a street that finishes or blocks a set.
 			local space = spaces[pos]
 			if space.kind == "street" then
@@ -1586,9 +1593,9 @@ function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 		return { kind = if wanted and p.cash >= price then "buy" else "decline" }
 	end
 
-	-- Our own turn.
+	-- Our own turn. Houses are what win, so smart bots build down to a thinner cushion.
 	if state.actionsThisTurn < 30 then
-		local manage = botManage(state, seat, reserve)
+		local manage = botManage(state, seat, if level == "easy" then reserve else reserve // 2)
 		if manage then
 			return manage
 		end

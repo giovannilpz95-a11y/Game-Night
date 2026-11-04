@@ -13,6 +13,7 @@
 --        { kind = "discard", card = id }  (after drawing)
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 local PlayingCards = require(script.Parent.Parent.Cards.PlayingCards)
 
 local ThirtyOne = {}
@@ -436,6 +437,11 @@ function ThirtyOne.chooseBotMove(state, seat: number, rng: Random): any?
 		return { kind = "discard", card = throw }
 	end
 	return nil
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function ThirtyOne.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #ThirtyOne.getLegalMoves(state, seat))
 end
 
 return ThirtyOne

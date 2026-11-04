@@ -71,7 +71,18 @@ for (const m of modules) {
   const body = m.source.replace(/^export type /gm, 'type ')
   bundle += `\n__define({${m.path.map((x) => JSON.stringify(x)).join(', ')}}, ${lua(m.file)}, function(script)\n${body}\nend)\n`
 }
-bundle += '\nreturn __runSpecs()\n'
+// `--audit [args]` runs the bot audit (tests/BotAudit.luau) instead of the specs;
+// `--run <Module> [args]` runs any other module in tests/ that returns a function.
+const auditAt = process.argv.indexOf('--audit')
+const runAt = process.argv.indexOf('--run')
+if (auditAt >= 0 || runAt >= 0) {
+  const name = auditAt >= 0 ? 'BotAudit' : process.argv[runAt + 1]
+  const rest = process.argv.slice(auditAt >= 0 ? auditAt + 1 : runAt + 2)
+  const args = rest.map((a) => JSON.stringify(a)).join(', ')
+  bundle += `\nreturn require(game:GetService("Tests")[${JSON.stringify(name)}])({${args}})\n`
+} else {
+  bundle += '\nreturn __runSpecs()\n'
+}
 
 const run = state.loadstring(bundle, 'bundle', false)
 if (typeof run === 'string') {

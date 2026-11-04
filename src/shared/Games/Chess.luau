@@ -9,6 +9,7 @@
 -- Move (over the network): { from = "e2", to = "e4", promotion = "q" | "r" | "b" | "n" | nil }
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 
 local Chess = {}
 
@@ -819,6 +820,9 @@ type Search = { nodes: number, deadline: number, outOfTime: boolean }
 
 local function quiesce(s: Search, pos: Pos, alpha: number, beta: number, depthLeft: number): number
 	s.nodes += 1
+	if s.nodes % 256 == 0 and os.clock() > s.deadline then
+		s.outOfTime = true
+	end
 	local standPat = evaluate(pos)
 	if standPat >= beta then
 		return beta
@@ -826,7 +830,7 @@ local function quiesce(s: Search, pos: Pos, alpha: number, beta: number, depthLe
 	if standPat > alpha then
 		alpha = standPat
 	end
-	if depthLeft <= 0 then
+	if depthLeft <= 0 or s.outOfTime then
 		return alpha
 	end
 	local moves = legalMoves(pos, true)
@@ -878,10 +882,12 @@ local function search(s: Search, pos: Pos, depth: number, alpha: number, beta: n
 	return alpha
 end
 
+-- seconds caps the search: it runs on the server in one go, so every table on the server
+-- waits while a bot thinks. Keep it well under a second.
 local LEVELS = {
-	easy = { depth = 1, seconds = 0.1, slack = 120 },
-	medium = { depth = 3, seconds = 0.5, slack = 10 },
-	hard = { depth = 6, seconds = 1.0, slack = 0 },
+	easy = { depth = 1, seconds = 0.08, slack = 120 },
+	medium = { depth = 3, seconds = 0.25, slack = 10 },
+	hard = { depth = 6, seconds = 0.45, slack = 0 },
 }
 
 -- Scores every legal move for the side to move, best first.
@@ -918,6 +924,15 @@ function Chess.rankMoves(pos: Pos, maxDepth: number, seconds: number, exact: boo
 		if s.outOfTime and depth > 1 then
 			break
 		end
+		if s.outOfTime and #current > 0 then
+			-- Not even depth 1 finished: rank the moves we did look at rather than
+			-- falling back to all-equal scores (a random move).
+			table.sort(current, function(a, b)
+				return a.score > b.score
+			end)
+			ranked = current
+			break
+		end
 		if #current == #moves then
 			table.sort(current, function(a, b)
 				return a.score > b.score
@@ -945,6 +960,27 @@ function Chess.chooseBotMove(state, seat: number, rng: Random): any?
 		return nil
 	end
 	local best = ranked[1].score
+	-- When ahead, don't walk into a repeated position (a draw by repetition throws the
+	-- win away). Only the best score is exact, so re-rank shallowly with exact scores and
+	-- take the best new position that isn't much worse.
+	local function repeats(m: Move): boolean
+		local undo = makeMove(state.pos, m)
+		local seen = state.history[positionKey(state.pos)] or 0
+		unmakeMove(state.pos, m, undo)
+		return seen > 0
+	end
+	if best > 50 and best < MATE - 100 and repeats(ranked[1].move) then
+		local alt = Chess.rankMoves(state.pos, 2, 0.1, true)
+		local altBest = if alt[1] then alt[1].score else 0
+		for _, entry in alt do
+			if entry.score < altBest - 100 then
+				break
+			end
+			if not repeats(entry.move) then
+				return toWire(entry.move)
+			end
+		end
+	end
 	local pool = {}
 	for _, entry in ranked do
 		if entry.score >= best - level.slack then
@@ -964,6 +1000,11 @@ function Chess.getMatchStats(state): { [number]: { [string]: number } }
 		}
 	end
 	return out
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function Chess.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #Chess.getLegalMoves(state, seat), { base = 0.8, perDoubling = 0.2, jitter = 0.8, ponder = 0.15, max = 3.0 })
 end
 
 return Chess

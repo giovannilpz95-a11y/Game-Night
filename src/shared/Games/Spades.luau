@@ -16,6 +16,7 @@
 --        { kind = "play", card = id }   (your turn)
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 local PlayingCards = require(script.Parent.Parent.Cards.PlayingCards)
 local Tricks = require(script.Parent.Parent.Cards.Tricks)
 
@@ -496,6 +497,11 @@ function Spades.chooseBotMove(state, seat: number, rng: Random): any?
 		return { kind = "play", card = choosePlay(state, seat, rng) }
 	end
 	return nil
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function Spades.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #Spades.getLegalMoves(state, seat))
 end
 
 return Spades

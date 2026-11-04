@@ -3,6 +3,7 @@
 -- Move: { column = 1..7 }
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 
 local FourInARow = {}
 
@@ -238,7 +239,7 @@ end
 local LEVELS = {
 	easy = { depth = 1, randomChance = 0.35, seconds = 0.05 },
 	medium = { depth = 4, randomChance = 0.05, seconds = 0.2 },
-	hard = { depth = 8, randomChance = 0, seconds = 0.6 },
+	hard = { depth = 8, randomChance = 0, seconds = 0.45 }, -- the search blocks the server: keep it short
 }
 
 -- Scores every legal column for `seat`. Iterative deepening keeps the last finished depth.
@@ -299,6 +300,11 @@ function FourInARow.chooseBotMove(state: State, seat: number, rng: Random): any?
 	end
 	table.sort(best)
 	return { column = best[rng:NextInteger(1, #best)] }
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function FourInARow.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #FourInARow.getLegalMoves(state, seat), { base = 0.8, perDoubling = 0.2, max = 2.4 })
 end
 
 return FourInARow

@@ -16,5 +16,7 @@ The first game, used to prove parties, tables, turns and bots work end to end.
   bot tests check this almost never happens.
 - Bot: wins if it can, never frees a square or leaves a line that hands the opponent an
   instant win, sets up its own wins, then prefers center, corners, edges. It makes a
-  casual or careless move now and then so it's beatable and games don't loop.
+  casual or careless move now and then so it's beatable and games don't loop: easy
+  often (50% casual, 30% careless), medium sometimes (25%, 10%), hard rarely (10%, 4%).
+  Hard beats easy about 9 games in 10.
 - Rewards: `minMoves = 5` (the fastest possible win) and `minMinutes = 0.1` still fit.

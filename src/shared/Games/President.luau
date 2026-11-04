@@ -16,6 +16,7 @@
 -- Moves: { kind = "play", cards = { id, ... } }  |  { kind = "pass" }
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local BotThink = require(script.Parent.Parent.BotThink)
 local PlayingCards = require(script.Parent.Parent.Cards.PlayingCards)
 
 local President = {}
@@ -435,6 +436,11 @@ function President.chooseBotMove(state, seat: number, rng: Random): any?
 		end
 	end
 	return best
+end
+
+-- A natural pause before a bot moves: quick when forced, longer for a real choice.
+function President.getBotDelay(state, seat: number, rng: Random): number
+	return BotThink.delay(rng, #President.getLegalMoves(state, seat))
 end
 
 return President
