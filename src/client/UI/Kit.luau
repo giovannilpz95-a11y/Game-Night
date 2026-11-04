@@ -96,6 +96,15 @@ function Kit.panel(props: { [string]: any }): Frame
 		BackgroundColor3 = Kit.Theme.Panel,
 		BorderSizePixel = 0,
 	}, { Kit.corner(14), Kit.padding(12), Kit.stroke() })
+	-- A panel that brings its own outline (an accent ring) drops the default one.
+	frame.ChildAdded:Connect(function(child)
+		if child:IsA("UIStroke") and child.Name ~= "Outline" then
+			local outline = frame:FindFirstChild("Outline")
+			if outline then
+				outline:Destroy()
+			end
+		end
+	end)
 	for key, value in props do
 		(frame :: any)[key] = value
 	end
