@@ -770,22 +770,39 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if not reaction or not (chip and chip:IsA("GuiObject")) then
 			return
 		end
+		local origin = root.AbsolutePosition
+		local anchor, x, y
 		if table3D.isActive() and payload.table ~= nil then
-			return
+			-- Others see it over the head. Your own head is hidden behind the camera in
+			-- the Table view, so yours shows bottom-center, above your docked hand.
+			if payload.userId ~= localPlayer.UserId then
+				return
+			end
+			anchor = Vector2.new(0.5, 1)
+			x = root.AbsoluteSize.X / 2
+			if dock.Visible then
+				y = dock.AbsolutePosition.Y - origin.Y - 8
+			else
+				y = root.AbsoluteSize.Y - Layout.get().bottom - 24
+			end
+		else
+			anchor = Vector2.new(0, 0.5)
+			x = chip.AbsolutePosition.X + chip.AbsoluteSize.X + 4 - origin.X
+			y = chip.AbsolutePosition.Y + chip.AbsoluteSize.Y / 2 - origin.Y
 		end
 		local old = chipReaction[payload.seat]
 		if old then
 			old:Destroy()
 		end
 		local base = if Layout.get().compact then 56 else 72
+		if anchor.Y == 1 then
+			base = math.floor(base * 1.3) -- the only one on screen: a bit bigger
+		end
 		local size = ReactionFx.size(reaction, base)
-		local origin = root.AbsolutePosition
-		local x = chip.AbsolutePosition.X + chip.AbsoluteSize.X + 4 - origin.X
-		local y = chip.AbsolutePosition.Y + chip.AbsoluteSize.Y / 2 - origin.Y
 		local holder = Kit.new("Frame", {
 			Name = "Reaction",
 			BackgroundTransparency = 1,
-			AnchorPoint = Vector2.new(0, 0.5),
+			AnchorPoint = anchor,
 			Position = UDim2.fromOffset(x, y),
 			Size = UDim2.fromOffset(size.X, size.Y),
 			ZIndex = 40,

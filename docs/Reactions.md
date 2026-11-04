@@ -9,7 +9,7 @@ The 😀 button in the match header opens a wheel. Players with a seat in a matc
 2. **Emotes**: only at a 3D table, where your avatar can act them out.
 3. One page per reaction pack you own, in shop order.
 
-◀ ▶ in the middle of the wheel flip pages, and the wheel remembers the last page. On small screens it shrinks to fit, like before.
+◀ ▶ in the middle of the wheel flip pages (the middle shows the page name and number), and the wheel remembers the last page. In the Table view your own reaction shows bottom-center on your screen, above your docked hand, because your own head is behind the camera; everyone else still sees it over your head. On small screens it shrinks to fit, like before.
 
 ## Packs
 | Pack | Shop item id | Price | What's in it |

@@ -19,7 +19,7 @@ local Theme = Kit.Theme
 
 local EmoteWheel = {}
 
-local RADIUS = 92
+local RADIUS = 100
 local BUTTON = 58
 local COOLDOWN = 1.2 -- seconds between picks (the server allows 3 of each every 4 s)
 
@@ -91,7 +91,8 @@ function EmoteWheel.create(root: GuiObject, header: GuiObject, hooks: Hooks): Wh
 		Parent = ring,
 	})
 
-	-- The middle: page name (or the hovered button's name), ◀ page count ▶.
+	-- The middle: page name, ◀ page count ▶. (No hover names: each button is labeled, and
+	-- hover sticks on touch screens.)
 	local hint = Kit.label("", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, -12),
@@ -106,8 +107,8 @@ function EmoteWheel.create(root: GuiObject, header: GuiObject, hooks: Hooks): Wh
 	Kit.new("UITextSizeConstraint", { MaxTextSize = 15, MinTextSize = 9, Parent = hint })
 	local counter = Kit.label("", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 16),
-		Size = UDim2.fromOffset(40, 20),
+		Position = UDim2.new(0.5, 0, 0.5, 18),
+		Size = UDim2.fromOffset(26, 20),
 		TextSize = 12,
 		TextColor3 = Theme.SubText,
 		TextXAlignment = Enum.TextXAlignment.Center,
@@ -126,21 +127,21 @@ function EmoteWheel.create(root: GuiObject, header: GuiObject, hooks: Hooks): Wh
 	end
 	local arrowProps = {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Size = UDim2.fromOffset(30, 30),
+		Size = UDim2.fromOffset(26, 26),
 		BackgroundColor3 = Theme.PanelLight,
 		TextColor3 = Theme.Text,
-		TextSize = 14,
+		TextSize = 13,
 		ZIndex = 63,
 		Parent = ring,
 	}
 	local prev = Kit.button("◀", function()
 		flip(-1)
 	end, arrowProps)
-	prev.Position = UDim2.new(0.5, -34, 0.5, 16)
+	prev.Position = UDim2.new(0.5, -26, 0.5, 18)
 	local nextButton = Kit.button("▶", function()
 		flip(1)
 	end, arrowProps)
-	nextButton.Position = UDim2.new(0.5, 34, 0.5, 16)
+	nextButton.Position = UDim2.new(0.5, 26, 0.5, 18)
 
 	local function close()
 		isOpen = false
@@ -285,12 +286,6 @@ function EmoteWheel.create(root: GuiObject, header: GuiObject, hooks: Hooks): Wh
 					Parent = b,
 				})
 			end
-			b.MouseEnter:Connect(function()
-				hint.Text = name
-			end)
-			b.MouseLeave:Connect(function()
-				hint.Text = pageTitle()
-			end)
 		end
 	end
 
