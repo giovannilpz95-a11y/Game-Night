@@ -51,6 +51,7 @@ local DOCK: { [string]: { side: string, size: number } } = {
 	WordTiles = { side = "bottom", size = 96 },
 	ColorClash = { side = "bottom", size = 0.45 }, -- the "+2 waiting" line, buttons and hand
 	TriviaNight = { side = "bottom", size = 0.26 }, -- answers only (the screen shows the question)
+	Werewolf = { side = "bottom", size = 0.44 }, -- the village row and what to do now (the screen shows the phase)
 	Spoons = { side = "bottom", size = 0.41 },
 	War = { side = "bottom", size = 0.2 },
 	GoFish = { side = "bottom", size = 0.36 },
