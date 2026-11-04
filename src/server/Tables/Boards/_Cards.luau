@@ -18,8 +18,9 @@ function Cards.shell(boardCF: CFrame, parent: Instance, layout: Scene.Layout, dr
 		model = model,
 		update = function(view: any, snapshot: any)
 			if Scene.changed(memo, view) then
-				dynamic:ClearAllChildren()
-				draw(dynamic, view, snapshot)
+				Scene.redraw(dynamic, function(folder)
+					draw(folder, view, snapshot)
+				end)
 			end
 		end,
 		destroy = function()

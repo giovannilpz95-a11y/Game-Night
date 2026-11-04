@@ -36,9 +36,9 @@ Force it in Studio: in the client view, add a boolean attribute `GameNightLowDet
 
 **Other fixes**: the lounge Party board only writes labels that changed (each write is sent to every player); forever-pulsing turn rings (`HudKit.pulse`) cancel their tween when the ring is destroyed.
 
-## Known costs not changed
+## Known costs
 
-- **Table scenes rebuild on every change** (`Scene.dynamic`): card games destroy and recreate their cards and holders on each move, and every player in the server receives that. It's gated by `Scene.changed`, so timers don't trigger it. If Studio shows network spikes on moves at full servers, the next step is reusing parts per scene.
+- **Table scenes** redraw with `Scene.redraw`: the scene draws into a folder outside the world, each piece is matched by its look (`Scene.signature`: class, name, the properties scenes set, tags, attributes, children) against what's on the table, and only new or changed pieces are parented; the rest stay. A move that changes one hand resends that hand, not the table. A piece of a class `Scene.signature` doesn't know is always redrawn, so nothing goes stale. New scenes should use `Scene.redraw` instead of `ClearAllChildren`.
 - **Merging decor into unions or meshes**: not done at runtime. `UnionAsync` at server start is slow and changes shading. The way to cut part counts is importing the meshes (see [[Meshes]]): round tops, rails and stool cushions then become one part each instead of 3-28.
 - **Shadowed lights at normal quality**: the 13 table pendant spotlights, the fireplace and several lamps cast shadows under Future lighting. Low-detail mode turns them off; at normal quality they stay because they're the look.
 

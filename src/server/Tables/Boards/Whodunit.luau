@@ -201,42 +201,43 @@ function Whodunit.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 			if not Scene.changed(memo, view) then
 				return
 			end
-			dynamic:ClearAllChildren()
-			-- Group by room so pawns stand side by side.
-			local seatCount = view.seatCount or (snapshot and #snapshot.seats) or #Rules.theme.suspects
-			local inRoom: { [number]: number } = {}
-			local height = 0.72
-			for suspect, room in view.suspectRoom or {} do
-				local k = inRoom[room] or 0
-				inRoom[room] = k + 1
-				local cf = roomCF(boardCF, room, FLOOR_Y) * CFrame.new(((k % 3) - 1) * CELL * 0.26, 0, (k // 3) * CELL * 0.2)
-				local color = if suspect <= seatCount then (Scene.SEAT_COLORS[suspect] or Color3.new(1, 1, 1)) else Color3.fromRGB(150, 150, 150)
-				local pawn = Models.pawn(dynamic, cf, color, height)
-				local hat = HATS[suspect]
-				if hat then
-					hat(pawn, cf * CFrame.new(0, height * 0.96, 0), height)
+			Scene.redraw(dynamic, function(dynamic)
+				-- Group by room so pawns stand side by side.
+				local seatCount = view.seatCount or (snapshot and #snapshot.seats) or #Rules.theme.suspects
+				local inRoom: { [number]: number } = {}
+				local height = 0.72
+				for suspect, room in view.suspectRoom or {} do
+					local k = inRoom[room] or 0
+					inRoom[room] = k + 1
+					local cf = roomCF(boardCF, room, FLOOR_Y) * CFrame.new(((k % 3) - 1) * CELL * 0.26, 0, (k // 3) * CELL * 0.2)
+					local color = if suspect <= seatCount then (Scene.SEAT_COLORS[suspect] or Color3.new(1, 1, 1)) else Color3.fromRGB(150, 150, 150)
+					local pawn = Models.pawn(dynamic, cf, color, height)
+					local hat = HATS[suspect]
+					if hat then
+						hat(pawn, cf * CFrame.new(0, height * 0.96, 0), height)
+					end
 				end
-			end
-			local itemsIn: { [number]: number } = {}
-			for item, room in view.itemRoom or {} do
-				local k = itemsIn[room] or 0
-				itemsIn[room] = k + 1
-				local mini = ITEMS[item]
-				local cf = roomCF(boardCF, room, FLOOR_Y) * CFrame.new((k - 2.5) * 0.3, 0, CELL * 0.17)
-				if mini then
-					mini(dynamic, cf)
+				local itemsIn: { [number]: number } = {}
+				for item, room in view.itemRoom or {} do
+					local k = itemsIn[room] or 0
+					itemsIn[room] = k + 1
+					local mini = ITEMS[item]
+					local cf = roomCF(boardCF, room, FLOOR_Y) * CFrame.new((k - 2.5) * 0.3, 0, CELL * 0.17)
+					if mini then
+						mini(dynamic, cf)
+					end
 				end
-			end
-			-- The sealed case file (opens at the end).
-			local solved = view.solution ~= nil
-			local file = boardCF * CFrame.new(SIZE / 2 + 0.75, 0, 0)
-			Models.block(dynamic, "CaseFile", Vector3.new(0.95, 0.07, 0.7), file * CFrame.new(0, 0.035, 0), if solved then Color3.fromRGB(240, 230, 200) else Color3.fromRGB(200, 170, 120))
-			Models.block(dynamic, "CaseFlap", Vector3.new(0.6, 0.01, 0.6), file * CFrame.new(0, 0.075, 0) * CFrame.Angles(0, math.rad(45), 0), Color3.fromRGB(180, 150, 100))
-			if solved then
-				Scene.flatText(dynamic, file * CFrame.new(0, 0.085, 0), 0.8, 0.4, "Solved!", { TextColor3 = Color3.fromRGB(40, 30, 24) })
-			else
-				Models.cyl(dynamic, "WaxSeal", 0.26, 0.03, file * CFrame.new(0, 0.08, 0), Color3.fromRGB(170, 30, 40))
-			end
+				-- The sealed case file (opens at the end).
+				local solved = view.solution ~= nil
+				local file = boardCF * CFrame.new(SIZE / 2 + 0.75, 0, 0)
+				Models.block(dynamic, "CaseFile", Vector3.new(0.95, 0.07, 0.7), file * CFrame.new(0, 0.035, 0), if solved then Color3.fromRGB(240, 230, 200) else Color3.fromRGB(200, 170, 120))
+				Models.block(dynamic, "CaseFlap", Vector3.new(0.6, 0.01, 0.6), file * CFrame.new(0, 0.075, 0) * CFrame.Angles(0, math.rad(45), 0), Color3.fromRGB(180, 150, 100))
+				if solved then
+					Scene.flatText(dynamic, file * CFrame.new(0, 0.085, 0), 0.8, 0.4, "Solved!", { TextColor3 = Color3.fromRGB(40, 30, 24) })
+				else
+					Models.cyl(dynamic, "WaxSeal", 0.26, 0.03, file * CFrame.new(0, 0.08, 0), Color3.fromRGB(170, 30, 40))
+				end
+			end)
 		end,
 		destroy = function()
 			model:Destroy()
