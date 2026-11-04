@@ -16,7 +16,7 @@ Coordinates are offsets in the main ScreenGui, which has `IgnoreGuiInset = true`
 ## Lobby (`UI/LobbyHud`)
 The lobby frame is see-through: the 3D room is the lobby. On top of it:
 - one big **Play** button at the bottom center. It opens the game picker window. Non-leaders see "Games" and a hint that the leader picks.
-- a **side rail** of round buttons on the left: Party (with a member count badge), Tables, Shop, Looks (Dressing Room), Host, and Voice (only when voice servers are on).
+- a **side rail** of round buttons on the left: Party (with a member count badge), Tables, Stats (see [[Progression]]), Shop, Looks (Dressing Room), Host, and Voice (only when voice servers are on).
 - a round **?** (Help) right of Play.
 - the **wallet** at the right end of the top bar (lobby and matches).
 

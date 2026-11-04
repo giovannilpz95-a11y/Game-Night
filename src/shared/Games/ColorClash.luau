@@ -330,6 +330,10 @@ function ColorClash.applyMove(state, seat: number, move: any)
 	local card = cards[id]
 	state.color = if isWild(card) then move.color else card.color
 	state.lastAction = { seat = seat, kind = "play", card = id, color = state.color }
+	GameModule.addStat(state, seat, "cards")
+	if isWild(card) then
+		GameModule.addStat(state, seat, "wilds")
+	end
 
 	if #hand == 0 then
 		state.winner = seat

@@ -19,6 +19,7 @@ local DressingRoomPanel = require(script.Parent.UI.DressingRoomPanel)
 local TableList = require(script.Parent.UI.TableList)
 local HostPanel = require(script.Parent.UI.HostPanel)
 local VoicePanel = require(script.Parent.UI.VoicePanel)
+local StatsPanel = require(script.Parent.UI.StatsPanel)
 local Layout = require(script.Parent.UI.Layout)
 local LobbyHud = require(script.Parent.UI.LobbyHud)
 local RulesPanel = require(script.Parent.UI.RulesPanel)
@@ -35,6 +36,7 @@ local purchaseRequest = Net.event(Net.Names.PurchaseRequest)
 local dressingRequest = Net.event(Net.Names.DressingRoomRequest)
 local hostRequest = Net.event(Net.Names.HostRequest)
 local voiceRequest = Net.event(Net.Names.VoiceRequest)
+local statsRequest = Net.event(Net.Names.StatsRequest)
 
 local function sendParty(request: any)
 	partyRequest:FireServer(request)
@@ -92,6 +94,15 @@ local hostPanel = HostPanel.create(screen, function(request)
 end, hostHooks)
 hostHooks.openTables = tableList.open
 hostHooks.openHostTools = hostPanel.open
+-- The Party window's 📊 buttons; set once the stats window exists (below).
+local openStats: (number?) -> () = function() end
+function hostHooks.viewStats(userId: number)
+	openStats(userId)
+end
+
+local statsPanel = StatsPanel.create(lobby, function(request)
+	statsRequest:FireServer(request)
+end)
 
 local partyWindow = Kit.modal(lobby, { name = "PartyWindow", maxSize = Vector2.new(420, 600) })
 local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = Vector2.new(1000, 680) })
@@ -110,11 +121,16 @@ end)
 local dressingRoom = DressingRoomPanel.create(screen, function(request)
 	dressingRequest:FireServer(request)
 end)
+openStats = function(userId: number?)
+	partyWindow.close()
+	statsPanel.open(userId)
+end
 -- One big window at a time.
 local function closeWindows()
 	partyWindow.close()
 	pickerWindow.close()
 	tableList.close()
+	statsPanel.close()
 	dressingRoom.close()
 	shopPanel.root.Visible = false
 end
@@ -139,6 +155,10 @@ local hud = LobbyHud.create(lobby, {
 	tables = function()
 		closeWindows()
 		tableList.open()
+	end,
+	stats = function()
+		closeWindows()
+		statsPanel.open()
 	end,
 	shop = function()
 		closeWindows()
@@ -181,6 +201,7 @@ function startTour()
 		railStep("Play", "Play", "Pick a game here. Empty seats are filled with bots, so you can play alone or with friends."),
 		railStep("Party", "Party", "Invite friends to your party. The party leader picks the game and everyone plays together."),
 		railStep("Tables", "Tables", "See other tables in this server and join one."),
+		railStep("Stats", "Stats", "Your level, badges, every game's record and this week's leaderboards."),
 		{
 			target = function()
 				return walletBar.root
@@ -306,6 +327,7 @@ Net.event(Net.Names.PartyState).OnClientEvent:Connect(function(party)
 end)
 
 Net.event(Net.Names.VoiceState).OnClientEvent:Connect(voicePanel.setState)
+Net.event(Net.Names.StatsState).OnClientEvent:Connect(statsPanel.setState)
 
 Net.event(Net.Names.PartyInvite).OnClientEvent:Connect(popups.invite)
 Net.event(Net.Names.Notify).OnClientEvent:Connect(popups.toast)

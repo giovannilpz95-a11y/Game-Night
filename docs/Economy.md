@@ -34,7 +34,7 @@ minMinutes = 0.25,      -- shorter matches pay nothing
 minMoves = 7,           -- matches with fewer moves pay nothing
 ```
 
-Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The first win of the day and each daily challenge pay Gems; XP from time played levels the account up, and level-ups pay Gems.
+Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The first win of the day and each daily challenge pay Gems; XP from time played levels the account up, and level-ups pay Gems. Badges pay Gems once each (see [[Progression]]).
 
 For bonuses inside a game, or for games that don't use `MatchService`, call `EconomyService` from server code:
 

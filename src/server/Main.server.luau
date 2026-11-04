@@ -9,6 +9,7 @@ local RateLimiter = require(script.Parent.Core.RateLimiter)
 local PartyService = require(script.Parent.Services.PartyService)
 local MatchService = require(script.Parent.Services.MatchService)
 local TableService = require(script.Parent.Services.TableService)
+local LobbyService = require(script.Parent.Services.LobbyService)
 local DataService = require(script.Parent.Services.DataService)
 local EconomyService = require(script.Parent.Services.EconomyService)
 local PurchaseService = require(script.Parent.Services.PurchaseService)
@@ -17,10 +18,18 @@ local Dictionary = require(script.Parent.Core.Dictionary)
 local WordTiles = require(ReplicatedStorage.Shared.Games.WordTiles)
 local HostService = require(script.Parent.Services.HostService)
 local VoiceService = require(script.Parent.Services.VoiceService)
+local ProgressionService = require(script.Parent.Services.ProgressionService)
 local TableActionService = require(script.Parent.Services.TableActionService)
 
 Net.init()
+-- The room first, so the tables stand in it. It's decor: if it ever fails, the games
+-- still start.
+local lobbyOk, lobbyErr = pcall(LobbyService.init)
+if not lobbyOk then
+	warn(`[GameNight] lobby room failed to build: {lobbyErr}`)
+end
 TableService.init()
+pcall(LobbyService.afterTables)
 MatchService.init(PartyService)
 PartyService.init(MatchService)
 EconomyService.init()
@@ -28,6 +37,7 @@ PurchaseService.init()
 DressingRoomService.init()
 HostService.init()
 VoiceService.init(PartyService)
+ProgressionService.init(EconomyService)
 DataService.init() -- last, so every onLoaded listener is in place before profiles load
 MatchService.onMatchFinished(EconomyService.onMatchFinished)
 
@@ -57,6 +67,7 @@ Net.event(Net.Names.PurchaseRequest).OnServerEvent:Connect(guarded(PurchaseServi
 Net.event(Net.Names.DressingRoomRequest).OnServerEvent:Connect(guarded(DressingRoomService.handleRequest))
 Net.event(Net.Names.HostRequest).OnServerEvent:Connect(guarded(HostService.handleRequest))
 Net.event(Net.Names.VoiceRequest).OnServerEvent:Connect(guarded(VoiceService.handleRequest))
+Net.event(Net.Names.StatsRequest).OnServerEvent:Connect(guarded(ProgressionService.handleRequest))
 Net.event(Net.Names.TableAction).OnServerEvent:Connect(guarded(TableActionService.init(MatchService)))
 
 Players.PlayerRemoving:Connect(function(player)

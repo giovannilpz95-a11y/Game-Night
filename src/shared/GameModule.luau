@@ -62,6 +62,16 @@
 	      the client sent. Show other players only move.shown, never the raw text.
 	      Bot moves set `shown` themselves.
 
+	Stats (optional; see shared/StatsCatalog.luau for which keys each game saves):
+
+	  GameModule.addStat(state, seat, key, amount) / GameModule.maxStat(state, seat, key, value)
+	      Counters bumped during play (a checkmate, a word played). They live in
+	      state.matchStats; getView must not hand that table out raw.
+
+	  getMatchStats(state) -> { [seat]: { [key]: number } }
+	      Stats read off the final state (pieces captured, properties owned). Merged
+	      over the counters above when the match ends.
+
 	options.bots lists the seats that start as bots (set by the server, never the client).
 
 	rng is a Roblox Random object (rng:NextInteger(min, max), rng:NextNumber()).
@@ -89,6 +99,23 @@ function GameModule.chooseBotMove(rules: any, state: any, seat: number, rng: Ran
 		return nil
 	end
 	return moves[rng:NextInteger(1, #moves)]
+end
+
+-- Match stats counters (see "Stats" above). Pure helpers, safe to call from applyMove.
+function GameModule.addStat(state: any, seat: number, key: string, amount: number?)
+	state.matchStats = state.matchStats or {}
+	local row = state.matchStats[seat] or {}
+	state.matchStats[seat] = row
+	row[key] = (row[key] or 0) + (amount or 1)
+end
+
+function GameModule.maxStat(state: any, seat: number, key: string, value: number)
+	state.matchStats = state.matchStats or {}
+	local row = state.matchStats[seat] or {}
+	state.matchStats[seat] = row
+	if row[key] == nil or value > row[key] then
+		row[key] = value
+	end
 end
 
 -- Deep copy for plain data (no cycles, no Instances). Handy for getView.

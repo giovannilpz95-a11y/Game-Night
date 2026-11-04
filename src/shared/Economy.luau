@@ -57,6 +57,9 @@ function Economy.levelUpGems(newLevel: number): number
 	return math.min(25, 10 + (newLevel - 2))
 end
 
+-- Badges (shared/Badges.luau): one-time Gems for bronze, silver and gold badges
+Economy.BadgeGems = { 5, 15, 40 }
+
 -- VIP perks that touch numbers
 Economy.VipPlayBonus = 0.25 -- +25% Gems and Coins from play
 Economy.VipDailyLoginMultiplier = 2

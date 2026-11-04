@@ -14,7 +14,17 @@ local UserInputService = game:GetService("UserInputService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 
+local Players = game:GetService("Players")
+
 local Controller = {}
+
+-- Parts of your own avatar that stay visible at the table (hands reaching for pieces);
+-- the rest is hidden so your body and accessories don't block the board.
+local KEEP_VISIBLE = {
+	LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+	RightUpperArm = true, RightLowerArm = true, RightHand = true,
+	["Left Arm"] = true, ["Right Arm"] = true,
+}
 
 local PARTY_SCREEN = { TriviaNight = true, SketchGuess = true }
 local BIG_BOARD = { Estates = true }
@@ -70,11 +80,49 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	-- viewport: the camera aims the table at the middle of what's left.
 	local insetRight, insetBottom = 0, 0
 
+	-- Your table's floating sign hangs right in front of the seat camera: hide it locally.
+	local hiddenSign: BillboardGui? = nil
+	local function showSign(visible: boolean)
+		if visible then
+			if hiddenSign then
+				hiddenSign.Enabled = true
+				hiddenSign = nil
+			end
+		elseif tableModel and not hiddenSign then
+			local sign = tableModel:FindFirstChild("TableSign", true)
+			if sign and sign:IsA("BillboardGui") and sign.Enabled then
+				sign.Enabled = false
+				hiddenSign = sign
+			end
+		end
+	end
+
+	-- Hides your own body (not your arms) while the seat camera is on. Set every frame:
+	-- Roblox's camera scripts also write LocalTransparencyModifier.
+	local function fadeSelf(hidden: boolean)
+		local character = Players.LocalPlayer.Character
+		if not character then
+			return
+		end
+		for _, d in character:GetDescendants() do
+			if d:IsA("BasePart") then
+				local keep = KEEP_VISIBLE[d.Name] == true and d.Parent == character
+				d.LocalTransparencyModifier = if hidden and not keep then 1 else 0
+			elseif d:IsA("Decal") then
+				d.LocalTransparencyModifier = if hidden then 1 else 0
+			end
+		end
+	end
+
 	local function setActive(value: boolean)
 		if active == value then
 			return
 		end
 		active = value
+		if not value then
+			fadeSelf(false)
+			showSign(true)
+		end
 		if value then
 			savedCameraType = camera.CameraType
 			savedFieldOfView = camera.FieldOfView
@@ -237,6 +285,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		if tryAttach() then
 			setActive(true)
+			showSign(false)
 			placeCamera()
 			if handler then
 				handler.update(snapshot)
@@ -245,6 +294,12 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			setActive(false)
 		end
 	end
+
+	RunService.RenderStepped:Connect(function()
+		if active then
+			fadeSelf(true)
+		end
+	end)
 
 	-- Keep looking while the board streams in, then give up and stay in 2D.
 	RunService.Heartbeat:Connect(function()

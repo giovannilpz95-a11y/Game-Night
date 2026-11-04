@@ -212,7 +212,8 @@ function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: bool
 	local top = cf * CFrame.new(0, height, 0)
 	cardBack(parent, top)
 	if showCount then
-		Scene.flatText(parent, top * CFrame.new(0, 0.012, 0), Scene.CARD_W * 0.7, Scene.CARD_W * 0.5, tostring(count), { TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.2 })
+		-- Floats just over the pile, facing each viewer.
+		Scene.floatText(parent, top * CFrame.new(0, 0.3, 0), Scene.CARD_W * 0.8, Scene.CARD_W * 0.55, tostring(count), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
 	end
 	return top
 end
@@ -235,8 +236,8 @@ function Scene.hand(parent: Instance, boardCF: CFrame, layout: Layout, seat: num
 		Scene.card(parent, stand, nil)
 	end
 	if count > shown or count >= 6 then
-		local tag = Models.cyl(parent, "CountTag", 0.62, 0.05, spot * CFrame.new(0, 0, -0.75), Color3.fromRGB(38, 34, 60))
-		Scene.flatText(tag, spot * CFrame.new(0, 0.055, -0.75), 0.44, 0.36, tostring(count), { TextColor3 = Color3.new(1, 1, 1) })
+		Models.cyl(parent, "CountTag", 0.62, 0.05, spot * CFrame.new(0, 0, -0.75), Color3.fromRGB(38, 34, 60))
+		Scene.floatText(parent, spot * CFrame.new(0, 0.3, -0.75), 0.5, 0.4, tostring(count), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
 	end
 end
 

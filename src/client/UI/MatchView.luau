@@ -37,7 +37,7 @@ local DOCK_DEFAULT = { side = "bottom", size = 0.4 }
 local DOCK: { [string]: { side: string, size: number } } = {
 	Hexlands = { side = "right", size = 0.42 },
 	Conquest = { side = "right", size = 0.32 },
-	Estates = { side = "right", size = 0.4 },
+	Estates = { side = "right", size = 0.3 },
 	Whodunit = { side = "right", size = 0.44 },
 	SketchGuess = { side = "right", size = 0.32 },
 	WordTiles = { side = "bottom", size = 96 },

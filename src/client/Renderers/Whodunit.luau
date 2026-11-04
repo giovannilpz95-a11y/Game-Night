@@ -241,6 +241,8 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	local docked = false -- Table view: only the side panel shows
+
 	local function button(parent: Instance, label: string, order: number, onClick: () -> (), props: { [string]: any }?)
 		local b = Kit.button(label, onClick, { LayoutOrder = order, Parent = parent })
 		for key, v in props or {} do
@@ -627,7 +629,17 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 
 		if view.phase == "move" then
 			if myTurn then
-				text(actions, "Your turn! Tap a glowing room to walk there.", 4, { Font = Theme.FontBold, TextSize = 16, TextColor3 = Theme.Accent })
+				if docked then
+					-- Table view hides the map: walk with a button per room you can reach.
+					text(actions, "Your turn! Pick a room to walk to.", 4, { Font = Theme.FontBold, TextSize = 16, TextColor3 = Theme.Accent })
+					for i, room in view.legalRooms do
+						button(actions, theme.rooms[room], 20 + i, function()
+							sendMove({ kind = "move", room = room })
+						end, { Size = UDim2.new(1, 0, 0, 34), TextSize = 15 })
+					end
+				else
+					text(actions, "Your turn! Tap a glowing room to walk there.", 4, { Font = Theme.FontBold, TextSize = 16, TextColor3 = Theme.Accent })
+				end
 				if view.canStay then
 					text(actions, "You were brought here, so you may stay.", 5, { TextSize = 13, TextColor3 = Theme.SubText })
 				end
@@ -681,6 +693,14 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	return {
+		setDocked = function(value: boolean)
+			if docked ~= value then
+				docked = value
+				if snapshot then
+					render()
+				end
+			end
+		end,
 		update = function(newSnapshot: any)
 			if newSnapshot.matchId ~= lastMatchId then
 				lastMatchId = newSnapshot.matchId

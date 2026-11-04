@@ -44,12 +44,21 @@ type TableEntry = {
 	occupants: { [number]: Occupant }, -- by table seat
 	board: any?,
 	bodies: Folder,
-	sign: TextLabel,
+	sign: { TextLabel }, -- both faces of the table's sign post
 	tags: { [number]: BillboardGui },
 	holdToken: number,
 }
 
 local tables: { TableEntry } = {}
+
+-- The table's sign text, on both faces of its post, and as an attribute for the lobby's
+-- Party board (LobbyService).
+local function setSign(t: TableEntry, text: string)
+	for _, label in t.sign do
+		label.Text = text
+	end
+	t.model:SetAttribute("SignText", text)
+end
 local tableOfMatch: { [string]: TableEntry } = {}
 local lastTableOfParty: { [string]: string } = {}
 
@@ -151,7 +160,7 @@ local function clearTable(t: TableEntry)
 	t.bodies:ClearAllChildren()
 	t.seatMap = {}
 	t.gameId = nil
-	t.sign.Text = "Free table"
+	setSign(t, "Free table")
 	t.model:SetAttribute("State", "Free")
 	t.model:SetAttribute("MatchId", nil)
 end
@@ -249,7 +258,7 @@ local function signText(gameName: string, seats: { any }): string
 	if #seats == 2 then
 		return `{gameName} · {seats[1].name} vs {seats[2].name}`
 	end
-	return `{gameName} · {#seats} players`
+	return `{gameName} · {#seats} {if #seats == 1 then "player" else "players"}`
 end
 
 -- Puts the party's match on a free table. Returns { id, seats, board3D } for the
@@ -274,7 +283,7 @@ function TableService.claim(matchId: string, partyId: string, catalogEntry: any,
 	lastTableOfParty[partyId] = t.id
 	t.model:SetAttribute("State", "Playing")
 	t.model:SetAttribute("MatchId", matchId)
-	t.sign.Text = signText(catalogEntry.name, seats)
+	setSign(t, signText(catalogEntry.name, seats))
 
 	for matchSeat, tableSeat in t.seatMap do
 		local seat = Builder.seat(t.model, tableSeat)
@@ -404,42 +413,69 @@ local function guardSeat(t: TableEntry, tableSeat: number, seat: Seat)
 	end)
 end
 
-local function makeSign(model: Model): TextLabel
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "TableSign"
-	-- Sized in studs, not pixels: far signs shrink with distance instead of lining up
-	-- into one long bar when you look down a row of tables.
-	gui.Size = UDim2.fromScale(7, 0.95)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, 7.5, 0)
-	gui.MaxDistance = 70
-	local holder = Instance.new("Part")
-	holder.Name = "SignPoint"
-	holder.Anchored = true
-	holder.CanCollide = false
-	holder.CanQuery = false
-	holder.Transparency = 1
-	holder.Size = Vector3.new(0.2, 0.2, 0.2)
-	holder.Position = Builder.anchorPosition(model)
-	holder.Parent = model
-	gui.Adornee = holder
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundColor3 = Color3.fromRGB(38, 34, 60)
-	label.BackgroundTransparency = 0.2
-	label.TextColor3 = Color3.fromRGB(245, 243, 255)
-	label.Font = Enum.Font.GothamBold
-	label.TextScaled = true
-	label.Text = "Free table"
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.3, 0)
-	corner.Parent = label
-	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0.05, 0)
-	padding.PaddingRight = UDim.new(0.05, 0)
-	padding.Parent = label
-	label.Parent = gui
-	gui.Parent = holder
-	return label
+-- A sign post at the table's edge, between seats 1 and 2, with the text on both faces.
+-- It used to be a BillboardGui over the table: billboards always face the camera, so
+-- from the spawn the five signs of a row lined up into one long bar. A real sign stands
+-- in the world, gets smaller with distance and is hidden by whatever is in front of it.
+local function makeSign(model: Model): { TextLabel }
+	local center = Builder.anchorPosition(model)
+	local boxCF, size = model:GetBoundingBox()
+	local floorY = boxCF.Position.Y - size.Y / 2
+	local radius = math.max(size.X, size.Z) / 2 + 1.2
+	local angle = math.rad(22.5) -- between seat 1 (+Z) and seat 2
+	local outward = Vector3.new(math.sin(angle), 0, math.cos(angle))
+	local base = Vector3.new(center.X, floorY, center.Z) + outward * radius
+	local folder = Instance.new("Model")
+	folder.Name = "TableSign"
+	local function piece(name: string, partSize: Vector3, cf: CFrame, color: Color3, material: Enum.Material): Part
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Anchored = true
+		p.CanQuery = false
+		p.CanTouch = false
+		p.Size = partSize
+		p.CFrame = cf
+		p.Color = color
+		p.Material = material
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.Parent = folder
+		return p
+	end
+	local facing = CFrame.lookAt(base, base + outward) -- Front face looks away from the table
+	local wood = Color3.fromRGB(82, 54, 36)
+	piece("Foot", Vector3.new(1.4, 0.3, 1.4), facing + Vector3.new(0, 0.15, 0), wood, Enum.Material.Wood)
+	piece("Post", Vector3.new(0.3, 5.6, 0.3), facing + Vector3.new(0, 2.9, 0), wood, Enum.Material.Wood)
+	local board = piece("Board", Vector3.new(5.6, 1.5, 0.25), facing + Vector3.new(0, 6.2, 0), Color3.fromRGB(38, 34, 60), Enum.Material.SmoothPlastic)
+	board.CanCollide = false
+	local labels = {}
+	for _, face in { Enum.NormalId.Front, Enum.NormalId.Back } do
+		local gui = Instance.new("SurfaceGui")
+		gui.Name = "SignText"
+		gui.Face = face
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 50
+		gui.LightInfluence = 0.2
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 1
+		label.TextColor3 = Color3.fromRGB(245, 243, 255)
+		label.Font = Enum.Font.GothamBold
+		label.TextScaled = true
+		label.Text = "Free table"
+		local padding = Instance.new("UIPadding")
+		padding.PaddingLeft = UDim.new(0.04, 0)
+		padding.PaddingRight = UDim.new(0.04, 0)
+		padding.PaddingTop = UDim.new(0.12, 0)
+		padding.PaddingBottom = UDim.new(0.12, 0)
+		padding.Parent = label
+		label.Parent = gui
+		gui.Parent = board
+		table.insert(labels, label)
+	end
+	folder.Parent = model
+	model:SetAttribute("SignText", "Free table")
+	return labels
 end
 
 function TableService.init()

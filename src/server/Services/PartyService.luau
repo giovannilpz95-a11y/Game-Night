@@ -185,7 +185,7 @@ function handlers.accept(player: Player, request: any)
 		return notify(player, err :: string)
 	end
 	local party = registry:getParty(player.UserId)
-	AnalyticsService.inviteAccepted(player, if party then #party.members else 1)
+	AnalyticsService.inviteAccepted(player, if party then #party.members else 1, if party then party.leaderId else nil)
 	flush()
 end
 

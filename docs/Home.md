@@ -4,9 +4,11 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 
 - [[Architecture]]: how parties, tables, turns and bots work
 - [[Tables]]: 3D tables, seated avatars and boards
+- [[Lobby]]: the furnished lobby room, its lighting, and camera spots for filming
 - [[UI]]: phone-first layout, the lobby HUD, the match screen and Rematch
 - [[Adding a game]]: the checklist for every new game
 - [[Economy]]: Gems, Coins, saving, the shop and Robux products
+- [[Progression]]: levels, badges, weekly leaderboards and the stats profile
 - [[Store page]]: title, description, genre, icon, thumbnails and trailer shot list
 - [[Launch]]: store page settings, maturity questionnaire, products, soft launch, analytics and the pre-publish checklist
 - [[Dressing Room]]: trying on and buying Roblox catalog items, saved looks
