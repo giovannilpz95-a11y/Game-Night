@@ -29,6 +29,13 @@ local UP = Vector3.new(0, 1, 0)
 
 ---------------------------------------------------------------- rigs and joints
 
+-- Per joint (keyed by the Motor6D / AnimationConstraint): the pose under our offset, what
+-- we last wrote, and a bot's fixed rest pose. Plain tables: Instance keys can drop out of
+-- weak tables in Roblox.
+local baseOf: { [any]: CFrame } = {}
+local wroteOf: { [any]: CFrame } = {}
+local restOf: { [any]: CFrame } = {}
+
 -- One body joint. `inst` has a writable Transform (Motor6D or AnimationConstraint);
 -- `frame()` is the joint's world frame before Transform (Part0.CFrame * C0 for a motor,
 -- Attachment0.WorldCFrame for a constraint); `part1` is the limb it moves.
@@ -91,6 +98,14 @@ local function rigOf(model: Model): Rig?
 	for _, name in JOINTS do
 		motors[name] = jointOf(model, name)
 	end
+	-- A bot (no player owns it): remember each joint's rest pose the first time.
+	if not Players:GetPlayerFromCharacter(model) then
+		for _, joint in motors do
+			if restOf[joint.inst] == nil and wroteOf[joint.inst] == nil then
+				restOf[joint.inst] = joint.inst.Transform
+			end
+		end
+	end
 	if not (motors.RightShoulder and motors.RightElbow and motors.Waist) then
 		return nil -- not an R15 body (the block stand-in bots use without a network)
 	end
@@ -108,8 +123,6 @@ end
 -- one we saved; otherwise the new value is the base.
 -- Plain tables (not weak-keyed): Roblox can drop an Instance key from a weak table while
 -- the Instance still exists. restore() clears the entries when a gesture ends.
-local baseOf: { [any]: CFrame } = {}
-local wroteOf: { [any]: CFrame } = {}
 
 -- AnimationConstraint.Transform doesn't read back bit-for-bit what was written, so "is
 -- it still what we wrote" has to allow a little rounding. Without this, every frame took
@@ -121,7 +134,15 @@ local function same(a: CFrame, b: CFrame): boolean
 	return a.LookVector:Dot(b.LookVector) > 0.99999 and a.UpVector:Dot(b.UpVector) > 0.99999
 end
 
+-- Bots have no Animator, so their rest pose never changes: it's captured once, the
+-- first time we see each joint, and every gesture starts from and returns to it. Even
+-- if a read-back check ever misses, poses can't pile up across gestures.
+
 local function currentBase(motor: any): CFrame
+	local rest = restOf[motor]
+	if rest then
+		return rest
+	end
 	local now = motor.Transform
 	local wrote = wroteOf[motor]
 	if wrote and same(now, wrote) then
@@ -139,6 +160,12 @@ end
 -- Puts the joint back as it was before the gesture (unless an Animator has already
 -- written over it this frame, in which case its value stands).
 local function restore(motor: any)
+	local rest = restOf[motor]
+	if rest then
+		motor.Transform = rest
+		wroteOf[motor] = nil
+		return
+	end
 	local wrote = wroteOf[motor]
 	if wrote and same(motor.Transform, wrote) then
 		motor.Transform = baseOf[motor] or CFrame.identity
@@ -636,6 +663,12 @@ local function stop(model: Model)
 		return
 	end
 	playing[model] = nil
+	if not model.Parent then
+		-- The bot left (match over): forget its joints.
+		for _, joint in p.ctx.rig.motors do
+			restOf[joint.inst] = nil
+		end
+	end
 	for name in p.written do
 		local joint = p.ctx.rig.motors[name]
 		if joint then
