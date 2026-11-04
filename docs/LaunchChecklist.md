@@ -51,9 +51,9 @@ Create each under Creator Hub > Game Night > Monetization, then paste the ID int
 
 These branches are already merged into `main` and can be deleted on GitHub (Code > Branches, or the trash icon on each merged PR). Branches of open PRs are not listed.
 
-`classic-games`, `foundation`, and `claude/project-thread-` followed by: `0bsi5y`, `0y255m`, `1tid2q`, `2p8n89`, `3ej4tx`, `5u7wu5`, `7j6uba`, `987i1q`, `am6lj1`, `e8wkfa`, `eekjz2`, `gg5il2`, `i130je`, `ipeomp`, `kd1268`, `kphwu8`, `lmfutj`, `lqglg8`, `m2tcsy`, `n057nl`, `n1ngbs`, `pf2e41`, `qi96ir`, `qqi2ab`, `ru58g2`, `srfglf`, `tf5o57`, `wo75fj`, `x95pwk`.
+`classic-games`, `foundation`, and `claude/project-thread-` followed by: `0bsi5y`, `0y255m`, `1tid2q`, `2p8n89`, `3ej4tx`, `5u7wu5`, `7j6uba`, `987i1q`, `am6lj1`, `e8wkfa`, `eekjz2`, `eji7zx`, `gg5il2`, `i130je`, `ipeomp`, `kd1268`, `kphwu8`, `lmfutj`, `lqglg8`, `m2tcsy`, `n057nl`, `n1ngbs`, `pf2e41`, `qi96ir`, `qqi2ab`, `ru58g2`, `srfglf`, `tf5o57`, `u7xgpu`, `wo75fj`, `x95pwk`, and this PR's `bcypuu` once it's merged.
 
-Still open (keep): `claude/project-thread-eji7zx`, `claude/project-thread-u7xgpu`.
+A thread still working on a branch may push to it again after its PR merged; deleting is still safe, the thread recreates it.
 
 ## What was checked (2026-11-04)
 
