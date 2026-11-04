@@ -119,12 +119,27 @@ Economy.StarterPack = {
 }
 
 -- Every reaction pack sold for Gems, in one Robux purchase (a developer product). Packs
--- the player already owns are skipped; Card Sharp stays a Card Coins pack.
+-- the player already owns are skipped. Packs sold for a game's Coins (Card Sharp, Chess Club)
+-- stay out: they're earned by playing that game.
 Economy.ReactionBundle = {
 	key = "reactionsAll",
 	productId = 0,
-	robux = 299,
-	items = { "reactions_party", "reactions_drama", "reactions_animals", "reactions_talk", "reactions_trash" },
+	robux = 499,
+	items = {
+		"reactions_party",
+		"reactions_drama",
+		"reactions_animals",
+		"reactions_talk",
+		"reactions_trash",
+		"reactions_boardtalk",
+		"reactions_goodsport",
+		"reactions_hype",
+		"reactions_pieces",
+		"reactions_spooky",
+		"reactions_winter",
+		"reactions_love",
+		"reactions_summer",
+	},
 }
 
 -- Game passes (one-time)

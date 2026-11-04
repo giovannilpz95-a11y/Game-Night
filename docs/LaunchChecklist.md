@@ -12,7 +12,7 @@ Create each under Creator Hub > Game Night > Monetization, then paste the ID int
 - [ ] **650 Gems**, 499 R$ → `Economy.GemPacks[4].productId`
 - [ ] **1,400 Gems**, 999 R$ → `Economy.GemPacks[5].productId`
 - [ ] **Starter Pack**, 79 R$ (developer product) → `Economy.StarterPack.productId`
-- [ ] **All Reaction Packs**, 299 R$ (developer product) → `Economy.ReactionBundle.productId`
+- [ ] **All Reaction Packs**, 499 R$ (developer product) → `Economy.ReactionBundle.productId`
 - [ ] **VIP** game pass, 399 R$ → `Economy.Passes.vip.gamePassId`
 - [ ] **Party Host** game pass, 199 R$ → `Economy.Passes.partyHost.gamePassId`
 - [ ] Product images, 512 × 512 (briefs in [[Launch]] section 4)
