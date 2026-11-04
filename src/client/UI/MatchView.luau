@@ -383,7 +383,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	})
 	local bannerScale = Kit.new("UIScale", { Parent = banner })
 	local bannerText = Kit.label("Your turn!", {
-		Font = Theme.FontBold,
+		Font = Theme.FontTitle,
 		TextSize = 28,
 		TextColor3 = Theme.AccentText,
 		TextXAlignment = Enum.TextXAlignment.Center,
@@ -452,8 +452,6 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = root,
 	})
 	local resultRing = Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.4, Parent = resultOverlay })
-	HudKit.gradient(HudKit.shade(Theme.PanelLight, -0.04), HudKit.shade(Theme.Panel, 0.2)).Parent = resultOverlay
-	resultOverlay.BackgroundColor3 = Color3.new(1, 1, 1)
 	-- Title band: gold when you won, blue for a draw, plum otherwise.
 	local BAND_H = 56
 	local TOP_H = BAND_H + 46 -- band + reason lines
@@ -467,7 +465,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	}, { Kit.corner(10) })
 	local bandGradient = HudKit.gradient(Theme.PanelLight, Theme.Panel)
 	bandGradient.Parent = resultBand
-	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 52, Parent = resultBand })
+	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontTitle, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 52, Parent = resultBand })
 	-- Two lines, so longer reasons (a Whodunit solution) wrap instead of being cut off.
 	local reasonLabel = Kit.label("", { TextSize = 15, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, Position = UDim2.new(0, 0, 0, BAND_H + 4), Size = UDim2.new(1, 0, 0, 38), ZIndex = 51, Parent = resultOverlay })
 	local standings = Kit.new("ScrollingFrame", {
