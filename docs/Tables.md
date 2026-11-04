@@ -59,5 +59,13 @@ Cells are parts in the board's `Cells` folder with `Row`/`Col` attributes (Four 
 - **Played on the table:** the same, plus a `Cells` folder of clickable parts with `Row`/`Col` attributes (`Boards/Square.luau` does this for grids), and `client/Table3D/<module>.luau` with `create(ctx)` returning `{ update(snapshot), click(cellPart), destroy? }`. Add the id to `Config.Boards3D`.
 - Pieces are built from parts. Chess, Checkers and Four in a Row use the models in `ReplicatedStorage.Assets` when they exist (`Pieces.find`); other games can do the same for showcase models later.
 
+## Avatars act out the game
+Seated avatars (players and bots) act out every move, for everyone in the room:
+- `shared/TableActions.luau` (pure, tested in `tests/TableActions.spec.luau`) turns a move into a gesture: `move` (chess, checkers: reach the piece, carry it to its square), `place` (a cell, a column or the board), `card`, `draw`, `dice`, `slap`, `grab`, `point` (at the player you ask), `knock`, `pass`, `buzz`. Also `think` (bots before a slow move), the end-of-game reactions (`cheer` for winners, `groan` for the rest, `shrug` on a draw) and the eight emotes on the wheel.
+- `server/Services/TableActionService.luau` fires the `TableAction` remote to all clients with the table, the table seat, who sits there (userId or bot body name) and the target. `Match.lastMove` is how `MatchService` knows who just moved, so bot, AFK and player moves all animate. Emote requests are checked (on the wheel, seated in a match at a table, 3 per 4 s).
+- `client/Table3D/Avatars.luau` plays it: procedural poses on the R15 upper-body joints (`Motor6D.Transform`, written after the Animator so the sit pose stays), the arm aimed at the real cell or pile, plus small client-only props (a flying card, two dice, a spoon) and an emoji over the head for emotes and reactions. No animation assets needed. Block-figure bots only get the emoji.
+- `client/UI/EmoteWheel.luau`: the 😀 button in the match header opens the wheel.
+- To add a game: give it an entry in `TableActions` (a `KINDS` line, or a function for cell targets). The spec fails if a game's moves never animate.
+
 ## Not in this version
-From the lobby design, still to build: walking up and sitting to claim a table, the "Join?" toast and fade, spectator camera and Watch button, emotes and seat animations, avatar headshots in the 2D view, the rematch / another game card at the table, and the 60 s party hold.
+From the lobby design, still to build: walking up and sitting to claim a table, the "Join?" toast and fade, spectator camera and Watch button, avatar headshots in the 2D view, the rematch / another game card at the table, and the 60 s party hold.
