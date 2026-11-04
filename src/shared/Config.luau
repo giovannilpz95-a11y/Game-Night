@@ -16,7 +16,9 @@ local Config = {
 	-- otherwise a template from ReplicatedStorage.Assets (a model whose name has "Square"
 	-- or "Round" in it) is placed, or plain tables are built in code at TableOrigin.
 	TableTag = "GameTable",
-	TableOrigin = Vector3.new(0, 0, -60), -- where code-built tables go if none exist
+	-- Code-built / template tables stand on the spots in shared/LobbyLayout. Any past the
+	-- end of that list go in rows from TableOrigin.
+	TableOrigin = Vector3.new(0, 0, -60),
 	TableSpacing = 22,
 	-- Code-built / template tables: { zone, shape } in order. Square4 = 4 seats, Round8 = 8.
 	DefaultTables = {
@@ -34,6 +36,10 @@ local Config = {
 		{ zone = "Party", shape = "Round8" },
 		{ zone = "Party", shape = "Round8" },
 	},
+	-- The furnished lobby room (server/Lobby, docs/Lobby.md). It's built in code unless
+	-- Workspace.Lobby.Room already exists (placed by hand). `lighting` sets the warm night
+	-- look in Lighting either way.
+	Lobby = { buildRoom = true, lighting = true },
 	TableColumns = 5, -- code-built tables are laid out in rows of this many
 	BoardSize = 6, -- studs across a square 3D board
 	TableHoldSeconds = 4, -- after a match: the final board and bots stay this long
