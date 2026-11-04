@@ -13,6 +13,7 @@ local TweenService = game:GetService("TweenService")
 local Rules = require(ReplicatedStorage.Shared.Games.Estates)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local Estates = {}
@@ -298,7 +299,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 
 	local detailPanel = Kit.panel({ Position = UDim2.fromScale(0, 0.42), Size = UDim2.new(1, 0, 0.58, 0), Parent = side })
 	local detailBar = Kit.new("Frame", { BorderSizePixel = 0, Visible = false, Size = UDim2.new(1, 0, 0, 8), Parent = detailPanel }, { Kit.corner(4) })
-	local detailTitle = Kit.label("", { TextSize = 20, Font = Theme.FontBold, Position = UDim2.new(0, 0, 0, 12), Parent = detailPanel })
+	local detailTitle = Kit.label("", { TextSize = 21, Font = Theme.FontTitle, Position = UDim2.new(0, 0, 0, 12), Parent = detailPanel })
 	local detailBody = Kit.label("", {
 		TextSize = 14,
 		TextColor3 = Theme.SubText,
@@ -327,7 +328,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		Parent = boardArea, -- over the board, so the action panel stays visible
 	})
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(640, 520), Parent = trade })
-	Kit.label("Trade", { TextSize = 22, Font = Theme.FontBold, ZIndex = 21, Parent = trade })
+	Kit.label("Trade", { TextSize = 22, Font = Theme.FontTitle, ZIndex = 21, Parent = trade })
 	local partnerRow = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 34), ZIndex = 21, Parent = trade })
 	Kit.list(6, true).Parent = partnerRow
 
@@ -570,6 +571,8 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	local function renderActions(view: any, me: number?)
 		Kit.clear(actionButtons)
 		local active = snapshot.activeSeats[1]
+		-- The panel's ring shows whose move it is (gold when it's yours).
+		HudKit.turnTint(actionPanel, if view.phase == "over" then nil else active, active ~= nil and active == me and view.phase ~= "over")
 		local mine = me ~= nil and active == me
 		local myPlayer = if me then view.players[me] else nil
 		if view.phase == "over" then
