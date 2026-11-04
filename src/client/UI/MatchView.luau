@@ -46,7 +46,7 @@ local DOCK: { [string]: { side: string, size: number } } = {
 	Whodunit = { side = "right", size = 0.44 },
 	SketchGuess = { side = "right", size = 0.32 },
 	WordTiles = { side = "bottom", size = 96 },
-	ColorClash = { side = "bottom", size = 0.72 },
+	ColorClash = { side = "bottom", size = 0.45 }, -- the "+2 waiting" line, buttons and hand
 	TriviaNight = { side = "bottom", size = 0.26 }, -- answers only (the screen shows the question)
 	Spoons = { side = "bottom", size = 0.41 },
 	War = { side = "bottom", size = 0.2 },
