@@ -94,4 +94,40 @@ return function(T)
 		end
 		T.ok(w.top < L.CEILING_Y and w.bottom > 0)
 	end)
+
+	T.test("every signpost destination is inside the room", function()
+		T.ok(#L.destinations >= 9)
+		for _, dest in L.destinations do
+			T.ok(dest.zone == nil or L.zone(dest.zone) ~= nil, `{dest.label} names a real zone`)
+			local x, z = L.destinationSpot(dest)
+			T.ok(L.inside(x, z, L.room), `{dest.label} points inside the room`)
+		end
+	end)
+
+	T.test("the runner keeps clear of tables and props", function()
+		local r = L.runner
+		for i, t in L.tables do
+			T.ok(L.distanceToRect(t.x, t.z, r) - R >= 3, `table {i} is on the runner`)
+		end
+		for i, prop in L.props do
+			T.ok(not L.overlaps(r, L.propRect(prop)), `{prop.kind} {i} stands on the runner`)
+		end
+	end)
+
+	T.test("trees and lamp posts outside stand outside the walls", function()
+		for _, list in { L.outsideTrees, L.outsideLamps } do
+			for _, at in list do
+				T.ok(L.distanceToRect(at[1], at[2], L.room) >= 8, `({at[1]}, {at[2]}) is too close to the room`)
+			end
+		end
+	end)
+
+	T.test("posters hang between the windows", function()
+		local w = L.windows
+		for _, poster in L.posters do
+			for _, z in w.side do
+				T.ok(math.abs(poster.z - z) >= w.width / 2 + 5, `poster at {poster.z} covers the window at {z}`)
+			end
+		end
+	end)
 end

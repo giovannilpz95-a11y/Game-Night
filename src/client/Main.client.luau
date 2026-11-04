@@ -265,11 +265,16 @@ renderHud()
 
 Net.event(Net.Names.DressingRoomState).OnClientEvent:Connect(dressingRoom.setState)
 
--- Walking up to the Dressing Room corner's stage or mirror offers to open it.
+-- Walking up to the Dressing Room corner's stage or mirror, or the snack bar, offers to
+-- open it.
 game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt)
 	if prompt.Name == "DressingRoomPrompt" and not matchView.isOpen() then
 		closeWindows()
 		dressingRoom.open()
+	elseif prompt.Name == "ShopPrompt" and not matchView.isOpen() then
+		-- The snack bar counter is the lobby's shop.
+		closeWindows()
+		shopPanel.open(nil)
 	end
 end)
 

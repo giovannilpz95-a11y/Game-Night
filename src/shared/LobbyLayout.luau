@@ -105,7 +105,10 @@ LobbyLayout.props = {
 
 	-- Shelves of board game boxes along the side walls, between the zones.
 	{ kind = "GameShelf", x = -98.5, z = -38, w = 12, d = 2.4, yaw = -90 },
-	{ kind = "GameShelf", x = -98.5, z = -72, w = 12, d = 2.4, yaw = -90 },
+	-- West wall between Strategy and Board Games: a fireplace with two armchairs.
+	{ kind = "Fireplace", x = -98, z = -72, w = 12, d = 3, yaw = -90 },
+	{ kind = "Armchair", x = -89, z = -66, w = 4, d = 4, yaw = 53 },
+	{ kind = "Armchair", x = -89, z = -78, w = 4, d = 4, yaw = 127 },
 	{ kind = "GameShelf", x = -98.5, z = -108, w = 12, d = 2.4, yaw = -90 },
 	{ kind = "GameShelf", x = 98.5, z = -38, w = 12, d = 2.4, yaw = 90 },
 	{ kind = "GameShelf", x = 98.5, z = -72, w = 12, d = 2.4, yaw = 90 },
@@ -131,10 +134,65 @@ LobbyLayout.props = {
 	{ kind = "Plant", x = -36, z = -144, w = 3, d = 3, yaw = 0 },
 	{ kind = "Plant", x = 36, z = -144, w = 3, d = 3, yaw = 0 },
 
+	-- Foyer wayfinding: a signpost pointing to every zone and shop, and a floor map.
+	{ kind = "Signpost", x = -7, z = -8, w = 2, d = 2, yaw = 0 },
+	{ kind = "Directory", x = -14, z = -8, w = 8, d = 1.6, yaw = 180 },
+
+	-- A jukebox at the side of the Party Stage.
+	{ kind = "Jukebox", x = 72, z = -147, w = 4, d = 3, yaw = 180 },
+
 	-- Benches in the foyer, facing the room.
 	{ kind = "Bench", x = -18, z = 2, w = 8, d = 2.4, yaw = -90 },
 	{ kind = "Bench", x = 18, z = 2, w = 8, d = 2.4, yaw = 90 },
 }
+
+-- A carpet runner from the front door up the middle of the room to the lounge.
+LobbyLayout.runner = rect(-4, 4, -38, 18)
+
+-- Where the foyer signpost and the floor map send people. `zone` uses that zone's rug
+-- center; otherwise `x`/`z` (the shops by the foyer).
+LobbyLayout.destinations = {
+	{ label = "Quick Play", zone = "Quick" },
+	{ label = "Strategy", zone = "Strategy" },
+	{ label = "Word Games", zone = "Word" },
+	{ label = "Lounge", zone = "Lounge" },
+	{ label = "Board Games", zone = "Board" },
+	{ label = "Card Corner", zone = "Cards" },
+	{ label = "Party Stage", zone = "Party" },
+	{ label = "Snack Bar · Shop", x = -78, z = 4 },
+	{ label = "Dressing Room", x = 80, z = 4 },
+}
+
+-- World x, z a destination points at.
+function LobbyLayout.destinationSpot(dest: any): (number, number)
+	if dest.zone then
+		local zone = LobbyLayout.zone(dest.zone)
+		if zone then
+			local a = zone.area
+			return (a.minX + a.maxX) / 2, (a.minZ + a.maxZ) / 2
+		end
+	end
+	return dest.x or 0, dest.z or 0
+end
+
+-- Framed posters of made-up games on the side walls, between the windows (by z), with
+-- a picture light over each. Skips the spot over the fireplace.
+LobbyLayout.posters = {
+	{ side = -1, z = -37.5, title = "Rocket Race", color = Color3.fromRGB(62, 132, 214) },
+	{ side = -1, z = -107.5, title = "Dragon Dominoes", color = Color3.fromRGB(80, 160, 96) },
+	{ side = 1, z = -37.5, title = "Lucky Ladders", color = Color3.fromRGB(240, 150, 52) },
+	{ side = 1, z = -72.5, title = "Midnight Manor", color = Color3.fromRGB(110, 70, 190) },
+	{ side = 1, z = -107.5, title = "Island Hop", color = Color3.fromRGB(40, 160, 170) },
+}
+
+-- Trees and lamp posts outside, seen through the windows.
+LobbyLayout.outsideTrees = {
+	{ -116, -8 }, { -124, -38 }, { -114, -66 }, { -126, -96 }, { -116, -128 },
+	{ 118, -10 }, { 126, -44 }, { 114, -74 }, { 124, -104 }, { 116, -134 },
+	{ -70, -166 }, { -20, -172 }, { 30, -168 }, { 80, -170 },
+	{ -60, 36 }, { 60, 36 },
+}
+LobbyLayout.outsideLamps = { { -110, -55 }, { 110, -90 }, { -24, 30 }, { 24, 30 } }
 
 -- Camera spots for the store thumbnails and trailer (docs/Store page.md shot list).
 -- Each is a camera position and the point it looks at.
