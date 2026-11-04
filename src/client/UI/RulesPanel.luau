@@ -119,7 +119,7 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 		end
 	end
 
-	backButton = Kit.button("◂", function()
+	backButton = Kit.button("<", function()
 		showHelp()
 	end, {
 		Size = UDim2.fromOffset(36, 28),
@@ -167,7 +167,7 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 					ZIndex = Z + 3,
 					Parent = row,
 				})
-				Kit.label("▸", { TextSize = 18, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(20, 22), ZIndex = Z + 3, Parent = row })
+				Kit.label(">", { TextSize = 18, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(20, 22), ZIndex = Z + 3, Parent = row })
 			end
 		end
 	end

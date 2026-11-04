@@ -30,6 +30,7 @@ type Entry = {
 	table: any?, -- the 3D table it's played at: { id, seats, board3D }; nil = 2D overflow
 	botLevel: string?, -- the checked bot difficulty (stats and the weekly board read it)
 	acted: number, -- the last move number the avatars at the table acted out
+	graced: { [number]: boolean }, -- seats whose first turn already got Config.FirstTurnGrace
 }
 
 local partyService: any = nil
@@ -202,14 +203,20 @@ function scheduleTurn(entry: Entry)
 	-- Turn games: a player who takes too long has a bot move for them.
 	local token = match.moveNumber
 	local hasHumanTurn = false
+	local seconds = entry.turnSeconds
 	for _, seat in match:getActiveSeats() do
 		if not match:isBot(seat) then
 			hasHumanTurn = true
+			-- A player's first turn is longer: the how-to-play card is up at the start.
+			if not entry.graced[seat] then
+				entry.graced[seat] = true
+				seconds = entry.turnSeconds + Config.FirstTurnGrace
+			end
 		end
 	end
 	if hasHumanTurn then
-		entry.turnEndsAt = workspace:GetServerTimeNow() + entry.turnSeconds
-		task.delay(entry.turnSeconds, function()
+		entry.turnEndsAt = workspace:GetServerTimeNow() + seconds
+		task.delay(seconds, function()
 			if entry.ended or match.moveNumber ~= token then
 				return
 			end
@@ -322,6 +329,7 @@ local function startMatch(leader: Player, request: any)
 		table = nil,
 		botLevel = options.botLevel,
 		acted = 0,
+		graced = {},
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do

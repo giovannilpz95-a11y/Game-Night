@@ -6,6 +6,8 @@
 -- Steps name their target with a function, so a button that's hidden (Voice off, say)
 -- is skipped.
 
+local GuiService = game:GetService("GuiService")
+
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
 local Theme = Kit.Theme
@@ -112,8 +114,10 @@ function LobbyTour.create(screen: Instance)
 			bubble.Position = UDim2.fromOffset(info.width / 2, info.top + (info.height - info.top - info.bottom) / 2)
 			return
 		end
-		-- The screen ignores the top bar inset, so absolute positions are screen offsets.
-		local pos, size = object.AbsolutePosition, object.AbsoluteSize
+		-- AbsolutePosition is measured from under the top bar inset, but this screen ignores
+		-- the inset, so add it back.
+		local inset = GuiService:GetGuiInset()
+		local pos, size = object.AbsolutePosition + inset, object.AbsoluteSize
 		local pad = 6
 		ring.Visible = true
 		ring.Position = UDim2.fromOffset(pos.X - pad, pos.Y - pad)
