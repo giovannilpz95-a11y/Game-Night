@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local Theme = Kit.Theme
@@ -151,14 +152,25 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 				local box = Kit.new("TextButton", {
 					Text = "",
 					AutoButtonColor = canAsk,
-					BackgroundColor3 = if canAsk then Theme.Accent elseif view.turn == seat then Theme.PanelLight else Theme.Panel,
 					BorderSizePixel = 0,
 					Size = UDim2.new(0, 150, 0, 66),
 					LayoutOrder = seat,
 					Parent = opponents,
 				}, { Kit.corner(10), Kit.padding(6) })
+				HudKit.glass(box, if view.turn == seat then 0 else 0.15)
+				if canAsk then
+					box.HudGradient.Color = ColorSequence.new(Color3.fromRGB(255, 220, 110), Theme.Accent)
+					box.Rim.Color = Color3.new(1, 1, 1)
+					Kit.pressable(box)
+				elseif view.turn == seat then
+					box.HudGradient.Color = ColorSequence.new(HudKit.shade(HudKit.seatColor(seat), 0.45), HudKit.shade(Theme.Panel, 0.1))
+					box.Rim.Color = Theme.Accent
+					box.Rim.Thickness = 3
+					HudKit.pulse(box.Rim, 0, 0.55)
+				end
 				local color = if canAsk then Theme.AccentText else Theme.Text
-				Kit.label(nameOf(seat), { Font = Theme.FontBold, TextSize = 15, TextColor3 = color, Size = UDim2.new(1, 0, 0, 18), Parent = box })
+				HudKit.avatar(seat, snapshot.seats[seat], { Size = UDim2.fromOffset(18, 18), Parent = box })
+				Kit.label(nameOf(seat), { Font = Theme.FontBold, TextSize = 15, TextColor3 = color, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.fromOffset(22, 0), Size = UDim2.new(1, -22, 0, 18), Parent = box })
 				Kit.label(`{view.handCounts[seat]} cards`, { TextSize = 13, TextColor3 = color, Position = UDim2.new(0, 0, 0, 20), Size = UDim2.new(1, 0, 0, 16), Parent = box })
 				Kit.label(booksText(view.books[seat]), { TextSize = 12, TextColor3 = color, Position = UDim2.new(0, 0, 0, 38), Size = UDim2.new(1, 0, 0, 16), Parent = box })
 				box.Activated:Connect(function()

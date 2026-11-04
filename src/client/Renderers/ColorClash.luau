@@ -117,7 +117,18 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0.58, 0),
 		Parent = root,
-	}, { Kit.corner(24) })
+	}, {
+		Kit.corner(24),
+		-- Lamp light over the middle of the table.
+		Kit.new("UIGradient", {
+			Rotation = 90,
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(165, 175, 170)),
+				ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 160, 155)),
+			}),
+		}),
+	})
 	local colorRing = Kit.new("UIStroke", { Thickness = 6, Color = COLORS[1], Parent = felt })
 
 	local pileHeight = 0.62
