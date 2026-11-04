@@ -1,0 +1,12 @@
+{
+  "name": "game-night",
+  "private": true,
+  "description": "Game Night (Roblox). Node is only used to run the Luau unit tests.",
+  "type": "module",
+  "scripts": {
+    "test": "node tools/run-tests.mjs"
+  },
+  "devDependencies": {
+    "luau-web": "1.5.1"
+  }
+}
