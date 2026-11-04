@@ -459,6 +459,24 @@ function Kit.progress(color: Color3?, props: { [string]: any }?): (Frame, (numbe
 	return bar, set
 end
 
+-- A round avatar headshot (Roblox thumbnail URL, no yielding). Blank for bots/0.
+function Kit.avatar(userId: number?, size: number, props: { [string]: any }?): ImageLabel
+	local image = Kit.new("ImageLabel", {
+		Name = "Avatar",
+		BackgroundColor3 = Kit.Theme.Panel,
+		BorderSizePixel = 0,
+		Image = if userId and userId > 0 then `rbxthumb://type=AvatarHeadShot&id={userId}&w=150&h=150` else "",
+		Size = UDim2.fromOffset(size, size),
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.6, Thickness = 1.5 }),
+	})
+	for key, value in props or {} do
+		(image :: any)[key] = value
+	end
+	return image
+end
+
 -- A small rounded tag ("BEST VALUE", "OWNED") in the corner of a card.
 function Kit.tag(text: string, color: Color3, props: { [string]: any }?): TextLabel
 	local tag = Kit.label(text, {

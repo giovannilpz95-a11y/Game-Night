@@ -1,5 +1,6 @@
 -- The shop window: your wallet and daily challenges, Gems & passes (Robux), the hub shop
--- (Gems), reaction packs (Gems, Coins or the Robux bundle) and one shop per kind of Coin. Basic on purpose; the polish step restyles it.
+-- (Gems), reaction packs (Gems, Coins or the Robux bundle) and one shop per kind of Coin.
+-- Wide screens get a tab column on the left; phones get a row of tabs across the top.
 -- The server checks every purchase, this only asks.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,6 +23,29 @@ local TIER_COLORS = {
 	Legendary = Color3.fromRGB(255, 196, 64),
 }
 
+-- A picture for each kind of item, shown big on its tile.
+local SLOT_ICONS = {
+	board = "🟫",
+	brush = "🖌️",
+	cards = "🃏",
+	celebration = "🎉",
+	chair = "🪑",
+	dice = "🎲",
+	effect = "✨",
+	nameplate = "🏷️",
+	pieces = "♟️",
+	reactions = "😀",
+	sound = "🔊",
+	theme = "🎨",
+	title = "📜",
+	trail = "💫",
+}
+
+local PASS_ICONS = { vip = "👑", partyHost = "🎉" }
+
+local NARROW = 600 -- window width under which the tabs move to a row on top
+local TAB_W = 170
+
 local function gemPrice(item: ShopCatalog.Item, vip: boolean): number?
 	-- Mirrors server/Core/Shop.gemPrice so the buttons show the real price.
 	if item.notForSale or item.earnedOnly then
@@ -37,56 +61,124 @@ local function gemPrice(item: ShopCatalog.Item, vip: boolean): number?
 	return gems
 end
 
+local function commas(n: number): string
+	local s = tostring(math.floor(n))
+	local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	return (out:gsub("^,", ""))
+end
+
 function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurchase: (any) -> ())
 	local root = Kit.panel({
 		Name = "Shop",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.9, 0.85),
+		Size = UDim2.fromScale(0.92, 0.86),
 		BackgroundColor3 = Theme.Panel,
 		Visible = false,
 		ZIndex = 30,
 		Parent = parent,
 	})
-	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(820, 560) }).Parent = root
-	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2 }).Parent = root
+	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(860, 580) }).Parent = root
+	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.2 }).Parent = root
 
-	local title = Kit.label("Shop", { TextSize = 24, Font = Theme.FontBold, Size = UDim2.new(1, -60, 0, 30), Parent = root })
-	Kit.button("X", function()
+	local title = Kit.title("🛒 Shop", { Size = UDim2.new(1, -190, 0, 30), Parent = root })
+	Kit.closeButton(function()
 		root.Visible = false
-	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 36, 0, 32), Position = UDim2.new(1, -36, 0, 0), Parent = root })
+	end, { Parent = root })
+
+	-- Your Gems, always in view at the top right.
+	local gemChip = Kit.new("Frame", {
+		BackgroundColor3 = Theme.Background,
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -44, 0, 0),
+		Size = UDim2.fromOffset(0, 32),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = root,
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 12) }),
+	})
+	local gemList = Kit.list(6, true)
+	gemList.VerticalAlignment = Enum.VerticalAlignment.Center
+	gemList.Parent = gemChip
+	Kit.gemIcon(20, { LayoutOrder = 1, Parent = gemChip })
+	local gemText = Kit.label("...", {
+		Font = Theme.FontBold,
+		TextSize = 16,
+		TextWrapped = false,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 1, 0),
+		LayoutOrder = 2,
+		Parent = gemChip,
+	})
 
 	local tabsFrame = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 0, 0, 44),
-		Size = UDim2.new(0, 170, 1, -44),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 3,
 		Parent = root,
-	}, { Kit.list(6) })
+	}, { Kit.list(6), Kit.new("UIPadding", { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 4) }) })
 
 	local content = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 184, 0, 44),
-		Size = UDim2.new(1, -184, 1, -44),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 4,
 		Parent = root,
 	})
 
+	local narrow = false
+	local function place()
+		local width = root.AbsoluteSize.X
+		local nowNarrow = width > 0 and width < NARROW
+		narrow = nowNarrow
+		local list = tabsFrame:FindFirstChildOfClass("UIListLayout")
+		if narrow then
+			tabsFrame.Position = UDim2.new(0, 0, 0, 40)
+			tabsFrame.Size = UDim2.new(1, 0, 0, 38)
+			tabsFrame.AutomaticCanvasSize = Enum.AutomaticSize.X
+			tabsFrame.ScrollingDirection = Enum.ScrollingDirection.X
+			tabsFrame.ScrollBarThickness = 0
+			if list then
+				list.FillDirection = Enum.FillDirection.Horizontal
+			end
+			content.Position = UDim2.new(0, 0, 0, 84)
+			content.Size = UDim2.new(1, 0, 1, -84)
+		else
+			tabsFrame.Position = UDim2.new(0, 0, 0, 44)
+			tabsFrame.Size = UDim2.new(0, TAB_W, 1, -44)
+			tabsFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			tabsFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+			tabsFrame.ScrollBarThickness = 3
+			if list then
+				list.FillDirection = Enum.FillDirection.Vertical
+			end
+			content.Position = UDim2.new(0, TAB_W + 14, 0, 44)
+			content.Size = UDim2.new(1, -(TAB_W + 14), 1, -44)
+		end
+		for _, b in tabsFrame:GetChildren() do
+			if b:IsA("TextButton") then
+				b.Size = if narrow then UDim2.new(0, 0, 1, -4) else UDim2.new(1, 0, 0, 40)
+				b.AutomaticSize = if narrow then Enum.AutomaticSize.X else Enum.AutomaticSize.None
+			end
+		end
+	end
+	place()
+
 	local wallet: any = nil
 	local tab = "wallet"
 	local converter = CoinConvertPanel.create(parent, sendEconomy)
 
 	local tabs = {
-		{ key = "wallet", name = "Wallet & daily" },
-		{ key = "robux", name = "Gems & passes" },
-		{ key = "hub", name = "Hub shop" },
-		{ key = "reactions", name = "😀 Reactions" },
+		{ key = "wallet", name = "👛 Wallet & daily", short = "👛 Wallet" },
+		{ key = "robux", name = "💎 Gems & passes", short = "💎 Gems" },
+		{ key = "hub", name = "🏪 Hub shop", short = "🏪 Hub" },
+		{ key = "reactions", name = "😀 Reactions", short = "😀 Reactions" },
 	}
 	-- Every coin kind, for the wallet list; only kinds with items get a shop tab.
 	local coinKeys = {}
@@ -103,13 +195,14 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		end
 	end
 	for _, key in shopKeys do
-		table.insert(tabs, { key = key, name = `{(string.gsub(Economy.coinName(key), " Coins$", ""))} shop` })
+		local short = (string.gsub(Economy.coinName(key), " Coins$", ""))
+		table.insert(tabs, { key = key, name = `{short} shop`, short = short, coin = key })
 	end
 
 	local render: () -> ()
 
 	local function section(text: string, order: number)
-		Kit.label(text, { Font = Theme.FontBold, TextSize = 18, LayoutOrder = order, Size = UDim2.new(1, -8, 0, 26), Parent = content })
+		Kit.label(text, { Font = Theme.FontBold, TextSize = 17, TextColor3 = Theme.SubText, LayoutOrder = order, Size = UDim2.new(1, -8, 0, 24), Parent = content })
 	end
 
 	local function line(text: string, order: number, color: Color3?)
@@ -122,114 +215,207 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		})
 	end
 
-	local function card(order: number, height: number): Frame
-		return Kit.new("Frame", {
-			BackgroundColor3 = Theme.PanelLight,
-			BorderSizePixel = 0,
-			Size = UDim2.new(1, -8, 0, height),
+	local function card(order: number, height: number?): Frame
+		return Kit.card({
+			Size = UDim2.new(1, -8, 0, height or 0),
+			AutomaticSize = if height then Enum.AutomaticSize.None else Enum.AutomaticSize.Y,
 			LayoutOrder = order,
 			Parent = content,
-		}, { Kit.corner(10), Kit.padding(10) })
-	end
-
-	local function renderWallet()
-		Kit.list(6).Parent = content
-		section(`Level {wallet.level}  ({wallet.xp}/{wallet.xpNeeded} XP)`, 1)
-		section("Balances", 2)
-		line(`{wallet.gems} {Economy.GemsName}`, 3, Color3.fromRGB(110, 220, 255))
-		-- Universal Coins (daily calendar) turn into any game's Coins.
-		local universal = wallet.coins[Economy.UniversalCoin.key] or 0
-		local universalRow = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 30), LayoutOrder = 3, Parent = content })
-		Kit.label(`{universal} {Economy.UniversalCoin.name}`, { TextColor3 = Economy.UniversalCoin.color, Size = UDim2.new(1, -110, 1, 0), Parent = universalRow })
-		if universal > 0 then
-			Kit.button("Convert", function()
-				converter.open(universal, nil)
-			end, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 100, 1, 0), TextSize = 14, Parent = universalRow })
-		end
-		local order = 4
-		for _, key in coinKeys do
-			line(`{wallet.coins[key] or 0} {Economy.coinName(key)}`, order, Economy.Coins[key].color)
-			order += 1
-		end
-		section("Today", 20)
-		line(`Login streak: day {wallet.loginStreak}`, 21)
-		line(if wallet.firstWinDone then "First win of the day: done" else `First win of the day: +{Economy.FirstWinGems} {Economy.GemsName}`, 22)
-		for i, challenge in wallet.challenges or {} do
-			local status = if challenge.done then "Done" else `{challenge.progress}/{challenge.target}`
-			line(`{challenge.text}  ({status})  +{Economy.ChallengeGems} {Economy.GemsName}`, 22 + i, if challenge.done then Theme.Good else Theme.Text)
-		end
-		if not wallet.saving then
-			line("Progress isn't saving this session.", 40, Theme.Bad)
-		end
-		if wallet.studio then
-			Kit.button("Studio test: free Gems and Coins", function()
-				sendEconomy({ action = "studioGrant" })
-			end, { LayoutOrder = 50, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = content })
-			-- Passes can't be bought before they exist in the Creator Hub, so test their perks here.
-			for i, key in { "vip", "partyHost" } do
-				local on = wallet.passes and wallet.passes[key]
-				Kit.button(`Studio test: {Economy.Passes[key].name} {if on then "ON" else "off"}`, function()
-					sendEconomy({ action = "studioPass", key = key })
-				end, { LayoutOrder = 50 + i, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = content })
-			end
-		end
-	end
-
-	local function robuxButton(parent: Instance, text: string, ready: boolean, onClick: () -> ())
-		Kit.button(if ready then text else "Coming soon", function()
-			if ready then
-				onClick()
-			end
-		end, {
-			BackgroundColor3 = if ready then Theme.Good else Theme.Panel,
-			TextColor3 = if ready then Theme.AccentText else Theme.SubText,
-			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, 0, 0.5, 0),
-			Size = UDim2.new(0, 130, 0, 34),
-			Parent = parent,
 		})
 	end
 
+	-- A grid of tiles inside the content list.
+	local function grid(order: number, cell: UDim2): Frame
+		local frame = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -8, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = order,
+			Parent = content,
+		})
+		Kit.new("UIGridLayout", { CellSize = cell, CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = frame })
+		return frame
+	end
+
+	-- A price button with the currency's icon on its left.
+	local function priceButton(parentFrame: Instance, amount: string, icon: string, color: Color3, onClick: () -> (), props: { [string]: any }?): TextButton
+		local button = Kit.button(amount, onClick, {
+			BackgroundColor3 = color,
+			TextColor3 = Theme.AccentText,
+			TextSize = 15,
+			Size = UDim2.new(1, 0, 0, 32),
+			Parent = parentFrame,
+		})
+		Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 20), Parent = button })
+		if icon == "gem" then
+			Kit.gemIcon(18, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -14, 0.5, 0), Parent = button })
+		elseif icon == "robux" then
+			Kit.label("R$", { Font = Theme.FontBold, TextSize = 13, TextColor3 = Theme.AccentText, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -16, 0.5, 0), Size = UDim2.fromOffset(22, 18), Parent = button })
+		else
+			local coinColor = Economy.Coins[icon] and Economy.Coins[icon].color or (if icon == "universal" then Economy.UniversalCoin.color else Theme.Accent)
+			Kit.coinIcon(coinColor, 16, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -12, 0.5, 0), Parent = button })
+		end
+		for key, value in props or {} do
+			(button :: any)[key] = value
+		end
+		return button
+	end
+
+	local function balanceTile(parentFrame: Instance, order: number, amount: number, name: string, icon: Frame)
+		local tile = Kit.card({ LayoutOrder = order, Parent = parentFrame })
+		icon.AnchorPoint = Vector2.new(0, 0.5)
+		icon.Position = UDim2.new(0, 0, 0.5, 0)
+		icon.Parent = tile
+		Kit.label(commas(amount), { Font = Theme.FontBold, TextSize = 18, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.new(0, 34, 0, 0), Size = UDim2.new(1, -34, 0, 20), Parent = tile })
+		Kit.label(name, { TextSize = 12, TextColor3 = Theme.SubText, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.new(0, 34, 0, 20), Size = UDim2.new(1, -34, 0, 16), Parent = tile })
+		return tile
+	end
+
+	local function renderWallet()
+		Kit.list(10).Parent = content
+
+		-- Level and XP.
+		local level = card(1, 70)
+		Kit.label(`Level {wallet.level}`, { Font = Theme.FontTitle, TextSize = 24, Size = UDim2.new(0.5, 0, 0, 28), Parent = level })
+		Kit.label(`{commas(wallet.xp)} / {commas(wallet.xpNeeded)} XP`, { TextSize = 13, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 6), Size = UDim2.new(0.5, 0, 0, 18), Parent = level })
+		local _, setXp = Kit.progress(Theme.Accent, { Position = UDim2.new(0, 0, 0, 36), Size = UDim2.new(1, 0, 0, 12), Parent = level })
+		setXp(if wallet.xpNeeded and wallet.xpNeeded > 0 then wallet.xp / wallet.xpNeeded else 0)
+
+		-- Balances: Gems, Universal Coins (convertible), then every game's Coins.
+		section("Balances", 2)
+		local top = grid(3, UDim2.new(0.5, -4, 0, 56))
+		balanceTile(top, 1, wallet.gems, Economy.GemsName, Kit.gemIcon(26))
+		local universal = wallet.coins[Economy.UniversalCoin.key] or 0
+		local uniTile = balanceTile(top, 2, universal, Economy.UniversalCoin.name, Kit.coinIcon(Economy.UniversalCoin.color, 24))
+		if universal > 0 then
+			for _, child in uniTile:GetChildren() do
+				if child:IsA("TextLabel") then
+					child.Size = UDim2.new(1, -34 - 92, 0, child.Size.Y.Offset)
+				end
+			end
+			Kit.button("Convert", function()
+				converter.open(universal, nil)
+			end, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0, 86, 0, 30), TextSize = 14, Parent = uniTile })
+		end
+		local coins = grid(4, UDim2.new(if narrow then 0.5 else 1 / 3, -6, 0, 50))
+		for i, key in coinKeys do
+			balanceTile(coins, i, wallet.coins[key] or 0, Economy.coinName(key), Kit.coinIcon(Economy.Coins[key].color, 22))
+		end
+
+		-- Today: streak, first win, challenges with progress bars.
+		section("Today", 20)
+		local today = card(21)
+		Kit.list(8).Parent = today
+		Kit.label(`🔥 Login streak: day {wallet.loginStreak}`, { Font = Theme.FontBold, LayoutOrder = 1, Parent = today })
+		Kit.label(
+			if wallet.firstWinDone then "🏆 First win of the day: done" else `🏆 First win of the day: +{Economy.FirstWinGems} {Economy.GemsName}`,
+			{ TextColor3 = if wallet.firstWinDone then Theme.Good else Theme.Text, LayoutOrder = 2, Parent = today }
+		)
+		for i, challenge in wallet.challenges or {} do
+			local row = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 2 + i, Parent = today })
+			local done = challenge.done
+			Kit.label(`{if done then "✅" else "🎯"} {challenge.text}`, {
+				TextSize = 14,
+				TextColor3 = if done then Theme.Good else Theme.Text,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextWrapped = false,
+				Size = UDim2.new(1, -110, 0, 20),
+				Parent = row,
+			})
+			Kit.label(`+{Economy.ChallengeGems}`, { Font = Theme.FontBold, TextSize = 14, TextColor3 = Theme.Gem, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, 0), Size = UDim2.fromOffset(80, 20), Parent = row })
+			Kit.gemIcon(16, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Parent = row })
+			local _, setDone = Kit.progress(if done then Theme.Good else Theme.Accent, { Position = UDim2.new(0, 0, 0, 26), Size = UDim2.new(1, -60, 0, 8), Parent = row })
+			setDone(if done then 1 elseif challenge.target and challenge.target > 0 then challenge.progress / challenge.target else 0)
+			Kit.label(if done then "Done" else `{challenge.progress}/{challenge.target}`, { TextSize = 12, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 21), Size = UDim2.fromOffset(54, 16), Parent = row })
+		end
+		if not wallet.saving then
+			line("⚠ Progress isn't saving this session.", 40, Theme.Bad)
+		end
+		if wallet.studio then
+			Kit.secondary("Studio test: free Gems and Coins", function()
+				sendEconomy({ action = "studioGrant" })
+			end, { LayoutOrder = 50, Size = UDim2.new(0, 280, 0, 34), Parent = content })
+			-- Passes can't be bought before they exist in the Creator Hub, so test their perks here.
+			for i, key in { "vip", "partyHost" } do
+				local on = wallet.passes and wallet.passes[key]
+				Kit.secondary(`Studio test: {Economy.Passes[key].name} {if on then "ON" else "off"}`, function()
+					sendEconomy({ action = "studioPass", key = key })
+				end, { LayoutOrder = 50 + i, Size = UDim2.new(0, 280, 0, 34), Parent = content })
+			end
+		end
+	end
+
+	local function robuxButton(parentFrame: Instance, robux: number, ready: boolean, onClick: () -> (), props: { [string]: any }?)
+		if ready then
+			priceButton(parentFrame, tostring(robux), "robux", Theme.Good, onClick, props)
+		else
+			local button = Kit.button("Coming soon", function() end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.SubText, TextSize = 13, AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 32), Parent = parentFrame })
+			for key, value in props or {} do
+				(button :: any)[key] = value
+			end
+		end
+	end
+
 	local function renderRobux()
-		Kit.list(8).Parent = content
+		Kit.list(10).Parent = content
 		local order = 1
 		if wallet.starterAvailable then
 			local pack = Economy.StarterPack
-			local c = card(order, 70)
-			Kit.label("Starter Pack (first 3 days only)", { Font = Theme.FontBold, Parent = c })
-			Kit.label(`{pack.gems} Gems + Cozy Cabin table + nameplate`, { TextColor3 = Theme.SubText, TextSize = 14, Position = UDim2.new(0, 0, 0, 24), Size = UDim2.new(1, -140, 0, 20), Parent = c })
-			robuxButton(c, `R$ {pack.robux}`, pack.productId ~= 0, function()
+			local c = card(order, 78)
+			Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Parent = c })
+			Kit.label("🎁 Starter Pack", { Font = Theme.FontTitle, TextSize = 20, Size = UDim2.new(1, -150, 0, 24), Parent = c })
+			Kit.tag("FIRST 3 DAYS", Theme.Accent, { Position = UDim2.new(0, 0, 0, 28), Parent = c })
+			Kit.label(`{pack.gems} Gems + Cozy Cabin table + nameplate`, { TextColor3 = Theme.SubText, TextSize = 13, Position = UDim2.new(0, 0, 0, 48), Size = UDim2.new(1, -150, 0, 18), Parent = c })
+			robuxButton(c, pack.robux, pack.productId ~= 0, function()
 				sendPurchase({ action = "buyStarter" })
-			end)
+			end, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0, 130, 0, 36) })
 			order += 1
 		end
-		for _, pack in Economy.GemPacks do
-			local c = card(order, 56)
-			Kit.label(`{pack.gems} {Economy.GemsName}{if pack.bonus then `  ({pack.bonus})` else ""}`, { Font = Theme.FontBold, Size = UDim2.new(1, -140, 1, 0), Parent = c })
-			robuxButton(c, `R$ {pack.robux}`, pack.productId ~= 0, function()
+
+		section("Gems", order)
+		order += 1
+		local packs = grid(order, UDim2.new(if narrow then 0.5 else 0.25, -6, 0, 140))
+		order += 1
+		local best = #Economy.GemPacks
+		for i, pack in Economy.GemPacks do
+			local tile = Kit.card({ LayoutOrder = i, Parent = packs })
+			if i == best then
+				Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Parent = tile })
+			end
+			-- Bigger packs get a bigger gem.
+			local size = 26 + math.min(i, 4) * 5
+			Kit.gemIcon(size, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 4), Parent = tile })
+			Kit.label(commas(pack.gems), { Font = Theme.FontTitle, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 52), Size = UDim2.new(1, 0, 0, 24), Parent = tile })
+			if pack.bonus then
+				Kit.tag(if i == best then `BEST {pack.bonus}` else pack.bonus, if i == best then Theme.Accent else Theme.Good, {
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, 4, 0, -4),
+					Parent = tile,
+				})
+			end
+			robuxButton(tile, pack.robux, pack.productId ~= 0, function()
 				sendPurchase({ action = "buyGems", key = pack.key })
-			end)
-			order += 1
+			end, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0) })
 		end
+
+		section("Passes", order)
+		order += 1
 		for _, key in { "vip", "partyHost" } do
 			local pass = Economy.Passes[key]
 			local owned = wallet.passes and wallet.passes[key]
-			local c = card(order, 40 + 18 * #pass.perks)
-			Kit.label(pass.name, { Font = Theme.FontBold, Parent = c })
-			Kit.label("• " .. table.concat(pass.perks, "\n• "), {
-				TextColor3 = Theme.SubText,
-				TextSize = 14,
-				Position = UDim2.new(0, 0, 0, 24),
-				Size = UDim2.new(1, -140, 0, 18 * #pass.perks),
-				TextYAlignment = Enum.TextYAlignment.Top,
-				Parent = c,
-			})
+			local c = card(order)
+			local info = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -146, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = c }, { Kit.list(4) })
+			Kit.label(`{PASS_ICONS[key] or "⭐"} {pass.name}`, { Font = Theme.FontTitle, TextSize = 20, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, Parent = info })
+			for i, perk in pass.perks do
+				Kit.label(`✓  {perk}`, { TextSize = 14, TextColor3 = Theme.SubText, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 + i, Parent = info })
+			end
+			local side = Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(130, 36), Parent = c })
 			if owned then
-				Kit.label("Owned", { TextColor3 = Theme.Good, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = c })
+				Kit.tag("OWNED", Theme.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 8), Parent = side })
 			else
-				robuxButton(c, `R$ {pass.robux}`, pass.gamePassId ~= 0, function()
+				robuxButton(side, pass.robux, pass.gamePassId ~= 0, function()
 					sendPurchase({ action = "buyPass", key = key })
-				end)
+				end, { Size = UDim2.new(1, 0, 1, 0) })
 			end
 			order += 1
 		end
@@ -237,7 +423,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 
 	local function renderItems(shop: string)
 		Kit.new("UIGridLayout", {
-			CellSize = UDim2.new(0, 190, 0, 150),
+			CellSize = UDim2.new(if narrow then 0.5 else 1 / 3, -8, 0, 176),
 			CellPadding = UDim2.new(0, 8, 0, 8),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}).Parent = content
@@ -247,35 +433,50 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			if item.slot == "reactions" then
 				continue -- on the Reactions tab
 			end
-			local c = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, BorderSizePixel = 0, LayoutOrder = index, Parent = content }, { Kit.corner(10), Kit.padding(8) })
-			Kit.new("UIStroke", { Color = TIER_COLORS[item.tier] or Theme.SubText, Thickness = 2 }).Parent = c
-			Kit.label(item.name, { Font = Theme.FontBold, TextSize = 15, Size = UDim2.new(1, 0, 0, 36), TextYAlignment = Enum.TextYAlignment.Top, Parent = c })
-			Kit.label(`{item.tier} {item.slot}{if item.earnedOnly then " · earned only" else ""}`, { TextSize = 12, TextColor3 = TIER_COLORS[item.tier] or Theme.SubText, Position = UDim2.new(0, 0, 0, 38), Size = UDim2.new(1, 0, 0, 16), Parent = c })
+			local tier = TIER_COLORS[item.tier] or Theme.SubText
+			local owned = wallet.owned and wallet.owned[item.id]
+			local isOn = owned and equipped[item.slot] == item.id
+			local c = Kit.card({ LayoutOrder = index, Parent = content })
+			Kit.new("UIStroke", { Color = if isOn then Theme.Good else tier, Thickness = 2, Transparency = if isOn then 0 else 0.25, Parent = c })
+			-- Picture: the slot's icon on a tier-colored badge.
+			local badge = Kit.label(SLOT_ICONS[item.slot] or "🎁", {
+				BackgroundColor3 = tier,
+				BackgroundTransparency = 0.7,
+				TextSize = 26,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Size = UDim2.fromOffset(46, 46),
+				Parent = c,
+			})
+			Kit.corner(12).Parent = badge
+			Kit.tag(string.upper(item.tier), tier, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = c })
+			if isOn then
+				Kit.tag("EQUIPPED", Theme.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 22), Parent = c })
+			end
+			Kit.label(item.name, { Font = Theme.FontBold, TextSize = 15, Position = UDim2.new(0, 0, 0, 52), Size = UDim2.new(1, 0, 0, 36), TextYAlignment = Enum.TextYAlignment.Top, TextTruncate = Enum.TextTruncate.AtEnd, Parent = c })
+			Kit.label(`{item.slot}{if item.earnedOnly then " · earned only" else ""}`, { TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 0, 88), Size = UDim2.new(1, 0, 0, 16), Parent = c })
 
-			if wallet.owned and wallet.owned[item.id] then
-				local isOn = equipped[item.slot] == item.id
+			if owned then
 				Kit.button(if isOn then "Unequip" else "Equip", function()
 					sendEconomy({ action = "equip", itemId = item.id })
-				end, { BackgroundColor3 = if isOn then Theme.Panel else Theme.Good, TextColor3 = if isOn then Theme.Text else Theme.AccentText, Position = UDim2.new(0, 0, 1, -32), Size = UDim2.new(1, 0, 0, 32), Parent = c })
+				end, { BackgroundColor3 = if isOn then Theme.Panel else Theme.Good, TextColor3 = if isOn then Theme.Text else Theme.AccentText, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 32), Parent = c })
 			else
 				local buttons = {}
 				if item.coins and shop ~= "hub" then
-					table.insert(buttons, { text = `{item.coins} Coins`, currency = "coins", color = Economy.Coins[shop] and Economy.Coins[shop].color or Theme.Accent })
+					table.insert(buttons, { text = commas(item.coins), icon = shop, currency = "coins", color = Economy.Coins[shop] and Economy.Coins[shop].color or Theme.Accent })
 				end
 				local gems = gemPrice(item, vip)
 				if gems then
-					table.insert(buttons, { text = `{gems} Gems`, currency = "gems", color = Color3.fromRGB(110, 220, 255) })
+					table.insert(buttons, { text = commas(gems), icon = "gem", currency = "gems", color = Theme.Gem })
 				end
+				-- Side by side when there are two, so the tile stays short.
 				for i, b in buttons do
-					Kit.button(b.text, function()
+					local half = #buttons == 2
+					priceButton(c, b.text, b.icon, b.color, function()
 						sendEconomy({ action = "buy", itemId = item.id, currency = b.currency })
 					end, {
-						BackgroundColor3 = b.color,
-						TextColor3 = Theme.AccentText,
-						TextSize = 14,
-						Position = UDim2.new(0, 0, 1, -32 - (#buttons - i) * 36),
-						Size = UDim2.new(1, 0, 0, 32),
-						Parent = c,
+						AnchorPoint = Vector2.new(0, 1),
+						Position = if half then UDim2.new((i - 1) * 0.5, if i == 2 then 3 else 0, 1, 0) else UDim2.new(0, 0, 1, 0),
+						Size = if half then UDim2.new(0.5, -3, 0, 32) else UDim2.new(1, 0, 0, 32),
 					})
 				end
 			end
@@ -503,7 +704,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		Kit.clear(tabsFrame)
 		for index, t in tabs do
 			local selected = t.key == tab
-			Kit.button(t.name, function()
+			local b = Kit.button(if narrow then t.short else t.name, function()
 				tab = t.key
 				Analytics.shop("ViewedTab", tab)
 				render()
@@ -511,9 +712,16 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				BackgroundColor3 = if selected then Theme.Accent else Theme.PanelLight,
 				TextColor3 = if selected then Theme.AccentText else Theme.Text,
 				TextSize = 15,
+				TextXAlignment = if narrow then Enum.TextXAlignment.Center else Enum.TextXAlignment.Left,
+				Size = if narrow then UDim2.new(0, 0, 1, -4) else UDim2.new(1, 0, 0, 40),
+				AutomaticSize = if narrow then Enum.AutomaticSize.X else Enum.AutomaticSize.None,
 				LayoutOrder = index,
 				Parent = tabsFrame,
 			})
+			Kit.new("UIPadding", { PaddingLeft = UDim.new(0, if t.coin then 30 else 12), PaddingRight = UDim.new(0, 12), Parent = b })
+			if t.coin then
+				Kit.coinIcon(Economy.Coins[t.coin].color, 14, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -20, 0.5, 0), Parent = b })
+			end
 		end
 
 		for _, child in content:GetChildren() do
@@ -523,30 +731,40 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		Kit.new("UIPadding", {
 			PaddingTop = UDim.new(0, 4),
 			PaddingLeft = UDim.new(0, 4),
-			PaddingBottom = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 6),
+			PaddingBottom = UDim.new(0, 8),
 		}).Parent = content
+		gemText.Text = if wallet then commas(wallet.gems) else "..."
 		if not wallet then
 			line("Loading your wallet...", 1)
 			return
 		end
 		if tab == "wallet" then
-			title.Text = "Wallet"
+			title.Text = "👛 Wallet"
 			renderWallet()
 		elseif tab == "robux" then
-			title.Text = "Gems & passes"
+			title.Text = "💎 Gems & passes"
 			renderRobux()
 		elseif tab == "reactions" then
-			title.Text = `Reactions  ·  {wallet.gems} {Economy.GemsName}`
+			title.Text = "😀 Reactions"
 			renderReactions()
 		else
 			if tab == "hub" then
-				title.Text = `Hub shop  ·  {wallet.gems} {Economy.GemsName}`
+				title.Text = "🏪 Hub shop"
 			else
-				title.Text = `{Economy.coinName(tab)}: {wallet.coins[tab] or 0}  ·  {wallet.gems} {Economy.GemsName}`
+				title.Text = `{Economy.coinName(tab)}: {commas(wallet.coins[tab] or 0)}`
 			end
 			renderItems(tab)
 		end
 	end
+	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		-- Tabs switch between column and row at NARROW; redraw so tiles re-flow.
+		local wasNarrow = narrow
+		place()
+		if root.Visible and narrow ~= wasNarrow then
+			render()
+		end
+	end)
 
 	return {
 		root = root,
@@ -557,7 +775,12 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			else
 				tab = if coinKey and #ShopCatalog.forShop(coinKey) > 0 then coinKey else "wallet"
 			end
+			local wasOpen = root.Visible
 			root.Visible = true
+			if not wasOpen then
+				Kit.popIn(root)
+			end
+			place()
 			Analytics.shop("Opened", tab)
 			render()
 		end,

@@ -61,7 +61,7 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 	})
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(480, 520) }).Parent = panel
 
-	Kit.title("Friends", { ZIndex = 32, Parent = panel })
+	Kit.title("👋 Friends", { ZIndex = 32, Parent = panel })
 	local openToken = 0
 	local function close()
 		overlay.Visible = false
@@ -100,10 +100,16 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 		Kit.label(text, { TextColor3 = Theme.SubText, TextSize = 13, Size = UDim2.new(1, -8, 0, 22), LayoutOrder = order, ZIndex = 33, Parent = list })
 	end
 
-	local function row(name: string, status: string, order: number, buttonText: string?, onClick: (() -> ())?, color: Color3?)
-		local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, BorderSizePixel = 0, Size = UDim2.new(1, -8, 0, 46), LayoutOrder = order, ZIndex = 33, Parent = list }, { Kit.corner(8) })
-		Kit.label(name, { Font = Theme.FontBold, Position = UDim2.new(0, 10, 0, 3), Size = UDim2.new(1, -120, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 34, Parent = frame })
-		Kit.label(status, { TextColor3 = Theme.SubText, TextSize = 13, Position = UDim2.new(0, 10, 0, 23), Size = UDim2.new(1, -120, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 34, Parent = frame })
+	local function row(userId: number?, name: string, status: string, order: number, buttonText: string?, onClick: (() -> ())?, color: Color3?)
+		local frame = Kit.card({ Size = UDim2.new(1, -8, 0, 54), LayoutOrder = order, ZIndex = 33, Parent = list })
+		local padding = frame:FindFirstChildOfClass("UIPadding")
+		if padding then
+			padding.PaddingTop = UDim.new(0, 6)
+			padding.PaddingBottom = UDim.new(0, 6)
+		end
+		Kit.avatar(userId, 40, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -2, 0.5, 0), ZIndex = 34, Parent = frame })
+		Kit.label(name, { Font = Theme.FontBold, Position = UDim2.new(0, 46, 0, 1), Size = UDim2.new(1, -150, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, ZIndex = 34, Parent = frame })
+		Kit.label(status, { TextColor3 = Theme.SubText, TextSize = 13, Position = UDim2.new(0, 46, 0, 21), Size = UDim2.new(1, -150, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, ZIndex = 34, Parent = frame })
 		if buttonText then
 			local enabled = onClick ~= nil
 			Kit.button(buttonText, function()
@@ -111,8 +117,9 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 					onClick()
 				end
 			end, {
-				Position = UDim2.new(1, -104, 0.5, -15),
-				Size = UDim2.new(0, 96, 0, 30),
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, 0, 0.5, 0),
+				Size = UDim2.new(0, 96, 0, 32),
 				TextSize = 14,
 				BackgroundColor3 = if enabled then color or Theme.Accent else Theme.Panel,
 				TextColor3 = if enabled then Theme.AccentText else Theme.SubText,
@@ -140,13 +147,13 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 				status ..= ` · {friend.leaderName}'s table`
 			end
 			if friend.together then
-				row(friend.name, status, nextOrder(), "With you", nil)
+				row(friend.userId, friend.name, status, nextOrder(), "With you", nil)
 			elseif friend.size >= friend.maxSize then
-				row(friend.name, status, nextOrder(), "Full", nil)
+				row(friend.userId, friend.name, status, nextOrder(), "Full", nil)
 			elseif friend.playing then
-				row(friend.name, status, nextOrder(), "In a game", nil)
+				row(friend.userId, friend.name, status, nextOrder(), "In a game", nil)
 			else
-				row(friend.name, status, nextOrder(), "Join", function()
+				row(friend.userId, friend.name, status, nextOrder(), "Join", function()
 					sendParty({ action = "joinFriend", userId = friend.userId })
 				end, Theme.Good)
 			end
@@ -155,7 +162,7 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 		if #elsewhere > 0 then
 			heading("In other Game Night servers", nextOrder())
 			for _, friend in elsewhere do
-				row(friend.name, "Playing Game Night", nextOrder(), "Go there", function()
+				row(friend.userId, friend.name, "Playing Game Night", nextOrder(), "Go there", function()
 					sendFriend({ action = "follow", userId = friend.userId })
 				end)
 			end
@@ -168,7 +175,7 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 			note("None of your other friends are online.", nextOrder())
 		end
 		for _, friend in online do
-			row(friend.name, friend.status, nextOrder(), "Invite", function()
+			row(friend.userId, friend.name, friend.status, nextOrder(), "Invite", function()
 				if promptInvite(friend.userId) then
 					toast(`Invite sent to {friend.name}`)
 				else

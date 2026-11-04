@@ -41,12 +41,14 @@ function CoinConvertPanel.create(parent: Instance, sendEconomy: (any) -> ())
 	local balance = 0
 	local index = 1
 
-	Kit.label(`Convert {Economy.UniversalCoin.name}`, { Font = Theme.FontBold, TextSize = 20, Size = UDim2.new(1, 0, 0, 26), ZIndex = 62, Parent = panel })
+	Kit.label(`Convert {Economy.UniversalCoin.name}`, { Font = Theme.FontTitle, TextSize = 20, Size = UDim2.new(1, 0, 0, 26), ZIndex = 62, Parent = panel })
 	local have = Kit.label("", { TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 0, 30), ZIndex = 62, Parent = panel })
 
 	local target = Kit.button("", function()
 		index = index % #coinKeys + 1
 	end, { Position = UDim2.new(0, 0, 0, 60), Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, ZIndex = 62, Parent = panel })
+	-- The target coin's icon on the left of the picker.
+	local targetIcon = Kit.coinIcon(Theme.Accent, 18, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), ZIndex = 63, Parent = target })
 
 	local amountBox = Kit.new("TextBox", {
 		PlaceholderText = "Amount",
@@ -62,7 +64,7 @@ function CoinConvertPanel.create(parent: Instance, sendEconomy: (any) -> ())
 		Size = UDim2.new(1, -90, 0, 36),
 		ZIndex = 62,
 		Parent = panel,
-	}, { Kit.corner(8) })
+	}, { Kit.corner(8), Kit.padding(8) })
 	amountBox:GetPropertyChangedSignal("Text"):Connect(function()
 		local digits = string.sub(string.gsub(amountBox.Text, "%D", ""), 1, 7)
 		if digits ~= amountBox.Text then
@@ -90,6 +92,12 @@ function CoinConvertPanel.create(parent: Instance, sendEconomy: (any) -> ())
 	local function render()
 		have.Text = `You have {balance} {Economy.UniversalCoin.name}`
 		target.Text = `Into: {Economy.coinName(coinKeys[index])}  ▸`
+		local coin = Economy.Coins[coinKeys[index]]
+		targetIcon.BackgroundColor3 = if coin then coin.color else Theme.Accent
+		local rim = targetIcon:FindFirstChildOfClass("UIStroke")
+		if rim then
+			rim.Color = targetIcon.BackgroundColor3:Lerp(Color3.new(0, 0, 0), 0.4)
+		end
 	end
 	target.Activated:Connect(render)
 
@@ -104,6 +112,7 @@ function CoinConvertPanel.create(parent: Instance, sendEconomy: (any) -> ())
 			amountBox.Text = ""
 			render()
 			overlay.Visible = true
+			Kit.popIn(panel)
 		end,
 		setBalance = function(value: number)
 			balance = value
