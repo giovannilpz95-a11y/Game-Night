@@ -25,6 +25,13 @@ function BoardGrid.create(container: GuiObject, size: number, onClick: (row: num
 	}, {
 		Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }),
 		Kit.corner(10),
+		-- The frame is lit from above (works with any frame color a game passes in).
+		Kit.new("UIGradient", {
+			Name = "Light",
+			Rotation = 90,
+			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150)),
+		}),
+		Kit.new("UIStroke", { Name = "Rim", Color = Color3.fromRGB(20, 14, 10), Thickness = 2, Transparency = 0.35 }),
 	})
 	for key, value in props or {} do
 		(frame :: any)[key] = value
@@ -98,6 +105,15 @@ function BoardGrid.token(fill: Color3, stroke: Color3, text: string, textColor: 
 	}, {
 		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
 		Kit.new("UIStroke", { Color = stroke, Thickness = 2 }),
+		-- A glossy top, so tokens read as pieces rather than flat dots.
+		Kit.new("UIGradient", {
+			Rotation = 90,
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0.55, Color3.fromRGB(225, 225, 225)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(170, 170, 170)),
+			}),
+		}),
 	})
 	if text ~= "" then
 		Kit.new("TextLabel", {

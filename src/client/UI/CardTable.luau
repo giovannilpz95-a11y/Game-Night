@@ -3,12 +3,14 @@
 -- top, the felt in the middle, a prompt and action buttons, and your hand along the bottom.
 
 local Kit = require(script.Parent.Kit)
+local HudKit = require(script.Parent.HudKit)
 local PlayingCard = require(script.Parent.PlayingCard)
 local Theme = Kit.Theme
 
 local CardTable = {}
 
 local BIG_LINE = 22 -- px for a chip's bigLine
+local NAME_H = 22 -- px for a chip's name row (avatar + name)
 
 export type Layout = {
 	root: Frame,
@@ -34,9 +36,33 @@ function CardTable.layout(container: Instance): Layout
 		TextColor3 = Theme.Accent,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0.62, 0),
+		TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		Size = UDim2.new(1, 0, 0, 22),
+		ZIndex = 3,
 		Parent = root,
 	})
+	-- A dark pill behind the prompt, sized to its text, so it reads over the felt and the
+	-- 3D room alike. Hidden while there's nothing to say.
+	local promptPill = Kit.new("Frame", {
+		Name = "PromptPill",
+		BackgroundColor3 = Theme.Background,
+		BackgroundTransparency = 0.25,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.62, -2),
+		Visible = false,
+		ZIndex = 2,
+		Parent = root,
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Color = Theme.Accent, Transparency = 0.6 }) })
+	local function fitPill()
+		local width = math.min(prompt.TextBounds.X + 30, prompt.AbsoluteSize.X)
+		promptPill.Size = UDim2.fromOffset(width, 26)
+		promptPill.Visible = prompt.Text ~= ""
+	end
+	prompt:GetPropertyChangedSignal("TextBounds"):Connect(fitPill)
+	prompt:GetPropertyChangedSignal("Text"):Connect(fitPill)
+	prompt:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitPill)
 	local buttons = Kit.new("Frame", {
 		BackgroundTransparency = 1,
 		Position = UDim2.new(0, 0, 0.62, 24),
@@ -78,31 +104,55 @@ function CardTable.seatChips(frame: Frame, snapshot: any, chips: { any })
 		end
 	end
 	-- As tall as the text in it (name plus its lines), not the whole strip.
-	local height = math.min(math.max(24, frame.AbsoluteSize.Y - 4), 10 + 17 + big + lines * 15 + 2)
+	local height = math.min(math.max(24, frame.AbsoluteSize.Y - 4), 10 + NAME_H + big + lines * 15 + 2)
 	for i, chip in chips do
 		local clickable = chip.onClick ~= nil
-		local color = if clickable then Theme.Accent elseif chip.turn then Theme.PanelLight else Theme.Panel
+		local seatColor = HudKit.seatColor(chip.seat or 0)
 		local box = Kit.new("TextButton", {
 			Text = "",
 			AutoButtonColor = clickable,
-			BackgroundColor3 = color,
-			BackgroundTransparency = if chip.dim then 0.5 else 0,
 			BorderSizePixel = 0,
 			Size = UDim2.new(0, width, 0, height),
 			LayoutOrder = i,
 			Parent = frame,
 		}, { Kit.corner(10), Kit.padding(5) })
-		if chip.turn or chip.highlight then
-			Kit.new("UIStroke", { Color = if chip.highlight then Theme.Good else Theme.Accent, Thickness = 3, Parent = box })
+		HudKit.glass(box, if chip.dim then 0.55 elseif chip.turn then 0 else 0.15)
+		if clickable then
+			-- Something to pick (who to ask, who to pass to): gold.
+			box.HudGradient.Color = ColorSequence.new(Color3.fromRGB(255, 220, 110), Theme.Accent)
+			box.Rim.Color = Color3.new(1, 1, 1)
+			box.Rim.Transparency = 0.4
+		elseif chip.turn then
+			box.HudGradient.Color = ColorSequence.new(HudKit.shade(seatColor, 0.45), HudKit.shade(Theme.Panel, 0.1))
+		end
+		if chip.highlight then
+			box.Rim.Color = Theme.Good
+			box.Rim.Thickness = 3
+			box.Rim.Transparency = 0
+		elseif chip.turn then
+			box.Rim.Color = Theme.Accent
+			box.Rim.Thickness = 3
+			HudKit.pulse(box.Rim, 0, 0.55)
 		end
 		local textColor = if clickable then Theme.AccentText else Theme.Text
+		local seatInfo = chip.seat and snapshot.seats[chip.seat]
+		if seatInfo then
+			HudKit.avatar(chip.seat, seatInfo, {
+				Position = UDim2.fromOffset(0, 1),
+				Size = UDim2.fromOffset(NAME_H - 2, NAME_H - 2),
+				ZIndex = box.ZIndex + 1,
+				Parent = box,
+			})
+		end
+		local nameX = if seatInfo then NAME_H + 2 else 0
 		Kit.label(CardTable.nameOf(snapshot, chip.seat), {
 			Font = Theme.FontBold,
 			TextSize = 14,
 			TextColor3 = textColor,
 			TextTruncate = Enum.TextTruncate.AtEnd,
 			TextWrapped = false,
-			Size = UDim2.new(1, 0, 0, 17),
+			Position = UDim2.fromOffset(nameX, 0),
+			Size = UDim2.new(1, -nameX, 0, NAME_H),
 			Parent = box,
 		})
 		if chip.bigLine then
@@ -112,7 +162,7 @@ function CardTable.seatChips(frame: Frame, snapshot: any, chips: { any })
 				TextColor3 = chip.bigLine.color or textColor,
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				Position = UDim2.new(0, 0, 0, 17),
+				Position = UDim2.new(0, 0, 0, NAME_H),
 				Size = UDim2.new(1, 0, 0, BIG_LINE),
 				Parent = box,
 			})
@@ -123,13 +173,14 @@ function CardTable.seatChips(frame: Frame, snapshot: any, chips: { any })
 				TextColor3 = if clickable then Theme.AccentText else Theme.SubText,
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				Position = UDim2.new(0, 0, 0, 17 + (if chip.bigLine then BIG_LINE else 0) + (j - 1) * 15),
+				Position = UDim2.new(0, 0, 0, NAME_H + (if chip.bigLine then BIG_LINE else 0) + (j - 1) * 15),
 				Size = UDim2.new(1, 0, 0, 15),
 				Parent = box,
 			})
 		end
 		if clickable then
 			box.Activated:Connect(chip.onClick)
+			Kit.pressable(box)
 		end
 	end
 end
@@ -155,6 +206,11 @@ function CardTable.buttons(frame: Frame, list: { any })
 			LayoutOrder = i,
 			Parent = frame,
 		})
+		HudKit.pill(button)
+		if enabled then
+			-- A soft top light, like the lobby's buttons.
+			HudKit.gradient(Color3.new(1, 1, 1), Color3.fromRGB(222, 222, 222)).Parent = button
+		end
 	end
 end
 
@@ -182,6 +238,8 @@ function CardTable.bigButton(ui: Layout, text: string, onClick: () -> ()): TextB
 	})
 	Kit.new("UITextSizeConstraint", { MaxTextSize = 34, Parent = button })
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(220, 120), Parent = button })
+	HudKit.gradient(Color3.new(1, 1, 1), Color3.fromRGB(215, 215, 215)).Parent = button
+	Kit.new("UIStroke", { Color = Color3.fromRGB(255, 230, 230), Thickness = 3, Transparency = 0.2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
 	return button
 end
 
