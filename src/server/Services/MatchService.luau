@@ -10,7 +10,10 @@ local TextService = game:GetService("TextService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
+local HouseRules = require(ReplicatedStorage.Shared.HouseRules)
 local Match = require(script.Parent.Parent.Core.Match)
+local TableService = require(script.Parent.TableService)
+local HostService = require(script.Parent.HostService)
 
 local MatchService = {}
 
@@ -23,6 +26,7 @@ type Entry = {
 	startedAt: number,
 	timerId: number?, -- the game's phase clock that is currently running
 	botPending: { [number]: boolean }, -- bot seats that already have a move scheduled
+	table: any?, -- the 3D table it's played at: { id, seats, board3D }; nil = 2D overflow
 }
 
 local partyService: any = nil
@@ -46,6 +50,8 @@ local function loadRules(entry: GameCatalog.Entry): any?
 end
 
 local function broadcast(entry: Entry)
+	-- The table shows the spectator view, so nothing hidden ends up in the world.
+	TableService.update(entry.match.id, entry.match:getSnapshot(nil))
 	for index, seat in entry.match.seats do
 		if seat.kind == "player" and seat.userId then
 			local player = Players:GetPlayerByUserId(seat.userId)
@@ -53,6 +59,7 @@ local function broadcast(entry: Entry)
 				local snapshot = entry.match:getSnapshot(index)
 				snapshot.turnEndsAt = entry.turnEndsAt
 				snapshot.timed = entry.timerId ~= nil
+				snapshot.table = entry.table
 				matchStateRemote:FireClient(player, snapshot)
 			end
 		end
@@ -67,6 +74,7 @@ local function finish(entry: Entry)
 	entry.turnEndsAt = nil
 	entry.timerId = nil
 	broadcast(entry) -- clients keep showing the final board and result
+	TableService.release(entry.match.id)
 	matches[entry.match.id] = nil
 	for userId, matchId in matchOfUser do
 		if matchId == entry.match.id then
@@ -96,6 +104,20 @@ end
 -- EconomyService pays out from this.
 function MatchService.onMatchFinished(callback: (any) -> ())
 	table.insert(finishedCallbacks, callback)
+end
+
+-- Runs `callback(name, event)` for things that happen during a match (AnalyticsService
+-- listens). "started": matchId, gameId, seats, botLevel. "moved": player, matchId, gameId.
+-- "left": player, matchId, gameId, minutes, reason, humansLeft.
+local eventCallbacks: { (string, any) -> () } = {}
+function MatchService.onEvent(callback: (string, any) -> ())
+	table.insert(eventCallbacks, callback)
+end
+
+local function emit(name: string, event: any)
+	for _, callback in eventCallbacks do
+		task.spawn(callback, name, event)
+	end
 end
 
 local scheduleTurn: (Entry) -> ()
@@ -196,6 +218,26 @@ local function startMatch(leader: Player, request: any)
 		return notify(leader, "That game isn't available yet")
 	end
 
+	-- House rules and the host's own word lists / quiz decks (Party Host perks).
+	local ruleValues, customRules = HouseRules.resolve(catalogEntry, request.rules)
+	local customSlot = if catalogEntry.custom and type(request.custom) == "number" then request.custom else nil
+	if (customRules or customSlot) and not HostService.isHost(leader) then
+		return notify(leader, "House rules and custom decks come with the Party Host pass")
+	end
+	local customContent = nil
+	if customSlot then
+		local content, err = HostService.prepare(leader, catalogEntry.custom :: string, customSlot) -- yields
+		if not content then
+			return notify(leader, err :: string)
+		end
+		customContent = content
+		-- Things may have changed while the text was being filtered.
+		party = partyService.getParty(leader.UserId)
+		if not party or party.leaderId ~= leader.UserId or party.matchId or not leader.Parent then
+			return
+		end
+	end
+
 	local memberCount = #party.members
 	local seatCount = if type(request.seats) == "number" then math.floor(request.seats) else memberCount
 	seatCount = math.max(seatCount, memberCount)
@@ -227,7 +269,12 @@ local function startMatch(leader: Player, request: any)
 	end
 
 	-- Only pass options we've checked; never forward the client's table as-is.
-	local options: any = { botLevel = Config.DefaultBotLevel, bots = {} }
+	local options: any = { botLevel = Config.DefaultBotLevel, bots = {}, rules = ruleValues }
+	if catalogEntry.custom == "words" then
+		options.customWords = customContent
+	elseif catalogEntry.custom == "quiz" then
+		options.customQuestions = customContent
+	end
 	if type(request.botLevel) == "string" and table.find(Config.BotLevels, request.botLevel) then
 		options.botLevel = request.botLevel
 	end
@@ -243,18 +290,47 @@ local function startMatch(leader: Player, request: any)
 		partyId = party.id,
 		ended = false,
 		turnEndsAt = nil,
-		turnSeconds = catalogEntry.turnSeconds or Config.TurnSeconds,
+		turnSeconds = HouseRules.turnSeconds(catalogEntry, ruleValues) or Config.TurnSeconds,
 		startedAt = os.clock(),
 		timerId = nil,
 		botPending = {},
+		table = nil,
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
 		matchOfUser[userId] = matchId
 	end
 	partyService.setMatch(party.id, matchId)
+	-- Seat everyone at a free table (this can yield while bot bodies load).
+	local ok, tableInfo = pcall(TableService.claim, matchId, party.id, catalogEntry, seats)
+	if not ok then
+		warn(`[GameNight] couldn't seat the match at a table: {tableInfo}`)
+		tableInfo = nil
+	end
+	if entry.ended then
+		TableService.release(matchId)
+		return
+	end
+	entry.table = tableInfo
+	if not tableInfo then
+		notify(leader, "All tables are busy, so this one is on screen. Try a table next game!")
+	end
 	scheduleTurn(entry)
 	broadcast(entry)
+	emit("started", { matchId = matchId, gameId = catalogEntry.id, seats = seats, botLevel = options.botLevel })
+
+	local lines = HouseRules.describe(catalogEntry, ruleValues)
+	if customContent then
+		table.insert(lines, 1, if catalogEntry.custom == "words" then "the host's own words" else "the host's own questions")
+	end
+	if #lines > 0 then
+		for _, userId in party.members do
+			local member = Players:GetPlayerByUserId(userId)
+			if member then
+				notify(member, `House rules: {table.concat(lines, ", ")}`)
+			end
+		end
+	end
 end
 
 local function entryFor(player: Player): Entry?
@@ -262,8 +338,9 @@ local function entryFor(player: Player): Entry?
 	return if matchId then matches[matchId] else nil
 end
 
--- Called when a player leaves the match, their party, or the server.
-function MatchService.leaveMatch(player: Player)
+-- Called when a player leaves the match, their party, or the server. `reason` is for
+-- analytics: "left" (default), "leftParty", "kicked" or "leftServer".
+function MatchService.leaveMatch(player: Player, reason: string?)
 	local entry = entryFor(player)
 	matchOfUser[player.UserId] = nil
 	matchStateRemote:FireClient(player, nil)
@@ -272,8 +349,13 @@ function MatchService.leaveMatch(player: Player)
 	end
 	local match = entry.match
 	local seat = match:seatOf(player.UserId)
+	TableService.unseat(match.id, player.UserId)
 	if seat then
 		match:replaceWithBot(seat)
+	end
+	if seat and not entry.ended then
+		local minutes = (os.clock() - entry.startedAt) / 60
+		emit("left", { player = player, matchId = match.id, gameId = match.gameId, minutes = minutes, reason = reason or "left", humansLeft = match:humanCount() })
 	end
 	if match:humanCount() == 0 then
 		match:abort()
@@ -328,6 +410,7 @@ function handlers.move(player: Player, request: any)
 		return notify(player, err :: string)
 	end
 	afterMove(entry)
+	emit("moved", { player = player, matchId = entry.match.id, gameId = entry.match.gameId })
 end
 
 function handlers.resign(player: Player, _request: any)
@@ -368,6 +451,7 @@ function handlers.sync(player: Player, _request: any)
 		local snapshot = entry.match:getSnapshot(seat)
 		snapshot.turnEndsAt = entry.turnEndsAt
 		snapshot.timed = entry.timerId ~= nil
+		snapshot.table = entry.table
 		matchStateRemote:FireClient(player, snapshot)
 	else
 		matchStateRemote:FireClient(player, nil)

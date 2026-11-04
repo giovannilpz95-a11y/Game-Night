@@ -11,6 +11,11 @@
 --
 -- The correct answer is never in a view until the reveal.
 --
+-- House rules (options.rules): questions = 5..20, answerSeconds = 10 | 15 | 25.
+-- options.customQuestions: a Party Host's quiz deck (already filtered by the server),
+-- { { c = category, q = question, a = { right, wrong, wrong, wrong } } }. Used instead of
+-- our bank when set.
+--
 -- Move: { kind = "answer", choice = 1..4 }
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -35,20 +40,29 @@ local BOT_ACCURACY = { easy = 0.4, medium = 0.65, hard = 0.85 }
 function TriviaNight.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 1 and seatCount <= TriviaNight.maxSeats, "Trivia Night needs 1-8 seats")
 	local random = rng or Random.new()
+	local rules = (options and options.rules) or {}
+	local count = if type(rules.questions) == "number" then math.clamp(math.floor(rules.questions), 1, 30) else QUESTIONS
+	local seconds = if type(rules.answerSeconds) == "number" then math.clamp(rules.answerSeconds, 5, 60) else QUESTION_SECONDS
+	local bank = Questions
+	if options and type(options.customQuestions) == "table" and #options.customQuestions > 0 then
+		bank = options.customQuestions
+	end
 	-- Pick distinct questions.
 	local pool = {}
-	for i = 1, #Questions do
+	for i = 1, #bank do
 		pool[i] = i
 	end
 	local picked = {}
-	for _ = 1, math.min(QUESTIONS, #pool) do
+	for _ = 1, math.min(count, #pool) do
 		table.insert(picked, table.remove(pool, random:NextInteger(1, #pool)) :: number)
 	end
 	local state = {
 		seatCount = seatCount,
 		rng = random,
 		botLevel = (options and options.botLevel) or "medium",
+		bank = bank,
 		questions = picked,
+		answerSeconds = seconds,
 		index = 0,
 		phase = "question",
 		timerId = 0,
@@ -89,7 +103,7 @@ function TriviaNight._nextQuestion(state)
 end
 
 local function currentQuestion(state)
-	return Questions[state.questions[state.index]]
+	return state.bank[state.questions[state.index]]
 end
 
 local function reveal(state)
@@ -163,7 +177,7 @@ end
 
 function TriviaNight.getTimer(state): { id: number, seconds: number }?
 	if state.phase == "question" then
-		return { id = state.timerId, seconds = QUESTION_SECONDS }
+		return { id = state.timerId, seconds = state.answerSeconds }
 	elseif state.phase == "reveal" then
 		return { id = state.timerId, seconds = REVEAL_SECONDS }
 	end

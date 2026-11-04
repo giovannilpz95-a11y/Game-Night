@@ -1,7 +1,7 @@
 -- Every item for sale. Items are data; the server prices and checks them with Core/Shop.
 --
 --   shop       "hub" (Gems only, works everywhere) or a coin key from Economy.Coins
---   slot       what it replaces: pieces, cards, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
+--   slot       what it replaces: pieces, cards, dice, board, brush, effect, celebration, sound, theme, chair, trail, title, nameplate
 --   tier       Common | Rare | Epic | Legendary
 --   coins      price in that shop's Coins (nil = not sold for Coins)
 --   gems       Gem price. If nil and coins is set, the Gem price is coins / Economy.CoinsPerGem.
@@ -71,6 +71,55 @@ local items: { Item } = {
 	{ id = "party_spotlight_podium", name = "Spotlight Podium", shop = "party", slot = "board", tier = "Rare", coins = 1200 },
 	{ id = "party_paint_splat", name = "Paint Splat Win", shop = "party", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
 	{ id = "party_quizmaster_title", name = "Title: Quizmaster", shop = "party", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
+
+	-- Whodunit shop
+	{ id = "whodunit_haunted_manor", name = "Haunted Manor Board", shop = "whodunit", slot = "board", tier = "Rare", coins = 1500 },
+	{ id = "whodunit_detective_hat", name = "Detective Pawn Hat", shop = "whodunit", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "whodunit_parchment_notes", name = "Parchment Notepad", shop = "whodunit", slot = "theme", tier = "Common", coins = 350 },
+	{ id = "whodunit_spotlight_reveal", name = "Spotlight Reveal", shop = "whodunit", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "whodunit_master_sleuth", name = "Title: Master Sleuth", shop = "whodunit", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Property Party shop
+	{ id = "property_rubber_duck", name = "Rubber Duck Token", shop = "property", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "property_gold_dice", name = "Golden Dice", shop = "property", slot = "dice", tier = "Rare", coins = 1500 },
+	{ id = "property_candy_town", name = "Candy Town Board", shop = "property", slot = "board", tier = "Rare", coins = 2000 },
+	{ id = "property_neon_hotels", name = "Neon Hotels", shop = "property", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "property_money_rain", name = "Money Rain Win", shop = "property", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "property_tycoon_title", name = "Title: Tycoon", shop = "property", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Word Tiles shop
+	{ id = "wordtiles_maple_tiles", name = "Maple Tiles", shop = "wordtiles", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "wordtiles_chalk_board", name = "Chalkboard Board", shop = "wordtiles", slot = "board", tier = "Common", coins = 350 },
+	{ id = "wordtiles_marble_tiles", name = "Marble Tiles", shop = "wordtiles", slot = "pieces", tier = "Rare", coins = 1500 },
+	{ id = "wordtiles_neon_tiles", name = "Neon Tiles", shop = "wordtiles", slot = "pieces", tier = "Rare", coins = 1800 },
+	{ id = "wordtiles_score_pop", name = "Big Score Pop", shop = "wordtiles", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "wordtiles_all_seven_party", name = "All-Seven Party", shop = "wordtiles", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "wordtiles_wordsmith_title", name = "Title: Wordsmith", shop = "wordtiles", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Conquest Isles shop
+	{ id = "conquest_toy_soldiers", name = "Toy Soldier Armies", shop = "conquest", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "conquest_battle_dice", name = "Battle-Worn Dice", shop = "conquest", slot = "dice", tier = "Common", coins = 500 },
+	{ id = "conquest_parchment_map", name = "Parchment Map", shop = "conquest", slot = "board", tier = "Rare", coins = 1500 },
+	{ id = "conquest_banner_flags", name = "Banner Flags", shop = "conquest", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "conquest_victory_cannons", name = "Victory Cannons", shop = "conquest", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "conquest_warlord_title", name = "Title: Warlord", shop = "conquest", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Hexlands shop
+	{ id = "hexlands_log_cabins", name = "Log Cabin Camps", shop = "hexlands", slot = "pieces", tier = "Common", coins = 400 },
+	{ id = "hexlands_snow_isle", name = "Snowy Isle", shop = "hexlands", slot = "board", tier = "Rare", coins = 2000 },
+	{ id = "hexlands_candy_isle", name = "Candy Isle", shop = "hexlands", slot = "board", tier = "Epic", coins = 3500, gems = 350 },
+	{ id = "hexlands_pirate_bandit", name = "Pirate Bandit", shop = "hexlands", slot = "effect", tier = "Rare", coins = 1200 },
+	{ id = "hexlands_fireworks", name = "Harbor Fireworks Win", shop = "hexlands", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "hexlands_founder_title", name = "Title: Island Founder", shop = "hexlands", slot = "title", tier = "Rare", coins = 2000, earnedOnly = true },
+
+	-- Card shop (Speed, Spoons, Go Fish, War)
+	{ id = "cards_ruby_backs", name = "Ruby Card Backs", shop = "cards", slot = "cards", tier = "Common", coins = 300 },
+	{ id = "cards_blue_felt", name = "Blue Felt Table", shop = "cards", slot = "board", tier = "Common", coins = 350 },
+	{ id = "cards_golden_spoons", name = "Golden Spoons", shop = "cards", slot = "pieces", tier = "Rare", coins = 1200 },
+	{ id = "cards_shuffle_flourish", name = "Shuffle Flourish", shop = "cards", slot = "effect", tier = "Rare", coins = 1000 },
+	{ id = "cards_starry_backs", name = "Starry Night Backs", shop = "cards", slot = "cards", tier = "Rare", coins = 1500 },
+	{ id = "cards_card_fountain", name = "Card Fountain Win", shop = "cards", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
+	{ id = "cards_speed_demon_title", name = "Title: Speed Demon", shop = "cards", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
 }
 
 local byId: { [string]: Item } = {}

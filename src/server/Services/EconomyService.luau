@@ -21,7 +21,9 @@ local Profile = require(script.Parent.Parent.Core.Profile)
 local Daily = require(script.Parent.Parent.Core.Daily)
 local Rewards = require(script.Parent.Parent.Core.Rewards)
 local Shop = require(script.Parent.Parent.Core.Shop)
+local Looks = require(script.Parent.Parent.Core.Looks)
 local DataService = require(script.Parent.DataService)
+local AnalyticsService = require(script.Parent.AnalyticsService)
 
 local EconomyService = {}
 
@@ -85,7 +87,7 @@ function EconomyService.push(player: Player)
 		challenges = data.daily.challenges,
 		starterAvailable = starter,
 		starterEndsAt = starterEndsAt,
-		lookSlots = (if vip then Economy.VipLookSlots else Economy.FreeLookSlots) + data.lookSlots,
+		lookSlots = Looks.slotCount(data, vip),
 		saving = DataService.isPersistent(player),
 		studio = RunService:IsStudio(),
 	})
@@ -104,6 +106,7 @@ local function checkDay(player: Player, data: Profile.Data)
 	local gems, streakDay = Daily.login(data, day, isVip(player))
 	if gems > 0 then
 		sendReward(player, "Daily reward", { `Day {streakDay} login: +{gems} {Economy.GemsName}` })
+		AnalyticsService.dailyLogin(player, data, gems)
 	end
 end
 
@@ -114,6 +117,7 @@ function EconomyService.award(player: Player, grant: { coins: number?, coinKey: 
 	if not data then
 		return
 	end
+	local before = AnalyticsService.snapshot(data)
 	local multiplier = if isVip(player) then 1 + Economy.VipPlayBonus else 1
 	local lines = {}
 	local coins = math.floor((grant.coins or 0) * multiplier + 0.5)
@@ -129,6 +133,7 @@ function EconomyService.award(player: Player, grant: { coins: number?, coinKey: 
 		table.insert(lines, `+{gems} {Economy.GemsName}`)
 	end
 	sendReward(player, grant.reason or "Reward", lines)
+	AnalyticsService.logChange(player, data, before, "Gameplay", grant.reason)
 	EconomyService.push(player)
 end
 
@@ -160,6 +165,7 @@ function EconomyService.recordMatch(
 		vip = isVip(player),
 	})
 	sendReward(player, "Rewards", Rewards.describe(payout))
+	AnalyticsService.matchPayout(player, data, payout)
 	EconomyService.push(player)
 	return payout
 end
@@ -250,7 +256,9 @@ function handlers.buy(player: Player, request: any)
 	if not data then
 		return
 	end
+	local before = AnalyticsService.snapshot(data)
 	local ok, err = Shop.buy(data, request.itemId, request.currency, isVip(player))
+	AnalyticsService.shopBuy(player, data, before, request.itemId, ok)
 	if not ok then
 		return notify(player, err :: string)
 	end
@@ -285,6 +293,17 @@ function handlers.studioGrant(player: Player, _request: any)
 	end
 	notify(player, "Studio test: +500 Gems and +2000 of every Coin")
 	EconomyService.push(player)
+end
+
+-- Studio only: turn a pass on or off, so VIP and Party Host perks can be tested before the
+-- passes exist in the Creator Hub.
+function handlers.studioPass(player: Player, request: any)
+	if not RunService:IsStudio() or type(request.key) ~= "string" or not Economy.Passes[request.key] then
+		return
+	end
+	local owned = not EconomyService.hasPass(player, request.key)
+	EconomyService.setPass(player, request.key, owned)
+	notify(player, `Studio test: {Economy.Passes[request.key].name} {if owned then "on" else "off"}`)
 end
 
 function EconomyService.handleRequest(player: Player, request: any)

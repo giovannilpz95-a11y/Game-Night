@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
 local Kit = require(script.Parent.Kit)
+local Analytics = require(script.Parent.Parent.Analytics)
 local Theme = Kit.Theme
 
 local ShopPanel = {}
@@ -146,6 +147,13 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			Kit.button("Studio test: free Gems and Coins", function()
 				sendEconomy({ action = "studioGrant" })
 			end, { LayoutOrder = 50, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = content })
+			-- Passes can't be bought before they exist in the Creator Hub, so test their perks here.
+			for i, key in { "vip", "partyHost" } do
+				local on = wallet.passes and wallet.passes[key]
+				Kit.button(`Studio test: {Economy.Passes[key].name} {if on then "ON" else "off"}`, function()
+					sendEconomy({ action = "studioPass", key = key })
+				end, { LayoutOrder = 50 + i, Size = UDim2.new(0, 280, 0, 34), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = content })
+			end
 		end
 	end
 
@@ -259,6 +267,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			local selected = t.key == tab
 			Kit.button(t.name, function()
 				tab = t.key
+				Analytics.shop("ViewedTab", tab)
 				render()
 			end, {
 				BackgroundColor3 = if selected then Theme.Accent else Theme.PanelLight,
@@ -304,6 +313,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		open = function(coinKey: string?)
 			tab = if coinKey and #ShopCatalog.forShop(coinKey) > 0 then coinKey else "wallet"
 			root.Visible = true
+			Analytics.shop("Opened", tab)
 			render()
 		end,
 		setWallet = function(state: any)

@@ -1,6 +1,12 @@
 -- Pure party bookkeeping (no Roblox services), so it can be unit tested.
 -- Every player is always in exactly one party; a player alone is a party of one.
 -- PartyService wraps this with remotes and broadcasts.
+--
+-- Table privacy (Party Host perk): every party starts "invite" (only invited players join).
+-- A leader with the Party Host pass can make it "friends" (private: the leader's Roblox
+-- friends can join from the table list without an invite) or "password" (listed with a
+-- lock; anyone with the 4-digit code can join). When the leader changes it goes back to
+-- "invite", because the new leader may not have the pass.
 
 local PartyRegistry = {}
 PartyRegistry.__index = PartyRegistry
@@ -10,7 +16,11 @@ export type Party = {
 	leaderId: number,
 	members: { number }, -- userIds, in join order
 	matchId: string?,
+	privacy: Privacy,
+	code: string?, -- the 4-digit code for "password" tables
 }
+
+export type Privacy = "invite" | "friends" | "password"
 
 export type Registry = typeof(setmetatable(
 	{} :: {
@@ -22,6 +32,7 @@ export type Registry = typeof(setmetatable(
 		partyOf: { [number]: string },
 		invites: { [number]: { [string]: number } }, -- invitee -> partyId -> expiresAt
 		changed: { [string]: boolean },
+		codeFails: { [number]: { count: number, resetAt: number } }, -- wrong codes per player
 	},
 	PartyRegistry
 ))
@@ -36,6 +47,7 @@ function PartyRegistry.new(maxSize: number, inviteSeconds: number, clock: (() ->
 		partyOf = {},
 		invites = {},
 		changed = {},
+		codeFails = {},
 	}, PartyRegistry)
 	return self
 end
@@ -63,6 +75,8 @@ function PartyRegistry._newParty(self: Registry, leaderId: number): Party
 		leaderId = leaderId,
 		members = { leaderId },
 		matchId = nil,
+		privacy = "invite",
+		code = nil,
 	}
 	self.parties[party.id] = party
 	self.partyOf[leaderId] = party.id
@@ -93,6 +107,8 @@ function PartyRegistry._detach(self: Registry, userId: number)
 		end
 	elseif party.leaderId == userId then
 		party.leaderId = party.members[1]
+		party.privacy = "invite"
+		party.code = nil
 	end
 	self:_markChanged(partyId)
 end
@@ -161,6 +177,11 @@ function PartyRegistry.acceptInvite(self: Registry, userId: number, partyId: str
 	if not target then
 		return false, "That party no longer exists"
 	end
+	return self:_moveInto(userId, target)
+end
+
+-- Last checks, then moves userId out of their party and into target.
+function PartyRegistry._moveInto(self: Registry, userId: number, target: Party): (boolean, string?)
 	if #target.members >= self.maxSize then
 		return false, "That party is full"
 	end
@@ -176,6 +197,83 @@ function PartyRegistry.acceptInvite(self: Registry, userId: number, partyId: str
 	self.partyOf[userId] = target.id
 	self:_markChanged(target.id)
 	return true
+end
+
+PartyRegistry.Privacies = { "invite", "friends", "password" }
+PartyRegistry.CodeTries = 5 -- wrong codes allowed...
+PartyRegistry.CodeTrySeconds = 60 -- ...per this many seconds
+
+-- Leader only. Anything but "invite" needs the Party Host pass (canHost). For "password"
+-- the caller passes a fresh 4-digit code (the service picks it at random).
+function PartyRegistry.setPrivacy(self: Registry, leaderId: number, privacy: any, canHost: boolean, code: string?): (boolean, string?)
+	local party = self:getParty(leaderId)
+	if not party or party.leaderId ~= leaderId then
+		return false, "Only the party leader can change the table"
+	end
+	if not table.find(PartyRegistry.Privacies, privacy) then
+		return false, "Unknown table setting"
+	end
+	if privacy ~= "invite" and not canHost then
+		return false, "Private and password tables come with the Party Host pass"
+	end
+	if privacy == "password" and (type(code) ~= "string" or not string.match(code, "^%d%d%d%d$")) then
+		return false, "Bad code"
+	end
+	party.privacy = privacy
+	party.code = if privacy == "password" then code else nil
+	self:_markChanged(party.id)
+	return true
+end
+
+-- Parties userId could join from the table list: not their own, not invite-only.
+-- (Friends-only tables are filtered by the service, which can ask Roblox about friends.)
+function PartyRegistry.listJoinable(self: Registry, userId: number): { Party }
+	local mine = self.partyOf[userId]
+	local out = {}
+	for id, party in self.parties do
+		if id ~= mine and party.privacy ~= "invite" then
+			table.insert(out, party)
+		end
+	end
+	table.sort(out, function(a, b)
+		return a.id < b.id
+	end)
+	return out
+end
+
+-- Join a table from the list. isFriend: is userId a Roblox friend of the leader?
+function PartyRegistry.joinTable(self: Registry, userId: number, partyId: any, code: any, isFriend: boolean): (boolean, string?)
+	local target = if type(partyId) == "string" then self.parties[partyId] else nil
+	if not target then
+		return false, "That table is gone"
+	end
+	if table.find(target.members, userId) then
+		return false, "You're already at that table"
+	end
+	if target.privacy == "invite" then
+		return false, "That table is invite only"
+	elseif target.privacy == "friends" then
+		if not isFriend then
+			return false, "Only the host's friends can join that table"
+		end
+	elseif target.privacy == "password" then
+		local now = self.clock()
+		local fails = self.codeFails[userId]
+		if fails and now >= fails.resetAt then
+			fails = nil
+			self.codeFails[userId] = nil
+		end
+		if fails and fails.count >= PartyRegistry.CodeTries then
+			return false, "Too many wrong codes. Try again in a minute."
+		end
+		if type(code) ~= "string" or code ~= target.code then
+			fails = fails or { count = 0, resetAt = now + PartyRegistry.CodeTrySeconds }
+			fails.count += 1
+			self.codeFails[userId] = fails
+			return false, "Wrong code"
+		end
+	end
+	return self:_moveInto(userId, target)
 end
 
 -- Leave your party and go back to a party of one.
@@ -208,10 +306,44 @@ function PartyRegistry.kick(self: Registry, leaderId: number, targetId: number):
 	return true
 end
 
+-- Puts a player straight into a party, no invite needed. Only for parties that arrive from
+-- another server together (see PartyTransfer); the server has already checked the roster.
+function PartyRegistry.addMember(self: Registry, partyId: string, userId: number): (boolean, string?)
+	local target = self.parties[partyId]
+	if not target then
+		return false, "That party no longer exists"
+	end
+	if table.find(target.members, userId) then
+		return true
+	end
+	if #target.members >= self.maxSize then
+		return false, "That party is full"
+	end
+	self:_detach(userId)
+	table.insert(target.members, userId)
+	self.partyOf[userId] = target.id
+	self:_markChanged(target.id)
+	return true
+end
+
+-- Hands the crown to a member (used when the original leader arrives after the others).
+function PartyRegistry.setLeader(self: Registry, partyId: string, userId: number): boolean
+	local party = self.parties[partyId]
+	if not party or not table.find(party.members, userId) then
+		return false
+	end
+	if party.leaderId ~= userId then
+		party.leaderId = userId
+		self:_markChanged(partyId)
+	end
+	return true
+end
+
 -- The player left the server.
 function PartyRegistry.removePlayer(self: Registry, userId: number)
 	self:_detach(userId)
 	self.invites[userId] = nil
+	self.codeFails[userId] = nil
 end
 
 function PartyRegistry.setMatch(self: Registry, partyId: string, matchId: string?)

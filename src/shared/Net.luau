@@ -13,10 +13,18 @@ Net.Names = {
 	MatchRequest = "MatchRequest", -- client -> server: { action = "...", ... }
 	MatchState = "MatchState", -- server -> client: your view of the match (or nil)
 	Notify = "Notify", -- server -> client: short message to show as a toast
+	AnalyticsRequest = "AnalyticsRequest", -- client -> server: { kind = "onboarding" | "shop", step, tab? }
 	EconomyRequest = "EconomyRequest", -- client -> server: { action = "buy" | "equip" | "sync", ... }
 	PurchaseRequest = "PurchaseRequest", -- client -> server: { action = "buyGems" | "buyStarter" | "buyPass", key }
 	WalletState = "WalletState", -- server -> client: balances, owned items, daily progress
 	Reward = "Reward", -- server -> client: { title, lines } after a match or daily login
+	DressingRoomRequest = "DressingRoomRequest", -- client -> server: { action = "tryOn" | "takeOff" | "buy" | ..., ... }
+	DressingRoomState = "DressingRoomState", -- server -> client: current look, saved looks, slots
+	PartyList = "PartyList", -- server -> client: tables you can join (friends-only and password)
+	HostRequest = "HostRequest", -- client -> server: { action = "sync" | "save" | "delete", kind, slot, ... }
+	HostState = "HostState", -- server -> client: your saved word lists and quiz decks
+	VoiceRequest = "VoiceRequest", -- client -> server: { action = "join" | "lobby" | "sync", force? }
+	VoiceState = "VoiceState", -- server -> client: voice server status, prompts, teleporting
 }
 
 local FOLDER_NAME = "Remotes"

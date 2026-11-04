@@ -11,6 +11,8 @@
 -- while it can; a man that reaches the far row is crowned and its turn ends there.
 -- A player with no legal moves loses. 40 moves each with no capture and no man moving
 -- is a draw.
+-- House rule "forcedCaptures" = false: jumping is allowed but not required (a jump that
+-- is started still has to be finished).
 
 local GameModule = require(script.Parent.Parent.GameModule)
 
@@ -70,6 +72,7 @@ function Checkers.new(seatCount: number, options: any?, _rng: Random?)
 		isDraw = false,
 		reason = nil,
 		botLevel = (options and options.botLevel) or "medium",
+		optionalCaptures = options ~= nil and options.rules ~= nil and options.rules.forcedCaptures == false,
 	}
 end
 
@@ -116,7 +119,9 @@ local function jumpsFrom(board, r: number, c: number, v: number, path: { Square 
 	return found
 end
 
-local function generate(board, seat: number): ({ Move }, boolean)
+-- Returns the legal moves and whether a jump is required. With optional captures the
+-- jumps and steps come back together and nothing is required.
+local function generate(board, seat: number, optional: boolean?): ({ Move }, boolean)
 	local jumps: { Move } = {}
 	for r = 1, SIZE do
 		for c = 1, SIZE do
@@ -126,10 +131,10 @@ local function generate(board, seat: number): ({ Move }, boolean)
 			end
 		end
 	end
-	if #jumps > 0 then
+	if #jumps > 0 and not optional then
 		return jumps, true
 	end
-	local steps: { Move } = {}
+	local steps: { Move } = jumps
 	for r = 1, SIZE do
 		for c = 1, SIZE do
 			local v = board[r][c]
@@ -178,7 +183,7 @@ function Checkers.getLegalMoves(state, seat: number): { any }
 	if isOver(state) or seat ~= state.turn then
 		return {}
 	end
-	return (generate(state.board, seat))
+	return (generate(state.board, seat, state.optionalCaptures))
 end
 
 local function sameMove(a: Move, b: any): boolean
@@ -204,7 +209,7 @@ function Checkers.validateMove(state, seat: number, move: any): (boolean, string
 	if seat ~= state.turn then
 		return false, "It's not your turn"
 	end
-	local moves, mustJump = generate(state.board, seat)
+	local moves, mustJump = generate(state.board, seat, state.optionalCaptures)
 	for _, legal in moves do
 		if sameMove(legal, move) then
 			return true
@@ -229,7 +234,7 @@ function Checkers.applyMove(state, seat: number, move: any)
 	end
 
 	local nextSeat = 3 - seat
-	local replies = generate(state.board, nextSeat)
+	local replies = generate(state.board, nextSeat, state.optionalCaptures)
 	if #replies == 0 then
 		state.winner = seat
 		state.reason = "No moves left"
@@ -253,7 +258,7 @@ end
 function Checkers.getView(state, seat: number?): any
 	local view = GameModule.copy(state)
 	if seat and not isOver(state) and seat == state.turn then
-		local moves, mustJump = generate(state.board, seat)
+		local moves, mustJump = generate(state.board, seat, state.optionalCaptures)
 		view.legalMoves = moves
 		view.mustJump = mustJump
 	end
@@ -299,7 +304,7 @@ end
 
 local WIN = 100000
 
-type Search = { nodes: number, deadline: number, outOfTime: boolean }
+type Search = { nodes: number, deadline: number, outOfTime: boolean, optional: boolean }
 
 local function negamax(s: Search, board, seat: number, depth: number, alpha: number, beta: number, ply: number): number
 	s.nodes += 1
@@ -309,7 +314,7 @@ local function negamax(s: Search, board, seat: number, depth: number, alpha: num
 	if s.outOfTime then
 		return 0
 	end
-	local moves, mustJump = generate(board, seat)
+	local moves, mustJump = generate(board, seat, s.optional)
 	if #moves == 0 then
 		return -WIN + ply
 	end
@@ -343,14 +348,14 @@ local LEVELS = {
 
 function Checkers.chooseBotMove(state, seat: number, rng: Random): any?
 	local level = LEVELS[state.botLevel] or LEVELS.medium
-	local moves = generate(state.board, seat)
+	local moves = generate(state.board, seat, state.optionalCaptures)
 	if #moves == 0 then
 		return nil
 	end
 	if #moves == 1 then
 		return moves[1]
 	end
-	local s: Search = { nodes = 0, deadline = os.clock() + level.seconds, outOfTime = false }
+	local s: Search = { nodes = 0, deadline = os.clock() + level.seconds, outOfTime = false, optional = state.optionalCaptures }
 	local scores: { number }? = nil
 	for depth = 1, level.depth do
 		local current = {}

@@ -1,5 +1,6 @@
 -- Chess, full FIDE rules: castling, en passant, promotion, check, checkmate, stalemate,
 -- threefold repetition, the 50-move rule and insufficient material.
+-- House rule "kingOfTheHill": a king that reaches d4, e4, d5 or e5 also wins.
 --
 -- Squares are 0..63: a1 = 0, h1 = 7, a8 = 56, h8 = 63 (file = sq % 8, rank = sq // 8).
 -- Pieces are numbers: 1 pawn, 2 knight, 3 bishop, 4 rook, 5 queen, 6 king.
@@ -547,6 +548,8 @@ end
 
 -- Game module -------------------------------------------------------------------
 
+local HILL = { [27] = true, [28] = true, [35] = true, [36] = true } -- d4, e4, d5, e5
+
 local function seatToSide(seat: number): number
 	return if seat == 1 then 1 else -1
 end
@@ -564,6 +567,7 @@ function Chess.new(seatCount: number, options: any?, _rng: Random?)
 		isDraw = false,
 		reason = nil :: string?,
 		botLevel = (options and options.botLevel) or "medium",
+		kingOfTheHill = options ~= nil and options.rules ~= nil and options.rules.kingOfTheHill == true,
 	}
 	state.history[positionKey(pos)] = 1
 	return state
@@ -647,7 +651,11 @@ function Chess.applyMove(state, seat: number, move: any)
 	local key = positionKey(pos)
 	state.history[key] = (state.history[key] or 0) + 1
 
-	if #legalMoves(pos) == 0 then
+	-- pos.side has flipped, so the side that just moved is -pos.side.
+	if state.kingOfTheHill and HILL[pos.kings[-pos.side]] then
+		state.winner = seat
+		state.reason = "King of the hill"
+	elseif #legalMoves(pos) == 0 then
 		if Chess.inCheck(pos) then
 			state.winner = seat
 			state.reason = "Checkmate"

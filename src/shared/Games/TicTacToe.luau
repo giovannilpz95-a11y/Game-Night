@@ -1,5 +1,6 @@
 -- Tic-Tac-Toe: the smallest real game, used to prove the table, turn and bot systems.
 -- Board cells are numbered 1..9, left to right, top to bottom. 0 = empty, else the seat.
+-- House rule "misere" (Upside down): whoever makes three in a row loses.
 
 local GameModule = require(script.Parent.Parent.GameModule)
 
@@ -27,6 +28,7 @@ export type State = {
 	winner: number?,
 	winningLine: { number }?,
 	isDraw: boolean,
+	misere: boolean,
 }
 
 local function findWinner(board: { number }): (number?, { number }?)
@@ -39,14 +41,16 @@ local function findWinner(board: { number }): (number?, { number }?)
 	return nil, nil
 end
 
-function TicTacToe.new(seatCount: number, _options: any?, _rng: Random?): State
+function TicTacToe.new(seatCount: number, options: any?, _rng: Random?): State
 	assert(seatCount == 2, "Tic-Tac-Toe needs exactly 2 seats")
+	local rules = (options and options.rules) or {}
 	return {
 		board = table.create(9, 0),
 		turn = 1,
 		winner = nil,
 		winningLine = nil,
 		isDraw = false,
+		misere = rules.misere == true,
 	}
 end
 
@@ -98,7 +102,8 @@ function TicTacToe.applyMove(state: State, seat: number, move: any)
 	state.board[move.cell] = seat
 	local winner, line = findWinner(state.board)
 	if winner then
-		state.winner = winner
+		-- Upside down: the line's maker loses, so the other seat wins.
+		state.winner = if state.misere then (if winner == 1 then 2 else 1) else winner
 		state.winningLine = line
 	elseif not table.find(state.board, 0) then
 		state.isDraw = true
@@ -109,7 +114,8 @@ end
 
 function TicTacToe.getResult(state: State): GameModule.Result?
 	if state.winner then
-		return { winners = { state.winner }, isDraw = false, reason = "Three in a row" }
+		local reason = if state.misere then "Made three in a row (upside down rules)" else "Three in a row"
+		return { winners = { state.winner }, isDraw = false, reason = reason }
 	elseif state.isDraw then
 		return { winners = {}, isDraw = true, reason = "The board is full" }
 	end
@@ -141,6 +147,23 @@ function TicTacToe.chooseBotMove(state: State, seat: number, rng: Random): any?
 			end
 		end
 		return nil
+	end
+
+	if state.misere then
+		-- Upside down: never finish a line of our own; anything else is fine.
+		local safe, open = {}, {}
+		for c = 1, 9 do
+			if board[c] == 0 then
+				table.insert(open, c)
+				board[c] = seat
+				if not findWinner(board) then
+					table.insert(safe, c)
+				end
+				board[c] = 0
+			end
+		end
+		local pool = if #safe > 0 then safe else open
+		return if #pool > 0 then { cell = pool[rng:NextInteger(1, #pool)] } else nil
 	end
 
 	local cell = completingCell(seat) or completingCell(opponent)

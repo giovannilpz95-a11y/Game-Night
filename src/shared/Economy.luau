@@ -16,6 +16,13 @@ Economy.Coins = {
 	checkers = { name = "Checkers Coins", color = Color3.fromRGB(235, 87, 87), order = 3 },
 	colorclash = { name = "Color Clash Coins", color = Color3.fromRGB(54, 162, 235), order = 4 },
 	party = { name = "Party Coins", color = Color3.fromRGB(153, 102, 255), order = 5 },
+	whodunit = { name = "Whodunit Coins", color = Color3.fromRGB(214, 168, 96), order = 6 },
+	property = { name = "Property Coins", color = Color3.fromRGB(88, 204, 120), order = 7 },
+	wordtiles = { name = "Word Tiles Coins", color = Color3.fromRGB(232, 180, 96), order = 8 },
+	conquest = { name = "Conquest Coins", color = Color3.fromRGB(226, 116, 84), order = 9 },
+	hexlands = { name = "Hexlands Coins", color = Color3.fromRGB(196, 140, 72), order = 10 },
+	-- Shared by the classic 52-card games: Speed, Spoons, Go Fish, War.
+	cards = { name = "Card Coins", color = Color3.fromRGB(46, 160, 100), order = 11 },
 }
 Economy.DefaultCoin = "arcade"
 
@@ -56,6 +63,10 @@ Economy.VipGemDiscount = 0.10 -- 10% off Gem prices
 -- Dressing Room saved looks
 Economy.FreeLookSlots = 3
 Economy.VipLookSlots = 20
+Economy.LookSlotGems = 100 -- one more saved look (VIP discount applies)
+Economy.MaxLookSlots = 30 -- cap on free + VIP + bought slots
+-- Roblox catalog items are only ever bought with Robux, never Gems or Coins. On every sale
+-- inside Game Night the experience gets 40% as commission (held 30 days by Roblox).
 
 -- Robux products. Create them in the Creator Hub (Monetization > Developer Products / Passes)
 -- and paste each ID here. An ID of 0 means "not set up yet" and the shop greys it out.

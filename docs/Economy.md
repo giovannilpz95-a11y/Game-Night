@@ -68,5 +68,6 @@ Developer products are granted in `ProcessReceipt`. The purchase ID is stored in
 
 ## Not built yet
 - Cosmetics are bought and equipped (saved in `equipped[shop][slot]`) but not drawn yet. Renderers will read the equipped piece set or board when the art exists.
-- VIP lounge, gold nameplate and VIP-only skins; Party Host private tables and house rules (the pass is detected, `hasPass` is ready).
+- VIP lounge, gold nameplate and VIP-only skins. (Every perk listed on VIP and Party Host is built: see [[Party Host]].)
+- Dressing Room extras beyond look slots (poses, effects); see [[Dressing Room]].
 - Friend invite reward, season pass, Game Night Club subscription, Robux-direct bundles.

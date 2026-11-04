@@ -4,9 +4,11 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Kit = require(script.Parent.Kit)
+local Table3D = require(script.Parent.Parent.Table3D.Controller)
 local Theme = Kit.Theme
 
 local Renderers = script.Parent.Parent.Renderers
@@ -52,6 +54,17 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end
 	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 100, 0, 36), Position = UDim2.new(1, -410, 0, 2), Parent = header })
 
+	-- 3D view: the board on the real table, seen from your seat. Phones start in the
+	-- flat view (it's easier to tap); everyone can switch with the button.
+	local want3D = not (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
+	local viewButton: TextButton
+	local applyMode: () -> ()
+	local table3D = Table3D.create(parent :: ScreenGui, function(move: any)
+		sendMatch({ action = "move", move = move })
+	end, function()
+		applyMode()
+	end)
+
 	local seatsPanel = Kit.panel({ Size = UDim2.new(0, 220, 1, -178), Position = UDim2.new(0, 20, 0, 104), Parent = root })
 	Kit.list(6).Parent = seatsPanel
 
@@ -65,15 +78,16 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	})
 
 	local resultOverlay = Kit.panel({
-		Size = UDim2.new(0, 360, 0, 250),
-		Position = UDim2.new(0.5, -180, 0.5, -125),
+		Size = UDim2.new(0, 360, 0, 270),
+		Position = UDim2.new(0.5, -180, 0.5, -135),
 		BackgroundColor3 = Theme.PanelLight,
 		Visible = false,
 		ZIndex = 10,
 		Parent = root,
 	})
 	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 56), ZIndex = 11, Parent = resultOverlay })
-	local reasonLabel = Kit.label("", { TextSize = 16, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 56), ZIndex = 11, Parent = resultOverlay })
+	-- Two lines, so longer reasons (a Whodunit solution) wrap instead of being cut off.
+	local reasonLabel = Kit.label("", { TextSize = 16, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.new(0, 0, 0, 56), Size = UDim2.new(1, 0, 0, 40), ZIndex = 11, Parent = resultOverlay })
 	-- What you earned, filled in by showReward a moment after the result arrives.
 	local rewardLabel = Kit.label("", {
 		TextSize = 15,
@@ -81,16 +95,36 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Font = Theme.FontBold,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		Position = UDim2.new(0, 0, 0, 84),
-		Size = UDim2.new(1, 0, 0, 110),
+		Position = UDim2.new(0, 0, 0, 100),
+		Size = UDim2.new(1, 0, 0, 94),
 		ZIndex = 11,
 		Parent = resultOverlay,
 	})
 	local closeButton: TextButton
 
+
 	local snapshot: any = nil
 	local renderer: any = nil
 	local rendererGameId: string? = nil
+
+	viewButton = Kit.button("2D view", function()
+		want3D = not want3D
+		if snapshot then
+			table3D.setSnapshot(snapshot, want3D)
+		end
+		applyMode()
+	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 100, 0, 36), Position = UDim2.new(1, -520, 0, 2), Visible = false, Parent = header })
+
+	function applyMode()
+		local in3D = table3D.isActive()
+		-- In 3D the screen stays see-through: header, seats and results float over the room.
+		root.BackgroundTransparency = if in3D then 1 else 0
+		board.Visible = not in3D
+		seatsPanel.Size = if in3D then UDim2.new(0, 220, 0, 0) else UDim2.new(0, 220, 1, -178)
+		seatsPanel.AutomaticSize = if in3D then Enum.AutomaticSize.Y else Enum.AutomaticSize.None
+		viewButton.Visible = table3D.available() and snapshot ~= nil and not (snapshot.result or snapshot.aborted)
+		viewButton.Text = if in3D then "2D view" else "3D view"
+	end
 
 	local function nameOf(seat: number): string
 		local s = snapshot.seats[seat]
@@ -192,6 +226,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		snapshot = nil
 		root.Visible = false
 		resultOverlay.Visible = false
+		table3D.setSnapshot(nil, want3D)
 	end, { Size = UDim2.new(1, 0, 0, 40), Position = UDim2.new(0, 0, 1, -40), ZIndex = 11, Parent = resultOverlay })
 
 	RunService.Heartbeat:Connect(function()
@@ -208,6 +243,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				if snapshot and not (snapshot.result or snapshot.aborted) then
 					snapshot = nil
 					root.Visible = false
+					table3D.setSnapshot(nil, want3D)
 				end
 				return
 			end
@@ -245,6 +281,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				renderer.update(snapshot)
 			end
 			renderResult()
+			table3D.setSnapshot(snapshot, want3D)
+			applyMode()
 		end,
 		isOpen = function(): boolean
 			return root.Visible

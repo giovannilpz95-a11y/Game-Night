@@ -40,7 +40,7 @@ local function chip(parent: Instance, order: number): (Frame, TextLabel, Frame)
 	return frame, label, dot
 end
 
-function WalletBar.create(parent: Instance, openShop: (string?) -> ())
+function WalletBar.create(parent: Instance, openShop: (string?) -> (), openDressingRoom: (() -> ())?)
 	local root = Kit.new("Frame", {
 		Name = "WalletBar",
 		BackgroundTransparency = 1,
@@ -69,6 +69,17 @@ function WalletBar.create(parent: Instance, openShop: (string?) -> ())
 		openShop(coinKey)
 	end, { Size = UDim2.new(0, 70, 1, 0), LayoutOrder = 3, Parent = root })
 
+	-- The Dressing Room is a lobby place; at a table the button hides so it can't cover the game.
+	local dressingButton = if openDressingRoom
+		then Kit.button("Dressing Room", openDressingRoom, {
+			BackgroundColor3 = Theme.PanelLight,
+			TextColor3 = Theme.Text,
+			Size = UDim2.new(0, 130, 1, 0),
+			LayoutOrder = 4,
+			Parent = root,
+		})
+		else nil
+
 	local function render()
 		gemsLabel.Text = if wallet then `{wallet.gems} {Economy.GemsName}` else "..."
 		if coinKey and wallet then
@@ -92,6 +103,9 @@ function WalletBar.create(parent: Instance, openShop: (string?) -> ())
 		-- it doesn't cover the table's buttons.
 		setContext = function(key: string?, atTable: boolean)
 			coinKey = key
+			if dressingButton then
+				dressingButton.Visible = not atTable
+			end
 			if atTable then
 				root.AnchorPoint = Vector2.new(0, 1)
 				root.Position = UDim2.new(0, 20, 1, -20)

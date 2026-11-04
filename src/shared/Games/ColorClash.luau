@@ -9,6 +9,9 @@
 -- otherwise (or if you pass) the turn moves on.
 -- Stacking: a Draw Two can answer a Draw Two, a Wild Draw Four can answer either. The
 -- player who can't (or won't) stack draws the whole pile of penalties and is skipped.
+-- House rules (options.rules): stacking = false (a draw card can't be answered, the next
+-- player just takes it), drawUntilPlayable = true (keep drawing until a card fits),
+-- handSize = 5 | 7 | 10.
 -- First to empty their hand wins. If the game drags past TURN_LIMIT turns, the fewest
 -- cards wins.
 --
@@ -84,10 +87,12 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 	end
 	shuffle(deck, random)
 
+	local rules = (options and options.rules) or {}
+	local handSize = if rules.handSize == 5 or rules.handSize == 10 then rules.handSize else HAND_SIZE
 	local hands = {}
 	for seat = 1, seatCount do
 		hands[seat] = {}
-		for _ = 1, HAND_SIZE do
+		for _ = 1, handSize do
 			table.insert(hands[seat], table.remove(deck) :: number)
 		end
 	end
@@ -118,6 +123,8 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 		winner = nil,
 		reason = nil,
 		botLevel = (options and options.botLevel) or "medium",
+		stacking = rules.stacking ~= false,
+		drawUntilPlayable = rules.drawUntilPlayable == true,
 	}
 end
 
@@ -130,6 +137,9 @@ local function canPlay(state, id: number): boolean
 	local card = cards[id]
 	local top = topCard(state)
 	if state.pendingDraw > 0 then
+		if not state.stacking then
+			return false
+		end
 		return card.kind == "wild4" or (card.kind == "draw2" and top.kind == "draw2")
 	end
 	if isWild(card) then
@@ -258,6 +268,9 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 		end
 		if not canPlay(state, id) then
 			if state.pendingDraw > 0 then
+				if not state.stacking then
+					return false, `Draw to take the {state.pendingDraw} cards`
+				end
 				return false, `Stack a draw card or take {state.pendingDraw} cards`
 			end
 			return false, "That card doesn't match"
@@ -286,7 +299,17 @@ function ColorClash.applyMove(state, seat: number, move: any)
 			return
 		end
 		local id = drawOne(state, seat)
-		state.lastAction = { seat = seat, kind = "draw", count = if id then 1 else 0 }
+		local count = if id then 1 else 0
+		if state.drawUntilPlayable then
+			-- Keep drawing until something fits (or the cards run out).
+			while id and not canPlay(state, id) do
+				id = drawOne(state, seat)
+				if id then
+					count += 1
+				end
+			end
+		end
+		state.lastAction = { seat = seat, kind = "draw", count = count }
 		if id and canPlay(state, id) then
 			state.drawnCard = id -- they may play it now, or pass
 		else

@@ -1,4 +1,6 @@
 -- Left-side panel: who's in your party, invite people in this server, invite Roblox friends.
+-- Also the table setting (invite only / private for friends / password, Party Host only),
+-- "Find a table" and "Host tools".
 
 local Players = game:GetService("Players")
 local SocialService = game:GetService("SocialService")
@@ -10,7 +12,11 @@ local PartyPanel = {}
 
 local localPlayer = Players.LocalPlayer
 
-function PartyPanel.create(parent: Instance, send: (any) -> ())
+local PRIVACY_ORDER = { "invite", "friends", "password" }
+local PRIVACY_NAMES = { invite = "Invite only", friends = "Private (friends)", password = "Password" }
+
+-- hooks: openTables(), openHostTools(), needHost(reason)
+function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 	local root = Kit.panel({
 		Name = "PartyPanel",
 		Size = UDim2.new(0, 260, 1, -40),
@@ -25,11 +31,41 @@ function PartyPanel.create(parent: Instance, send: (any) -> ())
 		send({ action = "leave" })
 	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, LayoutOrder = 3, Parent = root })
 
+	local isHost = false
+	local currentParty: any = nil
+
+	-- Table setting (leader) and the code for password tables (everyone in the party).
+	local privacyButton = Kit.button("", function()
+		local party = currentParty
+		if not party then
+			return
+		end
+		local index = table.find(PRIVACY_ORDER, party.privacy or "invite") or 1
+		local nextPrivacy = PRIVACY_ORDER[index % #PRIVACY_ORDER + 1]
+		if nextPrivacy ~= "invite" and not isHost then
+			hooks.needHost("Private and password tables come with the Party Host pass")
+			return
+		end
+		send({ action = "setPrivacy", privacy = nextPrivacy })
+	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, TextSize = 14, LayoutOrder = 7, Parent = root })
+	local codeRow = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 8, Visible = false, Parent = root })
+	local codeLabel = Kit.label("", { Size = UDim2.new(1, -96, 1, 0), Font = Theme.FontBold, Parent = codeRow })
+	local newCodeButton = Kit.button("New code", function()
+		send({ action = "setPrivacy", privacy = "password", newCode = true })
+	end, { Size = UDim2.new(0, 90, 0, 26), Position = UDim2.new(1, -90, 0, 1), TextSize = 13, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Parent = codeRow })
+
+	Kit.button("Find a table", function()
+		hooks.openTables()
+	end, { LayoutOrder = 9, Parent = root })
+	Kit.button("Host tools", function()
+		hooks.openHostTools()
+	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, LayoutOrder = 10, Parent = root })
+
 	Kit.label("Invite players here", { TextColor3 = Theme.SubText, LayoutOrder = 4, Parent = root })
 	local others = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, -260),
+		Size = UDim2.new(1, 0, 1, -430),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 4,
@@ -43,8 +79,6 @@ function PartyPanel.create(parent: Instance, send: (any) -> ())
 			pcall(SocialService.PromptGameInvite, SocialService, localPlayer)
 		end
 	end, { LayoutOrder = 6, Parent = root })
-
-	local currentParty: any = nil
 
 	local function row(text: string, color: Color3?): Frame
 		local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, Size = UDim2.new(1, 0, 0, 34), BorderSizePixel = 0 }, { Kit.corner(8) })
@@ -67,6 +101,8 @@ function PartyPanel.create(parent: Instance, send: (any) -> ())
 		Kit.clear(others)
 		if not party then
 			title.Text = "Your party"
+			privacyButton.Visible = false
+			codeRow.Visible = false
 			return
 		end
 		title.Text = `Your party ({#party.members}/{party.maxSize})`
@@ -86,6 +122,13 @@ function PartyPanel.create(parent: Instance, send: (any) -> ())
 			frame.Parent = members
 		end
 		leaveButton.Visible = #party.members > 1
+
+		local privacy = party.privacy or "invite"
+		privacyButton.Visible = isLeader
+		privacyButton.Text = `Table: {PRIVACY_NAMES[privacy] or privacy}  ▸`
+		codeRow.Visible = privacy == "password" and party.code ~= nil
+		codeLabel.Text = if party.code then `Table code: {party.code}` else ""
+		newCodeButton.Visible = isLeader
 
 		for _, player in Players:GetPlayers() do
 			if not inParty[player.UserId] then
@@ -109,6 +152,10 @@ function PartyPanel.create(parent: Instance, send: (any) -> ())
 		root = root,
 		setParty = function(party: any)
 			currentParty = party
+			render()
+		end,
+		setHost = function(value: boolean)
+			isHost = value
 			render()
 		end,
 	}

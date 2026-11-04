@@ -73,14 +73,25 @@ local function update(key: string, transform: (any) -> any): (boolean, any)
 	return false, lastErr
 end
 
+-- Players who just teleported in from another Game Night server: that server releases their
+-- profile a few seconds after they leave it, so we retry the lock more often.
+local function cameByTeleport(player: Player): boolean
+	local ok, joinData = pcall(player.GetJoinData, player)
+	return ok and type(joinData) == "table" and joinData.SourcePlaceId ~= nil
+end
+
 local function loadProfile(player: Player): Session?
 	local key = keyFor(player.UserId)
-	for attempt = 1, Config.ProfileLockRetries do
+	local teleported = cameByTeleport(player)
+	local retries = if teleported then Config.TeleportLockRetries else Config.ProfileLockRetries
+	local retryDelay = if teleported then Config.TeleportLockRetryDelay else Config.ProfileLockRetryDelay
+	for attempt = 1, retries do
 		-- Live: a lock younger than SessionLock.StaleSeconds belongs to a server that is
-		-- still saving (a fast rejoin), so we wait for it to let go. Studio: wait the same
-		-- way (the last Play session may still be writing), but on the last try take the
-		-- lock over instead of kicking, since a stopped Studio session never comes back.
-		local stale = if RunService:IsStudio() and attempt == Config.ProfileLockRetries then 0 else nil
+		-- still saving (a fast rejoin or a voice-server hop), so we wait for it to let go.
+		-- Studio: wait the same way (the last Play session may still be writing), but on the
+		-- last try take the lock over instead of kicking, since a stopped Studio session never
+		-- comes back.
+		local stale = if RunService:IsStudio() and attempt == retries then 0 else nil
 		local status = "locked"
 		local ok, record = update(key, function(old)
 			local claimed, result = SessionLock.claim(old, jobId, os.time(), stale)
@@ -96,7 +107,7 @@ local function loadProfile(player: Player): Session?
 			return { data = data, persistent = true, lost = false, saving = false, released = false }
 		end
 		-- Another server still owns it (they probably just hopped servers). Wait for it to save.
-		task.wait(Config.ProfileLockRetryDelay)
+		task.wait(retryDelay)
 		if not player.Parent then
 			return nil
 		end
