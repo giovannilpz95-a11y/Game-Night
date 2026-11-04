@@ -83,6 +83,7 @@ function EconomyService.push(player: Player)
 		passes = passes[player.UserId] or {},
 		vip = vip,
 		loginStreak = data.login.streak,
+		login = EconomyService.loginState(data),
 		firstWinDone = data.daily.firstWin,
 		challenges = data.daily.challenges,
 		starterAvailable = starter,
@@ -93,21 +94,70 @@ function EconomyService.push(player: Player)
 	})
 end
 
-local function sendReward(player: Player, title: string, lines: { string })
+local function sendReward(player: Player, title: string, lines: { string }, extra: { [string]: any }?)
 	if #lines > 0 then
-		rewardRemote:FireClient(player, { title = title, lines = lines })
+		local payload: { [string]: any } = { title = title, lines = lines }
+		for key, value in extra or {} do
+			payload[key] = value
+		end
+		rewardRemote:FireClient(player, payload)
 	end
+end
+
+-- For other services that change a profile themselves (FriendService): the reward toast.
+EconomyService.sendReward = sendReward
+
+local function coinOf(gameId: string): string?
+	local entry = GameCatalog.get(gameId)
+	return if entry then entry.coin or Economy.DefaultCoin else nil
+end
+
+-- What the daily reward card needs: the calendar, where the streak is, and what's next.
+function EconomyService.loginState(data: Profile.Data): any
+	local calendar = {}
+	for i, entry in Economy.DailyCalendar do
+		calendar[i] = { gems = entry.gems or 0, coins = entry.coins or 0 }
+	end
+	local inDays, milestoneGems = Daily.nextMilestone(data.login.streak)
+	return {
+		streak = data.login.streak,
+		best = data.login.best,
+		streakDay = Daily.calendarDay(data.login.streak),
+		claimedToday = data.login.lastDay == today(),
+		calendar = calendar,
+		coinKey = Daily.favoriteCoin(data, coinOf),
+		nextMilestoneIn = inDays,
+		nextMilestoneGems = milestoneGems,
+	}
 end
 
 -- New day: fresh challenges and counters, and the login reward.
 local function checkDay(player: Player, data: Profile.Data)
 	local day = today()
 	Daily.roll(data, day, readyGames(), Random.new())
-	local gems, streakDay = Daily.login(data, day, isVip(player))
-	if gems > 0 then
-		sendReward(player, "Daily reward", { `Day {streakDay} login: +{gems} {Economy.GemsName}` })
-		AnalyticsService.dailyLogin(player, data, gems)
+	local before = AnalyticsService.snapshot(data)
+	local reward = Daily.login(data, day, isVip(player), Daily.favoriteCoin(data, coinOf))
+	if reward then
+		local lines = {}
+		if reward.coins > 0 then
+			table.insert(lines, `+{reward.coins} {Economy.coinName(reward.coinKey :: string)}`)
+		end
+		if reward.gems - reward.milestoneGems > 0 then
+			table.insert(lines, `+{reward.gems - reward.milestoneGems} {Economy.GemsName}`)
+		end
+		if reward.milestoneGems > 0 then
+			table.insert(lines, `{reward.streak}-day streak bonus: +{reward.milestoneGems} {Economy.GemsName}`)
+		end
+		sendReward(player, `Day {reward.streak} login`, lines, { daily = EconomyService.loginState(data) })
+		AnalyticsService.dailyLogin(player, data, before)
 	end
+end
+
+local rewardedMatchListeners: { (Player, Profile.Data) -> () } = {}
+
+-- Called after every match that paid rewards (not too short, not resigned).
+function EconomyService.onRewardedMatch(callback: (Player, Profile.Data) -> ())
+	table.insert(rewardedMatchListeners, callback)
 end
 
 -- Gives Gems and/or Coins directly. For bonuses inside a game ("guessed the word first").
@@ -166,6 +216,11 @@ function EconomyService.recordMatch(
 	})
 	sendReward(player, "Rewards", Rewards.describe(payout))
 	AnalyticsService.matchPayout(player, data, payout)
+	if payout.xp > 0 then
+		for _, callback in rewardedMatchListeners do
+			task.spawn(callback, player, data)
+		end
+	end
 	EconomyService.push(player)
 	return payout
 end

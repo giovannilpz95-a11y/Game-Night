@@ -116,16 +116,9 @@ function AnalyticsService.matchPayout(player: Player, data: any, payout: any)
 	end
 end
 
--- The daily login reward was just paid.
-function AnalyticsService.dailyLogin(player: Player, data: any, gems: number)
-	economy(player, {
-		flow = "Source",
-		currency = AnalyticsEvents.GemsCurrency,
-		amount = gems,
-		balance = data.gems,
-		transaction = AnalyticsEvents.Transaction.TimedReward,
-		sku = "DailyLogin",
-	})
+-- The daily login reward was just paid. `before` is the wallet before it.
+function AnalyticsService.dailyLogin(player: Player, data: any, before: AnalyticsEvents.Wallet)
+	AnalyticsService.logChange(player, data, before, AnalyticsEvents.Transaction.TimedReward, "DailyLogin")
 	AnalyticsService.custom(player, AnalyticsEvents.Custom.DailyStreak, data.login.streak)
 end
 
@@ -172,6 +165,16 @@ end
 
 function AnalyticsService.inviteSent(player: Player)
 	AnalyticsService.custom(player, AnalyticsEvents.Custom.InviteSent, 1)
+end
+
+-- A friend arrived through an invite or followed a friend here. how: "invite" | "follow"
+function AnalyticsService.friendArrived(player: Player, how: string)
+	AnalyticsService.custom(player, AnalyticsEvents.Custom.FriendArrived, 1, AnalyticsEvents.fields(how))
+end
+
+-- "Ask to join" was sent to a leader, or answered. step: "asked" | "accepted" | "declined"
+function AnalyticsService.joinRequest(player: Player, step: string)
+	AnalyticsService.custom(player, AnalyticsEvents.Custom.JoinRequest, 1, AnalyticsEvents.fields(step))
 end
 
 function AnalyticsService.inviteAccepted(player: Player, partySize: number)

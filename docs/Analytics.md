@@ -47,7 +47,8 @@ One event per currency change, sent only from `EconomyService` and `PurchaseServ
 | First-win and challenge Gems | Source | Gameplay | `FirstWinOrChallenge` |
 | Level-up Gems | Source | Gameplay | `LevelUp` |
 | `EconomyService.award` bonus | Source | Gameplay | the award's `reason` |
-| Daily login Gems | Source | TimedReward | `DailyLogin` |
+| Daily login Gems or Coins | Source | TimedReward | `DailyLogin` |
+| Friend invite Gems (inviter / new player) | Source | Onboarding | `FriendInvite` / `FriendWelcome` |
 | Gem pack / Starter Pack | Source | IAP | pack key / `starter` |
 | Shop purchase | Sink | Shop | item id |
 
@@ -68,6 +69,8 @@ Roblox allows three custom fields (`CustomField01..03`), so match details are pa
 | `BotTookSeat` | 1 | game id | same reasons as above | |
 | `PartyFormed` | party size after someone joined | | | |
 | `InviteSent` / `InviteAccepted` | 1 | | | |
+| `FriendArrived` | 1 | `invite` or `follow` | | |
+| `JoinRequest` | 1 | `asked`, `accepted` or `declined` | | |
 | `DailyStreak` | login streak in days | | | |
 | `PassPrompted` | 1 | `vip` / `partyHost` | | |
 

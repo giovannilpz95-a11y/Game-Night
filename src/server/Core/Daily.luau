@@ -1,4 +1,4 @@
--- Daily rewards: login streak, the day's three challenges, and resetting daily counters.
+-- Daily rewards: login streak and calendar, the day's three challenges, and resetting daily counters.
 -- Pure: the day number, the list of games and the Random are passed in.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -82,22 +82,84 @@ function Daily.roll(data: Profile.Data, day: number, games: { GameInfo }, rng: R
 	return true
 end
 
--- Claims today's login reward if not claimed yet. Returns the Gems given (0 if already
--- claimed) and the streak day (1-7).
-function Daily.login(data: Profile.Data, day: number, vip: boolean): (number, number)
+export type LoginReward = {
+	streak: number, -- days in a row, including today
+	streakDay: number, -- position in Economy.DailyCalendar (1-7)
+	gems: number, -- total Gems paid today (calendar + milestone)
+	coins: number,
+	coinKey: string?, -- which Coins, when coins > 0
+	milestoneGems: number, -- part of `gems` from reaching a streak milestone
+}
+
+local function calendarDay(streak: number): number
+	return ((math.max(streak, 1) - 1) % #Economy.DailyCalendar) + 1
+end
+Daily.calendarDay = calendarDay
+
+-- The Coins a player cares about most: the coin kind of the game they've played most.
+-- coinOf maps a game id to its coin key (nil for unknown games).
+function Daily.favoriteCoin(data: Profile.Data, coinOf: (string) -> string?): string
+	local best, bestPlayed = Economy.DefaultCoin, 0
+	local ids = {}
+	for gameId in data.stats.games do
+		table.insert(ids, gameId)
+	end
+	table.sort(ids) -- ties go to the same game every time
+	for _, gameId in ids do
+		local played = data.stats.games[gameId].played
+		local coinKey = coinOf(gameId)
+		if coinKey and Economy.Coins[coinKey] and played > bestPlayed then
+			best, bestPlayed = coinKey, played
+		end
+	end
+	return best
+end
+
+-- Claims today's login reward if not claimed yet. Returns nil if it was already claimed.
+-- Coin days pay `coinKey` (see favoriteCoin). VIP doubles the calendar reward.
+function Daily.login(data: Profile.Data, day: number, vip: boolean, coinKey: string?): LoginReward?
 	local login = data.login
 	if login.lastDay == day then
-		return 0, ((login.streak - 1) % #Economy.DailyLoginGems) + 1
+		return nil
 	end
 	login.streak = if login.lastDay == day - 1 then login.streak + 1 else 1
 	login.lastDay = day
-	local streakDay = ((login.streak - 1) % #Economy.DailyLoginGems) + 1
-	local gems = Economy.DailyLoginGems[streakDay]
-	if vip then
-		gems *= Economy.VipDailyLoginMultiplier
+	login.best = math.max(login.best or 0, login.streak)
+
+	local streakDay = calendarDay(login.streak)
+	local entry = Economy.DailyCalendar[streakDay]
+	local multiplier = if vip then Economy.VipDailyLoginMultiplier else 1
+	local gems = (entry.gems or 0) * multiplier
+	local coins = (entry.coins or 0) * multiplier
+	local key = if coinKey and Economy.Coins[coinKey] then coinKey else Economy.DefaultCoin
+	local milestone = Economy.StreakMilestones[login.streak] or 0
+
+	Profile.addGems(data, gems + milestone)
+	if coins > 0 then
+		Profile.addCoins(data, key, coins)
 	end
-	Profile.addGems(data, gems)
-	return gems, streakDay
+	return {
+		streak = login.streak,
+		streakDay = streakDay,
+		gems = gems + milestone,
+		coins = coins,
+		coinKey = if coins > 0 then key else nil,
+		milestoneGems = milestone,
+	}
+end
+
+-- Days until the next streak milestone and what it pays, or nil when none are left.
+function Daily.nextMilestone(streak: number): (number?, number?)
+	local bestAt = nil
+	for at in Economy.StreakMilestones do
+		if at > streak and (bestAt == nil or at < bestAt) then
+			bestAt = at
+		end
+	end
+	if bestAt == nil then
+		return nil, nil
+	end
+	return bestAt - streak, Economy.StreakMilestones[bestAt]
 end
 
 -- Counts a finished match toward today's challenges. Returns the challenges it completed.

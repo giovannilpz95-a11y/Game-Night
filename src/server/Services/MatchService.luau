@@ -340,6 +340,12 @@ end
 
 -- Called when a player leaves the match, their party, or the server. `reason` is for
 -- analytics: "left" (default), "leftParty", "kicked" or "leftServer".
+-- The game a match is playing, for "Friends" rows ("Playing Chess"). nil if it's over.
+function MatchService.gameIdOf(matchId: string): string?
+	local entry = matches[matchId]
+	return if entry then entry.match.gameId else nil
+end
+
 function MatchService.leaveMatch(player: Player, reason: string?)
 	local entry = entryFor(player)
 	matchOfUser[player.UserId] = nil

@@ -16,7 +16,8 @@ Back to [[Home]] · see [[Architecture]]. The design (prices, earn targets, why)
 | `shared/ShopCatalog.luau` | Shop items as data (shop, slot, tier, coin price, Gem price, earned-only) |
 | `server/Core/Profile.luau` | The saved profile and safe balance changes |
 | `server/Core/Rewards.luau` | Match payout math (pure, tested) |
-| `server/Core/Daily.luau` | Login streak, daily challenges, daily counters |
+| `server/Core/Daily.luau` | Login calendar and streak, daily challenges, daily counters (see [[Friends]]) |
+| `server/Core/Referrals.luau` | Friend invite rewards (see [[Friends]]) |
 | `server/Core/Shop.luau` | Prices, buying, equipping |
 | `server/Core/SessionLock.luau` | Session lock so two servers never own one profile |
 | `server/Services/DataService.luau` | DataStore load and save, autosave, shutdown save |
@@ -34,7 +35,7 @@ minMinutes = 0.25,      -- shorter matches pay nothing
 minMoves = 7,           -- matches with fewer moves pay nothing
 ```
 
-Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The first win of the day and each daily challenge pay Gems; XP from time played levels the account up, and level-ups pay Gems.
+Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The daily login calendar pays Gems or Coins (see [[Friends]]). The first win of the day and each daily challenge pay Gems; XP from time played levels the account up, and level-ups pay Gems.
 
 For bonuses inside a game, or for games that don't use `MatchService`, call `EconomyService` from server code:
 
@@ -70,4 +71,4 @@ Developer products are granted in `ProcessReceipt`. The purchase ID is stored in
 - Cosmetics are bought and equipped (saved in `equipped[shop][slot]`) but not drawn yet. Renderers will read the equipped piece set or board when the art exists.
 - VIP lounge, gold nameplate and VIP-only skins. (Every perk listed on VIP and Party Host is built: see [[Party Host]].)
 - Dressing Room extras beyond look slots (poses, effects); see [[Dressing Room]].
-- Friend invite reward, season pass, Game Night Club subscription, Robux-direct bundles.
+- Season pass, Game Night Club subscription, Robux-direct bundles.

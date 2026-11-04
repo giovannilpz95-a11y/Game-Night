@@ -8,6 +8,7 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Economy]]: Gems, Coins, saving, the shop and Robux products
 - [[Launch]]: store page, art briefs, maturity questionnaire, products, soft launch, analytics and the pre-publish checklist
 - [[Dressing Room]]: trying on and buying Roblox catalog items, saved looks
+- [[Friends]]: daily login calendar and streaks, the Friends window (invite, join a friend's table, go to their server), friend invite rewards
 - [[Party Host]]: VIP and Party Host perks (private and password tables, house rules, custom word lists and quiz decks)
 - [[Voice Servers]]: voice-only servers and teleporting the party there and back
 - [[Card games]]: the shared 52-card deck, Card Coins, and why poker and blackjack are left out

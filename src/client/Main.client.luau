@@ -17,6 +17,8 @@ local DressingRoomPanel = require(script.Parent.UI.DressingRoomPanel)
 local TableList = require(script.Parent.UI.TableList)
 local HostPanel = require(script.Parent.UI.HostPanel)
 local VoicePanel = require(script.Parent.UI.VoicePanel)
+local FriendsPanel = require(script.Parent.UI.FriendsPanel)
+local DailyRewardCard = require(script.Parent.UI.DailyRewardCard)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 
@@ -29,6 +31,7 @@ local purchaseRequest = Net.event(Net.Names.PurchaseRequest)
 local dressingRequest = Net.event(Net.Names.DressingRoomRequest)
 local hostRequest = Net.event(Net.Names.HostRequest)
 local voiceRequest = Net.event(Net.Names.VoiceRequest)
+local friendRequest = Net.event(Net.Names.FriendRequest)
 
 local function sendParty(request: any)
 	partyRequest:FireServer(request)
@@ -73,6 +76,15 @@ local hostPanel = HostPanel.create(screen, function(request)
 end, hostHooks)
 hostHooks.openTables = tableList.open
 hostHooks.openHostTools = hostPanel.open
+local friendsPanel = FriendsPanel.create(screen, sendParty, function(request)
+	friendRequest:FireServer(request)
+end, function(message)
+	if popups then
+		popups.toast(message)
+	end
+end)
+hostHooks.openFriends = friendsPanel.open
+local dailyCard = DailyRewardCard.create(screen)
 
 local partyPanel = PartyPanel.create(lobby, sendParty, hostHooks)
 local gamePicker = GamePicker.create(lobby, sendMatch, hostHooks)
@@ -139,6 +151,10 @@ end)
 Net.event(Net.Names.PartyList).OnClientEvent:Connect(tableList.setRows)
 
 Net.event(Net.Names.Reward).OnClientEvent:Connect(function(reward)
+	if reward.daily and not matchView.isOpen() then
+		dailyCard.show(reward) -- mid-game (a new day started) it's just a toast
+		return
+	end
 	if reward.title == "Rewards" and matchView.showReward(reward.lines) then
 		return
 	end
@@ -161,12 +177,41 @@ Net.event(Net.Names.PartyState).OnClientEvent:Connect(function(party)
 		tableList.close() -- joined (or left for) another table
 	end
 	currentParty = party
+	friendsPanel.poke()
 	partyPanel.setParty(party)
 	gamePicker.setParty(party)
 	voicePanel.setParty(party)
 end)
 
 Net.event(Net.Names.VoiceState).OnClientEvent:Connect(voicePanel.setState)
+
+-- Friends: who's here, "Let Sam join?" for leaders, and "Join Leo's table?" on arrival.
+Net.event(Net.Names.FriendState).OnClientEvent:Connect(friendsPanel.setHere)
+Net.event(Net.Names.FriendPrompt).OnClientEvent:Connect(function(prompt)
+	if type(prompt) ~= "table" or type(prompt.userId) ~= "number" then
+		return
+	end
+	if prompt.kind == "joinRequest" then
+		local via = if prompt.friendName then ` (friend of {prompt.friendName})` else ""
+		popups.ask(`{prompt.name}{via} wants to join your table`, "Let in", "Not now", function()
+			sendParty({ action = "answerJoin", userId = prompt.userId, accept = true })
+		end, function()
+			sendParty({ action = "answerJoin", userId = prompt.userId, accept = false })
+		end, prompt.expiresIn)
+	elseif prompt.kind == "friendHere" then
+		popups.ask(`{prompt.name} is here. Join their table?`, "Join", "Later", function()
+			sendParty({ action = "joinFriend", userId = prompt.userId })
+		end, nil, 30)
+	end
+end)
+
+-- A friend joining the server gets a toast (the friend check runs on this client).
+Players.PlayerAdded:Connect(function(player)
+	local ok, friends = pcall(localPlayer.IsFriendsWith, localPlayer, player.UserId)
+	if ok and friends then
+		popups.toast(`Your friend {player.DisplayName} is here`)
+	end
+end)
 
 Net.event(Net.Names.PartyInvite).OnClientEvent:Connect(popups.invite)
 Net.event(Net.Names.Notify).OnClientEvent:Connect(popups.toast)
@@ -182,3 +227,4 @@ economyRequest:FireServer({ action = "sync" })
 dressingRequest:FireServer({ action = "sync" })
 hostRequest:FireServer({ action = "sync" })
 voiceRequest:FireServer({ action = "sync" })
+friendRequest:FireServer({ action = "sync" })

@@ -41,10 +41,30 @@ Economy.WinsVsSameHumanPerDay = 3 -- anti win-trading: later wins vs the same pe
 Economy.CoinMultipliers = {} -- events, e.g. { colorclash = 2 } for a launch week
 
 -- Gems (target: about 25 a day for an active free player)
-Economy.DailyLoginGems = { 5, 5, 5, 5, 5, 5, 20 } -- day 7 of a streak pays 20, then it repeats
+-- Daily login calendar: day N of a login streak pays entry N, then it repeats from day 1.
+-- Coin days pay the Coins of the game the player has played most (Arcade Coins at first).
+-- Missing a day starts the streak again. 50 Gems and 225 Coins a week.
+Economy.DailyCalendar = {
+	{ coins = 50 },
+	{ gems = 5 },
+	{ coins = 75 },
+	{ gems = 5 },
+	{ coins = 100 },
+	{ gems = 10 },
+	{ gems = 30 },
+}
+-- Extra Gems the day a login streak reaches these lengths (not doubled for VIP).
+Economy.StreakMilestones = { [14] = 25, [30] = 50, [60] = 100, [100] = 150 }
 Economy.FirstWinGems = 5
 Economy.ChallengeGems = 5
 Economy.ChallengesPerDay = 3
+
+-- Friend invites. A Roblox friend who joins through your invite (or share link) for the
+-- first time and finishes a rewarded game pays you, once per friend and up to a cap a day.
+-- They get a welcome bonus too.
+Economy.FriendInviteGems = 25
+Economy.FriendInvitesPerDay = 5
+Economy.FriendWelcomeGems = 10
 
 -- Account level: XP from time played, Gems on each level-up
 Economy.XpPerMinute = 10
@@ -96,7 +116,7 @@ Economy.Passes = {
 		robux = 399,
 		perks = {
 			"+25% Gems and Coins from play",
-			"Double daily login Gems",
+			"Double daily login rewards",
 			"10% off Gem prices",
 			"VIP chat tag",
 			"20 saved looks in the Dressing Room",

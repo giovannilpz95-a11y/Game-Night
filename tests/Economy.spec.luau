@@ -79,24 +79,81 @@ return function(T)
 
 	-- Daily -----------------------------------------------------------------------
 
-	T.test("login streak pays 5 a day and 20 on day 7, and resets after a missed day", function()
+	T.test("login calendar pays its 7 days, then repeats, and resets after a missed day", function()
 		local data = fresh()
-		local total = 0
+		local gems, coins = 0, 0
 		for d = 1, 7 do
-			local gems, streakDay = Daily.login(data, DAY + d, false)
-			T.eq(streakDay, d)
-			total += gems
+			local reward = Daily.login(data, DAY + d, false, "chess")
+			T.ok(reward ~= nil)
+			T.eq(reward.streakDay, d)
+			T.eq(reward.streak, d)
+			gems += reward.gems
+			coins += reward.coins
+			if reward.coins > 0 then
+				T.eq(reward.coinKey, "chess")
+			end
 		end
-		T.eq(total, 5 * 6 + 20)
-		T.eq((Daily.login(data, DAY + 7, false)), 0, "same day pays once")
-		local gems, streakDay = Daily.login(data, DAY + 9, false)
-		T.eq(streakDay, 1)
-		T.eq(gems, 5)
+		local wantGems, wantCoins = 0, 0
+		for _, entry in Economy.DailyCalendar do
+			wantGems += entry.gems or 0
+			wantCoins += entry.coins or 0
+		end
+		T.eq(gems, wantGems)
+		T.eq(coins, wantCoins)
+		T.eq(data.gems, wantGems)
+		T.eq(data.coins.chess, wantCoins)
+		T.eq(Daily.login(data, DAY + 7, false, "chess"), nil, "same day pays once")
+		local day8 = Daily.login(data, DAY + 8, false, "chess")
+		T.eq(day8.streak, 8)
+		T.eq(day8.streakDay, 1, "calendar repeats")
+		local again = Daily.login(data, DAY + 10, false, "chess")
+		T.eq(again.streak, 1, "missed a day")
+		T.eq(again.streakDay, 1)
+		T.eq(data.login.best, 8)
 	end)
 
-	T.test("VIP doubles the login reward", function()
+	T.test("VIP doubles the calendar reward", function()
 		local data = fresh()
-		T.eq((Daily.login(data, DAY, true)), 10)
+		local reward = Daily.login(data, DAY, true, nil)
+		T.eq(reward.coins, (Economy.DailyCalendar[1].coins or 0) * Economy.VipDailyLoginMultiplier)
+		T.eq(reward.coinKey, Economy.DefaultCoin, "unknown coin falls back")
+		local day2 = Daily.login(data, DAY + 1, true, nil)
+		T.eq(day2.gems, (Economy.DailyCalendar[2].gems or 0) * Economy.VipDailyLoginMultiplier)
+	end)
+
+	T.test("streak milestones pay extra Gems once, on the day they're reached", function()
+		local data = fresh()
+		local milestoneDays = {}
+		for at in Economy.StreakMilestones do
+			table.insert(milestoneDays, at)
+		end
+		table.sort(milestoneDays)
+		local first = milestoneDays[1]
+		local paid = 0
+		for d = 1, first + 1 do
+			local reward = Daily.login(data, DAY + d, false, nil)
+			if reward.milestoneGems > 0 then
+				T.eq(reward.streak, first)
+				paid += reward.milestoneGems
+			end
+		end
+		T.eq(paid, Economy.StreakMilestones[first])
+		local inDays, gems = Daily.nextMilestone(first)
+		T.eq(inDays, milestoneDays[2] - first)
+		T.eq(gems, Economy.StreakMilestones[milestoneDays[2]])
+		T.eq((Daily.nextMilestone(100000)), nil)
+	end)
+
+	T.test("coin days pay the Coins of the game you play most", function()
+		local data = fresh()
+		local coinOf = function(gameId)
+			return ({ Chess = "chess", Checkers = "checkers", TicTacToe = "arcade" })[gameId]
+		end
+		T.eq(Daily.favoriteCoin(data, coinOf), Economy.DefaultCoin, "new players get the default")
+		data.stats.games.Chess = { played = 2, wins = 0 }
+		data.stats.games.Checkers = { played = 5, wins = 1 }
+		data.stats.games.Gone = { played = 50, wins = 0 } -- removed game: ignored
+		T.eq(Daily.favoriteCoin(data, coinOf), "checkers")
 	end)
 
 	T.test("three challenges, one of them a game you haven't played", function()
