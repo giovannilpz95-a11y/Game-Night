@@ -40,12 +40,12 @@ local function setLighting()
 	-- Night outside, but the room has to read under every Technology (Voxel and
 	-- ShadowMap barely use the lamps), so the base ambient is fairly bright and neutral.
 	Lighting.ClockTime = 20.6
-	Lighting.Brightness = 2
+	Lighting.Brightness = 1.5
 	Lighting.Ambient = Color3.fromRGB(150, 140, 130)
 	Lighting.OutdoorAmbient = Color3.fromRGB(118, 118, 138)
 	Lighting.EnvironmentDiffuseScale = 0.6
 	Lighting.EnvironmentSpecularScale = 0.4
-	Lighting.ExposureCompensation = 0.35
+	Lighting.ExposureCompensation = 0 -- higher washed white squares and pieces out at the tables
 	Lighting.GlobalShadows = true
 
 	local function effect(className: string, name: string): Instance
@@ -64,9 +64,10 @@ local function setLighting()
 	cc.Contrast = 0.05
 	cc.Brightness = 0.04
 	local bloom = effect("BloomEffect", "Bloom") :: BloomEffect
-	bloom.Intensity = 0.7
-	bloom.Size = 26
-	bloom.Threshold = 1.4
+	-- High threshold: only the neon bulbs glow, not white board squares or avatars.
+	bloom.Intensity = 0.3
+	bloom.Size = 20
+	bloom.Threshold = 2.4
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 	if atmosphere then
 		atmosphere.Density = 0.22
@@ -150,7 +151,7 @@ local function tableLamps(lobby: Instance)
 					end
 					if light:IsA("SpotLight") then
 						-- A little brighter over a game in progress.
-						light.Brightness = if model:GetAttribute("State") == "Playing" then 2.8 else 2.2
+						light.Brightness = if model:GetAttribute("State") == "Playing" then 1.4 else 1.1
 					end
 				end
 			end

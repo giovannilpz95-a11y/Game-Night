@@ -30,7 +30,7 @@ The room is 200 x 170 studs (inside the walls), 30 high. Spawn is at (0, 0, 6), 
 | `server/Lobby/Props.luau` | One builder per prop: couch (with Seats, so avatars can lounge), coffee table, floor lamp, bench, plant, game shelf full of made-up game boxes, TV, trophy case, arcade cabinet, Party board, snack bar, Dressing Room corner, hanging zone banners, table pendant lamps. |
 | `server/Services/LobbyService.luau` | Builds the room on server start, sets the lighting, turns the spawn into the welcome mat, hangs a lamp over every table (brighter and more golden while a game is on), and keeps the TV and the Party board up to date. |
 
-Tables still come from `server/Tables/Builder.luau`; it now places them on the `LobbyLayout` spots instead of a grid. Each table gets a **sign post** at its edge (between seats 1 and 2) with the table's state on both faces ("Free table", "Chess · Leo vs Bot Ava"). It replaced the floating BillboardGui, which always faced the camera, so from the spawn a row of five signs lined up into one long bar.
+Tables still come from `server/Tables/Builder.luau`; it now places them on the `LobbyLayout` spots instead of a grid. Each table gets a **sign post** at its edge (on the side facing the middle of the room) with the table's state on both faces ("Free table", "Chess · Leo vs Bot Ava"). It replaced the floating BillboardGui, which always faced the camera, so from the spawn a row of five signs lined up into one long bar.
 
 ## Live pieces
 - **TV** over the Party Stage: "GAME NIGHT", then a game from the catalog every 6 seconds and how many tables are playing.

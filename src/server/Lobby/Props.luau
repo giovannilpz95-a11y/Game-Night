@@ -593,12 +593,12 @@ function Props.pendant(at: Vector3, ceilingY: number, parent: Instance): (Model,
 	local light = Instance.new("SpotLight")
 	light.Face = Enum.NormalId.Bottom
 	light.Angle = 100
-	light.Range = 24
-	light.Brightness = 2.4
+	light.Range = 22
+	light.Brightness = 1.1
 	light.Color = C.tableLight
 	light.Shadows = true
 	light.Parent = bulb
-	local glow = lamp(bulb, 14, 0.5, C.tableLight)
+	local glow = lamp(bulb, 12, 0.3, C.tableLight)
 	glow.Shadows = false
 	local _ = shade
 	return m, glow, bulb
