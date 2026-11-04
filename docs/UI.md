@@ -32,7 +32,7 @@ Windows use `Kit.modal(parent, opts)`: a dimmed overlay, a centered window with 
 
 ## Help (`UI/RulesPanel`, `UI/LobbyTour`)
 Rules text lives in `shared/GameRules.luau`, one entry per catalog id (see [[Adding a game]]).
-- **How-to-play card**: shown when you sit down for a new match: the goal, 2-4 numbered lines, Full rules and Got it. "Don't show this card for this game" is saved in the profile (`tips.hideCard`).
+- **How-to-play card**: shown when you sit down for a new match: the goal, 2-4 numbered lines, Full rules and Got it. "Don't show this card for this game" is saved in the profile (`tips.hideCard`). Each player's first turn of a match gets `Config.FirstTurnGrace` extra seconds, so reading it doesn't cost a turn.
 - **Rules page**: the ? in the match header, the ? on each game in the picker, and Help in the lobby. It's a lightly dimmed window, so the match carries on behind it. The game's house rules are listed from `GameCatalog`.
 - **Help** (the ? by Play): every game's rules and "Replay the lobby tour".
 - **Lobby tour**: coach marks on Play, Party, Tables, the wallet, Shop, Looks, Host and Help, with Next / Skip. It runs once per player: finishing or skipping sends `{ action = "tips", tip = "lobbyTour" }` on `EconomyRequest`, checked by `server/Core/Tips`. Steps whose button is hidden are skipped.
