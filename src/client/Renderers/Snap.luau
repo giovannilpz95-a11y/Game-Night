@@ -1,6 +1,7 @@
 -- Snap table: every player's face-up pile across the felt (name and cards left under each),
--- a big SNAP! button on the right (Space also snaps), and your face-down pile at the
--- bottom: tap it, or Flip, on your turn. Matches are never highlighted; spotting them is
+-- your face-down pile at the bottom (tap it, or Flip, on your turn) with a big SNAP!
+-- button beside it (Space also snaps). Both sit in the bottom strip that Table view keeps
+-- on screen. Matches are never highlighted; spotting them is
 -- the game.
 
 local UserInputService = game:GetService("UserInputService")
@@ -17,22 +18,12 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local ui = CardTable.layout(container)
 
-	local piles = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.76, 0, 1, 0), Parent = ui.felt })
+	local piles = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = ui.felt })
 	local status = CardTable.feltText(ui.felt, "", 0.02, 16)
-	status.Size = UDim2.new(0.76, -16, 0, 22)
 
-	local snapButton = Kit.button("SNAP!", function()
+	local snapButton = CardTable.bigButton(ui, "SNAP!", function()
 		sendMove({ kind = "snap" })
-	end, {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(0.97, 0, 0.55, 0),
-		Size = UDim2.new(0.2, 0, 0.6, 0),
-		TextScaled = true,
-		BackgroundColor3 = Theme.Bad,
-		TextColor3 = Theme.Text,
-		ZIndex = 7,
-		Parent = ui.felt,
-	})
+	end)
 	local snapScale = Kit.new("UIScale", { Parent = snapButton })
 
 	local connection = UserInputService.InputBegan:Connect(function(input, processed)

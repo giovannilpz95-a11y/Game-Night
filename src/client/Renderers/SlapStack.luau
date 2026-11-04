@@ -1,5 +1,6 @@
 -- Slap Stack table: players along the top, the middle pile with its top three cards
--- fanned out, a big SLAP button (Space also slaps) and FLIP on your turn.
+-- fanned out, a big SLAP button beside your pile at the bottom (Space also slaps; it sits
+-- in the strip Table view keeps on screen) and FLIP on your turn.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -23,7 +24,7 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 	for i = 1, 3 do
 		slots[i] = PlayingCard.slot({
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.36 + (i - 1) * 0.09, 0.55),
+			Position = UDim2.fromScale(0.41 + (i - 1) * 0.09, 0.55),
 			Size = UDim2.fromScale(1, 0.68),
 			ZIndex = i,
 			Parent = ui.felt,
@@ -32,18 +33,9 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 	local status = CardTable.feltText(ui.felt, "", 0.03, 18)
 	local countLabel = Kit.label("", { TextSize = 13, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0.3, 0, 0.92, 0), Size = UDim2.new(0.4, 0, 0, 16), ZIndex = 6, Parent = ui.felt })
 
-	local slapButton = Kit.button("SLAP!", function()
+	local slapButton = CardTable.bigButton(ui, "SLAP!", function()
 		sendMove({ kind = "slap" })
-	end, {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(0.97, 0, 0.55, 0),
-		Size = UDim2.new(0.2, 0, 0.6, 0),
-		TextScaled = true,
-		BackgroundColor3 = Theme.Bad,
-		TextColor3 = Theme.Text,
-		ZIndex = 7,
-		Parent = ui.felt,
-	})
+	end)
 	local slapScale = Kit.new("UIScale", { Parent = slapButton })
 
 	local lastFlips = -1
