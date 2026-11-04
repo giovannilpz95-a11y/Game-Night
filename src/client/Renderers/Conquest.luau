@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Rules = require(ReplicatedStorage.Shared.Games.Conquest)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local Conquest = {}
@@ -179,6 +180,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		ScrollBarThickness = 6,
 		Parent = root,
 	}, { Kit.corner(14), Kit.padding(12), Kit.list(8) })
+	HudKit.sidePanel(side)
 
 	local function section(order: number): Frame
 		return Kit.new("Frame", {
@@ -197,7 +199,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	local logSection = section(5)
 
 	local function heading(text: string, parent: Instance, order: number)
-		return Kit.label(text, { Font = Theme.FontBold, TextSize = 17, LayoutOrder = order, Parent = parent })
+		return HudKit.heading(text, { LayoutOrder = order, Parent = parent })
 	end
 	local function hint(text: string, parent: Instance, order: number, color: Color3?)
 		return Kit.label(text, {
@@ -285,16 +287,18 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	local function renderActions(view: any, me: number?)
 		Kit.clear(actions)
 		if snapshot.result then
-			heading("Game over", actions, 1)
+			HudKit.turnTint(side, nil, false)
+			HudKit.statusCard("Game over", nil, false, { LayoutOrder = 1, Parent = actions })
 			return
 		end
+		HudKit.turnTint(side, view.turn, myTurn())
 		if not myTurn() then
-			heading(`{nameOf(view.turn)}'s turn`, actions, 1)
+			HudKit.statusCard(`{nameOf(view.turn)}'s turn`, view.turn, false, { LayoutOrder = 1, Parent = actions })
 			local doing = if view.phase == "reinforce" then "placing armies" else "on the attack"
 			hint(`Round {view.round} of {view.maxRounds}. They're {doing}.`, actions, 2)
 			return
 		end
-		heading(`Round {view.round} of {view.maxRounds}: your turn`, actions, 1)
+		HudKit.statusCard(`Round {view.round} of {view.maxRounds}: your turn`, view.turn, true, { LayoutOrder = 1, Parent = actions })
 		if view.phase == "reinforce" then
 			if view.mustTrade then
 				hint(`You have {#view.hand} cards. Trade a set below first.`, actions, 2, Theme.Accent)
