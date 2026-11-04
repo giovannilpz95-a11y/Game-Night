@@ -11,6 +11,7 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Reactions]]: the 😀 wheel's animated reactions and the reaction packs for sale
 - [[Progression]]: levels, badges, weekly leaderboards and the stats profile
 - [[Store page]]: title, description, genre, icon, thumbnails and trailer shot list
+- [[LaunchChecklist]]: what Giovanni must do himself before going public, and what the launch audit checked
 - [[Launch]]: store page settings, maturity questionnaire, products, soft launch, analytics and the pre-publish checklist
 - [[Dressing Room]]: trying on and buying Roblox catalog items, saved looks
 - [[Friends]]: daily login calendar and streaks, the Friends window (invite, join a friend's table, go to their server), friend invite rewards

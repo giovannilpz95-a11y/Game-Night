@@ -397,6 +397,21 @@ return function(T)
 		end
 	end)
 
+	T.test("reconcile keeps a newer save's version (rollback to an older build)", function()
+		local newer = Profile.new(1000)
+		newer.version = Profile.Version + 3
+		newer.futureField = { kept = true }
+		local loaded = Profile.reconcile(newer, 2000)
+		T.eq(loaded.version, Profile.Version + 3)
+		T.eq((loaded :: any).futureField.kept, true, "fields it doesn't know survive")
+		local old = Profile.new(1000)
+		old.version = 0
+		T.eq(Profile.reconcile(old, 2000).version, Profile.Version)
+		local broken = Profile.new(1000)
+		broken.version = 0 / 0
+		T.eq(Profile.reconcile(broken, 2000).version, Profile.Version)
+	end)
+
 	-- Session lock --------------------------------------------------------------------
 
 	T.test("a server can claim a free profile and another server can't take it", function()
