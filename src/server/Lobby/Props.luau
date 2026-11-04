@@ -6,6 +6,10 @@
 -- No casino props here (slot machines, roulette, chips): the maturity questionnaire
 -- answer for gambling is No.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local L = require(ReplicatedStorage.Shared.LobbyLayout)
+
 local Props = {}
 
 Props.Colors = {
@@ -500,8 +504,29 @@ function Props.SnackBar(origin: CFrame, w: number, d: number, parent: Instance):
 	end
 	-- Menu sign above the back bar.
 	local sign = box(m, origin, 0, 10.2, backZ - 0.2, w * 0.7, 3, 0.3, { Color = C.ink })
-	Props.text(sign, Enum.NormalId.Front, "Snack Bar", { color = Color3.fromRGB(255, 214, 120), stroke = Color3.fromRGB(150, 60, 30), lightInfluence = 0, padding = 0.1 })
+	Props.text(sign, Enum.NormalId.Front, "Snack Bar · Shop", { color = Color3.fromRGB(255, 214, 120), stroke = Color3.fromRGB(150, 60, 30), lightInfluence = 0, padding = 0.1 })
 	lamp(sign, 16, 0.8)
+	-- The bar doubles as the shop: a chalkboard on the counter and a prompt to open it.
+	local board = box(m, origin, w / 4, 5.3, counterZ - 0.4, 4.2, 2.6, 0.2, { Color = Color3.fromRGB(34, 44, 40), Material = Enum.Material.Slate })
+	board.CFrame *= CFrame.Angles(math.rad(-12), 0, 0)
+	box(m, origin, w / 4, 5.3, counterZ - 0.3, 4.6, 3, 0.15, { Color = C.lightWood, Material = Enum.Material.Wood }).CFrame *= CFrame.Angles(math.rad(-12), 0, 0)
+	Props.text(board, Enum.NormalId.Front, '<font color="#FFD978">SHOP</font>\nPieces · Cards\nReactions · Gems', { color = Color3.fromRGB(236, 240, 230), rich = true, padding = 0.1, lightInfluence = 0.5 })
+	local holder = box(m, origin, 0, 3, counterZ - 2.6, 1, 1, 1, {
+		Name = "ShopPromptHolder",
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+		CastShadow = false,
+	})
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ShopPrompt"
+	prompt.ActionText = "Open the shop"
+	prompt.ObjectText = "Snack Bar"
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = holder
 	-- Pendant lights over the counter.
 	for i = 0, 2 do
 		local lx = -w / 2 + w * (i + 0.5) / 3
@@ -592,6 +617,376 @@ function Props.DressingCorner(origin: CFrame, w: number, d: number, parent: Inst
 	local sign = box(m, origin, 0, 14, d / 2 - 0.5, 14, 2.4, 0.3, { Color = C.ink })
 	Props.text(sign, Enum.NormalId.Front, "Dressing Room", { color = Color3.fromRGB(255, 200, 236), stroke = Color3.fromRGB(120, 40, 110), lightInfluence = 0, padding = 0.1 })
 	lamp(sign, 16, 0.8, Color3.fromRGB(255, 190, 220))
+	return m
+end
+
+---------------------------------------------------------------------------------------
+-- Cozy corner, wayfinding and the jukebox
+
+-- A single padded armchair (front -Z) with a Seat.
+function Props.Armchair(origin: CFrame, w: number, d: number, parent: Instance): Model
+	local m = newModel("Armchair", parent)
+	local leather = { Color = Color3.fromRGB(128, 58, 44), Material = Enum.Material.Leather }
+	for _, fx in { -w / 2 + 0.5, w / 2 - 0.5 } do
+		for _, fz in { -d / 2 + 0.5, d / 2 - 0.5 } do
+			box(m, origin, fx, 0.3, fz, 0.4, 0.6, 0.4, { Color = C.darkWood, Material = Enum.Material.Wood })
+		end
+	end
+	box(m, origin, 0, 1.2, 0.1, w, 1.2, d - 0.2, leather)
+	box(m, origin, 0, 3.0, d / 2 - 0.5, w, 3.4, 1, leather)
+	for _, ax in { -w / 2 + 0.45, w / 2 - 0.45 } do
+		box(m, origin, ax, 2.2, 0, 0.9, 1.4, d, leather)
+	end
+	box(m, origin, 0, 2.0, -0.3, w - 1.8, 0.45, d - 1.4, { Color = Color3.fromRGB(150, 74, 56), Material = Enum.Material.Leather })
+	box(m, origin, 0, 3.1, d / 2 - 1.1, 1.4, 1.2, 0.4, { Color = Color3.fromRGB(236, 200, 120), Material = Enum.Material.Fabric }).CFrame *= CFrame.Angles(math.rad(-10), 0, math.rad(8))
+	seat(m, origin, 0, 2.3, -0.3, w - 2, d - 1.8)
+	return m
+end
+
+-- A stone fireplace against the wall (back is +Z) with a chimney breast up to the ceiling,
+-- logs, a real Fire effect and a warm light. One shadowed light, no scripts.
+function Props.Fireplace(origin: CFrame, w: number, d: number, parent: Instance): Model
+	local m = newModel("Fireplace", parent)
+	local stone = { Color = Color3.fromRGB(150, 134, 120), Material = Enum.Material.Cobblestone }
+	local brick = { Color = Color3.fromRGB(150, 76, 58), Material = Enum.Material.Brick }
+	-- Hearth slab in front.
+	box(m, origin, 0, 0.25, -0.6, w + 1.6, 0.5, d + 1.4, { Color = Color3.fromRGB(96, 90, 88), Material = Enum.Material.Slate })
+	-- Surround: two pillars and a lintel, a dark firebox behind.
+	for _, sx in { -w / 2 + 1.1, w / 2 - 1.1 } do
+		box(m, origin, sx, 3.75, 0, 2.2, 6.5, d, stone)
+	end
+	box(m, origin, 0, 6.2, 0, w - 4.4, 1.6, d, stone)
+	box(m, origin, 0, 3, d / 2 - 0.4, w - 4.4, 5.4, 0.8, { Color = Color3.fromRGB(28, 22, 20), Material = Enum.Material.Slate })
+	box(m, origin, 0, 0.55, 0.3, w - 4.4, 0.1, d - 0.6, { Color = Color3.fromRGB(40, 32, 30), Material = Enum.Material.Slate })
+	-- Mantel shelf and the chimney breast above it.
+	box(m, origin, 0, 7.3, -0.2, w + 0.6, 0.6, d + 0.6, { Color = C.darkWood, Material = Enum.Material.Wood })
+	local top = L.CEILING_Y - 7.6
+	box(m, origin, 0, 7.6 + top / 2, 0.4, w - 1.6, top, d - 0.8, brick)
+	-- Logs and glowing embers.
+	for i, lx in { -1.3, 0, 1.3 } do
+		local log = cylinder(m, origin, lx * 0.8, 1.0 + (i == 2 and 0.5 or 0), 0.2, 3.2, 0.7, { Color = Color3.fromRGB(78, 52, 36), Material = Enum.Material.Wood })
+		log.CFrame = origin * CFrame.new(lx * 0.8, 1.0 + (if i == 2 then 0.5 else 0), 0.2) * CFrame.Angles(0, math.rad(90 + (i - 2) * 25), 0)
+	end
+	local embers = box(m, origin, 0, 0.75, 0.2, 3.6, 0.3, 1.6, { Color = Color3.fromRGB(255, 120, 40), Material = Enum.Material.Neon, CastShadow = false, CanCollide = false })
+	embers.Name = "Embers"
+	local fire = Instance.new("Fire")
+	fire.Color = Color3.fromRGB(255, 140, 50)
+	fire.SecondaryColor = Color3.fromRGB(255, 60, 20)
+	fire.Heat = 6
+	fire.Size = 4
+	fire.Parent = embers
+	local glow = lamp(embers, 18, 1.4, Color3.fromRGB(255, 150, 80))
+	glow.Shadows = true
+	-- Mantel things: two candles, a little clock and a framed picture of a game board.
+	for _, cx in { -w / 2 + 1.4, w / 2 - 1.4 } do
+		cylinder(m, origin, cx, 8.2, -0.4, 1.2, 0.4, { Color = C.cream })
+		ball(m, origin, cx, 8.95, -0.4, 0.25, { Color = Color3.fromRGB(255, 200, 110), Material = Enum.Material.Neon, CastShadow = false, CanCollide = false })
+	end
+	box(m, origin, 2.4, 8.3, -0.3, 1.2, 1.4, 0.6, { Color = C.brass, Material = Enum.Material.Metal })
+	local frame = box(m, origin, 0, 11.6, -0.1 - (d - 0.8) / 2 + 0.4, 5, 4, 0.3, { Color = C.brass, Material = Enum.Material.Metal })
+	local canvas = box(m, origin, 0, 11.6, -0.3 - (d - 0.8) / 2 + 0.4, 4.4, 3.4, 0.1, { Color = Color3.fromRGB(236, 224, 196) })
+	-- A little checkerboard painting.
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 20
+	gui.LightInfluence = 1
+	local grid = Instance.new("UIGridLayout")
+	grid.CellSize = UDim2.fromScale(1 / 6, 1 / 6)
+	grid.CellPadding = UDim2.new()
+	grid.Parent = gui
+	for i = 0, 35 do
+		local cell = Instance.new("Frame")
+		cell.BorderSizePixel = 0
+		cell.BackgroundColor3 = if (i + math.floor(i / 6)) % 2 == 0 then Color3.fromRGB(236, 224, 196) else Color3.fromRGB(150, 52, 62)
+		cell.LayoutOrder = i
+		cell.Parent = gui
+	end
+	gui.Parent = canvas
+	local _ = frame
+	return m
+end
+
+-- The foyer signpost: one arrow board per LobbyLayout.destinations entry, each turned to
+-- point at its zone, with the name on both sides.
+function Props.Signpost(origin: CFrame, _w: number, _d: number, parent: Instance): Model
+	local m = newModel("Signpost", parent)
+	local height = 4 + #L.destinations * 1.05 + 1
+	cylinder(m, origin, 0, 0.2, 0, 0.4, 2, { Color = C.darkWood, Material = Enum.Material.Wood })
+	box(m, origin, 0, height / 2, 0, 0.6, height, 0.6, { Color = C.wood, Material = Enum.Material.Wood })
+	ball(m, origin, 0, height + 0.3, 0, 0.9, { Color = C.brass, Material = Enum.Material.Metal })
+	local base = origin.Position
+	for i, dest in L.destinations do
+		local x, z = L.destinationSpot(dest)
+		local dir = Vector3.new(x - base.X, 0, z - base.Z)
+		if dir.Magnitude < 0.1 then
+			dir = Vector3.new(0, 0, -1)
+		end
+		dir = dir.Unit
+		local zone = dest.zone and L.zone(dest.zone)
+		local color = if zone then zone.rug else C.ink
+		local y = base.Y + height - 0.9 - (i - 1) * 1.05
+		local len = 5.6
+		local at = Vector3.new(base.X, y, base.Z) + dir * (len / 2 + 0.2)
+		-- The board's -Z (LookVector) points at the destination.
+		local cf = CFrame.lookAt(at, at + dir)
+		local board = Instance.new("Part")
+		board.Anchored = true
+		board.Size = Vector3.new(0.2, 0.85, len)
+		board.CFrame = cf
+		board.Color = color
+		board.Material = Enum.Material.Wood
+		board.CanCollide = false
+		board.Parent = m
+		-- A diamond on the far end makes the point.
+		local tip = Instance.new("Part")
+		tip.Anchored = true
+		tip.Size = Vector3.new(0.2, 0.6, 0.6)
+		tip.CFrame = cf * CFrame.new(0, 0, -len / 2) * CFrame.Angles(math.rad(45), 0, 0)
+		tip.Color = color
+		tip.Material = Enum.Material.Wood
+		tip.CanCollide = false
+		tip.Parent = m
+		-- Looking at the Right face the point is on your right, on the Left face on your left.
+		local style = { color = C.cream, stroke = Color3.fromRGB(30, 20, 16), lightInfluence = 0.3, padding = 0.1, pixelsPerStud = 50 }
+		Props.text(board, Enum.NormalId.Right, `{dest.label}  ›`, style)
+		Props.text(board, Enum.NormalId.Left, `‹  {dest.label}`, style)
+	end
+	return m
+end
+
+-- A "You are here" floor map on two legs. The map is drawn from LobbyLayout, with north
+-- (the TV wall) at the top, for someone looking from the spawn into the room.
+function Props.Directory(origin: CFrame, w: number, d: number, parent: Instance): Model
+	local m = newModel("Directory", parent)
+	local r = L.room
+	local mapW = w - 0.8
+	local mapH = mapW * (r.maxZ - r.minZ) / (r.maxX - r.minX)
+	local bottom = 2.6
+	for _, lx in { -w / 2 + 0.4, w / 2 - 0.4 } do
+		box(m, origin, lx, (bottom + mapH + 1) / 2, 0, 0.5, bottom + mapH + 1, d * 0.5, { Color = C.darkWood, Material = Enum.Material.Wood })
+	end
+	box(m, origin, 0, bottom + mapH / 2, 0.05, w, mapH + 0.8, 0.3, { Color = C.wood, Material = Enum.Material.Wood })
+	local face = box(m, origin, 0, bottom + mapH / 2, -0.15, mapW, mapH, 0.1, { Color = Color3.fromRGB(36, 30, 40) })
+	local title = box(m, origin, 0, bottom + mapH + 1.1, 0, w, 1.4, 0.4, { Color = C.ink })
+	Props.text(title, Enum.NormalId.Front, "Find a table", { color = Color3.fromRGB(255, 220, 140), lightInfluence = 0, padding = 0.1 })
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Map"
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 60
+	gui.LightInfluence = 0.2
+	local spanX, spanZ = r.maxX - r.minX, r.maxZ - r.minZ
+	local function frame(minX, maxX, minZ, maxZ, color, text, z)
+		local f = Instance.new("Frame")
+		f.Position = UDim2.fromScale((minX - r.minX) / spanX, (minZ - r.minZ) / spanZ)
+		f.Size = UDim2.fromScale((maxX - minX) / spanX, (maxZ - minZ) / spanZ)
+		f.BackgroundColor3 = color
+		f.BorderSizePixel = 0
+		f.ZIndex = z or 1
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = f
+		if text then
+			local label = Instance.new("TextLabel")
+			label.BackgroundTransparency = 1
+			label.Size = UDim2.fromScale(1, 1)
+			label.Font = Enum.Font.FredokaOne
+			label.TextScaled = true
+			label.TextWrapped = true
+			label.TextColor3 = C.cream
+			label.Text = text
+			label.ZIndex = (z or 1) + 1
+			local pad = Instance.new("UIPadding")
+			pad.PaddingLeft, pad.PaddingRight = UDim.new(0.08, 0), UDim.new(0.08, 0)
+			pad.PaddingTop, pad.PaddingBottom = UDim.new(0.12, 0), UDim.new(0.12, 0)
+			pad.Parent = label
+			local stroke = Instance.new("UIStroke")
+			stroke.Thickness = 2
+			stroke.Color = Color3.fromRGB(20, 16, 24)
+			stroke.Parent = label
+			label.Parent = f
+		end
+		f.Parent = gui
+		return f
+	end
+	for _, zone in L.zones do
+		local a = zone.area
+		frame(a.minX, a.maxX, a.minZ, a.maxZ, zone.rug, if zone.id == "Foyer" then nil else zone.label)
+	end
+	frame(-92, -64, -2, 15, Color3.fromRGB(196, 110, 52), "Snack Bar · Shop")
+	frame(65, 95, -2, 15, Color3.fromRGB(176, 70, 140), "Dressing Room")
+	-- You are here: a star at the spawn.
+	local s = L.spawn
+	local here = frame(s.x - 7, s.x + 7, s.z - 7, s.z + 7, Color3.fromRGB(255, 214, 90), nil, 5)
+	here:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+	local note = Instance.new("TextLabel")
+	note.BackgroundTransparency = 1
+	note.AnchorPoint = Vector2.new(0.5, 1)
+	note.Position = UDim2.fromScale((s.x - r.minX) / spanX, (s.z - 6 - r.minZ) / spanZ)
+	note.Size = UDim2.fromScale(0.3, 0.07)
+	note.Font = Enum.Font.FredokaOne
+	note.TextScaled = true
+	note.TextColor3 = Color3.fromRGB(255, 230, 140)
+	note.Text = "You are here"
+	note.ZIndex = 6
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 2
+	stroke.Parent = note
+	note.Parent = gui
+	gui.Parent = face
+	-- A small lamp above so it reads in the dark foyer.
+	local bar = box(m, origin, 0, bottom + mapH + 0.25, -0.6, w - 1.2, 0.2, 0.3, { Color = C.lampWarm, Material = Enum.Material.Neon, CastShadow = false })
+	lamp(bar, 8, 0.6).Shadows = false
+	return m
+end
+
+-- A chunky jukebox (made up, no brand): arched top, glowing bands, a record window.
+-- Named "Jukebox" so the music code can find it and play from it.
+function Props.Jukebox(origin: CFrame, w: number, d: number, parent: Instance): Model
+	local m = newModel("Jukebox", parent)
+	local body = { Color = Color3.fromRGB(120, 40, 46), Material = Enum.Material.Wood }
+	box(m, origin, 0, 2.6, 0, w, 5.2, d, body)
+	local arch = cylinder(m, origin, 0, 5.2, 0, d, w, body)
+	arch.CFrame = origin * CFrame.new(0, 5.2, 0) * CFrame.Angles(0, math.rad(90), 0)
+	-- Glowing bands up the sides and over the arch.
+	for _, sx in { -w / 2 + 0.25, w / 2 - 0.25 } do
+		box(m, origin, sx, 2.8, -d / 2 - 0.02, 0.35, 4.8, 0.1, { Color = Color3.fromRGB(255, 160, 70), Material = Enum.Material.Neon, CastShadow = false })
+	end
+	local band = cylinder(m, origin, 0, 5.2, -d / 2 + 0.05, 0.1, w - 0.4, { Color = Color3.fromRGB(120, 220, 255), Material = Enum.Material.Neon, CastShadow = false })
+	band.CFrame = origin * CFrame.new(0, 5.2, -d / 2 + 0.04) * CFrame.Angles(0, math.rad(90), 0)
+	local inner = cylinder(m, origin, 0, 5.2, -d / 2 - 0.02, 0.1, w - 1.2, { Color = Color3.fromRGB(60, 30, 40) })
+	inner.CFrame = origin * CFrame.new(0, 5.2, -d / 2 - 0.02) * CFrame.Angles(0, math.rad(90), 0)
+	-- Record window and a speaker grille.
+	local window = box(m, origin, 0, 4.4, -d / 2 - 0.05, w - 1.2, 1.4, 0.1, { Color = Color3.fromRGB(255, 220, 140), Material = Enum.Material.Neon, CastShadow = false })
+	Props.text(window, Enum.NormalId.Front, "TUNES", { color = Color3.fromRGB(120, 40, 46), lightInfluence = 0, padding = 0.12 })
+	box(m, origin, 0, 1.8, -d / 2 - 0.05, w - 1.2, 2.2, 0.1, { Color = C.brass, Material = Enum.Material.DiamondPlate })
+	box(m, origin, 0, 3.3, -d / 2 - 0.2, w - 1, 0.4, 0.4, { Color = C.cream })
+	lamp(window, 10, 0.7, Color3.fromRGB(255, 190, 120)).Shadows = false
+	return m
+end
+
+---------------------------------------------------------------------------------------
+-- Room dressing used by Room.luau
+
+-- A framed poster of a made-up game on a wall, with a picture light above it. `cf` is the
+-- poster's center, front facing into the room (-Z).
+function Props.poster(cf: CFrame, title: string, color: Color3, parent: Instance): Model
+	local m = newModel("Poster", parent)
+	local w, h = 7, 9
+	box(m, cf, 0, 0, 0.1, w + 0.8, h + 0.8, 0.3, { Color = C.darkWood, Material = Enum.Material.Wood })
+	local canvas = box(m, cf, 0, 0, -0.1, w, h, 0.1, { Color = color })
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 30
+	gui.LightInfluence = 0.6
+	local bg = Instance.new("Frame")
+	bg.Size = UDim2.fromScale(1, 1)
+	bg.BackgroundColor3 = color
+	bg.BorderSizePixel = 0
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(120, 110, 130))
+	gradient.Rotation = 90
+	gradient.Parent = bg
+	bg.Parent = gui
+	-- A big disc with a smaller ring, like a game piece, and the title over it.
+	for i, size in { 0.7, 0.42 } do
+		local disc = Instance.new("Frame")
+		disc.AnchorPoint = Vector2.new(0.5, 0.5)
+		disc.Position = UDim2.fromScale(0.5, 0.58)
+		disc.Size = UDim2.fromScale(size, size * w / h)
+		disc.BackgroundColor3 = if i == 1 then Color3.fromRGB(255, 236, 190) else color
+		disc.BorderSizePixel = 0
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = disc
+		disc.Parent = bg
+	end
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromScale(0.06, 0.05)
+	label.Size = UDim2.fromScale(0.88, 0.26)
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.TextWrapped = true
+	label.TextColor3 = Color3.fromRGB(255, 248, 230)
+	label.Text = title
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 3
+	stroke.Color = Color3.fromRGB(30, 20, 30)
+	stroke.Parent = label
+	label.Parent = bg
+	local tag = Instance.new("TextLabel")
+	tag.BackgroundTransparency = 1
+	tag.Position = UDim2.fromScale(0.1, 0.88)
+	tag.Size = UDim2.fromScale(0.8, 0.07)
+	tag.Font = Enum.Font.GothamBold
+	tag.TextScaled = true
+	tag.TextColor3 = Color3.fromRGB(40, 30, 40)
+	tag.Text = "2-6 PLAYERS · GAME NIGHT"
+	tag.Parent = bg
+	gui.Parent = canvas
+	-- Picture light: a brass bar on an arm, shining down on the poster.
+	box(m, cf, 0, h / 2 + 0.8, -0.4, 0.2, 0.2, 0.9, { Color = C.brass, Material = Enum.Material.Metal, CanCollide = false })
+	local bar = box(m, cf, 0, h / 2 + 0.9, -0.9, 3.6, 0.35, 0.35, { Color = C.brass, Material = Enum.Material.Metal, CanCollide = false })
+	local light = Instance.new("SpotLight")
+	light.Face = Enum.NormalId.Bottom
+	light.Angle = 70
+	light.Range = 12
+	light.Brightness = 0.9
+	light.Color = C.lampWarm
+	light.Shadows = false
+	light.Parent = bar
+	return m
+end
+
+-- A tree outside: trunk and two layers of leaves.
+function Props.tree(at: Vector3, scale: number, parent: Instance): Model
+	local m = newModel("Tree", parent)
+	local origin = CFrame.new(at)
+	cylinder(m, origin, 0, 4 * scale, 0, 8 * scale, 1.4 * scale, { Color = Color3.fromRGB(76, 54, 40), Material = Enum.Material.Wood, CastShadow = false })
+	ball(m, origin, 0, 9.5 * scale, 0, 9 * scale, { Color = Color3.fromRGB(40, 78, 50), Material = Enum.Material.Grass, CastShadow = false })
+	ball(m, origin, 1.2 * scale, 12.5 * scale, 0.6 * scale, 6 * scale, { Color = Color3.fromRGB(52, 96, 58), Material = Enum.Material.Grass, CastShadow = false })
+	return m
+end
+
+-- A street lamp outside, lighting the trees seen through the windows.
+function Props.lampPost(at: Vector3, parent: Instance): Model
+	local m = newModel("LampPost", parent)
+	local origin = CFrame.new(at)
+	cylinder(m, origin, 0, 6, 0, 12, 0.5, { Color = Color3.fromRGB(30, 34, 40), Material = Enum.Material.Metal, CastShadow = false })
+	box(m, origin, 0, 12.3, 0, 1.4, 0.4, 1.4, { Color = Color3.fromRGB(30, 34, 40), Material = Enum.Material.Metal, CastShadow = false })
+	local bulb = box(m, origin, 0, 11.6, 0, 1.1, 1.2, 1.1, { Color = Color3.fromRGB(255, 220, 160), Material = Enum.Material.Neon, CastShadow = false })
+	lamp(bulb, 26, 1.2, Color3.fromRGB(255, 210, 150)).Shadows = false
+	return m
+end
+
+-- A brass ring chandelier with candle bulbs, hung over the lounge.
+function Props.chandelier(at: Vector3, ceilingY: number, parent: Instance): Model
+	local m = newModel("Chandelier", parent)
+	local origin = CFrame.new(at)
+	local cord = ceilingY - at.Y
+	box(m, origin, 0, cord / 2, 0, 0.2, cord, 0.2, { Color = C.brass, Material = Enum.Material.Metal, CanCollide = false, CastShadow = false })
+	ball(m, origin, 0, 0, 0, 1.2, { Color = C.brass, Material = Enum.Material.Metal, CanCollide = false })
+	local radius, arms = 4, 8
+	local side = 2 * radius * math.sin(math.pi / arms)
+	for i = 0, arms - 1 do
+		local a = (i + 0.5) / arms * math.pi * 2
+		local seg = box(m, origin, 0, 0, 0, side + 0.1, 0.3, 0.3, { Color = C.brass, Material = Enum.Material.Metal, CanCollide = false, CastShadow = false })
+		local mid = Vector3.new(math.cos(a), 0, math.sin(a)) * radius * math.cos(math.pi / arms)
+		seg.CFrame = origin * CFrame.new(mid) * CFrame.Angles(0, -a + math.pi / 2, 0)
+		local b = i / arms * math.pi * 2
+		local tip = Vector3.new(math.cos(b), 0, math.sin(b)) * radius
+		cylinder(m, origin, tip.X, 0.55, tip.Z, 0.8, 0.3, { Color = C.cream, CanCollide = false, CastShadow = false })
+		ball(m, origin, tip.X, 1.1, tip.Z, 0.35, { Color = Color3.fromRGB(255, 214, 150), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false })
+		if i % 2 == 0 then
+			local spoke = box(m, origin, tip.X / 2, 0, tip.Z / 2, radius, 0.15, 0.15, { Color = C.brass, Material = Enum.Material.Metal, CanCollide = false, CastShadow = false })
+			spoke.CFrame = origin * CFrame.new(tip / 2) * CFrame.Angles(0, -b, 0)
+		end
+	end
+	local core = ball(m, origin, 0, -0.9, 0, 0.6, { Color = Color3.fromRGB(255, 214, 150), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false })
+	lamp(core, 30, 0.8, Color3.fromRGB(255, 226, 180)).Shadows = false
 	return m
 end
 

@@ -177,7 +177,9 @@ local function rugs(room: Model)
 			local cx, cz = (a.minX + a.maxX) / 2, (a.minZ + a.maxZ) / 2
 			local w, d = a.maxX - a.minX, a.maxZ - a.minZ
 			part(f, { Name = `{zone.id}Rug`, Size = Vector3.new(w, 0.06, d), Position = Vector3.new(cx, L.FLOOR_Y + 0.03, cz), Color = zone.border, Material = Enum.Material.Carpet, CanCollide = false, CastShadow = false })
-			part(f, { Size = Vector3.new(w - 1.6, 0.06, d - 1.6), Position = Vector3.new(cx, L.FLOOR_Y + 0.05, cz), Color = zone.rug, Material = Enum.Material.Carpet, CanCollide = false, CastShadow = false })
+			-- A dark pinstripe inside the border, then the field.
+			part(f, { Size = Vector3.new(w - 2.4, 0.06, d - 2.4), Position = Vector3.new(cx, L.FLOOR_Y + 0.06, cz), Color = zone.rug:Lerp(Color3.new(0, 0, 0), 0.3), Material = Enum.Material.Carpet, CanCollide = false, CastShadow = false })
+			part(f, { Size = Vector3.new(w - 3, 0.06, d - 3), Position = Vector3.new(cx, L.FLOOR_Y + 0.09, cz), Color = zone.rug, Material = Enum.Material.Carpet, CanCollide = false, CastShadow = false })
 		end
 	end
 end
@@ -242,6 +244,75 @@ local function stringLights(room: Model)
 			end
 			prev = pos
 		end
+	end
+end
+
+-- Curtains on both sides of every window, with a brass rod over it.
+local function curtains(room: Model)
+	local f = folder("Curtains", room)
+	local r, win = L.room, L.windows
+	local drape = Color3.fromRGB(128, 34, 48)
+	-- Each wall: its inside face, the direction into the room, and the window centers.
+	local walls = {
+		{ along = "Z", at = r.minX, inward = 1, list = win.side },
+		{ along = "Z", at = r.maxX, inward = -1, list = win.side },
+		-- The back wall's curtains stop at the sill: the arcade cabinets stand under them.
+		{ along = "X", at = r.minZ, inward = 1, list = win.back, drop = 0 },
+		{ along = "X", at = r.maxZ, inward = -1, list = win.front },
+	}
+	for _, wall in walls do
+		local bottom = win.bottom - (wall.drop or 2)
+		local h = win.top + 2 - bottom
+		local y = bottom + h / 2
+		local function pos(u: number, yy: number, off: number): Vector3
+			local c = wall.at + off * wall.inward
+			return if wall.along == "X" then Vector3.new(u, yy, c) else Vector3.new(c, yy, u)
+		end
+		local function size(u: number, yy: number, dep: number): Vector3
+			return if wall.along == "X" then Vector3.new(u, yy, dep) else Vector3.new(dep, yy, u)
+		end
+		for _, center in wall.list do
+			for _, side in { -1, 1 } do
+				local u = center + side * (win.width / 2 + 0.6)
+				-- Two folds per side, a little apart, read as gathered fabric.
+				part(f, { Size = size(1.6, h, 0.5), Position = pos(u, y, 1.2), Color = drape, Material = Enum.Material.Fabric, CanCollide = false })
+				part(f, { Size = size(1.1, h - 0.3, 0.5), Position = pos(u + side * 1.1, y - 0.15, 1.5), Color = Color3.fromRGB(110, 28, 42), Material = Enum.Material.Fabric, CanCollide = false })
+			end
+			part(f, { Size = size(win.width + 6, 0.3, 0.3), Position = pos(center, win.top + 1.9, 1.6), Color = C.brass, Material = Enum.Material.Metal, CanCollide = false, CastShadow = false })
+		end
+	end
+end
+
+-- Framed posters of made-up games between the side windows (LobbyLayout.posters).
+local function posters(room: Model)
+	local f = folder("Posters", room)
+	local r = L.room
+	for _, poster in L.posters do
+		local x = if poster.side < 0 then r.minX + 0.4 else r.maxX - 0.4
+		-- Front (-Z) turned to face into the room.
+		local yaw = if poster.side < 0 then -math.pi / 2 else math.pi / 2
+		Props.poster(CFrame.new(x, 15.5, poster.z) * CFrame.Angles(0, yaw, 0), poster.title, poster.color, f)
+	end
+end
+
+-- The carpet runner up the middle, from the door to the lounge.
+local function runner(room: Model)
+	local f = folder("Runner", room)
+	local a = L.runner
+	local cx, cz = (a.minX + a.maxX) / 2, (a.minZ + a.maxZ) / 2
+	local w, d = a.maxX - a.minX, a.maxZ - a.minZ
+	part(f, { Size = Vector3.new(w, 0.06, d), Position = Vector3.new(cx, L.FLOOR_Y + 0.13, cz), Color = Color3.fromRGB(232, 186, 92), Material = Enum.Material.Carpet, CanCollide = false, CastShadow = false })
+	part(f, { Size = Vector3.new(w - 1, 0.06, d - 1), Position = Vector3.new(cx, L.FLOOR_Y + 0.15, cz), Color = Color3.fromRGB(120, 36, 48), Material = Enum.Material.Carpet, CanCollide = false, CastShadow = false })
+end
+
+-- Outside: trees and a few street lamps, so the windows show a night garden.
+local function outdoors(room: Model)
+	local f = folder("Outside", room)
+	for i, at in L.outsideTrees do
+		Props.tree(Vector3.new(at[1], 0, at[2]), 1 + (i % 3) * 0.25, f)
+	end
+	for _, at in L.outsideLamps do
+		Props.lampPost(Vector3.new(at[1], 0, at[2]), f)
 	end
 end
 
@@ -312,6 +383,12 @@ function Room.build(parent: Instance): (Model, { [string]: Model })
 	banners(room)
 	stringLights(room)
 	fillLights(room)
+	curtains(room)
+	posters(room)
+	runner(room)
+	outdoors(room)
+	-- A chandelier over the lounge's coffee table.
+	Props.chandelier(Vector3.new(0, 21, -58), L.CEILING_Y, room)
 	local found = props(room)
 	shots(room)
 	room.Parent = parent
