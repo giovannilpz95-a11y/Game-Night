@@ -22,7 +22,8 @@ Economy.Coins = {
 	conquest = { name = "Conquest Coins", color = Color3.fromRGB(226, 116, 84), order = 9 },
 	hexlands = { name = "Hexlands Coins", color = Color3.fromRGB(196, 140, 72), order = 10 },
 	-- Shared by the classic 52-card games: Speed, Spoons, Go Fish, War, I Doubt It,
-	-- President, Slap Stack, Hearts, Spades, Thirty-One, Palace.
+	-- President, Slap Stack, Hearts, Spades, Thirty-One, Palace, Old Maid, Snap,
+	-- Gin Rummy, Oh Hell.
 	cards = { name = "Card Coins", color = Color3.fromRGB(46, 160, 100), order = 11 },
 }
 Economy.DefaultCoin = "arcade"

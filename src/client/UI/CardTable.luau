@@ -1,6 +1,6 @@
 -- Shared layout for the card-game screens (I Doubt It, President, Slap Stack, Hearts,
--- Spades, Thirty-One, Palace, Old Maid, Snap, Gin Rummy, Oh Hell): a row of seat chips on top, the felt in the middle, a
--- prompt and action buttons, and your hand along the bottom.
+-- Spades, Thirty-One, Palace, Old Maid, Snap, Gin Rummy, Oh Hell): a row of seat chips on
+-- top, the felt in the middle, a prompt and action buttons, and your hand along the bottom.
 
 local Kit = require(script.Parent.Kit)
 local PlayingCard = require(script.Parent.PlayingCard)

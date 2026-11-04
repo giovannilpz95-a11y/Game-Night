@@ -1,5 +1,6 @@
 -- The standard 52-card deck shared by the classic card games (Speed, Spoons, War, Go Fish,
--- I Doubt It, President, Slap Stack, Hearts, Spades, Thirty-One, Palace).
+-- I Doubt It, President, Slap Stack, Hearts, Spades, Thirty-One, Palace, Old Maid,
+-- Snap, Gin Rummy, Oh Hell).
 -- Cards are ids 1..52. rank 1 = Ace ... 11 = Jack, 12 = Queen, 13 = King.
 -- suit 1 = Spades, 2 = Hearts, 3 = Diamonds, 4 = Clubs.
 -- Pure Luau, like the game rules, so it is shared by server, client and tests.

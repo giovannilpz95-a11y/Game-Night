@@ -8,7 +8,7 @@ When a match starts, the party is moved to a free table in the room and everyone
 
 | Game | What's on the table |
 |---|---|
-| Color Clash, Go Fish, Speed, War, Spoons, I Doubt It, President, Slap Stack, Hearts, Spades, Thirty-One, Palace | Everyone's hand face down in front of them (count shown on big hands), draw piles, and the face-up cards: discard top in the current color, Speed's center piles, War's flipped cards, Go Fish books and the pond, Spoons' spoons |
+| Color Clash, Go Fish, Speed, War, Spoons, I Doubt It, President, Slap Stack, Hearts, Spades, Thirty-One, Palace, Old Maid, Snap, Gin Rummy, Oh Hell | Everyone's hand face down in front of them (count shown on big hands), draw piles, and the face-up cards: discard top in the current color, Speed's center piles, War's flipped cards, Go Fish books and the pond, Spoons' spoons |
 | Property Party | The 40-space loop with street colors, owner markers (dim when mortgaged), houses and hotels, every pawn, the dice |
 | Hexlands | The 19-hex island with number tokens, roads, camps, towns, the Bandit, the dice |
 | Conquest Isles | The map as region-colored lands with borders and sea lanes, an army stack with its count on every territory |
