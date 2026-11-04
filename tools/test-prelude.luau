@@ -59,6 +59,13 @@ end
 
 game = dataModel
 
+-- Config modules use Color3 for display colors; tests only need it not to crash.
+Color3 = {
+	fromRGB = function(r, g, b)
+		return { R = r / 255, G = g / 255, B = b / 255 }
+	end,
+}
+
 -- Deterministic stand-in for Roblox's Random.
 Random = {}
 Random.__index = Random

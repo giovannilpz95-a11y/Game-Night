@@ -10,6 +10,13 @@ local Config = {
 	BotMoveDelay = 1.2, -- seconds a bot "thinks" before moving
 	TurnSeconds = 45, -- a player who takes longer has a bot move for them
 
+	-- Saved progress (DataService). Changing the store name starts everyone from zero.
+	ProfileStoreName = "Profiles_v1",
+	AutosaveSeconds = 60,
+	ProfileLockRetries = 6, -- tries to load a profile another server still holds...
+	ProfileLockRetryDelay = 5, -- ...this many seconds apart, then asks the player to rejoin
+	SaveInStudio = true, -- false = Studio play sessions start fresh and never save
+
 	-- Anti-spam: requests allowed per player per window
 	RequestsPerWindow = 20,
 	RequestWindowSeconds = 2,

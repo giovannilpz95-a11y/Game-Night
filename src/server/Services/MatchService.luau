@@ -18,9 +18,11 @@ type Entry = {
 	ended: boolean,
 	turnEndsAt: number?,
 	turnSeconds: number,
+	startedAt: number,
 }
 
 local partyService: any = nil
+local finishedCallbacks: { (any) -> () } = {}
 local matches: { [string]: Entry } = {}
 local matchOfUser: { [number]: string } = {}
 
@@ -66,6 +68,26 @@ local function finish(entry: Entry)
 		end
 	end
 	partyService.setMatch(entry.partyId, nil)
+
+	local match = entry.match
+	local summary = {
+		matchId = match.id,
+		gameId = match.gameId,
+		result = match.result,
+		aborted = match.aborted,
+		seats = match.seats,
+		minutes = (os.clock() - entry.startedAt) / 60,
+		moves = match.moveNumber,
+	}
+	for _, callback in finishedCallbacks do
+		task.spawn(callback, summary)
+	end
+end
+
+-- Runs `callback(summary)` after every match ends. summary has gameId, result, aborted,
+-- seats (with userId and left), minutes and moves. EconomyService pays out from this.
+function MatchService.onMatchFinished(callback: (any) -> ())
+	table.insert(finishedCallbacks, callback)
 end
 
 local scheduleTurn: (Entry) -> ()
@@ -181,6 +203,7 @@ local function startMatch(leader: Player, request: any)
 		ended = false,
 		turnEndsAt = nil,
 		turnSeconds = catalogEntry.turnSeconds or Config.TurnSeconds,
+		startedAt = os.clock(),
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do

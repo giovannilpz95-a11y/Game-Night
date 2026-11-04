@@ -16,6 +16,12 @@ export type Entry = {
 	maxSeats: number,
 	turnSeconds: number?, -- per-turn time limit; Config.TurnSeconds if nil
 	status: "ready" | "soon",
+	-- Economy (see shared/Economy.luau). Rewards are paced by time played, so each game
+	-- says how long a match usually takes; shorter or emptier matches pay nothing.
+	coin: string?, -- which Coins this game pays; Economy.DefaultCoin if nil
+	typicalMinutes: number?, -- usual match length
+	minMinutes: number?, -- matches shorter than this pay nothing
+	minMoves: number?, -- matches with fewer moves than this pay nothing
 }
 
 local entries: { Entry } = {
@@ -29,6 +35,10 @@ local entries: { Entry } = {
 		maxSeats = 2,
 		turnSeconds = 20,
 		status = "ready",
+		coin = "arcade",
+		typicalMinutes = 1,
+		minMinutes = 0.1,
+		minMoves = 5,
 	},
 	{
 		id = "Chess",
@@ -40,6 +50,10 @@ local entries: { Entry } = {
 		maxSeats = 2,
 		turnSeconds = 60,
 		status = "ready",
+		coin = "chess",
+		typicalMinutes = 15,
+		minMinutes = 1,
+		minMoves = 10,
 	},
 	{
 		id = "Checkers",
@@ -51,6 +65,10 @@ local entries: { Entry } = {
 		maxSeats = 2,
 		turnSeconds = 45,
 		status = "ready",
+		coin = "checkers",
+		typicalMinutes = 10,
+		minMinutes = 1,
+		minMoves = 16,
 	},
 	{
 		id = "FourInARow",
@@ -62,6 +80,10 @@ local entries: { Entry } = {
 		maxSeats = 2,
 		turnSeconds = 20,
 		status = "ready",
+		coin = "arcade",
+		typicalMinutes = 3,
+		minMinutes = 0.25,
+		minMoves = 7,
 	},
 	{
 		id = "ColorClash",
@@ -71,6 +93,10 @@ local entries: { Entry } = {
 		minSeats = 2,
 		maxSeats = 8,
 		status = "soon",
+		coin = "colorclash",
+		typicalMinutes = 8,
+		minMinutes = 1,
+		minMoves = 10,
 	},
 	{
 		id = "SketchGuess",
@@ -80,6 +106,10 @@ local entries: { Entry } = {
 		minSeats = 3,
 		maxSeats = 8,
 		status = "soon",
+		coin = "party",
+		typicalMinutes = 10,
+		minMinutes = 2,
+		minMoves = 1,
 	},
 	{
 		id = "TriviaNight",
@@ -89,6 +119,10 @@ local entries: { Entry } = {
 		minSeats = 1,
 		maxSeats = 8,
 		status = "soon",
+		coin = "party",
+		typicalMinutes = 8,
+		minMinutes = 1,
+		minMoves = 5,
 	},
 }
 

@@ -20,6 +20,10 @@ Code then appears under ReplicatedStorage.Shared, ServerScriptService.Server and
 - **Solo:** press Play. Pick Tic-Tac-Toe and you'll play against a bot.
 - **With a party:** go to Test > Clients and Servers, choose 2 players, and press Start. In one window invite the other player, accept in the other, then start a game.
 
+## Saving and the shop
+
+To test saved progress in Studio, turn on Game Settings > Security > Enable Studio Access to API Services. Robux products are set up in the Creator Hub and their IDs go in `src/shared/Economy.luau`; see [docs/Economy.md](docs/Economy.md).
+
 ## Tests
 
 Game rules and the party and match logic are plain Luau, so they're tested outside Roblox:

@@ -64,8 +64,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	})
 
 	local resultOverlay = Kit.panel({
-		Size = UDim2.new(0, 360, 0, 170),
-		Position = UDim2.new(0.5, -180, 0.5, -85),
+		Size = UDim2.new(0, 360, 0, 250),
+		Position = UDim2.new(0.5, -180, 0.5, -125),
 		BackgroundColor3 = Theme.PanelLight,
 		Visible = false,
 		ZIndex = 10,
@@ -73,6 +73,18 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	})
 	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 56), ZIndex = 11, Parent = resultOverlay })
 	local reasonLabel = Kit.label("", { TextSize = 16, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 56), ZIndex = 11, Parent = resultOverlay })
+	-- What you earned, filled in by showReward a moment after the result arrives.
+	local rewardLabel = Kit.label("", {
+		TextSize = 15,
+		TextColor3 = Theme.Accent,
+		Font = Theme.FontBold,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Position = UDim2.new(0, 0, 0, 84),
+		Size = UDim2.new(1, 0, 0, 110),
+		ZIndex = 11,
+		Parent = resultOverlay,
+	})
 	local closeButton: TextButton
 
 	local snapshot: any = nil
@@ -183,6 +195,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				end
 				return
 			end
+			if not snapshot or snapshot.matchId ~= newSnapshot.matchId then
+				rewardLabel.Text = ""
+			end
 			snapshot = newSnapshot
 			root.Visible = true
 
@@ -217,6 +232,18 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end,
 		isOpen = function(): boolean
 			return root.Visible
+		end,
+		-- The game being shown, so the wallet bar can show its Coins.
+		gameId = function(): string?
+			return if root.Visible and snapshot then snapshot.gameId else nil
+		end,
+		-- Shows match rewards on the results card. Returns false if no result is showing.
+		showReward = function(lines: { string }): boolean
+			if not (root.Visible and resultOverlay.Visible) then
+				return false
+			end
+			rewardLabel.Text = table.concat(lines, "\n")
+			return true
 		end,
 	}
 end

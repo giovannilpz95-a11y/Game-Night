@@ -13,6 +13,10 @@ Net.Names = {
 	MatchRequest = "MatchRequest", -- client -> server: { action = "...", ... }
 	MatchState = "MatchState", -- server -> client: your view of the match (or nil)
 	Notify = "Notify", -- server -> client: short message to show as a toast
+	EconomyRequest = "EconomyRequest", -- client -> server: { action = "buy" | "equip" | "sync", ... }
+	PurchaseRequest = "PurchaseRequest", -- client -> server: { action = "buyGems" | "buyStarter" | "buyPass", key }
+	WalletState = "WalletState", -- server -> client: balances, owned items, daily progress
+	Reward = "Reward", -- server -> client: { title, lines } after a match or daily login
 }
 
 local FOLDER_NAME = "Remotes"
