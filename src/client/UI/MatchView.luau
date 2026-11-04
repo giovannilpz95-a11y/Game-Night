@@ -832,21 +832,31 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local function renderResult()
 		local result = snapshot.result
 		local over = isOver()
+		local wasShown = resultOverlay.Visible
 		resultOverlay.Visible = over
 		if not over then
 			return
+		end
+		if not wasShown then
+			Kit.popIn(resultOverlay)
 		end
 		local winners: { [number]: boolean } = {}
 		for _, seat in (result and result.winners) or {} do
 			winners[seat] = true
 		end
+		-- Gold when you won, light for a draw or a game you watched, muted when you lost.
+		resultLabel.TextColor3 = Theme.Text
 		if snapshot.aborted then
 			resultLabel.Text = "Game ended"
 		elseif result and result.isDraw then
 			resultLabel.Text = "It's a draw!"
 		elseif result and snapshot.yourSeat and winners[snapshot.yourSeat] then
 			resultLabel.Text = "You win! 🎉"
+			resultLabel.TextColor3 = Theme.Accent
 		elseif result then
+			if snapshot.yourSeat then
+				resultLabel.TextColor3 = Theme.SubText
+			end
 			local names = {}
 			for _, seat in result.winners do
 				table.insert(names, nameOf(seat))

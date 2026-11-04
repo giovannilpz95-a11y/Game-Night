@@ -1,6 +1,9 @@
 -- Tiny UI toolkit: theme colors and helpers to build GUI objects in code.
--- Everything is built in code for now so it lives in Git; step 4 (polish) can swap in
--- designed assets without touching game logic.
+-- Everything is built in code so it lives in Git. Use the shared sizes below (TextSize,
+-- Radius) so every window reads the same, and the helpers (title, closeButton, chip)
+-- instead of hand-made copies.
+
+local TweenService = game:GetService("TweenService")
 
 local Kit = {}
 
@@ -27,7 +30,16 @@ Kit.Theme = {
 	},
 	Font = Enum.Font.GothamMedium,
 	FontBold = Enum.Font.GothamBold,
+	-- Thin outline on windows and cards, so they separate from the 3D room behind them.
+	Stroke = Color3.fromRGB(120, 110, 170),
+	-- Type scale: window title, section heading, body text, small notes, tiny captions.
+	TextSize = { Title = 22, Heading = 18, Body = 16, Small = 14, Tiny = 12 },
+	Radius = { Small = 8, Medium = 10, Large = 14 },
 }
+
+local PRESS_SCALE = 0.95
+local PRESS_INFO = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local POP_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 -- Kit.new("Frame", { Size = ..., Parent = ... }, { children })
 function Kit.new(className: string, props: { [string]: any }?, children: { Instance }?): any
@@ -68,11 +80,31 @@ function Kit.list(gap: number?, horizontal: boolean?): UIListLayout
 	})
 end
 
+-- A thin outline. Border mode, so it rings a button's box rather than its text.
+function Kit.stroke(color: Color3?, transparency: number?, thickness: number?): UIStroke
+	return Kit.new("UIStroke", {
+		Name = "Outline",
+		Color = color or Kit.Theme.Stroke,
+		Transparency = transparency or 0.55,
+		Thickness = thickness or 1,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	})
+end
+
 function Kit.panel(props: { [string]: any }): Frame
 	local frame = Kit.new("Frame", {
 		BackgroundColor3 = Kit.Theme.Panel,
 		BorderSizePixel = 0,
-	}, { Kit.corner(14), Kit.padding(12) })
+	}, { Kit.corner(14), Kit.padding(12), Kit.stroke() })
+	-- A panel that brings its own outline (an accent ring) drops the default one.
+	frame.ChildAdded:Connect(function(child)
+		if child:IsA("UIStroke") and child.Name ~= "Outline" then
+			local outline = frame:FindFirstChild("Outline")
+			if outline then
+				outline:Destroy()
+			end
+		end
+	end)
 	for key, value in props do
 		(frame :: any)[key] = value
 	end
@@ -111,7 +143,118 @@ function Kit.button(text: string, onClick: () -> (), props: { [string]: any }?):
 		(button :: any)[key] = value
 	end
 	button.Activated:Connect(onClick)
+	Kit.pressable(button)
 	return button
+end
+
+-- Buttons sink a little while pressed, so a tap feels like it landed.
+function Kit.pressable(button: GuiButton)
+	local scale = Kit.new("UIScale", { Name = "PressScale", Parent = button })
+	local function to(value: number)
+		if scale.Parent then
+			TweenService:Create(scale, PRESS_INFO, { Scale = value }):Play()
+		end
+	end
+	button.InputBegan:Connect(function(input)
+		local kind = input.UserInputType
+		if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
+			to(PRESS_SCALE)
+		end
+	end)
+	button.InputEnded:Connect(function(input)
+		local kind = input.UserInputType
+		if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
+			to(1)
+		end
+	end)
+	button.MouseLeave:Connect(function()
+		to(1)
+	end)
+end
+
+-- A secondary button: panel colored, light text. Same props as Kit.button.
+function Kit.secondary(text: string, onClick: () -> (), props: { [string]: any }?): TextButton
+	local button = Kit.button(text, onClick, {
+		BackgroundColor3 = Kit.Theme.PanelLight,
+		TextColor3 = Kit.Theme.Text,
+	})
+	for key, value in props or {} do
+		(button :: any)[key] = value
+	end
+	return button
+end
+
+-- The round ✕ in a window's top-right corner.
+function Kit.closeButton(onClick: () -> (), props: { [string]: any }?): TextButton
+	local button = Kit.button("✕", onClick, {
+		Name = "Close",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 4, 0, -4),
+		Size = UDim2.new(0, 36, 0, 36),
+		BackgroundColor3 = Kit.Theme.PanelLight,
+		TextColor3 = Kit.Theme.Text,
+		TextSize = 18,
+	})
+	local corner = button:FindFirstChildOfClass("UICorner")
+	if corner then
+		corner.CornerRadius = UDim.new(0.5, 0)
+	end
+	for key, value in props or {} do
+		(button :: any)[key] = value
+	end
+	return button
+end
+
+-- A window title: same size and weight everywhere. Leaves room for the ✕ on the right.
+function Kit.title(text: string, props: { [string]: any }?): TextLabel
+	local label = Kit.label(text, {
+		Name = "Title",
+		Font = Kit.Theme.FontBold,
+		TextSize = Kit.Theme.TextSize.Title,
+		Size = UDim2.new(1, -48, 0, 28),
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		TextWrapped = false,
+	})
+	for key, value in props or {} do
+		(label :: any)[key] = value
+	end
+	return label
+end
+
+-- A pill-shaped toggle (tabs, filters). Kit.setChip(chip, selected) recolors it.
+function Kit.chip(text: string, onClick: () -> (), props: { [string]: any }?): TextButton
+	local chip = Kit.button(text, onClick, {
+		Size = UDim2.new(0, 0, 0, 30),
+		AutomaticSize = Enum.AutomaticSize.X,
+		TextSize = Kit.Theme.TextSize.Small,
+		BackgroundColor3 = Kit.Theme.PanelLight,
+		TextColor3 = Kit.Theme.Text,
+	})
+	local corner = chip:FindFirstChildOfClass("UICorner")
+	if corner then
+		corner.CornerRadius = UDim.new(0.5, 0)
+	end
+	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14), Parent = chip })
+	for key, value in props or {} do
+		(chip :: any)[key] = value
+	end
+	return chip
+end
+
+function Kit.setChip(chip: TextButton, selected: boolean)
+	chip.BackgroundColor3 = if selected then Kit.Theme.Accent else Kit.Theme.PanelLight
+	chip.TextColor3 = if selected then Kit.Theme.AccentText else Kit.Theme.Text
+end
+
+-- Grows a window in from slightly smaller, so it doesn't just blink on.
+function Kit.popIn(object: GuiObject)
+	local scale = object:FindFirstChild("PopScale") :: UIScale?
+	if not scale then
+		scale = Kit.new("UIScale", { Name = "PopScale", Parent = object })
+	end
+	local s = scale :: UIScale
+	s.Scale = 0.92
+	TweenService:Create(s, POP_INFO, { Scale = 1 }):Play()
 end
 
 -- A centered window over a dimmed screen. Tapping the dim area or the X closes it.
@@ -145,6 +288,7 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 	}, {
 		Kit.corner(14),
 		Kit.padding(12),
+		Kit.stroke(),
 		Kit.new("UISizeConstraint", { MaxSize = opts.maxSize or Vector2.new(900, 640) }),
 	})
 	local body = Kit.new("Frame", {
@@ -165,7 +309,10 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 		end
 	end
 	function modal.open()
-		overlay.Visible = true
+		if not overlay.Visible then
+			overlay.Visible = true
+			Kit.popIn(panel)
+		end
 	end
 	function modal.toggle()
 		if overlay.Visible then
@@ -183,23 +330,21 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 		panel.Size = UDim2.new(1, -24, 1, -(top + bottom + 12))
 	end
 	overlay.Activated:Connect(modal.close)
-	Kit.button("X", modal.close, {
-		Name = "Close",
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 4, 0, -4),
-		Size = UDim2.new(0, 36, 0, 36),
-		BackgroundColor3 = Kit.Theme.PanelLight,
-		TextColor3 = Kit.Theme.Text,
-		TextSize = 18,
-		ZIndex = z + 20,
-		Parent = panel,
-	})
+	Kit.closeButton(modal.close, { ZIndex = z + 20, Parent = panel })
 	return modal
 end
 
 function Kit.clear(container: Instance)
 	for _, child in container:GetChildren() do
-		if not child:IsA("UIListLayout") and not child:IsA("UIGridLayout") and not child:IsA("UIPadding") and not child:IsA("UICorner") then
+		if
+			not child:IsA("UIListLayout")
+			and not child:IsA("UIGridLayout")
+			and not child:IsA("UIPadding")
+			and not child:IsA("UICorner")
+			-- Kit's own decorations on the container itself.
+			and not (child:IsA("UIStroke") and child.Name == "Outline")
+			and not (child:IsA("UIScale") and (child.Name == "PressScale" or child.Name == "PopScale"))
+		then
 			child:Destroy()
 		end
 	end

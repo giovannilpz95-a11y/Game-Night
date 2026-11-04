@@ -94,6 +94,7 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 		})
 		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = badges[key] })
 		button.Activated:Connect(onClick)
+		Kit.pressable(button)
 		buttons[key] = button
 		return button
 	end
