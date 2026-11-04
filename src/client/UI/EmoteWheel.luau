@@ -273,18 +273,18 @@ function EmoteWheel.create(root: GuiObject, header: GuiObject, hooks: Hooks): Wh
 					ZIndex = 63,
 					Parent = b,
 				})
-				Kit.label(name, {
+				local nameLabel = Kit.label(name, {
 					AnchorPoint = Vector2.new(0.5, 1),
 					Position = UDim2.new(0.5, 0, 1, -4),
-					Size = UDim2.new(1, -4, 0, 14),
-					TextSize = 11,
+					Size = UDim2.new(1, -6, 0, 13),
+					TextScaled = true, -- long names ("Mind blown") shrink instead of cutting off
 					TextWrapped = false,
-					TextTruncate = Enum.TextTruncate.AtEnd,
 					TextColor3 = if slot.kind == "shop" then Theme.AccentText else Theme.SubText,
 					TextXAlignment = Enum.TextXAlignment.Center,
 					ZIndex = 63,
 					Parent = b,
 				})
+				Kit.new("UITextSizeConstraint", { MaxTextSize = 11, MinTextSize = 7, Parent = nameLabel })
 			end
 		end
 	end
