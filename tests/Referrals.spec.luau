@@ -1,0 +1,100 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+local Economy = require(ReplicatedStorage.Shared.Economy)
+local Profile = require(ServerScriptService.Server.Core.Profile)
+local Referrals = require(ServerScriptService.Server.Core.Referrals)
+
+return function(T)
+	local DAY = 20000
+
+	T.test("reads the inviter from Roblox's referral first, then our launch data", function()
+		T.eq(Referrals.inviterFromJoinData({ ReferredByPlayerId = 42 }, 7), 42)
+		T.eq(Referrals.inviterFromJoinData({ LaunchData = Referrals.launchData(42) }, 7), 42)
+		T.eq(Referrals.inviterFromJoinData({ ReferredByPlayerId = 42, LaunchData = Referrals.launchData(9) }, 7), 42)
+		T.eq(Referrals.inviterFromJoinData({ ReferredByPlayerId = 0, LaunchData = Referrals.launchData(9) }, 7), 9)
+	end)
+
+	T.test("ignores junk and self-invites in join data", function()
+		T.eq(Referrals.inviterFromJoinData(nil, 7), nil)
+		T.eq(Referrals.inviterFromJoinData("x", 7), nil)
+		T.eq(Referrals.inviterFromJoinData({ ReferredByPlayerId = -3 }, 7), nil)
+		T.eq(Referrals.inviterFromJoinData({ ReferredByPlayerId = 1.5 }, 7), nil)
+		T.eq(Referrals.inviterFromJoinData({ ReferredByPlayerId = 7 }, 7), nil)
+		T.eq(Referrals.inviterFromJoinData({ LaunchData = "gn-invite:abc" }, 7), nil)
+		T.eq(Referrals.inviterFromJoinData({ LaunchData = "gn-invite:12 " }, 7), nil)
+		T.eq(Referrals.inviterFromJoinData({ LaunchData = { 1 } }, 7), nil)
+		T.eq(Referrals.inviterFromJoinData({ LaunchData = "gn-invite:" .. string.rep("9", 80) }, 7), nil)
+	end)
+
+	T.test("reads the friend you followed from teleport data", function()
+		T.eq(Referrals.followFromTeleportData({ gn = { follow = 5 } }, 7), 5)
+		T.eq(Referrals.followFromTeleportData({ gn = { token = "x" } }, 7), nil)
+		T.eq(Referrals.followFromTeleportData({ gn = { follow = 7 } }, 7), nil)
+		T.eq(Referrals.followFromTeleportData({ gn = { follow = "5" } }, 7), nil)
+		T.eq(Referrals.followFromTeleportData(nil, 7), nil)
+	end)
+
+	T.test("only brand-new players are recorded, once", function()
+		local data = Profile.new(0)
+		T.ok(Referrals.recordArrival(data, 42))
+		T.eq(data.friends.invitedBy, 42)
+		T.ok(not Referrals.recordArrival(data, 43), "first inviter keeps it")
+		T.eq(data.friends.invitedBy, 42)
+
+		local veteran = Profile.new(0)
+		veteran.stats.matches = 3
+		T.ok(not Referrals.recordArrival(veteran, 42), "players who already played don't count")
+	end)
+
+	T.test("the first rewarded game pays the welcome Gems and names the inviter, once", function()
+		local data = Profile.new(0)
+		T.eq((Referrals.onRewardedMatch(data)), nil, "nobody invited them")
+		Referrals.recordArrival(data, 42)
+		local inviter, gems = Referrals.onRewardedMatch(data)
+		T.eq(inviter, 42)
+		T.eq(gems, Economy.FriendWelcomeGems)
+		T.eq(data.gems, Economy.FriendWelcomeGems)
+		T.eq((Referrals.onRewardedMatch(data)), nil, "only once")
+		T.eq(data.gems, Economy.FriendWelcomeGems)
+	end)
+
+	T.test("inviters are paid once per friend, up to the daily cap", function()
+		local data = Profile.new(0)
+		T.eq((Referrals.payInviter(data, 100, DAY)), Economy.FriendInviteGems)
+		local again, why = Referrals.payInviter(data, 100, DAY + 1)
+		T.eq(again, 0)
+		T.eq(why, "already paid")
+		for i = 2, Economy.FriendInvitesPerDay do
+			T.eq((Referrals.payInviter(data, 100 + i, DAY)), Economy.FriendInviteGems)
+		end
+		local capped, reason = Referrals.payInviter(data, 999, DAY)
+		T.eq(capped, 0)
+		T.eq(reason, "daily limit")
+		T.eq((Referrals.payInviter(data, 999, DAY + 1)), Economy.FriendInviteGems, "new day, new cap")
+		T.eq(data.gems, Economy.FriendInviteGems * (Economy.FriendInvitesPerDay + 1))
+	end)
+
+	T.test("pending rewards are deduped, cleaned and capped", function()
+		local list = Referrals.addPending(nil, 5)
+		T.eq(#list, 1)
+		list = Referrals.addPending(list, 5)
+		T.eq(#list, 1)
+		list = Referrals.addPending({ 1, "x", -2, 1, 3 }, 4)
+		T.eq(table.concat(list, ","), "1,3,4")
+		local big = {}
+		for i = 1, Referrals.MaxPending + 10 do
+			big[i] = i
+		end
+		list = Referrals.addPending(big, 1000)
+		T.eq(#list, Referrals.MaxPending)
+		T.eq(list[#list], 1000)
+	end)
+
+	T.test("old saves get the friends fields", function()
+		local data = Profile.reconcile({ gems = 3, login = { lastDay = 5, streak = 2 } }, 0)
+		T.eq(data.friends.invitedBy, 0)
+		T.eq(#data.friends.invited, 0)
+		T.eq(data.login.best, 0)
+		T.eq(data.login.streak, 2)
+	end)
+end

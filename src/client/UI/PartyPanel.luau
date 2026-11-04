@@ -4,7 +4,6 @@
 -- "Find a table" and "Host tools".
 
 local Players = game:GetService("Players")
-local SocialService = game:GetService("SocialService")
 
 local Kit = require(script.Parent.Kit)
 local Theme = Kit.Theme
@@ -16,7 +15,7 @@ local localPlayer = Players.LocalPlayer
 local PRIVACY_ORDER = { "invite", "friends", "password" }
 local PRIVACY_NAMES = { invite = "Invite only", friends = "Private (friends)", password = "Password" }
 
--- hooks: needHost(reason), viewStats(userId)
+-- hooks: needHost(reason), viewStats(userId), openFriends()
 function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 	local root = Kit.new("ScrollingFrame", {
 		Name = "PartyPanel",
@@ -69,11 +68,8 @@ function PartyPanel.create(parent: Instance, send: (any) -> (), hooks: any)
 		Parent = root,
 	}, { Kit.list(4) })
 
-	Kit.button("Invite Roblox friends", function()
-		local ok, canInvite = pcall(SocialService.CanSendGameInviteAsync, SocialService, localPlayer)
-		if ok and canInvite then
-			pcall(SocialService.PromptGameInvite, SocialService, localPlayer)
-		end
+	Kit.button("Friends", function()
+		hooks.openFriends()
 	end, { LayoutOrder = 6, Parent = root })
 
 	-- A name row with a 📊 button that opens that player's stats.
