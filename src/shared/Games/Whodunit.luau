@@ -485,6 +485,25 @@ function Whodunit.getView(state, seat: number?)
 			end
 		end
 	end
+	-- Public: every seat that couldn't disprove a suggestion holds none of its three cards
+	-- (the notes grid marks these ✗ for you). Deduped { seat, card } pairs.
+	local lacks = {}
+	local seen = {}
+	for _, entry in state.log do
+		for _, other in entry.passed do
+			for _, id in { Whodunit.suspectCard(entry.suspect), Whodunit.itemCard(entry.item), Whodunit.roomCard(entry.room) } do
+				local key = other * 100 + id
+				if not seen[key] then
+					seen[key] = true
+					table.insert(lacks, { seat = other, card = id })
+				end
+			end
+		end
+	end
+	local handSizes = {}
+	for s = 1, state.seatCount do
+		handSizes[s] = #state.hands[s]
+	end
 	local myTurn = mySeat ~= nil and not over and mySeat == state.turn and state.phase ~= "show"
 	local showing = mySeat ~= nil and not over and state.phase == "show" and state.suggestion.shower == mySeat
 	local accusations = {}
@@ -501,6 +520,9 @@ function Whodunit.getView(state, seat: number?)
 		eliminated = table.clone(state.eliminated),
 		hand = if mySeat then table.clone(state.hands[mySeat]) else nil,
 		notes = notes,
+		lacks = lacks,
+		handSizes = handSizes,
+		logCount = #state.log,
 		log = log,
 		suggestion = if state.suggestion then entryView(state.suggestion, mySeat, over) else nil,
 		accusations = accusations,
