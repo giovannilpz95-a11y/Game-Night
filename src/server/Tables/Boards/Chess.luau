@@ -145,6 +145,9 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 							local piece = if template
 								then Pieces.stand(template, factor, board.surface(r, c))
 								else fallbackPiece(kind, white, board.surface(r, c), board.cellSize)
+							-- The client lifts the piece under the mouse by its square.
+							piece:SetAttribute("Row", r)
+							piece:SetAttribute("Col", c)
 							piece.Parent = board.pieces
 							shown[sq] = piece
 						end

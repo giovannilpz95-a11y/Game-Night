@@ -1,6 +1,7 @@
 -- Tap a piece on the 3D board, then each landing square in turn (multi-jumps take
 -- several taps; the move is sent when the jump is complete). When a capture is forced,
--- the pieces that can jump are marked.
+-- the pieces that can jump are marked. A piece you can move rises off the board under
+-- the mouse, and the one you picked stays up until the move is done.
 
 local Checkers = {}
 
@@ -16,6 +17,7 @@ function Checkers.create(ctx: any)
 	local snapshot: any = nil
 	local selected: { number }? = nil
 	local partial: { { number } } = {}
+	local hovered: { number }? = nil -- the square under the mouse
 
 	local function legal(): { any }
 		return (snapshot and snapshot.view.legalMoves) or {}
@@ -95,9 +97,29 @@ function Checkers.create(ctx: any)
 		end
 	end
 
+	-- Mid-jump the picked piece is already a ghost on its landing square, so it stays down.
+	local function lift(): boolean
+		local wanted = {}
+		local rose = false
+		for _, sq in { hovered, if #partial == 0 then selected else nil } do
+			if sq and canMoveFrom(sq[1], sq[2]) then
+				local piece = ctx.pieceAt(sq[1], sq[2])
+				local cell = ctx.cell(sq[1], sq[2])
+				if piece and cell then
+					local picked = selected ~= nil and same(sq, selected :: { number })
+					wanted[piece] = cell.Size.X * (if picked then 0.6 else 0.4)
+					rose = rose or not picked
+				end
+			end
+		end
+		ctx.lift(wanted)
+		return rose
+	end
+
 	local function render()
 		ctx.clearMarks()
 		showJumpingPiece()
+		lift()
 		if selected then
 			markCell(selected[1], selected[2], SELECTED, "fill")
 			for _, sq in partial do
@@ -131,6 +153,7 @@ function Checkers.create(ctx: any)
 					if nextSq[1] == r and nextSq[2] == c then
 						table.insert(partial, { r, c })
 						if #m.path == #partial then
+							ctx.dropLift()
 							ctx.sendMove({ from = m.from, path = m.path })
 							selected, partial = nil, {}
 						end
@@ -148,6 +171,12 @@ function Checkers.create(ctx: any)
 				selected, partial = nil, {}
 			end
 			render()
+		end,
+		-- Returns true when a piece rose (the controller plays a soft tick).
+		hover = function(cell: BasePart?): boolean
+			local r, c = cell and cell:GetAttribute("Row"), cell and cell:GetAttribute("Col")
+			hovered = if r and c then { r :: number, c :: number } else nil
+			return lift()
 		end,
 	}
 end

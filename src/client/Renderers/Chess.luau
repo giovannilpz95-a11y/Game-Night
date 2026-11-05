@@ -236,9 +236,9 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 
 		-- Captured pieces and move list
 		-- Taken pieces as piece symbols, smallest first, with the material lead like
-		-- the big chess sites show it ("♟♟♞ +3").
+		-- the big chess sites show it ("PPN +3").
 		local VALUE = { 1, 3, 3, 5, 9, 0 }
-		local SYMBOL = { "♟", "♞", "♝", "♜", "♛", "♚" }
+		local SYMBOL = { "P", "N", "B", "R", "Q", "K" }
 		local worth = { 0, 0 }
 		local function capturedText(seat: number): string
 			local list = table.clone(view.captured[seat] or {})

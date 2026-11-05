@@ -173,7 +173,7 @@ function SeasonPass.roll(data: Profile.Data, now: number, games: { Quests.GameIn
 	end
 	local week = Weekly.week(now)
 	if data.season.weekly.week ~= week then
-		data.season.weekly = { week = week, quests = Quests.makeWeekly(games, rng) }
+		data.season.weekly = { week = week, quests = Quests.makeWeekly(games, rng, (Season.track(n)).weekly) }
 	end
 	SeasonPass.addBonusQuest(data, games, rng)
 	return lines
