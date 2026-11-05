@@ -16,3 +16,6 @@ Back to [[Home]].
   - Think time (`getBotDelay`): about 1-3 s on top of the search, longer with more legal moves.
 - Bot search runs on the server and doesn't yield. If many bot games run at once, move it to an Actor (Parallel Luau).
 - Models: `ReplicatedStorage.Assets.Chess.<Piece>_<White|Black>` (see `client/UI/PieceView.luau`).
+- Takebacks: right after your move, "↶ Take back" (3 per game) sends `takeback` out of turn (`getInterruptSeats`); the opponent answers `acceptTakeback` or moves on. `state.undo` restores the position. Bots say yes by level (easy always, hard rarely). UI in `src/client/UI/DrawOffer.luau`.
+- Premoves (client only, 2D and 3D): pick a piece and square while it's the opponent's turn; it is sent when your turn comes if it is still legal.
+- Right-click marks on the 2D board: right-click a square for a ring, drag for an arrow; left click clears them. Clocks turn red at 10 s.

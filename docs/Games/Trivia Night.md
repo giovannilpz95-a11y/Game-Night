@@ -13,3 +13,4 @@ Quick-fire multiple choice for 1-8 seats. Everyone answers at once.
 - Bots answer after 2-11 s and are right 40% / 65% / 85% of the time (easy / medium / hard).
 - Tests: `tests/TriviaNight.spec.luau` (also checks the question bank is well formed).
 - Not yet: category vote, the 3D game-show stage (`Assets.TriviaNight.Stage`), avoiding repeats across matches on the same server, a bigger question bank (aim for 1,000+).
+- Category vote (house rule, on by default): an 8 s `pick` phase before every 3 questions; the top category supplies the next round.

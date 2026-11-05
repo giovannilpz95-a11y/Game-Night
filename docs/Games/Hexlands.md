@@ -18,3 +18,4 @@ An island-settling trading game (the roll-for-resources, build-and-trade family)
   - Medium: top 2. Hard: always the best, and chases Longest Road.
 - Pacing: bots wait about 0.5 s between moves inside a turn (0.8-1.1 s to roll). Medium and Hard bots reach 8 points in nearly every game (about 15 rounds with 4 seats, 27 with 2), even against a player who never builds; a test checks this. With one human at 10 s a move, a 3-seat match takes roughly 15-20 minutes (checked by the rewards test).
 - Models (not built yet): see the vault note "02 Games/Catan.md", Model References.
+- Counter-offers: the player offered a trade can `counter` once per offer, flipping the trade back to the proposer.

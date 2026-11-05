@@ -14,3 +14,4 @@ A deduction game for 3-6 seats in the Clue / Cluedo family, with our own mystery
 - Pacing: bots make a minimum number of suggestions before accusing even when sure (`minSuggestionsToAccuse`: easy 3, medium 5, hard 4), so a human table gets a real game. Bot-only games: about 15-22 turns on hard, 17-36 on medium, 40-100 on easy. Catalog: 45 s turns, `typicalMinutes = 10`, `minMinutes = 1`, `minMoves = 8`, pays Whodunit Coins.
 - Tests: `tests/Whodunit.spec.luau` (deal, movement, disproving order, privacy, accusations, deduction, bot games at every level and table size).
 - Not yet: 3D mansion mode, pawn and item models (`Assets.Whodunit`), themed mansions, dice-movement variant.
+- Accusations open the case file on screen: the envelope flap lifts, the cards flip and a SOLVED!/WRONG! stamp lands.

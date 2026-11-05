@@ -18,3 +18,4 @@ Back to [[Home]].
   - Hard: depth 9 within 0.9 s.
 - Models: `ReplicatedStorage.Assets.Checkers.<Man|King>_<Dark|Light>`.
 - Crowning: `lastMove.crowned` is set when a man becomes a king; the 3D board shows "👑 Crowned!" and a burst of sparkles over the square.
+- 💡 Hint (client only, 3 per game): highlights the medium bot's move.

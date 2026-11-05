@@ -11,3 +11,4 @@ Back to [[Home]].
   - Medium: depth 4.
   - Hard: depth 8 within 0.6 s.
 - Models: `ReplicatedStorage.Assets.FourInARow.Disc_<1|2>`.
+- 3D table: a ghost disc shows where your disc would land while you hover a column.

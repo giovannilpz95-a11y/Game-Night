@@ -16,3 +16,4 @@ A shedding card game for 2-8 seats in the Crazy Eights family, with our own name
 - Bot: easy plays a random playable card. Medium keeps Wilds for last and plays the color it holds most. Hard also throws Skip/Reverse/+2/+4 at a next player with 2 or fewer cards. Bots always stack when they can.
 - Tests: `tests/ColorClash.spec.luau` (includes bot-vs-bot games at every level that check no card is lost or duplicated).
 - Not yet: jump-in, card models on the 3D table (`Assets.ColorClash.Card`).
+- Jump-in (house rule, off by default): a card identical to the top card (same color and value) can be slammed out of turn with `{kind = "jump"}`; the turn moves to the jumper. Out-of-turn seats come from `getInterruptSeats`; bots jump by level.
