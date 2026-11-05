@@ -21,6 +21,10 @@ Models.STEEL = Color3.fromRGB(190, 195, 205)
 
 local UP = CFrame.Angles(0, 0, math.rad(90))
 
+-- How far a detail (a door, a window, a stripe) stands out of the face it's on, in studs
+-- whatever the model's size: closer than about 0.01 the two faces fight (flicker).
+Models.PROUD = 0.02
+
 function Models.block(parent: Instance, name: string, size: Vector3, cf: CFrame, color: Color3, material: Enum.Material?): Part
 	return Pieces.part({ Name = name, Size = size, CFrame = cf, Color = color, Material = material or Enum.Material.SmoothPlastic, CanQuery = false, Parent = parent })
 end
@@ -126,9 +130,9 @@ local TOKENS: { (m: Model, cf: CFrame, c: Color3, h: number) -> () } = {
 		Models.block(m, "Sole", Vector3.new(0.36, 0.1, 0.78) * h, at(cf, h, 0, 0.18, 0), Models.IVORY)
 		Models.egg(m, "Toe", Vector3.new(0.36, 0.3, 0.46) * h, at(cf, h, 0, 0.3, -0.16), c)
 		Models.block(m, "Ankle", Vector3.new(0.34, 0.5, 0.36) * h, at(cf, h, 0, 0.46, 0.18), c)
-		Models.block(m, "Cuff", Vector3.new(0.38, 0.08, 0.4) * h, at(cf, h, 0, 0.72, 0.18), Models.IVORY)
+		Models.block(m, "Cuff", Vector3.new(0.34 * h + 2 * Models.PROUD, 0.08 * h + 2 * Models.PROUD, 0.36 * h + 2 * Models.PROUD), at(cf, h, 0, 0.72, 0.18), Models.IVORY)
 		for i = 0, 1 do
-			Models.block(m, "Lace", Vector3.new(0.3, 0.04, 0.06) * h, at(cf, h, 0, 0.42 + i * 0.06, -0.08 + i * 0.1), Models.IVORY)
+			Models.block(m, "Lace", Vector3.new(0.34 * h - 2 * Models.PROUD, 0.04 * h, 0.06 * h), at(cf, h, 0, 0.42 + i * 0.06, -0.1 + i * 0.07), Models.IVORY)
 		end
 	end,
 	function(m, cf, c, h) -- Cat
@@ -146,12 +150,12 @@ local TOKENS: { (m: Model, cf: CFrame, c: Color3, h: number) -> () } = {
 		Models.egg(m, "Upper", Vector3.new(0.34, 0.3, 0.14) * h, tilt * CFrame.new(0, 0.48 * h, 0), c)
 		Models.cyl(m, "Hole", 0.13 * h, 0.02 * h, tilt * CFrame.new(0, 0.3 * h, -0.075 * h) * CFrame.Angles(math.rad(90), 0, 0), Models.INK)
 		Models.block(m, "Neck", Vector3.new(0.07, 0.44, 0.05) * h, tilt * CFrame.new(0, 0.74 * h, 0), Models.WOOD)
-		Models.block(m, "Headstock", Vector3.new(0.13, 0.13, 0.06) * h, tilt * CFrame.new(0, 1 * h, 0), Models.WALNUT)
+		Models.block(m, "Headstock", Vector3.new(0.13, 0.13, 0.09) * h, tilt * CFrame.new(0, 1 * h, 0), Models.WALNUT)
 	end,
 	function(m, cf, c, h) -- Robot
 		Models.block(m, "Body", Vector3.new(0.46, 0.42, 0.34) * h, at(cf, h, 0, 0.4, 0), c)
 		Models.block(m, "Head", Vector3.new(0.36, 0.26, 0.3) * h, at(cf, h, 0, 0.76, 0), Models.STEEL)
-		Models.block(m, "Chest", Vector3.new(0.2, 0.1, 0.02) * h, at(cf, h, 0, 0.44, -0.18), Models.GOLD)
+		Models.block(m, "Chest", Vector3.new(0.2 * h, 0.1 * h, 2 * Models.PROUD), at(cf, h, 0, 0.44, -0.17), Models.GOLD)
 		for _, s in { -1, 1 } do
 			Models.ball(m, "Eye", 0.08 * h, at(cf, h, s * 0.08, 0.78, -0.15), Models.INK)
 			Models.block(m, "Arm", Vector3.new(0.08, 0.34, 0.1) * h, at(cf, h, s * 0.28, 0.42, 0), Models.STEEL)
@@ -211,8 +215,9 @@ local SIDES = { { 2, 3 }, { 1, 3 }, { 1, 2 }, { 1, 5 }, { 1, 4 }, { 2, 4 } }
 -- Y axis points out of the die.
 local function pips(m: Model, face: CFrame, value: number, size: number, color: Color3)
 	for _, pip in PIPS[value] or {} do
-		-- Sunk a little into the face so they read as drilled dots.
-		Models.cyl(m, "Pip", size * 0.19, size * 0.03, face * CFrame.new(pip[1] * size * 0.25, -size * 0.015, pip[2] * size * 0.25), color)
+		-- Mostly sunk into the face; the 0.016 that stands out keeps the dot's face from
+		-- fighting (flickering) with the die's face around it.
+		Models.cyl(m, "Pip", size * 0.19, size * 0.03 + 0.016, face * CFrame.new(pip[1] * size * 0.25, -size * 0.03, pip[2] * size * 0.25), color)
 	end
 end
 
@@ -253,8 +258,8 @@ end
 function Models.house(parent: Instance, cf: CFrame, color: Color3, size: number, roofColor: Color3?): Model
 	local m = newModel("House", parent)
 	Models.block(m, "Walls", Vector3.new(size, size * 0.62, size * 0.86), cf * CFrame.new(0, size * 0.31, 0), color)
-	Models.block(m, "Roof", Vector3.new(size * 1.1, size * 0.68, size * 0.68), cf * CFrame.new(0, size * 0.62, 0) * CFrame.Angles(math.rad(45), 0, 0), roofColor or darker(color, 0.35))
-	Models.block(m, "Door", Vector3.new(size * 0.24, size * 0.36, size * 0.04), cf * CFrame.new(0, size * 0.18, -size * 0.43), Models.WALNUT)
+	Models.block(m, "Roof", Vector3.new(size + 2 * Models.PROUD, size * 0.68, size * 0.68), cf * CFrame.new(0, size * 0.62, 0) * CFrame.Angles(math.rad(45), 0, 0), roofColor or darker(color, 0.35))
+	Models.block(m, "Door", Vector3.new(size * 0.24, size * 0.36 - Models.PROUD, 2 * Models.PROUD), cf * CFrame.new(0, (size * 0.36 + Models.PROUD) / 2, -size * 0.43), Models.WALNUT)
 	return m
 end
 
@@ -265,7 +270,7 @@ function Models.hotel(parent: Instance, cf: CFrame, color: Color3, size: number)
 	Models.block(m, "Roof", Vector3.new(size * 1.6, size * 0.12, size * 0.8), cf * CFrame.new(0, size * 0.91, 0), Models.GOLD)
 	for row = 0, 1 do
 		for col = -1, 1 do
-			Models.block(m, "Window", Vector3.new(size * 0.22, size * 0.2, size * 0.02), cf * CFrame.new(col * size * 0.42, size * (0.28 + row * 0.32), -size * 0.36), Color3.fromRGB(255, 232, 170))
+			Models.block(m, "Window", Vector3.new(size * 0.22, size * 0.2, 2 * Models.PROUD), cf * CFrame.new(col * size * 0.42, size * (0.28 + row * 0.32), -size * 0.35), Color3.fromRGB(255, 232, 170))
 		end
 	end
 	return m

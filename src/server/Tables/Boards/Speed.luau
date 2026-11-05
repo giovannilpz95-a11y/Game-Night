@@ -26,7 +26,7 @@ function Speed.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			local x = if pile == 1 then -0.75 else 0.75
 			local tray = center * CFrame.new(x, 0, 0)
 			Models.block(folder, "Tray", Vector3.new(Scene.CARD_W * BIG + 0.16, 0.02, Scene.CARD_H * BIG + 0.16), tray * CFrame.new(0, 0.01, 0), Models.GOLD)
-			Scene.pile(folder, center * CFrame.new(x * 2.7, 0, 0), (view.sideCounts or {})[pile] or 0, false)
+			Scene.pile(folder, center * CFrame.new(x * 3, 0, 0), (view.sideCounts or {})[pile] or 0, false)
 			-- Messy: each card turned toward whoever slapped it down.
 			local history = histories[pile]
 			local count = (view.centerCounts or {})[pile] or 0

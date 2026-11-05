@@ -36,8 +36,9 @@ function WordTiles.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 	model.Name = "GameBoard"
 	Models.block(model, "Base", Vector3.new(SIZE + 0.5, 0.2, SIZE + 0.5), boardCF * CFrame.new(0, 0.1, 0), Models.WALNUT, Enum.Material.Wood)
 	for _, s in { -1, 1 } do
-		Models.block(model, "Inlay", Vector3.new(SIZE + 0.12, 0.01, 0.05), boardCF * CFrame.new(0, 0.205, s * (SIZE / 2 + 0.06)), Models.GOLD)
-		Models.block(model, "Inlay", Vector3.new(0.05, 0.01, SIZE + 0.12), boardCF * CFrame.new(s * (SIZE / 2 + 0.06), 0.205, 0), Models.GOLD)
+		-- 0.016 proud of the base, so the two tops don't fight (flicker).
+		Models.block(model, "Inlay", Vector3.new(SIZE + 0.12, 0.036, 0.05), boardCF * CFrame.new(0, 0.198, s * (SIZE / 2 + 0.06)), Models.GOLD)
+		Models.block(model, "Inlay", Vector3.new(0.05, 0.036, SIZE + 0.12), boardCF * CFrame.new(s * (SIZE / 2 + 0.06), 0.198, 0), Models.GOLD)
 	end
 	local squares = Instance.new("Folder")
 	squares.Name = "Squares"
@@ -64,7 +65,7 @@ function WordTiles.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 				local kind = def.premium[r] and def.premium[r][c] or "."
 				Models.block(squares, "Square", Vector3.new(cell * 0.92, 0.04, cell * 0.92), cellCF(r, c, 0.22), PREMIUM[kind] or SQUARE)
 				if PREMIUM_TEXT[kind] then
-					Scene.flatText(squares, cellCF(r, c, 0.245), cell * 0.8, cell * 0.8, PREMIUM_TEXT[kind], { TextColor3 = Color3.new(1, 1, 1), TextTransparency = 0.15 })
+					Scene.flatText(squares, cellCF(r, c, 0.26), cell * 0.8, cell * 0.8, PREMIUM_TEXT[kind], { TextColor3 = Color3.new(1, 1, 1), TextTransparency = 0.15 })
 				end
 			end
 		end
@@ -110,11 +111,11 @@ function WordTiles.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 							-- Blanks are stored in upper case: show them a little paler, with no value.
 							local blank = ch == string.upper(ch) and ch ~= string.lower(ch)
 							local letter = string.upper(ch)
-							local top = cf * CFrame.new(0, 0.11, 0)
+							local top = cf * CFrame.new(0, 0.12, 0) -- clear of the tile top by 0.02 (no flicker)
 							Scene.flatText(dynamic, top, cell * 0.66, cell * 0.66, letter, { TextColor3 = if blank then Color3.fromRGB(150, 120, 90) else INK })
 							local value = Rules.values[string.lower(letter)]
 							if value and not blank then
-								Scene.flatText(dynamic, top * CFrame.new(cell * 0.27, 0.002, cell * 0.28), cell * 0.24, cell * 0.2, tostring(value), { TextColor3 = INK })
+								Scene.flatText(dynamic, top * CFrame.new(cell * 0.27, 0.02, cell * 0.28), cell * 0.24, cell * 0.2, tostring(value), { TextColor3 = INK })
 							end
 						end
 					end
@@ -125,12 +126,12 @@ function WordTiles.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 					Models.block(dynamic, "Rack", Vector3.new(3.3, 0.16, 0.56), spot * CFrame.new(0, 0.08, 0), Models.WOOD, Enum.Material.Wood)
 					Models.block(dynamic, "RackBack", Vector3.new(3.3, 0.34, 0.12), spot * CFrame.new(0, 0.26, 0.2) * CFrame.Angles(math.rad(14), 0, 0), Models.WALNUT, Enum.Material.Wood)
 					for _, s in { -1, 1 } do
-						Models.block(dynamic, "RackEnd", Vector3.new(0.1, 0.32, 0.56), spot * CFrame.new(s * 1.65, 0.16, 0), Models.WALNUT, Enum.Material.Wood)
+						Models.block(dynamic, "RackEnd", Vector3.new(0.1, 0.32, 0.6), spot * CFrame.new(s * 1.65, 0.16, 0), Models.WALNUT, Enum.Material.Wood)
 					end
 					for i = 1, count do
 						local tile = spot * CFrame.new((i - (count + 1) / 2) * 0.43, 0.38, 0.03) * CFrame.Angles(math.rad(14), 0, 0)
 						Models.block(dynamic, "RackTile", Vector3.new(0.39, 0.39, 0.09), tile, TILE)
-						Models.block(dynamic, "RackTileBack", Vector3.new(0.31, 0.31, 0.01), tile * CFrame.new(0, 0, -0.05), TILE_TOP)
+						Models.block(dynamic, "RackTileBack", Vector3.new(0.31, 0.31, 0.03), tile * CFrame.new(0, 0, -0.05), TILE_TOP)
 					end
 				end
 				if (view.bagCount or 0) > 0 then

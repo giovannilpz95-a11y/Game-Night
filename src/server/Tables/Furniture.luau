@@ -61,11 +61,13 @@ end
 
 -- A thin printed line on the felt (a gold circle or rounded square), drawn with a
 -- SurfaceGui stroke so it costs one invisible part.
-local function feltLine(parent: Instance, cf: CFrame, width: number, round: boolean)
+local function feltLine(parent: Instance, cf: CFrame, width: number, round: boolean, lift: number)
 	local plate = Pieces.part({
 		Name = "FeltLine",
 		Size = Vector3.new(width, 0.01, width),
-		CFrame = cf * CFrame.new(0, 0.03, 0),
+		-- `lift`: its top stays more than 0.01 from the felt's top and from a card mat's rim
+		-- (Boards/_Cards), so they never fight (flicker).
+		CFrame = cf * CFrame.new(0, lift, 0),
 		Transparency = 1,
 		CanQuery = false,
 		Parent = parent,
@@ -97,7 +99,8 @@ local function turnedLeg(parent: Instance, cf: CFrame, height: number, width: nu
 	Models.cyl(parent, "LegFoot", width * 1.25, height * 0.06, cf, Furniture.WALNUT, Enum.Material.Wood)
 	Models.egg(parent, "LegBulb", Vector3.new(width * 1.15, height * 0.22, width * 1.15), cf * CFrame.new(0, height * 0.2, 0), color, Enum.Material.Wood)
 	Models.cyl(parent, "LegBead", width * 1.05, height * 0.04, cf * CFrame.new(0, height * 0.33, 0), Furniture.BRASS, Enum.Material.Metal)
-	solid(Models.cyl(parent, "Leg", width * 0.72, height * 0.62, cf * CFrame.new(0, height * 0.33, 0), color, Enum.Material.Wood))
+	-- The shaft starts inside the bulb, so its end never meets the bead's underside.
+	solid(Models.cyl(parent, "Leg", width * 0.72, height * 0.75, cf * CFrame.new(0, height * 0.2, 0), color, Enum.Material.Wood))
 	Models.cyl(parent, "LegCollar", width * 1.1, height * 0.07, cf * CFrame.new(0, height * 0.93, 0), Furniture.WALNUT, Enum.Material.Wood)
 end
 
@@ -177,7 +180,7 @@ function Furniture.round(at: Vector3): Model
 
 	-- Felt, a printed line on it, and the padded rail around it.
 	Models.cyl(model, "Felt", feltD, 0.02, top, Furniture.FELT, Enum.Material.Fabric)
-	feltLine(model, top, feltD - 2.2, true)
+	feltLine(model, top, feltD - 2.2, true, 0.03)
 	local railR = feltD / 2 + 0.2
 	meshOr(model, "TableRailRound", Vector3.new(railR * 2 + 0.42, 0.42, railR * 2 + 0.42), top * CFrame.new(0, 0.21, 0), Furniture.LEATHER, Enum.Material.Leather, function()
 		ring(model, "Rail", top * CFrame.new(0, -0.04, 0), railR, 0.42, Furniture.LEATHER, Enum.Material.Leather, RAIL_SEGMENTS)
@@ -203,14 +206,22 @@ function Furniture.round(at: Vector3): Model
 	return model
 end
 
--- A rounded rectangle slab `w` x `w` with corner radius `r`, `h` tall, base on `cf`.
+-- How far apart two faces must be so they never fight (flicker) on screen.
+Furniture.GAP = 0.02
+
+-- A rounded rectangle slab `w` x `w` with corner radius `r`, `h` tall, base on `cf`: a
+-- middle board, a strip down each side (touching, not overlapping) and a round corner
+-- in each corner. The corners sit Furniture.GAP lower, so where they overlap the boards
+-- their faces never share a plane with the boards' faces.
 local function roundedSlab(parent: Instance, name: string, w: number, r: number, h: number, cf: CFrame, color: Color3, material: Enum.Material): { BasePart }
 	local parts = {}
 	table.insert(parts, Models.block(parent, name, Vector3.new(w - 2 * r, h, w), cf * CFrame.new(0, h / 2, 0), color, material))
-	table.insert(parts, Models.block(parent, name, Vector3.new(w, h, w - 2 * r), cf * CFrame.new(0, h / 2, 0), color, material))
+	for _, sx in { -1, 1 } do
+		table.insert(parts, Models.block(parent, name, Vector3.new(r, h, w - 2 * r), cf * CFrame.new(sx * (w - r) / 2, h / 2, 0), color, material))
+	end
 	for _, sx in { -1, 1 } do
 		for _, sz in { -1, 1 } do
-			table.insert(parts, Models.cyl(parent, name, r * 2, h, cf * CFrame.new(sx * (w / 2 - r), 0, sz * (w / 2 - r)), color, material))
+			table.insert(parts, Models.cyl(parent, name, r * 2, h, cf * CFrame.new(sx * (w / 2 - r), -Furniture.GAP, sz * (w / 2 - r)), color, material))
 		end
 	end
 	return parts
@@ -230,15 +241,19 @@ function Furniture.square(at: Vector3): Model
 	end
 	roundedSlab(model, "Band", w + 0.08, r + 0.04, 0.07, slabAt * CFrame.new(0, 0.16, 0), Furniture.BRASS, Enum.Material.Metal)
 	-- Apron: four boards under the top, set in from the edge.
+	-- Two boards run the full length and two fit between them (butt joints, no overlap).
 	local apron = w - 1.4
+	local board = 0.18
 	for i = 0, 3 do
 		local side = CFrame.Angles(0, math.rad(i * 90), 0)
-		Models.block(model, "Apron", Vector3.new(apron, 0.5, 0.18), slabAt * side * CFrame.new(0, -0.25, apron / 2), Furniture.WALNUT, Enum.Material.Wood)
+		local length = if i % 2 == 0 then apron + board else apron - board
+		Models.block(model, "Apron", Vector3.new(length, 0.5, board), slabAt * side * CFrame.new(0, -0.25, apron / 2), Furniture.WALNUT, Enum.Material.Wood)
 	end
 
 	local feltW = w - 1.4
-	roundedSlab(model, "Felt", feltW, 0.4, 0.02, top, Furniture.FELT, Enum.Material.Fabric)
-	feltLine(model, top, feltW - 1.6, false)
+	-- 0.04 thick so its sunk corners (see roundedSlab) stay clear of the wood top.
+	roundedSlab(model, "Felt", feltW, 0.4, 0.04, top, Furniture.FELT, Enum.Material.Fabric)
+	feltLine(model, top, feltW - 1.6, false, 0.05)
 	-- Rail: a padded tube along each side and a ball at each corner.
 	local railR = feltW / 2 + 0.15
 	local tube = 0.4

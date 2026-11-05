@@ -18,7 +18,8 @@ local Scene = {}
 
 Scene.FACE_VIEWER_TAG = "GameNightFaceViewer"
 
-export type Layout = { size: number, seats: { [number]: { dir: Vector3, reach: number } } }
+-- `mat` (set by Boards/_Cards): the card mat's radius and top height, in board space.
+export type Layout = { size: number, seats: { [number]: { dir: Vector3, reach: number } }, mat: { radius: number, top: number }? }
 
 Scene.SEAT_COLORS = {
 	Color3.fromRGB(255, 99, 132),
@@ -32,6 +33,13 @@ Scene.SEAT_COLORS = {
 }
 
 Scene.CARD_W, Scene.CARD_H, Scene.CARD_T = 0.9, 1.26, 0.03
+-- The smallest height between two flat faces that lie on top of each other and face the
+-- same way. Closer than about 0.01 studs the renderer can't tell which is in front and
+-- they flicker (z-fighting); tests/Overlaps.spec checks every model for it.
+Scene.LAYER = 0.016
+-- Height from one card to the next in a pile or a fan: clears the card back's emblem
+-- (2 x LAYER) and the face picture (0.011) by more than LAYER's 0.01.
+Scene.STACK = 0.05
 local CARD_BACK = Color3.fromRGB(70, 48, 96)
 local CARD_EDGE = Color3.fromRGB(250, 248, 240)
 local INK = Color3.fromRGB(30, 24, 20)
@@ -147,6 +155,11 @@ function Scene.seatSpot(boardCF: CFrame, layout: Layout, seat: number, inset: nu
 	local pos = dir * math.max(0.5, info.reach - inset)
 	local right = Vector3.new(-dir.Z, 0, dir.X) -- seat's right as it faces the center
 	pos += right * -(sideways or 0)
+	-- On (or partly on) a card mat, things lie on the mat, not sunk into it.
+	local mat = (layout :: any).mat
+	if mat and Vector3.new(pos.X, 0, pos.Z).Magnitude < mat.radius + Scene.CARD_H * 0.6 then
+		pos += Vector3.new(0, mat.top, 0)
+	end
 	local here = boardCF * CFrame.new(pos)
 	local toward = boardCF * CFrame.new(pos - dir)
 	return CFrame.lookAt(here.Position, toward.Position, boardCF.UpVector)
@@ -168,8 +181,12 @@ end
 -- The patterned side of a card or pile top, lying on `cf`.
 local function cardBack(parent: Instance, cf: CFrame, scale: number?)
 	local k = scale or 1
-	Models.block(parent, "BackPanel", Vector3.new(Scene.CARD_W * 0.84 * k, 0.006, Scene.CARD_H * 0.88 * k), cf * CFrame.new(0, 0.003, 0), CARD_BACK)
-	Models.block(parent, "BackEmblem", Vector3.new(Scene.CARD_W * 0.42 * k, 0.006, Scene.CARD_W * 0.42 * k), cf * CFrame.new(0, 0.006, 0) * CFrame.Angles(0, math.rad(45), 0), Models.GOLD)
+	-- Each layer's top stands Scene.LAYER above the one under it: closer than that, the
+	-- two faces fight (flicker) on screen. Their bottoms sink into the card.
+	local panelTop = Scene.LAYER
+	local emblemTop = 2 * Scene.LAYER
+	Models.block(parent, "BackPanel", Vector3.new(Scene.CARD_W * 0.84 * k, panelTop + 0.004, Scene.CARD_H * 0.88 * k), cf * CFrame.new(0, (panelTop - 0.004) / 2, 0), CARD_BACK)
+	Models.block(parent, "BackEmblem", Vector3.new(Scene.CARD_W * 0.42 * k, emblemTop - panelTop / 2, Scene.CARD_W * 0.42 * k), cf * CFrame.new(0, (emblemTop + panelTop / 2) / 2, 0) * CFrame.Angles(0, math.rad(45), 0), Models.GOLD)
 end
 
 -- One card lying flat at `cf` (its long side along the seat's view). `front` is
@@ -207,7 +224,8 @@ end
 
 -- A face-down pile of `count` cards (drawn as a block, at most 0.6 studs tall) with the
 -- count written on top if `showCount`. `drawPile` marks it as the game's draw pile (the
--- stock), so the client can fly drawn cards off it (UI/CardFx). Returns the top CFrame.
+-- stock), so the client can fly drawn cards off it (UI/CardFx). Returns where a card laid
+-- on it goes.
 function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: boolean?, drawPile: boolean?): CFrame
 	if count <= 0 then
 		return cf
@@ -217,8 +235,9 @@ function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: bool
 	if drawPile then
 		block:SetAttribute("DrawPile", true)
 	end
-	local top = cf * CFrame.new(0, height, 0)
-	cardBack(parent, top)
+	cardBack(parent, cf * CFrame.new(0, height, 0))
+	-- Where the next card goes: clear of the back's raised panel and emblem.
+	local top = cf * CFrame.new(0, height + Scene.STACK - Scene.CARD_T, 0)
 	if showCount then
 		-- Floats just over the pile, facing each viewer.
 		Scene.floatText(parent, top * CFrame.new(0, 0.3, 0), Scene.CARD_W * 0.8, Scene.CARD_W * 0.55, tostring(count), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
