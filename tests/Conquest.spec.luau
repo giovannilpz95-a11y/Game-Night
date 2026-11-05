@@ -61,6 +61,20 @@ return function(T)
 		return s
 	end
 
+	T.test("blitz win chance matches the dice odds", function()
+		local function near(a, b, label)
+			T.ok(math.abs(a - b) < 0.0005, `{label}: {a} vs {b}`)
+		end
+		near(Conquest.winChance(2, 1), 15 / 36, "1 die vs 1 die")
+		near(Conquest.winChance(3, 1), 125 / 216 + (91 / 216) * (15 / 36), "2 dice vs 1, then 1 vs 1")
+		T.eq(Conquest.winChance(1, 3), 0, "can't attack from 1 army")
+		T.eq(Conquest.winChance(5, 0), 1)
+		T.ok(Conquest.winChance(11, 10) > Conquest.winChance(10, 10), "more attackers, better odds")
+		T.ok(Conquest.winChance(10, 10) > Conquest.winChance(10, 11), "more defenders, worse odds")
+		T.ok(Conquest.winChance(30, 5) > 0.99)
+		T.ok(Conquest.winChance(500, 500) > 0 and Conquest.winChance(500, 500) < 1, "big fights stay quick and sane")
+	end)
+
 	T.test("the map is connected and links are two-way", function()
 		T.eq(N, 24)
 		local seen = { [1] = true }
