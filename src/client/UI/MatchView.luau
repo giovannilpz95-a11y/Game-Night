@@ -518,6 +518,10 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	end)
 	local shownMatchId: string? = nil
 	local rematchAsked = false
+	-- Showtime (Table3D/Showtime) has the screen: the intro tour or the winners'
+	-- celebration. The HUD hides; the result card and rewards wait for it to end.
+	local cinematic = false
+	local pendingReward: { string }? = nil
 	local rematchButton: TextButton
 	rematchButton = Kit.button("Rematch", function()
 		if rematchAsked or not snapshot then
@@ -995,9 +999,15 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ReactionFx.play(holder, reaction)
 	end)
 
+	local checkTurn: () -> ()
+
 	local function renderResult()
 		local result = snapshot.result
 		local over = isOver()
+		if cinematic then
+			resultOverlay.Visible = false -- shown (fresh, with its pop and sound) right after
+			return
+		end
 		local wasShown = resultOverlay.Visible
 		resultOverlay.Visible = over
 		if not over then
@@ -1146,6 +1156,23 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		closeButton.Size = if rematchButton.Visible then UDim2.new(0.4, -4, 0, 46) else UDim2.new(1, 0, 0, 46)
 	end
 
+	-- Your turn just started: say so, loudly. Party games (everyone moves at once, with
+	-- their own status line) skip the banner. Not during Showtime: it's said when it ends.
+	function checkTurn()
+		local mine = isMyTurn() and not cinematic
+		local status = snapshot.view and snapshot.view.status
+		if mine and not wasMyTurn and type(status) ~= "string" then
+			showBanner("Your turn!")
+		end
+		if mine ~= wasMyTurn then
+			lastTick = -1
+		end
+		if not mine and wasMyTurn then
+			hideBanner()
+		end
+		wasMyTurn = mine
+	end
+
 	closeButton = Kit.button("Lobby", function()
 		snapshot = nil
 		root.Visible = false
@@ -1198,7 +1225,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				closeMenu()
 			end
 			snapshot = newSnapshot
-			root.Visible = true
+			root.Visible = not cinematic
 
 			if rendererGameId ~= snapshot.gameId then
 				if renderer and renderer.destroy then
@@ -1230,20 +1257,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			end
 			renderSeats()
 
-			-- Your turn just started: say so, loudly. Party games (everyone moves at once,
-			-- with their own status line) skip the banner.
-			local mine = isMyTurn()
-			local status = snapshot.view and snapshot.view.status
-			if mine and not wasMyTurn and type(status) ~= "string" then
-				showBanner("Your turn!")
-			end
-			if mine ~= wasMyTurn then
-				lastTick = -1
-			end
-			if not mine and wasMyTurn then
-				hideBanner()
-			end
-			wasMyTurn = mine
+			checkTurn()
 
 			updateTurnText()
 			if renderer then
@@ -1254,7 +1268,32 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			applyMode()
 		end,
 		isOpen = function(): boolean
-			return root.Visible
+			return root.Visible or (cinematic and snapshot ~= nil)
+		end,
+		-- Showtime started or ended (Table3D/Showtime.onChanged).
+		setCinematic = function(value: boolean)
+			if cinematic == value then
+				return
+			end
+			cinematic = value
+			if value then
+				closeMenu()
+				hideBanner()
+			end
+			if not snapshot then
+				return
+			end
+			root.Visible = not value
+			if not value then
+				checkTurn()
+				renderResult()
+				applyMode()
+				if pendingReward and resultOverlay.Visible then
+					rewardLabel.Text = table.concat(pendingReward, "\n")
+					Audio.coins(#pendingReward + 2)
+				end
+				pendingReward = nil
+			end
 		end,
 		-- The game being shown, so the wallet bar can show its Coins.
 		gameId = function(): string?
@@ -1262,6 +1301,10 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end,
 		-- Shows match rewards on the results card. Returns false if no result is showing.
 		showReward = function(lines: { string }): boolean
+			if cinematic and snapshot and isOver() then
+				pendingReward = lines -- shown with the result card after the celebration
+				return true
+			end
 			if not (root.Visible and resultOverlay.Visible) then
 				return false
 			end

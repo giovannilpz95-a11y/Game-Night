@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
 local Reactions = require(ReplicatedStorage.Shared.Reactions)
+local Showtime = require(ReplicatedStorage.Shared.Showtime)
 local ReactionFx = require(script.Parent.ReactionFx)
 local Kit = require(script.Parent.Kit)
 local CoinConvertPanel = require(script.Parent.CoinConvertPanel)
@@ -180,6 +181,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		{ key = "robux", name = "💎 Gems & passes", short = "💎 Gems" },
 		{ key = "hub", name = "🏪 Hub shop", short = "🏪 Hub" },
 		{ key = "reactions", name = "😀 Reactions", short = "😀 Reactions" },
+		{ key = "showtime", name = "🕺 Poses & wins", short = "🕺 Poses" },
 	}
 	-- Every coin kind, for the wallet list; only kinds with items get a shop tab.
 	local coinKeys = {}
@@ -431,8 +433,8 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		local vip = wallet.vip == true
 		local equipped = wallet.equipped and wallet.equipped[shop] or {}
 		for index, item in ShopCatalog.forShop(shop) do
-			if item.slot == "reactions" then
-				continue -- on the Reactions tab
+			if item.slot == "reactions" or item.slot == "pose" or item.slot == "victory" then
+				continue -- on the Reactions or Poses & wins tab
 			end
 			local tier = TIER_COLORS[item.tier] or Theme.SubText
 			local owned = wallet.owned and wallet.owned[item.id]
@@ -485,6 +487,86 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 						Position = if half then UDim2.new((i - 1) * 0.5, if i == 2 then 3 else 0, 1, 0) else UDim2.new(0, 0, 1, 0),
 						Size = if half then UDim2.new(0.5, -3, 0, 32) else UDim2.new(1, 0, 0, 32),
 					})
+				end
+			end
+		end
+	end
+
+	-- Showtime: the pose you strike when the intro camera reaches you, and your celebration
+	-- when you win (shared/Showtime). Free ones just equip; the rest cost Gems or Universal
+	-- Coins. With nothing equipped you get the first free one.
+	local function renderShowtime()
+		Kit.list(8).Parent = content
+		local vip = wallet.vip == true
+		local equipped = (wallet.equipped and wallet.equipped.hub) or {}
+		local ownedSet = wallet.owned or {}
+		line("Strike a pose when the camera comes to you at the start of every table game, and celebrate when you win. Bots show off the rest.", 1, Theme.SubText)
+		local order = 1
+		for _, group in { { kind = "pose", label = "🎬 Intro poses", list = Showtime.Poses }, { kind = "victory", label = "🏆 Win celebrations", list = Showtime.Dances } } do
+			order += 1
+			section(group.label, order)
+			order += 1
+			local tiles = grid(order, UDim2.new(if narrow then 0.5 else 1 / 3, -8, 0, 168))
+			local slot = Showtime.Slots[group.kind]
+			local current = Showtime.pick(group.kind, equipped, ownedSet, ShopCatalog.isFree)
+			for index, move in group.list do
+				local item = ShopCatalog.get(move.id)
+				if not item then
+					continue
+				end
+				local tier = TIER_COLORS[item.tier] or Theme.SubText
+				local owned = ownedSet[item.id] or item.free
+				local isOn = current == item.id
+				local c = Kit.card({ LayoutOrder = index, Parent = tiles })
+				Kit.new("UIStroke", { Color = if isOn then Theme.Good else tier, Thickness = 2, Transparency = if isOn then 0 else 0.25, Parent = c })
+				local badge = Kit.label(move.icon, {
+					BackgroundColor3 = tier,
+					BackgroundTransparency = 0.7,
+					TextSize = 26,
+					TextXAlignment = Enum.TextXAlignment.Center,
+					Size = UDim2.fromOffset(46, 46),
+					Parent = c,
+				})
+				Kit.corner(12).Parent = badge
+				Kit.tag(if item.free then "FREE" else string.upper(item.tier), if item.free then Theme.Good else tier, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = c })
+				if isOn then
+					Kit.tag("EQUIPPED", Theme.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 22), Parent = c })
+				end
+				Kit.label(move.name, { Font = Theme.FontBold, TextSize = 15, Position = UDim2.new(0, 0, 0, 50), Size = UDim2.new(1, 0, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd, Parent = c })
+				Kit.label(move.blurb, { TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 0, 72), Size = UDim2.new(1, 0, 0, 32), TextYAlignment = Enum.TextYAlignment.Top, Parent = c })
+				if owned then
+					-- Equipping the default when nothing is equipped would be a no-op, so the
+					-- button only shows on the others.
+					local explicit = equipped[slot] == item.id
+					if not isOn or explicit then
+						Kit.button(if explicit then "Unequip" else "Equip", function()
+							sendEconomy({ action = "equip", itemId = item.id })
+						end, { BackgroundColor3 = if explicit then Theme.Panel else Theme.Good, TextColor3 = if explicit then Theme.Text else Theme.AccentText, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 32), Parent = c })
+					end
+				else
+					local buttons = {}
+					local gems = gemPrice(item, vip)
+					if gems then
+						table.insert(buttons, { text = commas(gems), icon = "gem", currency = "gems", color = Theme.Gem, afford = wallet.gems >= gems })
+					end
+					if item.universal then
+						local have = wallet.coins[Economy.UniversalCoin.key] or 0
+						table.insert(buttons, { text = commas(item.universal), icon = "universal", currency = "universal", color = Economy.UniversalCoin.color, afford = have >= item.universal })
+					end
+					for i, b in buttons do
+						local half = #buttons == 2
+						local button: TextButton
+						button = priceButton(c, b.text, b.icon, b.color, function()
+							if not b.afford then
+								Kit.nope(button)
+							end
+							sendEconomy({ action = "buy", itemId = item.id, currency = b.currency })
+						end, {
+							AnchorPoint = Vector2.new(0, 1),
+							Position = if half then UDim2.new((i - 1) * 0.5, if i == 2 then 3 else 0, 1, 0) else UDim2.new(0, 0, 1, 0),
+							Size = if half then UDim2.new(0.5, -3, 0, 32) else UDim2.new(1, 0, 0, 32),
+						})
+					end
 				end
 			end
 		end
@@ -755,6 +837,9 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		elseif tab == "reactions" then
 			title.Text = "😀 Reactions"
 			renderReactions()
+		elseif tab == "showtime" then
+			title.Text = "🕺 Poses & wins"
+			renderShowtime()
 		else
 			if tab == "hub" then
 				title.Text = "🏪 Hub shop"
@@ -782,8 +867,8 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		root = root,
 		-- Opens on a coin's shop (from a game table), "reactions" (the 😀 wheel) or the wallet.
 		open = function(coinKey: string?)
-			if coinKey == "reactions" then
-				tab = "reactions"
+			if coinKey == "reactions" or coinKey == "showtime" then
+				tab = coinKey :: string
 			else
 				tab = if coinKey and #ShopCatalog.forShop(coinKey) > 0 then coinKey else "wallet"
 			end

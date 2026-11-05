@@ -42,6 +42,9 @@ function Shop.buy(data: Profile.Data, itemId: any, currency: any, vip: boolean):
 	if data.owned[item.id] then
 		return false, "You already own that"
 	end
+	if item.free then
+		return false, "That one's free: just equip it"
+	end
 	if currency == "coins" then
 		local price = Shop.coinPrice(item)
 		if not price then
@@ -101,7 +104,7 @@ function Shop.toggleEquip(data: Profile.Data, itemId: any): (boolean, string?)
 	if not item then
 		return false, "That item isn't in the shop"
 	end
-	if not data.owned[item.id] then
+	if not (data.owned[item.id] or item.free) then
 		return false, "You don't own that yet"
 	end
 	if item.slot == "reactions" then

@@ -11,6 +11,7 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Adding a game]]: the checklist for every new game
 - [[Economy]]: Gems, Coins, saving, the shop and Robux products
 - [[Reactions]]: the 😀 wheel's animated reactions and the reaction packs for sale
+- [[Showtime]]: the game-start intro (camera visits each player, who strikes a pose) and the winners' celebration, and the poses and celebrations for sale
 - [[Progression]]: levels, badges, weekly leaderboards and the stats profile
 - [[Store page]]: title, description, genre, icon, thumbnails and trailer shot list
 - [[LaunchChecklist]]: what Giovanni must do himself before going public, and what the launch audit checked

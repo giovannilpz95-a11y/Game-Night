@@ -10,6 +10,11 @@
 --              priced at their Gem price x Economy.CoinsPerGem (or their Coin price).
 --   earnedOnly true = Coins only, no Gem price (prestige items that prove you play)
 --   notForSale true = only granted (Starter Pack, rank rewards), never bought
+--   free       true = everyone owns it from the start (default Showtime poses and celebrations)
+--
+-- Showtime (shared/Showtime): slot "pose" is what you strike when the intro camera reaches
+-- you at the start of a game, slot "victory" is your celebration when you win. Both are
+-- hub items sold for Gems or Universal Coins, shown on the shop's 🕺 Showtime tab.
 --
 -- Cosmetics are not drawn yet: equipping is saved now, and the renderers read
 -- `equipped` when the art lands (see docs/Economy.md).
@@ -25,6 +30,7 @@ export type Item = {
 	universal: number?, -- price in Universal Coins (daily calendar), nil = not sold for them
 	earnedOnly: boolean?,
 	notForSale: boolean?,
+	free: boolean?,
 }
 
 local items: { Item } = {
@@ -53,6 +59,33 @@ local items: { Item } = {
 	{ id = "reactions_winter", name = "Winter Pack", shop = "hub", slot = "reactions", tier = "Epic", gems = 200, universal = 2000 },
 	{ id = "reactions_love", name = "Sweethearts", shop = "hub", slot = "reactions", tier = "Rare", gems = 150, universal = 1500 },
 	{ id = "reactions_summer", name = "Summer Pack", shop = "hub", slot = "reactions", tier = "Rare", gems = 150, universal = 1500 },
+
+	-- Showtime: intro poses (slot pose) and win celebrations (slot victory). Free ones
+	-- belong to everyone; the rest sell for Gems or Universal Coins (10 per Gem).
+	{ id = "pose_wave", name = "Hello There", shop = "hub", slot = "pose", tier = "Common", free = true },
+	{ id = "pose_thumbs", name = "Thumbs Up", shop = "hub", slot = "pose", tier = "Common", free = true },
+	{ id = "pose_flex", name = "Flex", shop = "hub", slot = "pose", tier = "Common", free = true },
+	{ id = "pose_peace", name = "Peace Out", shop = "hub", slot = "pose", tier = "Common", gems = 120, universal = 1200 },
+	{ id = "pose_thinker", name = "Mastermind", shop = "hub", slot = "pose", tier = "Common", gems = 120, universal = 1200 },
+	{ id = "pose_boxer", name = "Boxer", shop = "hub", slot = "pose", tier = "Rare", gems = 180, universal = 1800 },
+	{ id = "pose_challenge", name = "Bring It", shop = "hub", slot = "pose", tier = "Rare", gems = 180, universal = 1800 },
+	{ id = "pose_heart", name = "Heart Hands", shop = "hub", slot = "pose", tier = "Rare", gems = 200, universal = 2000 },
+	{ id = "pose_cool", name = "Too Cool", shop = "hub", slot = "pose", tier = "Rare", gems = 200, universal = 2000 },
+	{ id = "pose_superstar", name = "Superstar", shop = "hub", slot = "pose", tier = "Epic", gems = 300, universal = 3000 },
+	{ id = "pose_tada", name = "Ta-da!", shop = "hub", slot = "pose", tier = "Epic", gems = 300, universal = 3000 },
+	{ id = "pose_bow", name = "Royal Bow", shop = "hub", slot = "pose", tier = "Legendary", gems = 450, universal = 4500 },
+	{ id = "win_pump", name = "Arm Pump", shop = "hub", slot = "victory", tier = "Common", free = true },
+	{ id = "win_clap", name = "Happy Clap", shop = "hub", slot = "victory", tier = "Common", free = true },
+	{ id = "win_roof", name = "Raise the Roof", shop = "hub", slot = "victory", tier = "Rare", gems = 200, universal = 2000 },
+	{ id = "win_wave", name = "Stadium Wave", shop = "hub", slot = "victory", tier = "Rare", gems = 200, universal = 2000 },
+	{ id = "win_heart", name = "Blow Kisses", shop = "hub", slot = "victory", tier = "Rare", gems = 250, universal = 2500 },
+	{ id = "win_sprinkler", name = "Sprinkler", shop = "hub", slot = "victory", tier = "Epic", gems = 300, universal = 3000 },
+	{ id = "win_robot", name = "Robot", shop = "hub", slot = "victory", tier = "Epic", gems = 300, universal = 3000 },
+	{ id = "win_fire", name = "On Fire", shop = "hub", slot = "victory", tier = "Epic", gems = 350, universal = 3500 },
+	{ id = "win_disco", name = "Disco Point", shop = "hub", slot = "victory", tier = "Epic", gems = 350, universal = 3500 },
+	{ id = "win_groove", name = "Chair Groove", shop = "hub", slot = "victory", tier = "Epic", gems = 350, universal = 3500 },
+	{ id = "win_money", name = "Make It Rain", shop = "hub", slot = "victory", tier = "Legendary", gems = 500, universal = 5000 },
+	{ id = "win_champion", name = "Champion", shop = "hub", slot = "victory", tier = "Legendary", gems = 500, universal = 5000 },
 
 	-- Chess shop
 	{ id = "chess_walnut_board", name = "Walnut Board", shop = "chess", slot = "board", tier = "Common", coins = 400 },
@@ -157,6 +190,12 @@ ShopCatalog.items = items
 
 function ShopCatalog.get(id: string): Item?
 	return byId[id]
+end
+
+-- Free items (default Showtime moves) count as owned by everyone.
+function ShopCatalog.isFree(id: any): boolean
+	local item = if type(id) == "string" then byId[id] else nil
+	return item ~= nil and item.free == true
 end
 
 function ShopCatalog.forShop(shop: string): { Item }
