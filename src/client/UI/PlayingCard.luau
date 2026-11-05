@@ -261,9 +261,20 @@ end
 
 local hovers: { [Instance]: Hover } = {}
 
+-- Scaled text in turned cards can come up empty when the cards are made before their
+-- row has its size, until something redraws it. Re-scaling once laid out fixes that.
+local function refitText(container: Instance)
+	for _, d in container:GetDescendants() do
+		if d:IsA("TextLabel") and d.TextScaled then
+			d.TextScaled = false
+			d.TextScaled = true
+		end
+	end
+end
+
 -- Held: overlapping cards in a fan (outer ones turned and a little lower). Hovering a
 -- card lifts it out of the hand, straightens it and brings it to full brightness. Cards
--- you can't play are only a touch darker, never looking switched off.
+-- you can play stand up out of the fan; ones you can't are blacked out.
 local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, onClick: ((number) -> ())?)
 	local count = #cards
 	local size = container.AbsoluteSize
@@ -285,6 +296,8 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 		end)
 	end
 	hover.clear()
+	task.defer(refitText, container)
+	task.delay(0.25, refitText, container)
 	for index, card in cards do
 		local offset = index - (count + 1) / 2
 		local slot = Kit.new("Frame", {
@@ -297,14 +310,14 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 		local face = PlayingCard.face(card.id)
 		face.Parent = slot
 		local drop = (offset * spread / 28) ^ 2 * 0.5 -- the fan's curve, in card heights
-		local rest = UDim2.fromScale(0, drop + (if card.raised then -0.16 elseif card.glow then -0.06 else 0))
+		local rest = UDim2.fromScale(0, drop + (if card.raised then -0.18 elseif card.glow then -0.14 else 0))
 		face.Position = rest
 		face.Rotation = offset * spread
 		local shade: Frame? = nil
 		if card.dim then
 			shade = Kit.new("Frame", {
 				BackgroundColor3 = Color3.new(0, 0, 0),
-				BackgroundTransparency = 0.8,
+				BackgroundTransparency = 0.42,
 				BorderSizePixel = 0,
 				Size = UDim2.fromScale(1, 1),
 				ZIndex = 3,

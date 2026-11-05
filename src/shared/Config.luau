@@ -46,7 +46,7 @@ local Config = {
 	TableFurniture = "Detailed",
 	TableColumns = 5, -- code-built tables are laid out in rows of this many
 	BoardSize = 6, -- studs across a square 3D board
-	TableHoldSeconds = 4, -- after a match: the final board and bots stay this long
+	TableHoldSeconds = 15, -- after a match: the final board and bots stay this long (under the results)
 	-- Games with a 3D board on the table (client/Table3D and server/Tables/Boards).
 	-- Other games still seat everyone at the table, but play in the 2D view.
 	Boards3D = { Chess = true, Checkers = true, FourInARow = true, TicTacToe = true },
