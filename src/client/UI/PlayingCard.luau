@@ -273,8 +273,8 @@ local function refitText(container: Instance)
 end
 
 -- Held: overlapping cards in a fan (outer ones turned and a little lower). Hovering a
--- card lifts it out of the hand, straightens it and brings it to full brightness. Cards
--- you can play stand up out of the fan; ones you can't are blacked out.
+-- card lifts it out of the hand and straightens it. Cards you can play stand up out of
+-- the fan; ones you can't are blacked out, hovered or not.
 local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, onClick: ((number) -> ())?)
 	local count = #cards
 	local size = container.AbsoluteSize
@@ -313,9 +313,8 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 		local rest = UDim2.fromScale(0, drop + (if card.raised then -0.18 elseif card.glow then -0.14 else 0))
 		face.Position = rest
 		face.Rotation = offset * spread
-		local shade: Frame? = nil
 		if card.dim then
-			shade = Kit.new("Frame", {
+			Kit.new("Frame", {
 				BackgroundColor3 = Color3.new(0, 0, 0),
 				BackgroundTransparency = 0.42,
 				BorderSizePixel = 0,
@@ -331,15 +330,9 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
 			hover.add(slot, function()
 				slot.ZIndex = 10
-				if shade then
-					shade.Visible = false
-				end
 				TweenService:Create(face, LIFT, { Position = UDim2.fromScale(0, -0.22), Rotation = 0 }):Play()
 			end, function()
 				slot.ZIndex = 1
-				if shade then
-					shade.Visible = true
-				end
 				TweenService:Create(face, LIFT, { Position = rest, Rotation = offset * spread }):Play()
 			end)
 			button.Activated:Connect(function()
