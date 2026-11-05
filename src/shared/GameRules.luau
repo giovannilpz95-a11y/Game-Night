@@ -145,6 +145,11 @@ rules.Hexlands = {
 	sections = {
 		{ title = "Setup", lines = { "Everyone places two camps and two roads, in snake order. Your second camp pays one card for each hex around it." } },
 		{ title = "Your turn", lines = { "Roll. Each hex with that number pays its corners: 1 card per camp, 2 per town.", "Then trade and build as much as you like, and end your turn." } },
+		{ title = "Trading", lines = {
+			"Offer a trade to everyone (or one player): what you give and what you want. Up to 3 offers a turn.",
+			"Each player says yes, no, or sends a counter-offer. You pick who to trade with, or call it off.",
+			"The bank trades 4 of one resource for 1 of any other; harbors make it 3:1 or 2:1.",
+		} },
 		{ title = "Costs", lines = {
 			"Road: Lumber + Clay.",
 			"Camp: Lumber + Clay + Wool + Grain. Must be on your road, two corners from any other camp.",

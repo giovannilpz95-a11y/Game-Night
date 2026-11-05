@@ -1441,7 +1441,7 @@ function Estates.getSeatInfo(state): { [number]: string }
 					deeds += 1
 				end
 			end
-			info[seat] = `{money(p.cash)} · {deeds} deeds{if p.inJail then " · Jail" else ""}`
+			info[seat] = `{money(p.cash)} · {deeds} deed{if deeds == 1 then "" else "s"}{if p.inJail then " · Jail" else ""}`
 		end
 	end
 	return info

@@ -37,8 +37,12 @@
 --   { kind = "bandit", hex = h, victim = seat? }
 --   { kind = "discard", cards = { [res] = n } }
 --   { kind = "bank", give = res, get = res }
---   { kind = "offer", to = seat, give = { [res] = n }, get = { [res] = n } }
---   { kind = "accept" }  { kind = "reject" }   (the trade's target answers)
+--   { kind = "offer", to = seat | 0, give = { [res] = n }, get = { [res] = n } }   (0 = everyone)
+--   { kind = "accept" }  { kind = "reject" }   (the people asked answer)
+--   { kind = "counter", give = { [res] = n }, get = { [res] = n } }   (an answer with other
+--     terms, written from the offerer's side like the offer)
+--   { kind = "confirm", with = seat }  { kind = "cancel" }   (the offerer picks who to
+--     trade with among those who said yes or countered, or calls it off)
 --   { kind = "doneRoads" }                     (stop using Road Crew early)
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -788,6 +792,33 @@ end
 
 -- Contract --------------------------------------------------------------------------
 
+-- Who a trade offer went to: one player, or everyone else at the table (to = 0).
+function Hexlands.tradeAsked(state: any): { number }
+	local t = state.trade
+	if not t then
+		return {}
+	end
+	if t.to ~= 0 then
+		return { t.to }
+	end
+	local out = {}
+	for seat = 1, state.seatCount do
+		if seat ~= t.from then
+			table.insert(out, seat)
+		end
+	end
+	return out
+end
+
+-- The terms a confirmed trade with `seat` uses: their counter-offer, or the offer.
+local function tradeTerms(t: any, seat: number): ({ [string]: number }, { [string]: number })
+	local c = t.counters[seat]
+	if c then
+		return c.give, c.get
+	end
+	return t.give, t.get
+end
+
 function Hexlands.getActiveSeats(state: any): { number }
 	if state.phase == "over" then
 		return {}
@@ -802,7 +833,23 @@ function Hexlands.getActiveSeats(state: any): { number }
 		end
 		return out
 	elseif state.phase == "trade" then
-		return { state.trade.to }
+		-- Everyone still thinking about it, then the offerer once someone is in (to pick
+		-- who to trade with).
+		local t = state.trade
+		local out = {}
+		local anyYes = false
+		for _, seat in Hexlands.tradeAsked(state) do
+			local answer = t.answers[seat]
+			if answer == 0 then
+				table.insert(out, seat)
+			elseif answer == 1 or answer == 3 then
+				anyYes = true
+			end
+		end
+		if anyYes or #out == 0 then
+			table.insert(out, t.from)
+		end
+		return out
 	end
 	return { state.turn }
 end
@@ -884,19 +931,67 @@ function Hexlands.validateMove(state: any, seat: number, move: any): (boolean, s
 	end
 
 	if phase == "trade" then
-		if kind ~= "accept" and kind ~= "reject" then
-			return false, "Answer the trade"
+		local t = state.trade
+		if seat == t.from then
+			if kind == "cancel" then
+				return true
+			end
+			if kind ~= "confirm" then
+				return false, "Pick who to trade with, or call it off"
+			end
+			local with = move.with
+			if type(with) ~= "number" or with % 1 ~= 0 or not state.players[with] then
+				return false, "Pick who to trade with"
+			end
+			local answer = t.answers[with]
+			if answer ~= 1 and answer ~= 3 then
+				return false, "They haven't said yes"
+			end
+			local give, get = tradeTerms(t, with)
+			if not canPay(p.hand, give) then
+				return false, "You no longer have those cards"
+			end
+			if not canPay(state.players[with].hand, get) then
+				return false, "They no longer have those cards"
+			end
+			return true
 		end
-		if kind == "accept" then
-			local t = state.trade
+		if t.answers[seat] ~= 0 then
+			return false, if t.answers[seat] == nil then "This offer isn't for you" else "You already answered"
+		end
+		if kind == "reject" then
+			return true
+		elseif kind == "accept" then
 			if not canPay(p.hand, t.get) then
 				return false, "You don't have those cards"
 			end
 			if not canPay(state.players[t.from].hand, t.give) then
 				return false, "They no longer have those cards"
 			end
+			return true
+		elseif kind == "counter" then
+			local give, get = readCards(move.give), readCards(move.get)
+			if not give or not get or handSize(give) == 0 or handSize(get) == 0 then
+				return false, "Each side has to give something"
+			end
+			local same = true
+			for _, r in RES do
+				if give[r] > 0 and get[r] > 0 then
+					return false, "Don't trade a resource for itself"
+				end
+				if give[r] ~= t.give[r] or get[r] ~= t.get[r] then
+					same = false
+				end
+			end
+			if same then
+				return false, "That's the same offer: just accept it"
+			end
+			if not canPay(p.hand, get) then
+				return false, "You don't have those cards"
+			end
+			return true
 		end
-		return true
+		return false, "Answer the trade"
 	end
 
 	if phase == "roads" then
@@ -1028,7 +1123,7 @@ function Hexlands.validateMove(state: any, seat: number, move: any): (boolean, s
 			return false, `Only {Hexlands.TRADES_PER_TURN} trade offers a turn`
 		end
 		local to = move.to
-		if type(to) ~= "number" or to % 1 ~= 0 or to == seat or not state.players[to] then
+		if type(to) ~= "number" or to % 1 ~= 0 or to == seat or (to ~= 0 and not state.players[to]) then
 			return false, "Pick a player to trade with"
 		end
 		local give, get = readCards(move.give), readCards(move.get)
@@ -1046,6 +1141,17 @@ function Hexlands.validateMove(state: any, seat: number, move: any): (boolean, s
 		return true
 	end
 	return false, "You can't do that now"
+end
+
+-- Swap the cards of a trade (`give` and `get` from the offerer's side) and close it.
+local function swapTrade(state: any, from: number, to: number, give: { [string]: number }, get: { [string]: number })
+	local a, b = state.players[from], state.players[to]
+	for _, r in RES do
+		a.hand[r] += get[r] - give[r]
+		b.hand[r] += give[r] - get[r]
+	end
+	state.trade = nil
+	state.phase = "main"
 end
 
 local function finishSetupStep(state: any)
@@ -1235,23 +1341,60 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 	elseif kind == "offer" then
 		state.tradesThisTurn += 1
 		state.tradeId += 1
-		state.trade = { from = seat, to = move.to, give = readCards(move.give), get = readCards(move.get) }
-		state.phase = "trade"
-		log(state, seat, "offered a trade to", move.to)
-	elseif kind == "accept" then
-		local t = state.trade
-		local from = state.players[t.from]
-		for _, r in RES do
-			from.hand[r] += t.get[r] - t.give[r]
-			p.hand[r] += t.give[r] - t.get[r]
+		state.trade = { from = seat, to = move.to, give = readCards(move.give), get = readCards(move.get), answers = {}, counters = {} }
+		for _, other in Hexlands.tradeAsked(state) do
+			state.trade.answers[other] = 0
 		end
-		state.trade = nil
-		state.phase = "main"
+		state.phase = "trade"
+		if move.to == 0 then
+			log(state, seat, "offered everyone a trade")
+		else
+			log(state, seat, "offered a trade to", move.to)
+		end
+	elseif kind == "accept" and state.trade.to ~= 0 then
+		-- A one-to-one offer: yes swaps the cards at once.
+		swapTrade(state, state.trade.from, seat, state.trade.give, state.trade.get)
 		log(state, seat, "accepted the trade")
-	elseif kind == "reject" then
+	elseif kind == "accept" or kind == "reject" or kind == "counter" then
+		local t = state.trade
+		if kind == "accept" then
+			t.answers[seat] = 1
+			log(state, seat, "is in on the trade")
+		elseif kind == "counter" then
+			t.answers[seat] = 3
+			t.counters[seat] = { give = readCards(move.give), get = readCards(move.get) }
+			log(state, seat, "made a counter-offer")
+		else
+			t.answers[seat] = 2
+			log(state, seat, "turned down the trade")
+		end
+		local pending, yes = 0, 0
+		for _, other in Hexlands.tradeAsked(state) do
+			local a = t.answers[other]
+			if a == 0 then
+				pending += 1
+			elseif a == 1 or a == 3 then
+				yes += 1
+			end
+		end
+		if pending == 0 and yes == 0 then
+			state.trade = nil
+			state.phase = "main"
+			if t.to == 0 then
+				log(state, nil, "Nobody took the trade")
+			end
+		elseif pending == 0 or (kind ~= "reject" and t.to ~= 0) then
+			-- Everyone has answered: a fresh clock for the offerer to pick.
+			state.tradeId += 1
+		end
+	elseif kind == "confirm" then
+		local give, get = tradeTerms(state.trade, move.with)
+		swapTrade(state, seat, move.with, give, get)
+		log(state, seat, "traded with", move.with)
+	elseif kind == "cancel" then
 		state.trade = nil
 		state.phase = "main"
-		log(state, seat, "turned down the trade")
+		log(state, seat, "called off the trade")
 	end
 
 	checkWin(state, state.turn)
@@ -1348,9 +1491,19 @@ function Hexlands.getLegalMoves(state: any, seat: number): { any }
 			end
 		end
 	elseif phase == "trade" then
-		table.insert(moves, { kind = "reject" })
-		if canPay(state.players[seat].hand, state.trade.get) then
-			table.insert(moves, { kind = "accept" })
+		local t = state.trade
+		if seat == t.from then
+			for _, other in Hexlands.tradeAsked(state) do
+				if Hexlands.validateMove(state, seat, { kind = "confirm", with = other }) then
+					table.insert(moves, { kind = "confirm", with = other })
+				end
+			end
+			table.insert(moves, { kind = "cancel" })
+		else
+			table.insert(moves, { kind = "reject" })
+			if canPay(state.players[seat].hand, t.get) then
+				table.insert(moves, { kind = "accept" })
+			end
 		end
 	elseif phase == "roads" then
 		table.insert(moves, { kind = "doneRoads" })
@@ -1433,7 +1586,18 @@ function Hexlands.getView(state: any, seat: number?): any
 	end
 	local trade = nil
 	if state.trade then
-		trade = { from = state.trade.from, to = state.trade.to, give = table.clone(state.trade.give), get = table.clone(state.trade.get) }
+		local t = state.trade
+		-- answers: a dense list per seat (0 waiting, 1 yes, 2 no, 3 countered; -1 not asked),
+		-- since sparse number keys turn into strings over the remote.
+		local answers, counters = {}, {}
+		for other = 1, state.seatCount do
+			answers[other] = t.answers[other] or -1
+			local c = t.counters[other]
+			if c then
+				table.insert(counters, { seat = other, give = table.clone(c.give), get = table.clone(c.get) })
+			end
+		end
+		trade = { id = state.tradeId, from = t.from, to = t.to, give = table.clone(t.give), get = table.clone(t.get), answers = answers, counters = counters }
 	end
 	local steal = nil
 	if state.lastSteal and seat and (state.lastSteal.from == seat or state.lastSteal.to == seat) then
@@ -1456,6 +1620,7 @@ function Hexlands.getView(state: any, seat: number?): any
 		round = state.round,
 		maxRounds = state.maxRounds,
 		target = state.target or Hexlands.TARGET_POINTS,
+		handLimit = state.handLimit or Hexlands.HAND_LIMIT,
 		friendly = state.friendly,
 		tiles = GameModule.copy(state.tiles),
 		harbors = GameModule.copy(state.harbors),
@@ -1852,7 +2017,10 @@ local function chooseMain(state: any, seat: number, rng: any): any
 					end
 					state.botOffered = true
 					if #others > 0 then
-						return { kind = "offer", to = others[rng:NextInteger(1, #others)], give = { [spare] = 1 }, get = { [want] = 1 } }
+						-- Like the online versions: medium and hard put it to the whole table
+						-- and trade with whoever says yes first.
+						local to = if level == "hard" or #others > 1 then 0 else others[1]
+						return { kind = "offer", to = to, give = { [spare] = 1 }, get = { [want] = 1 } }
 					end
 				end
 				break
@@ -1900,6 +2068,28 @@ function Hexlands.chooseBotMove(state: any, seat: number, rng: any): any?
 	elseif phase == "trade" then
 		local t = state.trade
 		local hand = state.players[seat].hand
+		if seat == t.from then
+			-- Our own offer: take the first plain yes; a counter only if it still helps.
+			local before = handNeed(state, seat, hand)
+			for _, other in Hexlands.tradeAsked(state) do
+				if t.answers[other] == 1 and Hexlands.validateMove(state, seat, { kind = "confirm", with = other }) then
+					return { kind = "confirm", with = other }
+				end
+			end
+			for _, other in Hexlands.tradeAsked(state) do
+				local c = t.counters[other]
+				if c and Hexlands.validateMove(state, seat, { kind = "confirm", with = other }) then
+					local after = table.clone(hand)
+					for _, r in RES do
+						after[r] += c.get[r] - c.give[r]
+					end
+					if handNeed(state, seat, after) < before and handSize(c.give) <= handSize(c.get) + 1 then
+						return { kind = "confirm", with = other }
+					end
+				end
+			end
+			return { kind = "cancel" }
+		end
 		if not canPay(hand, t.get) then
 			return { kind = "reject" }
 		end

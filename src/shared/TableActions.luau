@@ -138,7 +138,7 @@ local KINDS: { [string]: { [string]: string } } = {
 	Hexlands = {
 		roll = "dice", road = "place", camp = "place", town = "place", place = "place", setup = "place",
 		bandit = "place", buyCard = "draw", play = "card", bank = "card", offer = "point", accept = "thumbsUp",
-		reject = "pass", discard = "card", doneRoads = "pass",
+		reject = "pass", discard = "card", doneRoads = "pass", counter = "point", confirm = "thumbsUp", cancel = "pass",
 	},
 	WordTiles = { place = "place", exchange = "draw" },
 	FiveDice = { roll = "dice", score = "place" },
