@@ -15,6 +15,12 @@ local ChatView = require(script.Parent.Parent.Core.ChatView)
 local PartyChatService = {}
 
 local partyService: any = nil
+local matchService: any = nil
+
+local function groupOf(userId: number?): string?
+	local player = userId and Players:GetPlayerByUserId(userId)
+	return if player and matchService then matchService.chatGroupOf(player) else nil
+end
 
 local function viewOf(userId: number): ChatView.View?
 	local player = Players:GetPlayerByUserId(userId)
@@ -25,7 +31,8 @@ local function shouldDeliver(message: TextChatMessage, recipient: TextSource): b
 	local sender = message.TextSource
 	local recipientId = recipient.UserId
 	local party = partyService.getParty(recipientId)
-	return ChatView.shouldDeliver(sender and sender.UserId, recipientId, viewOf(recipientId), party and party.members)
+	local senderId = sender and sender.UserId
+	return ChatView.shouldDeliver(senderId, recipientId, viewOf(recipientId), party and party.members, groupOf(senderId), groupOf(recipientId))
 end
 
 local function hook(channel: TextChannel)
@@ -46,8 +53,9 @@ function PartyChatService.handleRequest(player: Player, request: any)
 	end
 end
 
-function PartyChatService.init(partyServiceRef: any)
+function PartyChatService.init(partyServiceRef: any, matchServiceRef: any?)
 	partyService = partyServiceRef
+	matchService = matchServiceRef
 	Players.PlayerAdded:Connect(function(player)
 		player:SetAttribute("ChatView", ChatView.Default)
 	end)

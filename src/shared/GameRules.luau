@@ -232,6 +232,8 @@ rules.Werewolf = {
 				"🐺 Werewolf: each night the wolves pick a villager to catch. Win by matching the village's numbers.",
 				"🔮 Seer: each night, learn whether one player is a werewolf.",
 				"🛡️ Guardian: each night, shield one player (you can shield yourself, but not the same player two nights running).",
+				"🏹 Hunter (6+ players): when you go out, take one player down with you.",
+				"🧪 Witch (7+ players): two potions, once each. Once the wolves have picked, see who they went for and save them; or poison anyone.",
 				"🧑‍🌾 Villager: no power at night, just a hunch. Your vote is your power.",
 			},
 		},
@@ -254,6 +256,8 @@ rules.Werewolf = {
 			lines = {
 				"Vote a player out or skip. Votes are public.",
 				"The player with the most votes is out, unless there's a tie or more skips than votes for them.",
+				"Whoever is voted out gets a few seconds for last words.",
+				"Players who are out can only chat with each other until the game ends.",
 			},
 		},
 		{ title = "Winning", lines = { "Village: every werewolf is out.", "Werewolves: as many wolves as everyone else, or still hiding after day 8." } },

@@ -91,7 +91,10 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 		elseif view.phase == "dawn" then
 			local ln = view.lastNight
 			title = `☀️ Day {view.day}`
-			sub = if ln and ln.caught then `{nameOf(ln.caught)} was caught!` elseif ln and ln.saved then "The Guardian saved someone!" else "Nobody was caught"
+			sub = if ln and ln.poisoned then `{nameOf(ln.poisoned)} was poisoned!{if ln.caught then ` {nameOf(ln.caught)} was caught!` else ""}`
+				elseif ln and ln.caught then `{nameOf(ln.caught)} was caught!`
+				elseif ln and ln.saved then "Someone was saved!"
+				else "Nobody was caught"
 		elseif view.phase == "day" then
 			title, sub = `☀️ Day {view.day}`, `Talk it over · {view.acted}/{view.aliveCount} spoke`
 		elseif view.phase == "vote" then
@@ -100,6 +103,13 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 			local v = view.lastVerdict
 			title = "🗳 Verdict"
 			sub = if v and v.out then `{nameOf(v.out)} is out` else "Nobody is out"
+		elseif view.phase == "lastWords" then
+			local w = view.lastWords
+			title = "🕯️ Last words"
+			sub = if w and w.text then `{nameOf(w.seat)}: "{w.text}"` else `{nameOf(w and w.seat)} speaks...`
+		elseif view.phase == "hunter" then
+			title = "🏹 The Hunter!"
+			sub = `{nameOf(view.hunterUp)} takes aim...`
 		else
 			title = if view.winner == "village" then "🎉 Village wins!" else "🐺 Werewolves win!"
 			sub = view.reason or ""

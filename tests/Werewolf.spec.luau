@@ -148,11 +148,130 @@ return function(T)
 		T.eq(Werewolf.getView(s, nil).roles[1], "wolf", "roles show when out (default)")
 		T.eq(Werewolf.getResult(s), nil, "the verdict shows before the game ends")
 		Werewolf.onTimeout(s)
+		T.eq(s.phase, "lastWords", "last words before the end")
+		T.eq(Werewolf.getActiveSeats(s)[1], 1)
+		Werewolf.onTimeout(s)
 		local result = Werewolf.getResult(s)
 		T.ok(result)
 		T.eq(#result.winners, 4)
 		T.ok(table.find(result.winners, 4) ~= nil, "villagers who were caught still win with the village")
 		T.eq(Werewolf.getView(s, nil).allRoles[1], "wolf")
+	end)
+
+	-- Runs a night where every seat picks `picks[seat]` (default: seat 1).
+	local function night(s, picks)
+		for seat = 1, s.seatCount do
+			if s.alive[seat] then
+				local t = picks[seat] or (if seat == 1 then 2 else 1)
+				if t == seat and s.roles[seat] ~= "guardian" then
+					t = if seat == 1 then 2 else 1
+				end
+				apply(s, seat, { kind = "night", target = t })
+			end
+		end
+	end
+
+	T.test("last words: the voted-out player gets the floor, filtered text only", function()
+		local s = fixed(6)
+		night(s, { [1] = 4, [3] = 3 })
+		Werewolf.onTimeout(s) -- dawn -> day
+		Werewolf.onTimeout(s) -- day -> vote
+		for seat = 1, 6 do
+			if s.alive[seat] then
+				apply(s, seat, { kind = "vote", target = if seat == 5 then 6 else 5 })
+			end
+		end
+		T.eq(s.lastVerdict.out, 5)
+		Werewolf.onTimeout(s)
+		T.eq(s.phase, "lastWords")
+		T.eq((Werewolf.validateMove(s, 2, { kind = "lastWords", text = "hi" })), false, "only the one voted out")
+		T.eq((Werewolf.validateMove(s, 5, { kind = "lastWords", text = string.rep("a", 500) })), false, "too long")
+		apply(s, 5, { kind = "lastWords", text = "raw", shown = "It was seat 1!" })
+		T.eq(s.lastWords.text, "It was seat 1!", "only the filtered text is kept")
+		T.eq(Werewolf.getView(s, 2).lastWords.text, "It was seat 1!")
+		T.eq(s.phase, "night")
+	end)
+
+	T.test("the Hunter takes someone down: at dawn and after a vote", function()
+		local s = fixed(6)
+		s.roles[4] = "hunter"
+		night(s, { [1] = 4, [3] = 3 })
+		T.eq(s.alive[4], false)
+		Werewolf.onTimeout(s) -- dawn
+		T.eq(s.phase, "hunter")
+		T.eq(Werewolf.getActiveSeats(s)[1], 4)
+		T.eq((Werewolf.validateMove(s, 4, { kind = "shoot", target = 4 })), false, "not yourself")
+		apply(s, 4, { kind = "shoot", target = 1 })
+		T.eq(s.alive[1], false)
+		T.eq(s.lastShot.target, 1)
+		T.eq(s.winner, "village", "shot the only wolf")
+
+		-- Voted out: last words, then the shot, then night. Holstering is allowed.
+		local t = fixed(6)
+		t.roles[5] = "hunter"
+		night(t, { [1] = 4, [3] = 3 })
+		Werewolf.onTimeout(t) -- dawn -> day
+		Werewolf.onTimeout(t) -- day -> vote
+		for seat = 1, 6 do
+			if t.alive[seat] then
+				apply(t, seat, { kind = "vote", target = if seat == 5 then 6 else 5 })
+			end
+		end
+		Werewolf.onTimeout(t) -- verdict -> last words
+		Werewolf.onTimeout(t) -- last words run out
+		T.eq(t.phase, "hunter")
+		local bot = Werewolf.chooseBotMove(t, 5, T.Random.new(1))
+		T.eq(bot.kind, "shoot")
+		apply(t, 5, { kind = "shoot", target = 0 })
+		T.eq(t.phase, "night")
+		T.eq(t.lastShot.target, nil)
+	end)
+
+	T.test("the Witch: sees the victim once the wolves pick, saves or poisons once each", function()
+		local s = fixed(7)
+		s.roles[5] = "witch"
+		s.roles[6] = "wolf"
+		T.eq(Werewolf.getView(s, 5).witchSees, nil, "nothing to see yet")
+		T.eq((Werewolf.validateMove(s, 5, { kind = "night", target = 4, potion = "heal" })), false)
+		apply(s, 1, { kind = "night", target = 4 })
+		apply(s, 6, { kind = "night", target = 4 })
+		T.eq(Werewolf.getView(s, 5).witchSees, 4)
+		T.eq(Werewolf.getView(s, 2).witchSees, nil, "only the Witch")
+		apply(s, 5, { kind = "night", target = 4, potion = "heal" })
+		for _, seat in { 2, 3, 4, 7 } do
+			apply(s, seat, { kind = "night", target = if seat == 3 then 7 else 1 })
+		end
+		T.eq(s.alive[4], true, "saved")
+		T.eq(s.potions.heal, false)
+		-- Next night: no heal left; poison works on anyone.
+		Werewolf.onTimeout(s) -- dawn -> day
+		Werewolf.onTimeout(s) -- day -> vote
+		for seat = 1, 7 do
+			if s.alive[seat] then
+				apply(s, seat, { kind = "vote", target = 0 })
+			end
+		end
+		Werewolf.onTimeout(s) -- verdict: nobody out -> night 2
+		T.eq(s.phase, "night")
+		apply(s, 1, { kind = "night", target = 3 })
+		apply(s, 6, { kind = "night", target = 3 })
+		T.eq(Werewolf.getView(s, 5).witchSees, nil, "the heal is used up")
+		T.eq((Werewolf.validateMove(s, 5, { kind = "night", target = 3, potion = "heal" })), false)
+		apply(s, 5, { kind = "night", target = 6, potion = "poison" })
+		apply(s, 2, { kind = "night", target = 7 })
+		apply(s, 3, { kind = "night", target = 4 })
+		apply(s, 4, { kind = "night", target = 1 })
+		apply(s, 7, { kind = "night", target = 1 })
+		T.eq(s.alive[6], false, "poisoned")
+		T.eq(s.lastNight.poisoned, 6)
+		T.eq(s.potions.poison, false)
+	end)
+
+	T.test("players who are out chat only with each other", function()
+		local s = fixed(6)
+		night(s, { [1] = 4, [3] = 3 })
+		T.eq(Werewolf.getChatGroup(s, 4), "out")
+		T.eq(Werewolf.getChatGroup(s, 2), nil)
 	end)
 
 	T.test("ties and skips keep everyone in", function()

@@ -229,6 +229,20 @@ local entries: { Entry } = {
 			},
 			{ key = "reveal", name = "Show roles when out", hint = "Off: nobody learns a role until the game ends.", choices = Toggle, default = 2 },
 			{ key = "guardian", name = "Guardian", hint = "A villager who shields one player each night.", choices = Toggle, default = 2 },
+			{
+				key = "hunter",
+				name = "Hunter",
+				hint = "A villager who takes someone down with them when they go out.",
+				choices = { { label = "Off", value = 0 }, { label = "6+ players", value = 6 }, { label = "Always", value = 5 } },
+				default = 2,
+			},
+			{
+				key = "witch",
+				name = "Witch",
+				hint = "A villager with two one-off potions: save the wolves' victim, or poison someone.",
+				choices = { { label = "Off", value = 0 }, { label = "7+ players", value = 7 }, { label = "Always", value = 5 } },
+				default = 2,
+			},
 		},
 	},
 	{

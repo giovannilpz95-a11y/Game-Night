@@ -628,6 +628,18 @@ function MatchService.matchSeatOf(player: Player): (string?, number?, any?)
 	return entry.match.id, seat, entry.table
 end
 
+-- A closed chat group the player is in inside their running match (Werewolf: players
+-- who are out), as "<matchId>:<group>", or nil. See Core/ChatView.
+function MatchService.chatGroupOf(player: Player): string?
+	local entry = entryFor(player)
+	if not entry or entry.ended or entry.match:isOver() or not entry.match.rules.getChatGroup then
+		return nil
+	end
+	local seat = entry.match:seatOf(player.UserId)
+	local group = seat and entry.match.rules.getChatGroup(entry.match.state, seat)
+	return if group then `{entry.match.id}:{group}` else nil
+end
+
 function MatchService.handleRequest(player: Player, request: any)
 	if type(request) ~= "table" or type(request.action) ~= "string" then
 		return

@@ -23,12 +23,14 @@ local ROLES = Rules.ROLES
 local NIGHT_TINT = Color3.fromRGB(36, 40, 86)
 local DAY_TINT = Color3.fromRGB(120, 84, 40)
 
-local ACTION_WORD = { wolf = "Catch", seer = "Check", guardian = "Shield", villager = "Hunch:" }
+local ACTION_WORD = { wolf = "Catch", seer = "Check", guardian = "Shield", villager = "Hunch:", hunter = "Hunch:", witch = "Hunch:" }
 local NIGHT_PROMPT = {
 	wolf = "Pick a villager for the pack to catch.",
 	seer = "Pick a player to check. You'll learn if they're a werewolf.",
 	guardian = "Pick a player to shield tonight.",
 	villager = "Everyone taps someone at night. Pick who you suspect.",
+	hunter = "Pick who you suspect. If you go out, you take someone with you.",
+	witch = "Pick who you suspect, or use a potion: save the wolves' victim once they pick, or poison someone.",
 }
 
 function Werewolf.create(container: Frame, sendMove: (any) -> ())
@@ -37,6 +39,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 	local docked = false
 	local compact = Layout.get().compact
 	local lastPhaseKey = ""
+	local wordsDraft = "" -- your last words, kept while the strip redraws
 	local timerStart: number? = nil
 	local lastMatchId: string? = nil
 
@@ -324,7 +327,16 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		if view.yourPick == seat then
-			table.insert(lines, `✓ Your pick`)
+			table.insert(lines, if view.yourPotion == "heal" then "🧪 Saving them" elseif view.yourPotion == "poison" then "☠️ Poisoned" else `✓ Your pick`)
+		end
+		if view.witchSees == seat then
+			table.insert(lines, "🐺 The wolves' victim")
+		end
+		if view.lastWords and view.lastWords.seat == seat and view.lastWords.text and view.lastWords.text ~= "" then
+			table.insert(lines, `🕯️ "{view.lastWords.text}"`)
+		end
+		if view.lastShot and view.lastShot.target == seat then
+			table.insert(lines, `🏹 Taken down by {nameOf(view.lastShot.hunter)}`)
 		end
 		if view.statements and view.statements[seat] then
 			table.insert(lines, statementText(view.statements[seat]))
@@ -414,10 +426,13 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			return `🌙 Night {view.day}`, `{view.acted} of {view.aliveCount} have picked`
 		elseif phase == "dawn" then
 			local ln = view.lastNight
-			if ln and ln.caught then
+			if ln and ln.poisoned then
+				local caught = if ln.caught then `The wolves caught {nameOf(ln.caught)}, and ` else ""
+				return `☀️ Day {view.day}`, `{caught}{nameOf(ln.poisoned)} was poisoned in the night!`
+			elseif ln and ln.caught then
 				return `☀️ Day {view.day}`, `The wolves caught {nameOf(ln.caught)} in the night!`
 			elseif ln and ln.saved then
-				return `☀️ Day {view.day}`, "The Guardian saved someone. Nobody was caught!"
+				return `☀️ Day {view.day}`, "Someone was saved. Nobody was caught!"
 			end
 			return `☀️ Day {view.day}`, "Nobody was caught last night."
 		elseif phase == "day" then
@@ -431,6 +446,11 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 				return `🗳 Verdict · Day {view.day}`, `{nameOf(v.out)} was voted out{if role then ` · {roleText(role)}` else ""}`
 			end
 			return `🗳 Verdict · Day {view.day}`, "Nobody was voted out."
+		elseif phase == "lastWords" then
+			local seat = view.lastWords and view.lastWords.seat
+			return `🕯️ Last words`, `{nameOf(seat)} gets a few last words...`
+		elseif phase == "hunter" then
+			return `🏹 The Hunter`, `{nameOf(view.hunterUp)} was the Hunter, and takes someone down with them!`
 		end
 		return if view.winner == "village" then "🎉 The village wins!" else "🐺 The werewolves win!", view.reason or ""
 	end
@@ -448,6 +468,10 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			text = `<b>{title}</b>  {sub}`
 		elseif me == nil then
 			text = `{title} · {sub}`
+		elseif view.phase == "lastWords" and mine then
+			text = "You were voted out. Any last words? (Everyone sees them.)"
+		elseif view.phase == "hunter" and mine then
+			text = "🏹 You were the Hunter! Tap a player to take down with you, or holster."
 		elseif not view.youAlive then
 			text = `You're out ({roleText(role)}). Watch quietly: no spoilers on voice!`
 			yours = false
@@ -472,6 +496,64 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		local who = if selected then nameOf(selected) else nil
+		if view.phase == "lastWords" then
+			local row = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, if compact then 32 else 36), LayoutOrder = 2, Parent = actionArea })
+			local box = Kit.new("TextBox", {
+				PlaceholderText = "Your last words...",
+				Text = wordsDraft,
+				ClearTextOnFocus = false,
+				TextColor3 = Theme.Text,
+				PlaceholderColor3 = Theme.SubText,
+				BackgroundColor3 = Theme.PanelLight,
+				Font = Theme.Font,
+				TextSize = if compact then 14 else 16,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				BorderSizePixel = 0,
+				Size = UDim2.new(0.72, -6, 1, 0),
+				Parent = row,
+			}, { Kit.corner(10), Kit.padding(6) })
+			box:GetPropertyChangedSignal("Text"):Connect(function()
+				if #box.Text > 120 then
+					box.Text = string.sub(box.Text, 1, 120)
+				end
+				wordsDraft = box.Text
+			end)
+			local function say()
+				local text = wordsDraft
+				wordsDraft = ""
+				send({ kind = "lastWords", text = if text ~= "" then text else nil })
+			end
+			box.FocusLost:Connect(function(enter)
+				if enter then
+					say()
+				end
+			end)
+			button("Say it", 1, say, { Size = UDim2.new(0.28, 0, 1, 0), Position = UDim2.new(0.72, 0, 0, 0), Parent = row })
+			buttonRow(3, {
+				{ text = "Stay silent", color = Theme.Panel, textColor = Theme.SubText, onClick = function()
+					wordsDraft = ""
+					send({ kind = "lastWords" })
+				end },
+			})
+			return
+		elseif view.phase == "hunter" then
+			buttonRow(2, {
+				{
+					text = if who then `🏹 Take down {who}` else "Tap a player",
+					color = if who then Theme.Bad else Theme.Panel,
+					textColor = Theme.Text,
+					onClick = function()
+						if selected then
+							send({ kind = "shoot", target = selected })
+						end
+					end,
+				},
+				{ text = "Holster", color = Theme.Panel, textColor = Theme.SubText, onClick = function()
+					send({ kind = "shoot", target = 0 })
+				end },
+			})
+			return
+		end
 		if view.phase == "night" then
 			local word = ACTION_WORD[role] or "Pick"
 			local isWolf = role == "wolf"
@@ -487,6 +569,37 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 					end,
 				},
 			})
+			if role == "witch" and view.potions then
+				local potions = {}
+				if view.potions.heal then
+					local victim = view.witchSees
+					table.insert(potions, {
+						text = if victim then `🧪 Save {nameOf(victim)}` else "🧪 Save: wolves still picking…",
+						color = if victim then Theme.Good else Theme.Panel,
+						textColor = Theme.Text,
+						onClick = function()
+							if snapshot.view.witchSees then
+								send({ kind = "night", target = snapshot.view.witchSees, potion = "heal" })
+							end
+						end,
+					})
+				end
+				if view.potions.poison then
+					table.insert(potions, {
+						text = if who then `☠️ Poison {who}` else "☠️ Poison: tap a player",
+						color = if who then Color3.fromRGB(120, 60, 150) else Theme.Panel,
+						textColor = Theme.Text,
+						onClick = function()
+							if selected then
+								send({ kind = "night", target = selected, potion = "poison" })
+							end
+						end,
+					})
+				end
+				if #potions > 0 then
+					buttonRow(3, potions)
+				end
+			end
 		elseif view.phase == "day" then
 			if who then
 				buttonRow(2, {
@@ -544,6 +657,8 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 				task.delay(0.6, Audio.play, "caught")
 			end
 		elseif phase == "verdict" and view.lastVerdict and view.lastVerdict.out then
+			Audio.play("caught")
+		elseif phase == "hunter" then
 			Audio.play("caught")
 		end
 	end
