@@ -78,6 +78,7 @@ local Config = {
 		SketchGuess = true,
 		Werewolf = true,
 		FiveDice = true,
+		SeaStrike = true,
 	},
 
 	-- Saved progress (DataService). Changing the store name starts everyone from zero.
