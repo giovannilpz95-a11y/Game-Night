@@ -9,17 +9,29 @@ local Cards = require(script.Parent._Cards)
 local SlapStack = {}
 
 function SlapStack.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
+	local history = Cards.pileHistory()
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
 		for seat, count in view.pileCounts or {} do
 			Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 0.9), count, true)
 		end
-		local top = view.top or {}
-		local under = math.max(0, (view.centerCount or 0) - #top)
-		local cf = Scene.pile(folder, Cards.center(boardCF, 0), under, false)
-		for i, id in top do
-			local angle = (i - #top) * 14
-			Scene.card(folder, cf * CFrame.new(0, i * 0.01, 0) * CFrame.Angles(0, math.rad(angle), 0), Scene.playingFront(PlayingCards, id))
+		local said = view.lastAction
+		if said and said.kind == "slap" then
+			Cards.speech(folder, boardCF, layout, said.seat, "SLAP!", Color3.fromRGB(255, 200, 120))
+		elseif said and said.kind == "badSlap" then
+			Cards.speech(folder, boardCF, layout, said.seat, "Oops!", Color3.fromRGB(255, 190, 190))
 		end
+		-- The middle pile: messy, each card turned toward whoever flipped it.
+		local top = view.top or {}
+		local count = view.centerCount or 0
+		local action = view.lastAction
+		if history.seen(Cards.actionKey(action, count)) and action.kind == "flip" and count > #history.items then
+			history.add(action.seat, count - #history.items)
+		end
+		history.fit(count)
+		history.setTop(top)
+		Cards.messyPile(folder, boardCF, layout, Cards.center(boardCF, 0), history.items, function(id)
+			return Scene.playingFront(PlayingCards, id)
+		end)
 	end, Color3.fromRGB(130, 46, 52))
 end
 

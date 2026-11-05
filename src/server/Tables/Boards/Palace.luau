@@ -9,6 +9,7 @@ local Cards = require(script.Parent._Cards)
 local Palace = {}
 
 function Palace.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
+	local history = Cards.pileHistory()
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
 		for seat, count in view.handCounts or {} do
 			Scene.hand(folder, boardCF, layout, seat, count)
@@ -25,11 +26,18 @@ function Palace.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			end
 		end
 		Scene.pile(folder, Cards.center(boardCF, -0.6), view.drawCount or 0, false)
+		-- The discard pile: messy, each card turned toward whoever played it.
 		local top = view.pileTop or {}
-		local cf = Scene.pile(folder, Cards.center(boardCF, 0.5), math.max(0, (view.pileCount or 0) - #top), false)
-		for i, id in top do
-			Scene.card(folder, cf * CFrame.new(0, i * 0.01, (i - #top) * 0.2), Scene.playingFront(PlayingCards, id))
+		local count = view.pileCount or 0
+		local action = view.lastAction
+		if history.seen(Cards.actionKey(action)) and action.kind ~= "pickup" and count > #history.items then
+			history.add(action.seat, count - #history.items)
 		end
+		history.fit(count)
+		history.setTop(top)
+		Cards.messyPile(folder, boardCF, layout, Cards.center(boardCF, 0.5), history.items, function(id)
+			return Scene.playingFront(PlayingCards, id)
+		end)
 	end, Color3.fromRGB(96, 50, 104))
 end
 

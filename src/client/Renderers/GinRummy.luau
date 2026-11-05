@@ -9,6 +9,7 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local GinRummy = {}
@@ -26,6 +27,7 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 	local ui = CardTable.layout(container)
 	local knocking = false
 	local render: () -> ()
+	local calledRound: any = nil -- the hand whose showdown was already called out
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -85,6 +87,12 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 		Kit.label(scoreLine, { TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.new(0, 10, 0, 6), Size = UDim2.new(0.5, 0, 0, 16), ZIndex = 6, Parent = ui.content })
 
 		local show = view.showdown
+		-- Gin, Undercut and Knock each get their big moment (Table view hides the felt).
+		if show and show.kind ~= "wash" and calledRound ~= view.round then
+			calledRound = view.round
+			local text = if show.kind == "gin" then "GIN!" elseif show.kind == "undercut" then "UNDERCUT!" else "KNOCK!"
+			HudKit.callout(ui.root, `{text}  {nameOf(show.winner)} +{show.points}`, if show.kind == "knock" then nil else Color3.fromRGB(120, 220, 150))
+		end
 		if show then
 			local title
 			if show.kind == "wash" then

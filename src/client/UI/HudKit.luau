@@ -340,6 +340,49 @@ function HudKit.dots(label: TextLabel, base: string)
 	end)
 end
 
+-- A big moment called out over the game for a second or two ("Hearts are broken!",
+-- "BINGO! +50", "Gin!"): a pill that pops in, shines and fades away. `color` tints it.
+function HudKit.callout(parent: Instance, text: string, color: Color3?, y: number?)
+	local pill = Kit.new("Frame", {
+		Name = "Callout",
+		BackgroundColor3 = color or Kit.Theme.Accent,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, y or 0.4),
+		Size = UDim2.fromOffset(math.clamp(#text * 17 + 60, 180, 520), 58),
+		ZIndex = 40,
+		Parent = parent,
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0, 14) }), Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.3 }) })
+	local scale = Kit.new("UIScale", { Scale = 0.4, Parent = pill })
+	local label = Kit.new("TextLabel", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Text = text,
+		TextScaled = true,
+		Font = Kit.Theme.FontBold,
+		TextColor3 = Kit.Theme.AccentText,
+		ZIndex = 41,
+		Parent = pill,
+	}, { Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }) })
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	HudKit.shine(pill, 42)
+	task.delay(1.6, function()
+		if not pill.Parent then
+			return
+		end
+		local info = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		TweenService:Create(pill, info, { BackgroundTransparency = 1, Position = UDim2.fromScale(0.5, (y or 0.4) - 0.05) }):Play()
+		TweenService:Create(label, info, { TextTransparency = 1 }):Play()
+		local stroke = pill:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			TweenService:Create(stroke, info, { Transparency = 1 }):Play()
+		end
+		task.delay(0.45, function()
+			pill:Destroy()
+		end)
+	end)
+end
+
 -- A light band that sweeps across once (banners, the win title).
 function HudKit.shine(object: GuiObject, z: number?)
 	local band = Kit.new("Frame", {
