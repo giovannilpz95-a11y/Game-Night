@@ -302,7 +302,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	end
 	-- Parts of the screen MatchView covers (the docked hand), as fractions of the
 	-- viewport: the camera aims the table at the middle of what's left.
-	local insetRight, insetBottom = 0, 0
+	local insetRight, insetBottom, insetLeft = 0, 0, 0
 
 	-- While the seat camera is on, your table's sign post and the name tags over the
 	-- people at the table hide locally: they sat behind the seat list on the left, and
@@ -413,6 +413,39 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		return fadeList :: { Instance }
 	end
 
+	-- Seated board games look down from over (or behind) your own chair: your arms and
+	-- stool would fill the bottom of the screen, so all of you and the stool hide there.
+	local seatedBoard = false
+	local stoolHidden: { BasePart } = {}
+	local function showStool()
+		for _, part in stoolHidden do
+			part.LocalTransparencyModifier = 0
+		end
+		table.clear(stoolHidden)
+	end
+	local function hideStool(seat: BasePart, tableTop: number)
+		if #stoolHidden > 0 or not tableModel then
+			return
+		end
+		for _, d in (tableModel :: Model):GetDescendants() do
+			if d:IsA("BasePart") and d.Position.Y + d.Size.Y / 2 < tableTop - 0.2 then
+				local flat = ((d.Position - seat.Position) * Vector3.new(1, 0, 1)).Magnitude
+				local skip = flat > 1.3
+				local parent = d.Parent
+				while not skip and parent and parent ~= tableModel do
+					if parent.Name == "GameBoard" or parent.Name == "Bots" or parent:FindFirstChildOfClass("Humanoid") then
+						skip = true
+					end
+					parent = parent.Parent
+				end
+				if not skip then
+					d.LocalTransparencyModifier = 1
+					table.insert(stoolHidden, d)
+				end
+			end
+		end
+	end
+
 	local function fadeSelf(hidden: boolean)
 		local character = Players.LocalPlayer.Character
 		if not character then
@@ -420,7 +453,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		for _, d in fadeTargets(character) do
 			if d:IsA("BasePart") then
-				local keep = KEEP_VISIBLE[d.Name] == true and d.Parent == character
+				local keep = not seatedBoard and KEEP_VISIBLE[d.Name] == true and d.Parent == character
 				d.LocalTransparencyModifier = if hidden and not keep then 1 else 0
 			elseif d:IsA("Decal") then
 				d.LocalTransparencyModifier = if hidden then 1 else 0
@@ -460,6 +493,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			lifter.drop()
 			hoveredCell = nil
 			liftFolder.Parent = nil
+			seatedBoard = false
+			showStool()
 		end
 		onActiveChanged(value)
 	end
@@ -521,11 +556,11 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local boardPoints: { SeatView.Point } = {}
 			local gameBoard = model:FindFirstChild("GameBoard")
 			if gameBoard and gameBoard:IsA("Model") then
-				-- Measured once per match (and screen layout), with a stud of room around
+				-- Measured once per match (and screen layout), with half a stud of room around
 				-- it for what lands beside the board later (taken pieces, rolled dice), so
 				-- the camera doesn't creep on every capture.
 				local boxCF, size = gameBoard:GetBoundingBox()
-				size += Vector3.new(2, 0, 2)
+				size += Vector3.new(1, 0, 1)
 				for _, x in { -0.5, 0.5 } do
 					for _, y in { -0.5, 0.5 } do
 						for _, z in { -0.5, 0.5 } do
@@ -547,9 +582,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local viewport = camera.ViewportSize
 			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
 			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
-			local key = `{snapshot.matchId}|{tableSeat}|{#headPoints}|{insetRight}|{insetBottom}|{viewport.X}x{viewport.Y}`
+			local key = `{snapshot.matchId}|{tableSeat}|{#headPoints}|{insetRight}|{insetBottom}|{insetLeft}|{viewport.X}x{viewport.Y}`
 			local view = if seatedView and seatedView.key == key and #boardPoints > 0 then seatedView.view else SeatView.solve(boardPoints, headPoints, reach * EYE_BACK, EYE_ABOVE_TABLE + reach * EYE_RISE, aspect, {
-				left = -1,
+				left = -1 + 2 * insetLeft,
 				right = 1 - 2 * insetRight,
 				bottom = -1 + 2 * insetBottom,
 				top = 1 - 2 * topBar,
@@ -558,6 +593,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 				seatedView = { key = key, view = view }
 			end
 			camera.FieldOfView = SeatView.FOV
+			seatedBoard = true
+			hideStool(seat, anchor.Y)
 			local eye = anchor - flat * view.back + Vector3.new(0, view.height, 0)
 			local look = flat * math.cos(view.yaw) + right * math.sin(view.yaw)
 			home = CFrame.lookAt(eye, eye + look) * CFrame.Angles(-view.pitch, 0, 0)
@@ -577,6 +614,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			end
 			return
 		end
+		seatedBoard = false
+		showStool()
 		if FIRST_PERSON[snapshot.gameId] and seat and seat:IsA("BasePart") then
 			-- From your place at the table, up high over your own seat and looking down
 			-- across it: the middle of the table (the piles) and every other player with
@@ -1016,10 +1055,12 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			end
 			moment = { point = point, strength = strength, at = os.clock() }
 		end,
-		setInsets = function(right: number, bottom: number)
+		-- `left`: the seat list down the left edge (only seated board games keep clear of it).
+		setInsets = function(right: number, bottom: number, left: number?)
 			right, bottom = math.clamp(right, 0, 0.8), math.clamp(bottom, 0, 0.8)
-			if right ~= insetRight or bottom ~= insetBottom then
-				insetRight, insetBottom = right, bottom
+			local l = math.clamp(left or 0, 0, 0.4)
+			if right ~= insetRight or bottom ~= insetBottom or l ~= insetLeft then
+				insetRight, insetBottom, insetLeft = right, bottom, l
 				if active then
 					placeCamera()
 				end

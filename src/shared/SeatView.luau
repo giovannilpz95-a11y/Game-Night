@@ -13,8 +13,11 @@ local SeatView = {}
 
 SeatView.FOV = 68 -- vertical field of view, degrees (the card games use the same)
 SeatView.MARGIN = 0.06 -- room left at the edges of the free rect (in NDC)
-SeatView.STEP = 0.08 -- each try moves the eye this share further back and up
-SeatView.MAX_STEPS = 14
+-- When it doesn't fit, the eye moves up and back from its start: of every spot on this
+-- grid that fits, the closest one to the start wins, so it stays as near your own chair
+-- as the board allows (the controller hides your own body and stool there).
+SeatView.RISE = { max = 2.5, step = 0.1 } -- shares of the starting height
+SeatView.BACK = { max = 2, step = 0.1 } -- shares of the starting distance back
 
 export type Point = { x: number, y: number, z: number }
 export type Rect = { left: number, right: number, bottom: number, top: number }
@@ -85,7 +88,8 @@ end
 
 -- `board`: points that must be seen (the board's corners). `heads`: points that should be
 -- (the others' heads), dropped only when both can't fit. `back`/`height`: the eye's
--- starting place, the closest it gets. `aspect`: screen width / height.
+-- starting place: it only ever gets higher, then a little further back. `aspect`:
+-- screen width / height.
 function SeatView.solve(board: { Point }, heads: { Point }, back: number, height: number, aspect: number, free: Rect, fov: number?): Result
 	local t = math.tan(math.rad(fov or SeatView.FOV) / 2)
 	local all = table.clone(board)
@@ -93,18 +97,33 @@ function SeatView.solve(board: { Point }, heads: { Point }, back: number, height
 		table.insert(all, p)
 	end
 	for _, set in { { points = all, fits = "all" }, { points = board, fits = "board" } } do
-		for step = 0, SeatView.MAX_STEPS do
-			local s = 1 + step * SeatView.STEP
-			local pitch, yaw, ok = try(set.points, back * s, height * s, t, aspect, free)
-			if ok then
-				return { back = back * s, height = height * s, pitch = pitch, yaw = yaw, fits = set.fits :: any }
+		local best: Result? = nil
+		local bestCost = math.huge
+		local bs = 1
+		while bs <= SeatView.BACK.max + 1e-9 do
+			local hs = 1
+			while hs <= SeatView.RISE.max + 1e-9 do
+				local db, dh = back * (bs - 1), height * (hs - 1)
+				local cost = db * db + dh * dh
+				if cost < bestCost then
+					local pitch, yaw, ok = try(set.points, back * bs, height * hs, t, aspect, free)
+					if ok then
+						best = { back = back * bs, height = height * hs, pitch = pitch, yaw = yaw, fits = set.fits :: any }
+						bestCost = cost
+					end
+				end
+				hs += SeatView.RISE.step
 			end
+			bs += SeatView.BACK.step
+		end
+		if best then
+			return best
 		end
 	end
-	-- Nothing fits (a tiny free area): sit furthest back and split the difference.
-	local s = 1 + SeatView.MAX_STEPS * SeatView.STEP
-	local pitch, yaw = try(board, back * s, height * s, t, aspect, free)
-	return { back = back * s, height = height * s, pitch = pitch, yaw = yaw, fits = "none" }
+	-- Nothing fits (a tiny free area): highest and furthest, splitting the difference.
+	local b, h = back * SeatView.BACK.max, height * SeatView.RISE.max
+	local pitch, yaw = try(board, b, h, t, aspect, free)
+	return { back = b, height = h, pitch = pitch, yaw = yaw, fits = "none" }
 end
 
 -- Where point `p` lands on screen (NDC) for a solved view: for tests and debugging.
