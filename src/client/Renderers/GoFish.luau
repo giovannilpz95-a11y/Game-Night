@@ -8,6 +8,7 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local GoFish = {}
@@ -15,6 +16,8 @@ local GoFish = {}
 function GoFish.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local selectedRank: number? = nil
+	local arrivals = CardFx.arrivals()
+	local asks = CardFx.watch()
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 
@@ -93,6 +96,34 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 			table.insert(parts, PlayingCards.rankShort[r])
 		end
 		return "books: " .. table.concat(parts, " ")
+	end
+
+	-- Cards you're handed fly in from whoever had them, fished ones from the pond; other
+	-- players' catches fly to them. "Go fish!", books and lucky fish pop off the table.
+	local function effects(view: any, me: number?, faces: { [any]: GuiObject })
+		local a = view.lastAction
+		local fromPond = CardFx.middleOnScreen() or CardFx.guiOnScreen(pond)
+		local from = fromPond
+		if a and a.seat == me and (a.got or 0) > 0 then
+			from = CardFx.seatOnScreen(snapshot, a.target) or fromPond
+		end
+		arrivals.update(faces, from)
+		if not asks(CardFx.key(a, view.pondCount)) or not a then
+			return
+		end
+		if (a.got or 0) == 0 and a.target then
+			CardFx.pop(if a.luckyFish then "LUCKY FISH!" else "GO FISH!", Color3.fromRGB(110, 190, 255))
+		end
+		if a.books and #a.books > 0 then
+			CardFx.pop(if #a.books > 1 then `{#a.books} BOOKS!` else "BOOK!", Theme.Accent, root)
+		end
+		if a.seat ~= me then
+			if (a.got or 0) > 0 then
+				CardFx.dealTo(snapshot, a.seat, a.got, CardFx.seatPoint(snapshot, a.target, 0.78))
+			elseif a.fished then
+				CardFx.dealTo(snapshot, a.seat, 1, CardFx.middlePoint())
+			end
+		end
 	end
 
 	local function describe(action: any): string
@@ -231,7 +262,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 			local r = PlayingCards.rank(id)
 			table.insert(cards, { id = id, raised = r == selectedRank, glow = r == selectedRank, enabled = myTurn })
 		end
-		PlayingCard.renderHand(hand, cards, function(id: number)
+		local faces = PlayingCard.renderHand(hand, cards, function(id: number)
 			local r = PlayingCards.rank(id)
 			if not askable[r] then
 				return
@@ -250,6 +281,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 				render()
 			end
 		end)
+		effects(view, me, faces)
 	end
 
 	-- Redraw when the hand changes size, so the cards are measured against the new frame.

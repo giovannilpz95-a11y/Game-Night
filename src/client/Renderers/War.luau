@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local War = {}
@@ -96,6 +97,7 @@ function War.create(container: Frame, sendMove: (any) -> ())
 		end
 		local battle = view.lastBattle
 		local fresh = view.battles ~= shownBattle
+		local firstLook = shownBattle == -1
 		shownBattle = view.battles
 		for seat, spot in spots do
 			local count = view.pileCounts[seat]
@@ -120,6 +122,15 @@ function War.create(container: Frame, sendMove: (any) -> ())
 			local who = if seat == me then "You" else (snapshot.seats[seat] and snapshot.seats[seat].name or "?")
 			local ready = if view.flipped[tostring(seat)] then " ✓" else ""
 			spot.name.Text = `{who} · {count}{ready}`
+		end
+		-- WAR! pops off the table, and the pot flies to whoever won it.
+		if battle and fresh and not firstLook then
+			if battle.wars > 0 then
+				CardFx.pop(if battle.wars > 1 then `WAR! ×{battle.wars}` else "WAR!", Theme.Bad)
+			end
+			if battle.winner then
+				CardFx.dealTo(snapshot, battle.winner, math.min(battle.potSize or 2, 6), CardFx.middlePoint())
+			end
 		end
 		if battle and fresh then
 			local winnerName = if battle.winner == nil then "nobody"

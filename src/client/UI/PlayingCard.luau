@@ -275,7 +275,8 @@ end
 -- Held: overlapping cards in a fan (outer ones turned and a little lower). Hovering a
 -- card lifts it out of the hand and straightens it. Cards you can play stand up out of
 -- the fan; ones you can't are blacked out, hovered or not.
-local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, onClick: ((number) -> ())?)
+local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, onClick: ((number) -> ())?): { [any]: GuiObject }
+	local faces: { [any]: GuiObject } = {}
 	local count = #cards
 	local size = container.AbsoluteSize
 	local cardW = size.Y * PlayingCard.HELD_CARD * PlayingCard.RATIO
@@ -309,6 +310,7 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 		})
 		local face = PlayingCard.face(card.id)
 		face.Parent = slot
+		faces[if card.key ~= nil then card.key else (card.id or index)] = face
 		local drop = (offset * spread / 28) ^ 2 * 0.5 -- the fan's curve, in card heights
 		local rest = UDim2.fromScale(0, drop + (if card.raised then -0.18 elseif card.glow then -0.14 else 0))
 		face.Position = rest
@@ -342,13 +344,16 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 			end)
 		end
 	end
+	return faces
 end
 
 -- A horizontal hand. container should have a fixed height; cards size from it.
 -- cards: { { id = number, enabled = boolean?, raised = boolean?, dim = boolean?, glow = boolean?,
 --   key = any? } } -- key: what onClick gets instead of id (for face-down picks)
-function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((number) -> ())?)
+-- Returns each card's face by its key (or id), for CardFx.arrivals.
+function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((number) -> ())?): { [any]: GuiObject }
 	Kit.clear(container)
+	local faces: { [any]: GuiObject } = {}
 	local list = container:FindFirstChildOfClass("UIListLayout")
 	if not list then
 		list = Kit.list(6, true)
@@ -357,8 +362,7 @@ function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((num
 		list.Parent = container
 	end
 	if container:GetAttribute("Held") == true then
-		renderHeld(container, list, cards, onClick)
-		return
+		return renderHeld(container, list, cards, onClick)
 	end
 	list.VerticalAlignment = Enum.VerticalAlignment.Bottom
 	-- Big hands overlap so they still fit across the screen.
@@ -379,6 +383,7 @@ function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((num
 		})
 		local face = PlayingCard.face(card.id)
 		face.Parent = slot
+		faces[if card.key ~= nil then card.key else (card.id or index)] = face
 		face.Position = if card.raised then UDim2.fromScale(0, -0.1) else UDim2.fromScale(0, 0)
 		if card.dim then
 			Kit.new("Frame", {
@@ -402,6 +407,7 @@ function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((num
 			end)
 		end
 	end
+	return faces
 end
 
 -- The green felt every card game sits on.

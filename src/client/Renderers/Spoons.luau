@@ -10,6 +10,7 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local Spoons = {}
@@ -17,6 +18,7 @@ local Spoons = {}
 function Spoons.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local lastPhase = ""
+	local arrivals = CardFx.arrivals()
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 
@@ -180,6 +182,10 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 		local canGrab = me ~= nil and not view.youAreOut and not view.youHaveSpoon
 			and (view.phase == "scramble" or (view.phase == "pass" and view.hasFour))
 		grabButton.Visible = canGrab and snapshot.result == nil
+		-- The scramble starts: a spoon pops up off the middle of the table.
+		if view.phase == "scramble" and lastPhase == "pass" then
+			CardFx.pop("🥄 GRAB!", Theme.Bad)
+		end
 		if view.phase == "scramble" and lastPhase ~= "scramble" and canGrab then
 			grabPulse.Scale = 1.25
 			TweenService:Create(grabPulse, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Scale = 1 }):Play()
@@ -211,11 +217,25 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			local r = PlayingCards.rank(id)
 			table.insert(cards, { id = id, glow = counts[r] >= 3, enabled = canPass, dim = not canPass and view.phase == "pass" })
 		end
-		PlayingCard.renderHand(hand, cards, function(id: number)
+		local faces = PlayingCard.renderHand(hand, cards, function(id: number)
 			if canPass then
 				sendMove({ kind = "pass", card = id })
 			end
 		end)
+		-- Your new card flies in from the player on your right (the dealer's off the deck,
+		-- in the middle of the table).
+		local from: Vector2? = nil
+		if me and me ~= view.dealer then
+			local n = #snapshot.seats
+			for step = 1, n - 1 do
+				local seat = (me - 1 - step) % n + 1
+				if view.out[tostring(seat)] == nil then
+					from = CardFx.seatOnScreen(snapshot, seat)
+					break
+				end
+			end
+		end
+		arrivals.update(faces, from or CardFx.middleOnScreen() or CardFx.guiOnScreen(felt))
 	end
 
 	-- Redraw when the hand changes size, so the cards are measured against the new frame.

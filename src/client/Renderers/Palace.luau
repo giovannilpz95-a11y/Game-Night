@@ -9,6 +9,8 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
+local Rules = require(ReplicatedStorage.Shared.Games.Palace)
 local Theme = Kit.Theme
 
 local Palace = {}
@@ -19,6 +21,11 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 	local swapFrom: number? = nil
 	local ui = CardTable.layout(container)
 	local render: () -> ()
+	local arrivals = CardFx.arrivals()
+	local moves = CardFx.watch()
+	local drawSlot: Frame? = nil
+	local tableRow: Frame? = nil
+	local lastDrawCount: number? = nil
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -32,6 +39,40 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		return n
+	end
+
+	-- New cards fly into your hand from where they came from (the draw pile, the pile you
+	-- picked up, your own table cards in setup); other players' pick-ups and refills fly to
+	-- them; burns and pick-ups pop off the table.
+	local function effects(view: any, me: number?, faces: { [any]: GuiObject })
+		local a = view.lastAction
+		local mine = a and a.seat == me
+		local from
+		if view.phase == "setup" then
+			from = CardFx.seatOnScreen(snapshot, me) or CardFx.guiOnScreen(tableRow)
+		elseif mine and (a.kind == "pickup" or (a.kind == "blind" and not a.ok)) then
+			from = CardFx.middleOnScreen() or CardFx.guiOnScreen(ui.felt)
+		else
+			from = CardFx.pileOnScreen() or CardFx.guiOnScreen(drawSlot)
+		end
+		arrivals.update(faces, from)
+		local drew = if lastDrawCount then math.max(0, lastDrawCount - (view.drawCount or 0)) else 0
+		lastDrawCount = view.drawCount
+		if not moves(CardFx.key(a, #(view.pileTop or {}))) or not a then
+			return
+		end
+		if a.burned then
+			CardFx.pop("🔥 BURN!", Color3.fromRGB(255, 140, 60))
+		elseif a.kind == "pickup" or (a.kind == "blind" and not a.ok) then
+			CardFx.pop(`+{a.count or 0}`, Theme.Bad)
+		end
+		if a.seat ~= me then
+			if a.kind == "pickup" or (a.kind == "blind" and not a.ok) then
+				CardFx.dealTo(snapshot, a.seat, a.count or 0, CardFx.middlePoint())
+			elseif drew > 0 then
+				CardFx.dealTo(snapshot, a.seat, drew)
+			end
+		end
 	end
 
 	function render()
@@ -63,6 +104,8 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 
 		Kit.clear(ui.content)
 		local draw = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.25, 0.52), Size = UDim2.fromScale(1, 0.55), Parent = ui.content })
+		drawSlot = draw
+		tableRow = nil
 		if view.drawCount > 0 then
 			PlayingCard.show(draw, nil, true)
 		else
@@ -90,6 +133,7 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		-- Your table cards: face-down slots with face-up cards on top, along the felt bottom.
 		if me then
 			local row = Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.fromScale(0.5, 0.3), ZIndex = 6, Parent = ui.content })
+			tableRow = row
 			local list = Kit.list(6, true)
 			list.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			list.Parent = row
@@ -176,7 +220,14 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 				enabled = can or setup,
 			})
 		end
-		PlayingCard.renderHand(ui.hand, cards, function(id: number)
+		-- Off your turn: all dimmed, the cards that would go on the pile lifted.
+		if me and view.phase == "play" and not myTurn and not snapshot.result then
+			local pileTop = view.pileTop or {}
+			CardFx.offTurn(cards, function(id: number): boolean
+				return Rules.canPlay({ pile = pileTop }, id)
+			end)
+		end
+		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
 			if setup then
 				swapFrom = if swapFrom == id then nil else id
 				render()
@@ -188,6 +239,7 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 				render()
 			end
 		end)
+		effects(view, me, faces)
 	end
 
 	ui.refresh = function()
