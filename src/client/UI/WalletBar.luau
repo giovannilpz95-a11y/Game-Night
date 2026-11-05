@@ -7,6 +7,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Economy = require(ReplicatedStorage.Shared.Economy)
+local Flair = require(script.Parent.Flair)
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
 local Theme = Kit.Theme
@@ -55,7 +56,7 @@ function WalletBar.create(parent: Instance)
 		Parent = parent,
 	}, { Kit.list(6, true) })
 
-	local _, gemsLabel, gemDot = chip(root, 1)
+	local gemFrame, gemsLabel, gemDot = chip(root, 1)
 	gemDot.BackgroundColor3 = GEM_COLOR
 	gemDot.Rotation = 45 -- a little diamond
 	local gemCorner = gemDot:FindFirstChildOfClass("UICorner")
@@ -74,6 +75,24 @@ function WalletBar.create(parent: Instance)
 	local shownCoins: number? = nil
 	local shownCoinKey: string? = nil
 
+	-- A gain is performed like the top Roblox games do it: icons burst out of the middle of
+	-- the screen and swoop into the chip, the number tallies up as they land and a "+N"
+	-- floats under it (client/UI/Flair). Spending just counts down.
+	local function gain(frame: Frame, label: TextLabel, from: number, to: number, format: (number) -> string, makeIcon: () -> GuiObject, color: Color3)
+		local amount = to - from
+		local count = math.clamp(math.ceil(math.log10(amount + 1) * 3), 3, 10)
+		local lands = Flair.flyTo(frame, { make = makeIcon, count = count })
+		label:SetAttribute("FlyingIn", true)
+		task.delay(lands, function()
+			label:SetAttribute("FlyingIn", nil)
+			if label.Parent then
+				Kit.Juice.countUp(label, from, to, format)
+				local at = frame.AbsolutePosition + Vector2.new(frame.AbsoluteSize.X / 2, frame.AbsoluteSize.Y + 18)
+				Flair.floatText(frame, `+{amount}`, at, color)
+			end
+		end)
+	end
+
 	local function render()
 		-- Phones show just the numbers next to the colored dot.
 		local gemsName = if compact then "" else ` {Economy.GemsName}`
@@ -82,9 +101,13 @@ function WalletBar.create(parent: Instance)
 			local format = function(n: number): string
 				return `{n}{gemsName}`
 			end
-			if shownGems and shownGems ~= gems then
+			if shownGems and gems > shownGems then
+				gain(gemFrame, gemsLabel, shownGems, gems, format, function()
+					return Kit.gemIcon(24)
+				end, GEM_COLOR)
+			elseif shownGems and shownGems ~= gems then
 				Kit.Juice.countUp(gemsLabel, shownGems, gems, format)
-			else
+			elseif not gemsLabel:GetAttribute("FlyingIn") then
 				gemsLabel.Text = format(gems)
 			end
 			shownGems = gems
@@ -98,15 +121,20 @@ function WalletBar.create(parent: Instance)
 			local format = function(n: number): string
 				return `{n}{coinName}`
 			end
-			if shownCoins and shownCoinKey == coinKey and shownCoins ~= coins then
+			local coin = Economy.Coins[coinKey]
+			local color = if coin then coin.color else Theme.Accent
+			if shownCoins and shownCoinKey == coinKey and coins > shownCoins then
+				gain(coinFrame, coinLabel, shownCoins, coins, format, function()
+					return Kit.coinIcon(color, 22)
+				end, color)
+			elseif shownCoins and shownCoinKey == coinKey and shownCoins ~= coins then
 				Kit.Juice.countUp(coinLabel, shownCoins, coins, format)
-			else
+			elseif not (shownCoinKey == coinKey and coinLabel:GetAttribute("FlyingIn")) then
 				coinLabel.Text = format(coins)
 			end
 			shownCoins = coins
 			shownCoinKey = coinKey
-			local coin = Economy.Coins[coinKey]
-			coinDot.BackgroundColor3 = if coin then coin.color else Theme.Accent
+			coinDot.BackgroundColor3 = color
 		else
 			coinFrame.Visible = false
 		end

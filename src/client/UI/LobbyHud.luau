@@ -6,6 +6,7 @@
 -- Everything else opens on demand and closes back to the room.
 -- Phones keep the bottom corners free for the thumbstick and jump button.
 
+local Flair = require(script.Parent.Flair)
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
 local Theme = Kit.Theme
@@ -96,6 +97,8 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 			Parent = button,
 		})
 		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = badges[key] })
+		-- Something to claim: the badge gives a little nudge every few seconds.
+		Flair.nudge(badges[key], 4)
 		button.Activated:Connect(onClick)
 		Kit.pressable(button)
 		buttons[key] = button
@@ -124,6 +127,8 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 		Parent = parent,
 	})
 	Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.5, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = play })
+	-- The glint that keeps the eye on the main button (every top lobby has one).
+	Flair.idleShine(play, 5)
 	-- Help sits beside Play (the rail is full on a landscape phone).
 	local help = Kit.button("?", actions.help, {
 		Name = "HelpButton",

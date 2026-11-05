@@ -19,6 +19,7 @@ local ReactionFx = require(script.Parent.ReactionFx)
 local Kit = require(script.Parent.Kit)
 local CoinConvertPanel = require(script.Parent.CoinConvertPanel)
 local Analytics = require(script.Parent.Parent.Analytics)
+local Flair = require(script.Parent.Flair)
 local Theme = Kit.Theme
 
 local ShopPanel = {}
@@ -49,6 +50,11 @@ local SLOT_ICONS = {
 }
 
 local PASS_ICONS = { vip = "👑", partyHost = "🎉" }
+
+-- Shared with the unlock celebration (client/UI/Unlock via Main).
+ShopPanel.TierColors = TIER_COLORS
+ShopPanel.SlotIcons = SLOT_ICONS
+ShopPanel.PassIcons = PASS_ICONS
 
 local NARROW = 600 -- window width under which the tabs move to a row on top
 local TAB_W = 170
@@ -89,6 +95,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.2 }).Parent = root
 
 	local title = Kit.title("🛒 Shop", { Size = UDim2.new(1, -190, 0, 30), Parent = root })
+	Flair.titleStyle(title)
 	Kit.closeButton(function()
 		root.Visible = false
 	end, { Parent = root })
@@ -359,12 +366,13 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 
 	local function robuxButton(parentFrame: Instance, robux: number, ready: boolean, onClick: () -> (), props: { [string]: any }?)
 		if ready then
-			priceButton(parentFrame, tostring(robux), "robux", Theme.Good, onClick, props)
+			return priceButton(parentFrame, tostring(robux), "robux", Theme.Good, onClick, props)
 		else
 			local button = Kit.button("Coming soon", function() end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.SubText, TextSize = 13, AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 32), Parent = parentFrame })
 			for key, value in props or {} do
 				(button :: any)[key] = value
 			end
+			return button
 		end
 	end
 
@@ -374,13 +382,17 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		if wallet.starterAvailable then
 			local pack = Economy.StarterPack
 			local c = card(order, 78)
-			Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Parent = c })
+			-- A limited-time offer gets the moving gold ring and a glinting buy button.
+			Flair.spinGradient(Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2.5, Parent = c }), Flair.Gold, 120)
 			Kit.label("🎁 Starter Pack", { Font = Theme.FontTitle, TextSize = 20, Size = UDim2.new(1, -150, 0, 24), Parent = c })
 			Kit.tag("FIRST 3 DAYS", Theme.Accent, { Position = UDim2.new(0, 0, 0, 28), Parent = c })
 			Kit.label(`{pack.gems} Gems + Cozy Cabin table + nameplate`, { TextColor3 = Theme.SubText, TextSize = 13, Position = UDim2.new(0, 0, 0, 48), Size = UDim2.new(1, -150, 0, 18), Parent = c })
-			robuxButton(c, pack.robux, pack.productId ~= 0, function()
+			local buy = robuxButton(c, pack.robux, pack.productId ~= 0, function()
 				sendPurchase({ action = "buyStarter" })
 			end, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0, 130, 0, 36) })
+			if pack.productId ~= 0 then
+				Flair.idleShine(buy, 3)
+			end
 			order += 1
 		end
 
@@ -388,26 +400,38 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		order += 1
 		local packs = grid(order, UDim2.new(if narrow then 0.5 else 0.25, -6, 0, 140))
 		order += 1
+		-- The anchor-and-decoy layout every top shop uses: the middle pack wears "MOST
+		-- POPULAR", the biggest wears "BEST VALUE" with a moving gold ring and a glint.
 		local best = #Economy.GemPacks
+		local popular = if best >= 3 then math.ceil(best / 2) else nil
 		for i, pack in Economy.GemPacks do
 			local tile = Kit.card({ LayoutOrder = i, Parent = packs })
+			local banner = i == best or i == popular
 			if i == best then
-				Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Parent = tile })
+				Flair.spinGradient(Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2.5, Parent = tile }), Flair.Gold, 120)
+				Flair.banner(tile, "BEST VALUE", Color3.fromRGB(255, 196, 64), Color3.fromRGB(255, 120, 40)).Position = UDim2.new(0.5, 0, 0, -10)
+			elseif i == popular then
+				Kit.new("UIStroke", { Color = Theme.Gem, Thickness = 2, Parent = tile })
+				Flair.banner(tile, "MOST POPULAR", Color3.fromRGB(80, 190, 255), Color3.fromRGB(150, 110, 255)).Position = UDim2.new(0.5, 0, 0, -10)
 			end
 			-- Bigger packs get a bigger gem.
 			local size = 26 + math.min(i, 4) * 5
-			Kit.gemIcon(size, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 4), Parent = tile })
-			Kit.label(commas(pack.gems), { Font = Theme.FontTitle, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, 52), Size = UDim2.new(1, 0, 0, 24), Parent = tile })
+			local top = if banner then 8 else 4
+			Kit.gemIcon(size, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, top), Parent = tile })
+			Kit.label(commas(pack.gems), { Font = Theme.FontTitle, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0, top + 48), Size = UDim2.new(1, 0, 0, 24), Parent = tile })
 			if pack.bonus then
-				Kit.tag(if i == best then `BEST {pack.bonus}` else pack.bonus, if i == best then Theme.Accent else Theme.Good, {
+				Kit.tag(pack.bonus, if i == best then Theme.Accent else Theme.Good, {
 					AnchorPoint = Vector2.new(1, 0),
-					Position = UDim2.new(1, 4, 0, -4),
+					Position = if banner then UDim2.new(1, 4, 0, 14) else UDim2.new(1, 4, 0, -4),
 					Parent = tile,
 				})
 			end
-			robuxButton(tile, pack.robux, pack.productId ~= 0, function()
+			local buy = robuxButton(tile, pack.robux, pack.productId ~= 0, function()
 				sendPurchase({ action = "buyGems", key = pack.key })
 			end, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0) })
+			if i == best and pack.productId ~= 0 then
+				Flair.idleShine(buy, 3.5)
+			end
 		end
 
 		section("Passes", order)
@@ -416,6 +440,9 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			local pass = Economy.Passes[key]
 			local owned = wallet.passes and wallet.passes[key]
 			local c = card(order)
+			if key == "vip" then
+				Flair.spinGradient(Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2.5, Parent = c }), Flair.Gold, 90)
+			end
 			local info = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -146, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = c }, { Kit.list(4) })
 			Kit.label(`{PASS_ICONS[key] or "⭐"} {pass.name}`, { Font = Theme.FontTitle, TextSize = 20, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, Parent = info })
 			for i, perk in pass.perks do
@@ -425,9 +452,12 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			if owned then
 				Kit.tag("OWNED", Theme.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 8), Parent = side })
 			else
-				robuxButton(side, pass.robux, pass.gamePassId ~= 0, function()
+				local buy = robuxButton(side, pass.robux, pass.gamePassId ~= 0, function()
 					sendPurchase({ action = "buyPass", key = key })
 				end, { Size = UDim2.new(1, 0, 1, 0) })
+				if key == "vip" and pass.gamePassId ~= 0 then
+					Flair.idleShine(buy, 4)
+				end
 			end
 			order += 1
 		end
@@ -449,7 +479,11 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			local owned = wallet.owned and wallet.owned[item.id]
 			local isOn = owned and equipped[item.slot] == item.id
 			local c = Kit.card({ LayoutOrder = index, Parent = content })
-			Kit.new("UIStroke", { Color = if isOn then Theme.Good else tier, Thickness = 2, Transparency = if isOn then 0 else 0.25, Parent = c })
+			local ring = Kit.new("UIStroke", { Color = if isOn then Theme.Good else tier, Thickness = 2, Transparency = if isOn then 0 else 0.25, Parent = c })
+			if not isOn then
+				-- Rare and up: the border's colors keep turning (faster the rarer).
+				Flair.rarityBorder(ring, item.tier)
+			end
 			-- Picture: the slot's icon on a tier-colored badge.
 			local badge = Kit.label(SLOT_ICONS[item.slot] or "🎁", {
 				BackgroundColor3 = tier,
@@ -460,6 +494,9 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				Parent = c,
 			})
 			Kit.corner(12).Parent = badge
+			if item.tier == "Legendary" then
+				Flair.idleShine(badge, 2.5)
+			end
 			Kit.tag(string.upper(item.tier), tier, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = c })
 			if isOn then
 				Kit.tag("EQUIPPED", Theme.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 22), Parent = c })
