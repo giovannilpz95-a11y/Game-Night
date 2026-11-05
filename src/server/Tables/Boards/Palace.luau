@@ -15,13 +15,13 @@ function Palace.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			Scene.hand(folder, boardCF, layout, seat, count)
 			local ups = (view.up or {})[seat] or {}
 			for i, slot in (view.down or {})[seat] or {} do
-				local spot = Scene.seatSpot(boardCF, layout, seat, 2.1, (i - 2) * 0.7)
+				local spot = Scene.seatSpot(boardCF, layout, seat, 2.1, (i - 2) * 0.7) * CFrame.new(0, (i - 1) * 2 * Scene.STACK, 0)
 				if slot then
 					Scene.card(folder, spot, nil)
 				end
 				local up = ups[i]
 				if up then
-					Scene.card(folder, spot * CFrame.new(0, 0.03, 0.15), Scene.playingFront(PlayingCards, up))
+					Scene.card(folder, spot * CFrame.new(0, Scene.STACK, 0.15), Scene.playingFront(PlayingCards, up))
 				end
 			end
 		end

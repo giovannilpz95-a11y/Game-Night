@@ -37,7 +37,7 @@ local function campfire(parent: Instance, cf: CFrame): BasePart
 		Models.ball(parent, "FireStone", 0.28, cf * CFrame.new(math.cos(a) * 0.55, 0.1, math.sin(a) * 0.55), Color3.fromRGB(120, 116, 112), Enum.Material.Slate)
 	end
 	for i = 0, 2 do
-		Models.block(parent, "Log", Vector3.new(0.9, 0.14, 0.14), cf * CFrame.new(0, 0.1, 0) * CFrame.Angles(0, math.rad(i * 60), 0), Models.WALNUT, Enum.Material.Wood)
+		Models.block(parent, "Log", Vector3.new(0.9, 0.14, 0.14), cf * CFrame.new(0, 0.1 + i * 0.03, 0) * CFrame.Angles(0, math.rad(i * 60), 0), Models.WALNUT, Enum.Material.Wood)
 	end
 	return Models.egg(parent, "Flame", Vector3.new(0.5, 0.75, 0.5), cf * CFrame.new(0, 0.45, 0), FLAME, Enum.Material.Neon)
 end

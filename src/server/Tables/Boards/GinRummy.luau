@@ -25,7 +25,7 @@ function GinRummy.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 					table.insert(cards, id)
 				end
 				for i, id in cards do
-					Scene.card(folder, Scene.seatSpot(boardCF, layout, seat, 1.3, (i - (#cards + 1) / 2) * 0.42) * CFrame.new(0, i * 0.004, 0), Scene.playingFront(PlayingCards, id))
+					Scene.card(folder, Scene.seatSpot(boardCF, layout, seat, 1.3, (i - (#cards + 1) / 2) * 0.42) * CFrame.new(0, i * Scene.STACK, 0), Scene.playingFront(PlayingCards, id))
 				end
 			else
 				Scene.hand(folder, boardCF, layout, seat, count)

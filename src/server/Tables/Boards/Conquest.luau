@@ -46,13 +46,17 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 				Models.block(model, "SeaLane", Vector3.new(0.06, 0.03, 0.2), cf * CFrame.new(0, 0, (i - (dashes + 1) / 2) * length / dashes), Color3.fromRGB(235, 244, 255))
 			end
 		else
-			Models.block(model, "Border", Vector3.new(0.6, 0.06, length), cf, Rules.regions[a.region].color:Lerp(Rules.regions[b.region].color, 0.5), Enum.Material.Grass)
+			-- Rooted in the sea (no gap under it), its top below the beaches'.
+			Models.block(model, "Border", Vector3.new(0.6, 0.1, length), cf * CFrame.new(0, -0.05, 0), Rules.regions[a.region].color:Lerp(Rules.regions[b.region].color, 0.5), Enum.Material.Grass)
 		end
 	end
-	for _, t in Rules.territories do
+	for i, t in Rules.territories do
 		local color = Rules.regions[t.region].color
 		local base = pos(boardCF, t, LAND_Y)
-		Models.cyl(model, "Beach", 1.2, 0.08, base, Color3.fromRGB(232, 214, 160), Enum.Material.Sand)
+		-- Beaches reach down into the sea. Neighbors overlap, so their tops step by 0.015
+		-- (three heights) to keep two sandy tops from fighting (flickering) in one plane.
+		local beachTop = 0.08 + (i % 3) * 0.015
+		Models.cyl(model, "Beach", 1.2, beachTop + 0.06, base * CFrame.new(0, -0.06, 0), Color3.fromRGB(232, 214, 160), Enum.Material.Sand)
 		Models.cyl(model, t.name, 1.05, 0.16, base, color, Enum.Material.Grass)
 		-- A hill so the patches don't read as flat coins.
 		Models.egg(model, "Hill", Vector3.new(0.5, 0.2, 0.4), base * CFrame.new(-0.26, TOP_Y - LAND_Y, 0.26), color:Lerp(Color3.new(0, 0, 0), 0.15), Enum.Material.Grass)

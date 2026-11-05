@@ -75,15 +75,15 @@ end
 -- A town: a bigger hall with a tower and a flag.
 local function town(parent: Instance, cf: CFrame, color: Color3)
 	Models.house(parent, cf, color, 0.42, color:Lerp(Color3.new(0, 0, 0), 0.35))
-	local tower = cf * CFrame.new(0.15, 0, 0.1)
-	Models.block(parent, "Tower", Vector3.new(0.17, 0.5, 0.17), tower * CFrame.new(0, 0.25, 0), color:Lerp(Color3.new(1, 1, 1), 0.2))
+	local tower = cf * CFrame.new(0.17, 0, 0.13)
+	Models.block(parent, "Tower", Vector3.new(0.17, 0.52, 0.17), tower * CFrame.new(0, 0.24, 0), color:Lerp(Color3.new(1, 1, 1), 0.2))
 	Models.flag(parent, tower * CFrame.new(0, 0.5, 0), Models.GOLD, 0.24)
 end
 
 -- The Bandit: a hooded figure in a dark cloak with a lantern.
 local function bandit(parent: Instance, cf: CFrame)
 	local cloak = Color3.fromRGB(40, 36, 44)
-	Models.cyl(parent, "Base", 0.34, 0.05, cf, Color3.fromRGB(20, 18, 24))
+	Models.cyl(parent, "Base", 0.34, 0.08, cf, Color3.fromRGB(20, 18, 24))
 	Models.egg(parent, "Cloak", Vector3.new(0.34, 0.56, 0.32), cf * CFrame.new(0, 0.3, 0), cloak)
 	Models.egg(parent, "Hood", Vector3.new(0.26, 0.28, 0.26), cf * CFrame.new(0, 0.6, 0), cloak:Lerp(Color3.new(1, 1, 1), 0.08))
 	Models.block(parent, "Mask", Vector3.new(0.16, 0.05, 0.02), cf * CFrame.new(0, 0.6, -0.125), Color3.fromRGB(230, 60, 60))
@@ -105,7 +105,7 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 		local pier = at(boardCF, mx * (1 + 0.3 / length), my * (1 + 0.3 / length), 0.22)
 		local facing = CFrame.lookAt(pier.Position, (boardCF * CFrame.new(mx * 2 * S, 0.22, my * 2 * S)).Position, boardCF.UpVector)
 		Models.block(model, "Pier", Vector3.new(0.24, 0.05, 0.62), facing, Models.WOOD, Enum.Material.Wood)
-		Models.block(model, "PierEnd", Vector3.new(0.34, 0.05, 0.1), facing * CFrame.new(0, 0, -0.3), Models.WALNUT, Enum.Material.Wood)
+		Models.block(model, "PierEnd", Vector3.new(0.34, 0.09, 0.1), facing * CFrame.new(0, 0, -0.3), Models.WALNUT, Enum.Material.Wood)
 	end
 	local tiles = Instance.new("Folder")
 	tiles.Name = "Tiles"
@@ -123,8 +123,10 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 		if Models.mesh(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2, 2 * S * 0.96), cf, color, Enum.Material.Grass) then
 			return
 		end
+		-- Each bar's top and bottom sit 0.025 inside the last one's, so where they overlap
+		-- no two faces share a plane and fight (flicker).
 		for i = 0, 2 do
-			Models.block(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2, S * 0.96), cf * CFrame.Angles(0, math.rad(60 * i), 0), color, Enum.Material.Grass)
+			Models.block(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2 - 0.05 * i, S * 0.96), cf * CFrame.Angles(0, math.rad(60 * i), 0), color, Enum.Material.Grass)
 		end
 	end
 
@@ -170,8 +172,8 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 						local color = Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1)
 						local cf = CFrame.lookAt((pa + pb) / 2, pb, boardCF.UpVector)
 						local length = (pb - pa).Magnitude * 0.7
-						Models.block(dynamic, "Road", Vector3.new(0.14, 0.1, length), cf, color)
-						Models.block(dynamic, "RoadTop", Vector3.new(0.07, 0.02, length * 0.8), cf * CFrame.new(0, 0.055, 0), color:Lerp(Color3.new(1, 1, 1), 0.4))
+						Models.block(dynamic, "Road", Vector3.new(0.14, 0.12, length), cf, color)
+						Models.block(dynamic, "RoadTop", Vector3.new(0.07, 0.02, length * 0.8), cf * CFrame.new(0, 0.07, 0), color:Lerp(Color3.new(1, 1, 1), 0.4))
 					end
 				end
 				-- Camps and towns

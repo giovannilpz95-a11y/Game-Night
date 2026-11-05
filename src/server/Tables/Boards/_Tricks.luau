@@ -41,8 +41,9 @@ function Tricks.scene(matColor: Color3, extra: ((Folder, any, CFrame) -> ())?)
 			if #plays == 0 and view.lastTrick and view.phase == "trick" then
 				plays = view.lastTrick.plays or {}
 			end
-			for _, play in plays do
-				Scene.card(folder, Scene.seatSpot(boardCF, layout, play.seat, 2.5), Scene.playingFront(PlayingCards, play.card))
+			for i, play in plays do
+				-- Played in order, each on top of the last (and of a trump card in the middle).
+				Scene.card(folder, Scene.seatSpot(boardCF, layout, play.seat, 2.5) * CFrame.new(0, i * Scene.STACK, 0), Scene.playingFront(PlayingCards, play.card))
 			end
 			if extra then
 				extra(folder, view, boardCF)
@@ -61,11 +62,11 @@ function Tricks.books(folder: Instance, boardCF: CFrame, layout: Scene.Layout, v
 			local spot = Scene.seatSpot(boardCF, layout, seat, 1.75, -1.55)
 			for i = 1, math.min(count, 13) do
 				local turn = if i % 2 == 0 then 90 else 0
-				Scene.card(folder, spot * CFrame.new(0, (i - 1) * (Scene.CARD_T + 0.004), 0) * CFrame.Angles(0, math.rad(turn + (i % 3 - 1) * 4), 0), nil, 0.7)
+				Scene.card(folder, spot * CFrame.new(0, (i - 1) * Scene.STACK, 0) * CFrame.Angles(0, math.rad(turn + (i % 3 - 1) * 4), 0), nil, 0.7)
 			end
 			local text = if bid ~= nil then `{count} / {bid}` else tostring(count)
 			local color = if bid ~= nil and count > bid then Color3.fromRGB(255, 170, 90) elseif bid ~= nil and count == bid then Color3.fromRGB(120, 230, 140) else Color3.new(1, 1, 1)
-			Scene.floatText(folder, spot * CFrame.new(0, 0.25 + math.min(count, 13) * 0.034, 0), 0.9, 0.42, text, { TextColor3 = color, TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
+			Scene.floatText(folder, spot * CFrame.new(0, 0.25 + math.min(count, 13) * Scene.STACK, 0), 0.9, 0.42, text, { TextColor3 = color, TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
 		end
 	end
 end

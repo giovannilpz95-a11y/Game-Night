@@ -6,11 +6,16 @@ local Scene = require(script.Parent.Parent.Scene)
 
 local Cards = {}
 
+Cards.MAT_TOP = 0.04 -- height of the card mat's top above the board CFrame
+
 function Cards.shell(boardCF: CFrame, parent: Instance, layout: Scene.Layout, draw: (folder: Folder, view: any, snapshot: any) -> (), matColor: Color3?)
 	local model = Instance.new("Model")
 	model.Name = "GameBoard"
-	Models.cyl(model, "MatRim", 5.4, 0.03, boardCF, Models.WALNUT, Enum.Material.Wood)
-	Models.cyl(model, "Mat", 5, 0.04, boardCF, matColor or Color3.fromRGB(36, 86, 60), Enum.Material.Fabric)
+	-- The rim sits lower than the mat at both faces, so neither pair of faces fights.
+	Models.cyl(model, "MatRim", 5.4, 0.04, boardCF * CFrame.new(0, -0.02, 0), Models.WALNUT, Enum.Material.Wood)
+	Models.cyl(model, "Mat", 5, Cards.MAT_TOP, boardCF, matColor or Color3.fromRGB(36, 86, 60), Enum.Material.Fabric)
+	-- Scene.seatSpot puts cards that land on the mat on top of it.
+	layout.mat = { radius = 2.7, top = Cards.MAT_TOP }
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent
 	local memo = {}
@@ -147,8 +152,11 @@ function Cards.messyPile(folder: Instance, boardCF: CFrame, layout: Scene.Layout
 			yaw = rng:NextNumber(0, math.pi * 2)
 		end
 		-- Built in board space (seat directions are board space), whatever way `center` turns.
-		local at = boardCF:PointToObjectSpace(base.Position) + Vector3.new(nudge.X, (k - 1) * (Scene.CARD_T + 0.004), nudge.Z)
-		local cf = boardCF * CFrame.new(at) * CFrame.Angles(0, yaw + math.rad(twist), 0)
+		local at = boardCF:PointToObjectSpace(base.Position) + Vector3.new(nudge.X, (k - 1) * Scene.STACK, nudge.Z)
+		-- A slight tilt, as in a real pile: no two cards lie in exactly one plane, so piles
+		-- that touch (Speed's two) never fight (flicker) where they overlap.
+		local tilt = CFrame.Angles(math.rad(rng:NextNumber(-1, 1)), 0, math.rad(rng:NextNumber(-1, 1)))
+		local cf = boardCF * CFrame.new(at) * CFrame.Angles(0, yaw + math.rad(twist), 0) * tilt
 		local front = if item.card and face and not faceDown then face(item.card) else nil
 		Scene.card(folder, cf, front, scale)
 	end
@@ -197,7 +205,7 @@ end
 
 -- The CFrame for a spot in the middle of the table, x along the table's X.
 function Cards.center(boardCF: CFrame, x: number, z: number?): CFrame
-	return boardCF * CFrame.new(x, 0.04, z or 0)
+	return boardCF * CFrame.new(x, Cards.MAT_TOP, z or 0)
 end
 
 return Cards

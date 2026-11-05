@@ -39,8 +39,8 @@ end
 -- A small stack of cards with a colored back, for the two decks in the middle.
 local function deck(parent: Instance, cf: CFrame, color: Color3, text: string)
 	Models.block(parent, "Deck", Vector3.new(1.1, 0.16, 0.8), cf * CFrame.new(0, 0.08, 0), Models.IVORY)
-	Models.block(parent, "DeckTop", Vector3.new(1, 0.01, 0.7), cf * CFrame.new(0, 0.165, 0), color)
-	Scene.flatText(parent, cf * CFrame.new(0, 0.176, 0), 0.5, 0.5, text, { TextColor3 = Color3.new(1, 1, 1) })
+	Models.block(parent, "DeckTop", Vector3.new(1, 0.02, 0.7), cf * CFrame.new(0, 0.17, 0), color)
+	Scene.flatText(parent, cf * CFrame.new(0, 0.195, 0), 0.5, 0.5, text, { TextColor3 = Color3.new(1, 1, 1) })
 end
 
 function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout)
@@ -60,14 +60,15 @@ function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout
 		Models.block(model, `Space_{pos}`, Vector3.new(U * 0.96, 0.04, U * 0.96), cf, CREAM)
 		if space.kind == "street" and Rules.groups[space.group] then
 			-- Color strip on the inner edge, like a real board.
-			Models.block(model, "Strip", if math.abs(out.X) > 0 then Vector3.new(U * 0.28, 0.05, U * 0.96) else Vector3.new(U * 0.96, 0.05, U * 0.28), cf * CFrame.new(-out * U * 0.34), Rules.groups[space.group].color)
+			-- 0.02 proud of the space, so their tops don't fight (flicker).
+			Models.block(model, "Strip", if math.abs(out.X) > 0 then Vector3.new(U * 0.24, 0.08, U * 0.96 - 0.04) else Vector3.new(U * 0.96 - 0.04, 0.08, U * 0.24), cf * CFrame.new(-out * U * 0.34), Rules.groups[space.group].color)
 		end
 		if space.kind == "street" then
 			-- Name and price beside the color strip.
-			Scene.flatText(model, cf * CFrame.new(out * U * 0.13) * CFrame.new(0, 0.025, 0), U * 0.66, U * 0.62, `{space.name}\n${space.price}`, { TextColor3 = Color3.fromRGB(60, 50, 40) })
+			Scene.flatText(model, cf * CFrame.new(out * U * 0.13) * CFrame.new(0, 0.05, 0), U * 0.66, U * 0.62, `{space.name}\n${space.price}`, { TextColor3 = Color3.fromRGB(60, 50, 40) })
 		else
 			local label = if space.price then `{space.name}\n${space.price}` else space.name
-			Scene.flatText(model, cf * CFrame.new(0, 0.025, 0), U * 0.86, U * 0.7, label, { TextColor3 = Color3.fromRGB(60, 50, 40) })
+			Scene.flatText(model, cf * CFrame.new(0, 0.05, 0), U * 0.86, U * 0.7, label, { TextColor3 = Color3.fromRGB(60, 50, 40) })
 		end
 		tops[pos] = cf * CFrame.new(0, 0.02, 0)
 	end
@@ -176,7 +177,7 @@ function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout
 					local owner = (view.owner or {})[pos] or 0
 					if owner > 0 then
 						local mortgaged = (view.mortgaged or {})[pos]
-						local dot = Models.cyl(dynamic, "Owner", U * 0.3, 0.03, top * CFrame.new(out * U * 0.3), Scene.SEAT_COLORS[owner] or Color3.new(1, 1, 1), if mortgaged then Enum.Material.Slate else Enum.Material.Neon)
+						local dot = Models.cyl(dynamic, "Owner", U * 0.3, 0.08, top * CFrame.new(out * U * 0.3), Scene.SEAT_COLORS[owner] or Color3.new(1, 1, 1), if mortgaged then Enum.Material.Slate else Enum.Material.Neon)
 						dot.Transparency = if mortgaged then 0.5 else 0
 					end
 					local houses = (view.houses or {})[pos] or 0

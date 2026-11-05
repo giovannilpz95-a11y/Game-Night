@@ -2,7 +2,8 @@
 // compiled to WebAssembly). It also compile-checks every file under src/.
 //
 // Only pure modules (game rules, PartyRegistry, Match, RateLimiter) can be tested this way:
-// the runner fakes `game`, `script`, `require` and `Random`, nothing else from Roblox.
+// the runner fakes `game`, `script`, `require` and `Random`, plus (tools/test-roblox.luau)
+// Vector3, CFrame, Color3, Enum and Instance, enough to build models from parts.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
@@ -66,7 +67,7 @@ console.log(`Compiled ${modules.length} files OK`)
 // 2. Bundle modules into one chunk and run the specs.
 // `export type` is only legal at a chunk's top level, so strip `export` inside the bundle.
 const lua = (s) => '[==========[' + s + ']==========]'
-let bundle = readFileSync(join(root, 'tools', 'test-prelude.luau'), 'utf8')
+let bundle = readFileSync(join(root, 'tools', 'test-prelude.luau'), 'utf8') + '\n' + readFileSync(join(root, 'tools', 'test-roblox.luau'), 'utf8')
 for (const m of modules) {
   const body = m.source.replace(/^export type /gm, 'type ')
   bundle += `\n__define({${m.path.map((x) => JSON.stringify(x)).join(', ')}}, ${lua(m.file)}, function(script)\n${body}\nend)\n`

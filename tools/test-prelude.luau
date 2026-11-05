@@ -58,6 +58,7 @@ function Node.GetService(self, name)
 end
 
 game = dataModel
+__nodeMethods = Node -- test-roblox.luau adds service methods here
 
 -- Config modules use Color3 for display colors; tests only need it not to crash.
 Color3 = {

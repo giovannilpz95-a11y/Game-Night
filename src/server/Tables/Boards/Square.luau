@@ -36,12 +36,14 @@ function Square.create(boardCF: CFrame, parent: Instance, size: number, boardSiz
 	Models.block(model, "Plinth", Vector3.new(boardSize + 0.78, 0.08, boardSize + 0.78), boardCF * CFrame.new(0, 0.04, 0), frameColor:Lerp(Color3.new(0, 0, 0), 0.35), Enum.Material.Wood)
 	Models.block(model, "Lip", Vector3.new(boardSize + 0.46, 0.02, boardSize + 0.46), boardCF * CFrame.new(0, 0.3, 0), frameColor:Lerp(Color3.new(1, 1, 1), 0.08), Enum.Material.Wood)
 	-- A gold inlay around the squares and brass studs on the corners.
+	-- Each stands at least 0.016 over the face under it, so no two faces fight (flicker).
 	local inlay = boardSize + 0.14
+	local inlayTop, studTop = 0.326, 0.342
 	for _, s in { -1, 1 } do
-		Models.block(model, "Inlay", Vector3.new(inlay, 0.01, 0.05), boardCF * CFrame.new(0, 0.305, s * inlay / 2), Models.GOLD)
-		Models.block(model, "Inlay", Vector3.new(0.05, 0.01, inlay), boardCF * CFrame.new(s * inlay / 2, 0.305, 0), Models.GOLD)
+		Models.block(model, "Inlay", Vector3.new(inlay, inlayTop - 0.3, 0.05), boardCF * CFrame.new(0, (inlayTop + 0.3) / 2, s * inlay / 2), Models.GOLD)
+		Models.block(model, "Inlay", Vector3.new(0.05, inlayTop - 0.3, inlay), boardCF * CFrame.new(s * inlay / 2, (inlayTop + 0.3) / 2, 0), Models.GOLD)
 		for _, t in { -1, 1 } do
-			Models.cyl(model, "Stud", 0.2, 0.02, boardCF * CFrame.new(s * (boardSize / 2 + 0.17), 0.3, t * (boardSize / 2 + 0.17)), Models.GOLD)
+			Models.cyl(model, "Stud", 0.2, studTop - 0.3, boardCF * CFrame.new(s * (boardSize / 2 + 0.17), 0.3, t * (boardSize / 2 + 0.17)), Models.GOLD)
 		end
 	end
 

@@ -16,7 +16,7 @@ function War.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 		for _, side in { 45, -45 } do
 			local sword = badge * CFrame.new(0, 0.05, 0) * CFrame.Angles(0, math.rad(side), 0)
 			Models.block(folder, "Blade", Vector3.new(0.09, 0.03, 0.9), sword, Models.STEEL)
-			Models.block(folder, "Guard", Vector3.new(0.3, 0.03, 0.06), sword * CFrame.new(0, 0.01, 0.28), Models.GOLD)
+			Models.block(folder, "Guard", Vector3.new(0.3, 0.06, 0.06), sword * CFrame.new(0, 0.01, 0.28), Models.GOLD)
 		end
 		local flips = view.lastBattle and view.lastBattle.flips or {}
 		for seat, count in view.pileCounts or {} do

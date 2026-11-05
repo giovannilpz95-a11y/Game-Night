@@ -183,10 +183,13 @@ end
 -- Roblox draws a Cylinder part with a fixed number of sides, so a 14-stud table top
 -- looks like a polygon up close. Each big cylinder gets a few copies turned a fraction
 -- of a side around its own axis; together their outlines read as a smooth circle.
--- The copies are a hair shorter so their tops never fight the original's.
+-- Each copy is a little shorter than the last (SMOOTH_INSET per end), so no two end
+-- faces share a plane and fight (flicker). Discs too thin for that keep no copies.
 local SMOOTH_MIN_DIAMETER = 5
 local SMOOTH_COPIES = 3
 local SMOOTH_STEP = 360 / 64 -- degrees between copies
+local SMOOTH_INSET = 0.02 -- studs each copy's ends sit inside the previous one's
+local SMOOTH_MIN_LENGTH = 2 * SMOOTH_INSET * SMOOTH_COPIES + 0.1
 
 function Builder.smoothCylinders(model: Instance)
 	for _, d in model:GetDescendants() do
@@ -198,9 +201,9 @@ function Builder.smoothCylinders(model: Instance)
 		then
 			local part = d :: Part
 			local diameter = math.min(part.Size.Y, part.Size.Z)
-			if diameter >= SMOOTH_MIN_DIAMETER then
-				local inset = math.min(0.02, part.Size.X * 0.2)
+			if diameter >= SMOOTH_MIN_DIAMETER and part.Size.X >= SMOOTH_MIN_LENGTH then
 				for i = 1, SMOOTH_COPIES do
+					local inset = 2 * SMOOTH_INSET * i
 					local copy = Instance.new("Part")
 					copy.Name = `{part.Name}Smooth`
 					copy:SetAttribute("SmoothCopy", true)
