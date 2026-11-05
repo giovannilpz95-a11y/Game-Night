@@ -229,9 +229,9 @@ function Kit.secondary(text: string, onClick: () -> (), props: { [string]: any }
 	return button
 end
 
--- The round ✕ in a window's top-right corner.
+-- The round X in a window's top-right corner.
 function Kit.closeButton(onClick: () -> (), props: { [string]: any }?): TextButton
-	local button = Kit.button("✕", onClick, {
+	local button = Kit.button("X", onClick, {
 		Name = "Close",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 4, 0, -4),
@@ -251,7 +251,7 @@ function Kit.closeButton(onClick: () -> (), props: { [string]: any }?): TextButt
 	return button
 end
 
--- A window title: same size and weight everywhere. Leaves room for the ✕ on the right.
+-- A window title: same size and weight everywhere. Leaves room for the X on the right.
 function Kit.title(text: string, props: { [string]: any }?): TextLabel
 	local label = Kit.label(text, {
 		Name = "Title",

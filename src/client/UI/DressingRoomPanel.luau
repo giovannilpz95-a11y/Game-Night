@@ -1009,7 +1009,7 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 					send({ action = "buy", assetId = item.id })
 				end, { Position = UDim2.new(1, -104, 0.5, -14), Size = UDim2.new(0, 64, 0, 28), Parent = row })
 			end
-			smallButton("✕", Theme.Panel, function()
+			smallButton("X", Theme.Panel, function()
 				send({ action = "takeOff", assetId = item.id })
 			end, { Position = UDim2.new(1, -34, 0.5, -14), Size = UDim2.new(0, 30, 0, 28), Parent = row })
 		end
@@ -1029,7 +1029,7 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 				Parent = lookActions,
 			})
 		end
-		Kit.button("↺ My own avatar", function()
+		Kit.button("🔄 My own avatar", function()
 			send({ action = "reset" })
 		end, {
 			BackgroundColor3 = Theme.PanelLight,

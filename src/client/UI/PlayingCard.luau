@@ -23,7 +23,7 @@ local BLACK = Color3.fromRGB(30, 30, 40)
 local BACK = Color3.fromRGB(120, 40, 60)
 local COURT_GOLD = Color3.fromRGB(200, 150, 40)
 -- Small marks over the court letters (text glyphs, so no image assets are needed).
-local COURT_MARK = { [11] = "⚔", [12] = "♛", [13] = "♚" }
+local COURT_MARK = { [11] = "⚔", [12] = "👸", [13] = "🤴" }
 
 -- One card face that fills its parent. id nil = face down.
 function PlayingCard.face(id: number?): Frame
@@ -111,7 +111,7 @@ function PlayingCard.face(id: number?): Frame
 			Kit.new("UICorner", { CornerRadius = UDim.new(0.12, 0) }),
 			Kit.new("UIStroke", { Color = COURT_GOLD, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 		})
-		Kit.label(COURT_MARK[rank] or "♛", {
+		Kit.label(COURT_MARK[rank] or "👑", {
 			Font = Theme.FontBold,
 			TextScaled = true,
 			TextColor3 = COURT_GOLD,

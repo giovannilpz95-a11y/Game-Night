@@ -21,7 +21,8 @@ Shared look for every window. Use these instead of hand-made copies:
 - `Kit.panel`, `Kit.modal` and `Kit.card` (a lighter card inside a window) have a soft top-to-bottom shade (`Kit.shade`, a UIGradient named `Shade`).
 - `Kit.gemIcon(size)` and `Kit.coinIcon(color, size)` draw currency icons. `Kit.progress(color)` returns a bar and a setter (0..1). `Kit.tag(text, color)` is a small pill label ("BEST VALUE", "OWNED").
 - `Kit.button` sinks a little while pressed (`Kit.pressable` adds the same to any button). `Kit.secondary` is the panel-colored button.
-- `Kit.title(text)` for a window title, `Kit.closeButton(fn)` for the round ✕ in the top-right corner.
+- `Kit.title(text)` for a window title, `Kit.closeButton(fn)` for the round X in the top-right corner.
+- Roblox fonts show some symbols as an empty box: ✕ ↺ ♛ ♚ ♞ ♝ ♜ and newer emoji (🫶 🫵 🫲 🪩 🪙). ♟️ draws black, so it vanishes on dark panels. Use plain letters or older emoji, and check new icons in a Play test.
 - `Kit.chip(text, fn)` + `Kit.setChip(chip, selected)` for pill tabs and filters.
 - `Kit.panel` and `Kit.modal` windows have a thin outline (`Kit.stroke`) and pop in when opened (`Kit.popIn`).
 - `Kit.clear` keeps Kit's own decorations on the container (the `Outline` stroke and press/pop scales).
@@ -57,7 +58,7 @@ The lobby frame is see-through: the 3D room is the lobby. On top of it:
 - a round **?** (Help) right of Play.
 - the **wallet** at the right end of the top bar (lobby and matches).
 
-Windows use `Kit.modal(parent, opts)`: a dimmed overlay, a centered window with a ✕, and a `body` to fill. Tapping the dim area closes it. Main keeps one window open at a time (`closeWindows`) and closes them all when a match starts.
+Windows use `Kit.modal(parent, opts)`: a dimmed overlay, a centered window with an X, and a `body` to fill. Tapping the dim area closes it. Main keeps one window open at a time (`closeWindows`) and closes them all when a match starts.
 
 ## In-match look (`UI/HudKit`)
 In-match pieces built on Kit's theme (menus and windows keep using Kit directly):

@@ -72,13 +72,13 @@ Badges.list = {
 	{ id = "invite_10", name = "Social Butterfly", desc = "10 people join your party from your invites", icon = "🦋", tier = 2, stat = "social.friendsJoined", goal = 10 },
 	-- Wallet
 	{ id = "gems_100", name = "Gem Collector", desc = "Earn 100 Gems by playing", icon = "💎", tier = 1, stat = "currency.gemsEarned", goal = 100 },
-	{ id = "coins_5000", name = "Coin Hoarder", desc = "Earn 5,000 Coins", icon = "🪙", tier = 2, stat = "currency.coinsEarned", goal = 5000 },
+	{ id = "coins_5000", name = "Coin Hoarder", desc = "Earn 5,000 Coins", icon = "💰", tier = 2, stat = "currency.coinsEarned", goal = 5000 },
 	{ id = "shopper", name = "Shopper", desc = "Spend 500 Coins in the shops", icon = "🛍", tier = 1, stat = "currency.coinsSpent", goal = 500 },
 	-- Games
 	{ id = "ttt_10", name = "Three in a Row", desc = "Win 10 games of Tic-Tac-Toe", icon = "❌", tier = 1, stat = "games.TicTacToe.wins", goal = 10, gameId = "TicTacToe" },
 	{ id = "fiar_10", name = "Four Real", desc = "Win 10 games of Four in a Row", icon = "🔴", tier = 1, stat = "games.FourInARow.wins", goal = 10, gameId = "FourInARow" },
 	{ id = "chess_mate", name = "Checkmate!", desc = "Win a chess game by checkmate", icon = "♟", tier = 1, stat = "games.Chess.extra.checkmates", goal = 1, gameId = "Chess" },
-	{ id = "chess_mate_25", name = "Grandmaster", desc = "Checkmate 25 times", icon = "♚", tier = 3, stat = "games.Chess.extra.checkmates", goal = 25, gameId = "Chess" },
+	{ id = "chess_mate_25", name = "Grandmaster", desc = "Checkmate 25 times", icon = "👑", tier = 3, stat = "games.Chess.extra.checkmates", goal = 25, gameId = "Chess" },
 	{ id = "checkers_kings", name = "King Me", desc = "Crown 10 kings in Checkers", icon = "🔱", tier = 1, stat = "games.Checkers.extra.kings", goal = 10, gameId = "Checkers" },
 	{ id = "colorclash_10", name = "Color Master", desc = "Win 10 games of Color Clash", icon = "🌈", tier = 1, stat = "games.ColorClash.wins", goal = 10, gameId = "ColorClash" },
 	{ id = "colorclash_wilds", name = "Wild Card", desc = "Play 50 wilds in Color Clash", icon = "🃏", tier = 2, stat = "games.ColorClash.extra.wilds", goal = 50, gameId = "ColorClash" },
