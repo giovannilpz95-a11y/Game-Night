@@ -11,14 +11,32 @@ local Profile = {}
 Profile.Version = 1
 Profile.MaxReceipts = 100 -- most recent Robux purchase IDs kept for "grant once"
 
+-- A daily or weekly quest (see Core/Quests for the kinds and how they count).
 export type Challenge = {
 	id: string,
-	kind: "play" | "win",
+	kind: string, -- "play" | "win" | "minutes" | "variety" | "react"
 	gameId: string?, -- nil = any game
+	category: string?, -- only games in this GameCatalog category
+	humans: boolean?, -- only matches with another person at the table
 	target: number,
 	progress: number,
 	done: boolean,
 	text: string,
+	stars: number?, -- Game Night Pass Stars it pays (shared/Season)
+	gems: number?, -- Gems it pays
+	bonus: boolean?, -- the premium pass's extra daily quest
+	seen: { [string]: boolean }?, -- "variety": games already counted
+}
+
+-- The Game Night Pass (shared/Season, Core/SeasonPass).
+export type SeasonData = {
+	id: number, -- season number this belongs to (0 = none yet)
+	stars: number,
+	premium: boolean,
+	free: { [string]: boolean }, -- claimed free tiers, keyed by tostring(tier)
+	paid: { [string]: boolean }, -- claimed premium tiers
+	weekly: { week: number, quests: { Challenge } },
+	rerollDay: number, -- day the free daily reroll was used
 }
 
 export type Daily = {
@@ -91,12 +109,17 @@ export type Data = {
 	-- Help already seen: the lobby tour, and how-to-play cards turned off (see Core/Tips).
 	tips: { lobbyTour: boolean, hideCard: { [string]: boolean } },
 	audio: { music: number, effects: number }, -- the Sound window's sliders (Core/AudioSettings)
+	season: SeasonData,
 }
 
 local function newDaily(day: number): Daily
 	return { day = day, firstWin = false, botMatches = 0, winsVs = {}, challenges = {} }
 end
 Profile.newDaily = newDaily
+
+function Profile.newSeason(id: number): SeasonData
+	return { id = id, stars = 0, premium = false, free = {}, paid = {}, weekly = { week = 0, quests = {} }, rerollDay = 0 }
+end
 
 function Profile.new(now: number): Data
 	return {
@@ -140,6 +163,7 @@ function Profile.new(now: number): Data
 		custom = { words = {}, decks = {} },
 		tips = { lobbyTour = false, hideCard = {} },
 		audio = AudioSettings.new(),
+		season = Profile.newSeason(0),
 	}
 end
 

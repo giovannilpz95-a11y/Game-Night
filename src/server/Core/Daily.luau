@@ -3,14 +3,18 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Economy = require(ReplicatedStorage.Shared.Economy)
+local Season = require(ReplicatedStorage.Shared.Season)
 local Profile = require(script.Parent.Profile)
+local Quests = require(script.Parent.Quests)
 
 local Daily = {}
 
-export type GameInfo = { id: string, name: string }
+export type GameInfo = Quests.GameInfo
 
--- Picks the day's challenges: one "play any", one "win" in a game you play, and one that
--- points you at the game you've played least ("Try Checkers today").
+-- Picks the day's quests: one "play any", one "win" in a game you play, and one that
+-- points you at the game you've played least ("Try Checkers today"). Each pays
+-- Economy.ChallengeGems and Season.DailyQuestStars. (The pass's bonus quest is added by
+-- Core/SeasonPass.)
 function Daily.makeChallenges(data: Profile.Data, games: { GameInfo }, rng: Random): { Profile.Challenge }
 	local challenges: { Profile.Challenge } = {}
 	table.insert(challenges, {
@@ -68,6 +72,10 @@ function Daily.makeChallenges(data: Profile.Data, games: { GameInfo }, rng: Rand
 	end
 	while #challenges > Economy.ChallengesPerDay do
 		table.remove(challenges)
+	end
+	for _, challenge in challenges do
+		challenge.gems = Economy.ChallengeGems
+		challenge.stars = Season.DailyQuestStars
 	end
 	return challenges
 end
@@ -143,26 +151,9 @@ function Daily.nextMilestone(streak: number): (number?, number?)
 	return bestAt - streak, Economy.StreakMilestones[bestAt]
 end
 
--- Counts a finished match toward today's challenges. Returns the challenges it completed.
-function Daily.recordMatch(data: Profile.Data, gameId: string, won: boolean): { Profile.Challenge }
-	local completed = {}
-	for _, challenge in data.daily.challenges do
-		if challenge.done then
-			continue
-		end
-		if challenge.gameId ~= nil and challenge.gameId ~= gameId then
-			continue
-		end
-		if challenge.kind == "win" and not won then
-			continue
-		end
-		challenge.progress += 1
-		if challenge.progress >= challenge.target then
-			challenge.done = true
-			table.insert(completed, challenge)
-		end
-	end
-	return completed
+-- Counts a finished match toward today's quests. Returns the quests it completed.
+function Daily.recordMatch(data: Profile.Data, event: Quests.Event): { Profile.Challenge }
+	return Quests.progress(data.daily.challenges, event)
 end
 
 return Daily
