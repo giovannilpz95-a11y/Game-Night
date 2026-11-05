@@ -764,11 +764,40 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 
+	-- Watch-only scenes can still have spots you tap to look at (Property Party's spaces
+	-- open their deed card). The server marks them with a TapId attribute; the game's 2D
+	-- renderer gets the id through onSceneTap.
+	local sceneTap: ((any) -> ())? = nil
+	local function tapScene(input: InputObject)
+		if not (sceneTap and board) then
+			return
+		end
+		local targets = {}
+		for _, part in board:GetDescendants() do
+			if part:IsA("BasePart") and part:GetAttribute("TapId") ~= nil then
+				table.insert(targets, part)
+			end
+		end
+		if #targets == 0 then
+			return
+		end
+		raycastParams.FilterDescendantsInstances = targets
+		local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
+		local hit = workspace:Raycast(ray.Origin, ray.Direction * 200, raycastParams)
+		if hit and hit.Instance then
+			sceneTap(hit.Instance:GetAttribute("TapId"))
+		end
+	end
+
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or not active or not handler or not board then
+		if processed or not active or not board then
 			return
 		end
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		if not handler then
+			tapScene(input)
 			return
 		end
 		local cells = board:FindFirstChild("Cells")
@@ -813,6 +842,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end,
 		isActive = function(): boolean
 			return active
+		end,
+		-- Called with a TapId when a tappable spot of a watch-only scene is tapped.
+		setSceneTap = function(fn: ((any) -> ())?)
+			sceneTap = fn
 		end,
 		-- A gesture played at a table (Avatars.onAction): if it's yours, the camera
 		-- turns and moves in a little toward it, more for big moments.
