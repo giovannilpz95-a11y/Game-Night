@@ -816,9 +816,26 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		local slots: { [number]: { slot: Frame, face: GuiObject } } = {}
+		-- Off your turn the server doesn't say what's playable, so match against the
+		-- pile here: those cards stay lifted, so you can plan your next move.
+		local function wouldFit(id: number): boolean
+			local card = Rules.cards[id]
+			local top = view.topCard and Rules.cards[view.topCard]
+			if not card or not top then
+				return false
+			end
+			if card.color == 0 or card.color == view.color then
+				return true
+			end
+			if card.kind == "number" then
+				return top.kind == "number" and top.value == card.value
+			end
+			return card.kind == top.kind
+		end
 		local count = #held
 		for index, id in held do
 			local canPlay = myTurn and playable[id] == true
+			local lifted = canPlay or (not myTurn and wouldFit(id))
 			-- Held like real cards: fanned out, the outer cards turned and a little lower.
 			local offset = index - (count + 1) / 2
 			local spread = if count > 1 then math.min(4, 28 / (count - 1)) else 0
@@ -835,14 +852,13 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			slots[id] = { slot = slot, face = face }
 			local drop = (offset * spread / 28) ^ 2 * 0.5 -- the fan's curve, in card heights
 			-- Cards you can play stand well up out of the fan.
-			local rest = UDim2.fromScale(0, drop + (if canPlay then -0.18 else 0))
+			local rest = UDim2.fromScale(0, drop + (if lifted then -0.18 else 0))
 			face.Position = rest
 			face.Rotation = offset * spread
-			-- On your turn, cards you can't play are blacked out (hovering one still shows
-			-- it at full brightness).
-			local shade: Frame? = nil
-			if myTurn and not canPlay then
-				shade = Kit.new("Frame", {
+			-- Cards you can't play right now are blacked out, and stay so on hover. Off your
+			-- turn that's every card (the ones that would fit are still lifted).
+			if not canPlay then
+				Kit.new("Frame", {
 					BackgroundColor3 = Color3.new(0, 0, 0),
 					BackgroundTransparency = 0.42,
 					BorderSizePixel = 0,
@@ -855,21 +871,15 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 5, Parent = face })
 			end
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
-			-- Hover: the card comes up out of the hand, straightens, sits on top of its
-			-- neighbours and shows at full brightness.
+			-- Hover: the card comes up out of the hand, straightens and sits on top of its
+			-- neighbours.
 			local lift = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			-- One card at a time (PlayingCard.hover picks the top card under the mouse).
 			handHover.add(slot, function()
 				slot.ZIndex = 10
-				if shade then
-					shade.Visible = false
-				end
 				TweenService:Create(face, lift, { Position = UDim2.fromScale(0, -0.22), Rotation = 0 }):Play()
 			end, function()
 				slot.ZIndex = 1
-				if shade then
-					shade.Visible = true
-				end
 				TweenService:Create(face, lift, { Position = rest, Rotation = offset * spread }):Play()
 			end)
 			button.Activated:Connect(function()
