@@ -74,6 +74,9 @@ function Fx.wheel(build: (frame: Frame) -> ()): (() -> ())?
 	local startCF = facing(low, eye)
 	local endCF = facing(high, eye)
 	local plate = localPart({ Name = "WheelTop", Transparency = 1, Size = Vector3.new(0.2, 0.02, 0.2), CFrame = startCF, Parent = folder })
+	-- A SurfaceGui only takes clicks and taps when the mouse ray can hit its part, so the
+	-- plate under the buttons has to stay queryable (localPart turns that off).
+	plate.CanQuery = true
 	local thick = 0.32
 	local puck = localPart({
 		Name = "WheelPuck",
