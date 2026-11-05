@@ -309,6 +309,12 @@ local entries: { Entry } = {
 		typicalMinutes = 25,
 		minMinutes = 3,
 		minMoves = 30,
+		houseRules = {
+			{ key = "fast", name = "Fast mode", hint = "Everyone starts with 2 random deeds, auctions are quicker and the game is shorter.", choices = Toggle, default = 1 },
+			{ key = "auctions", name = "Auctions", hint = "A deed nobody buys goes to a live auction. Off: it stays with the bank.", choices = Toggle, default = 2 },
+			{ key = "jackpot", name = "Rest Stop jackpot", hint = "Taxes and fees pile up on Rest Stop. Land there to take it all.", choices = Toggle, default = 1 },
+			{ key = "doubleStart", name = "$400 on Start", hint = "Landing right on Start pays double.", choices = Toggle, default = 1 },
+		},
 	},
 	{
 		id = "WordTiles",
