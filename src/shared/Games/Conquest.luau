@@ -730,7 +730,9 @@ function Conquest.applyMove(state, seat: number, move: any)
 	elseif kind == "attack" then
 		local from, to = move.from, move.to
 		local defender = state.owner[to]
+		state.battles = (state.battles or 0) + 1
 		local battle = {
+			id = state.battles, -- lets the table animate each battle once
 			attacker = seat,
 			defender = defender,
 			from = from,
@@ -792,6 +794,86 @@ end
 
 function Conquest.getResult(state)
 	return state.result
+end
+
+---------------------------------------------------------------------------------------
+-- Win chance, like the official app's "Blitz win chance": the odds that blitzing with
+-- `attackers` armies on the attacking territory (one always stays home) takes a
+-- territory held by `defenders`. Exact, from the dice odds of each throw.
+
+-- Odds of each throw: [attack dice][defend dice] -> { { attackerLost, defenderLost, p } }.
+local THROWS: { [number]: { [number]: { { number } } } } = {}
+do
+	local function sortedDown(list: { number }): { number }
+		table.sort(list, function(x, y)
+			return x > y
+		end)
+		return list
+	end
+	for a = 1, 3 do
+		THROWS[a] = {}
+		for d = 1, 2 do
+			local counts: { [string]: number } = {}
+			local total = 0
+			local function each(n: number, prefix: { number }, done: ({ number }) -> ())
+				if n == 0 then
+					done(prefix)
+					return
+				end
+				for face = 1, 6 do
+					local nextList = table.clone(prefix)
+					table.insert(nextList, face)
+					each(n - 1, nextList, done)
+				end
+			end
+			each(a + d, {}, function(faces)
+				local att = sortedDown({ table.unpack(faces, 1, a) })
+				local def = sortedDown({ table.unpack(faces, a + 1, a + d) })
+				local aLost, dLost = 0, 0
+				for i = 1, math.min(a, d) do
+					if att[i] > def[i] then
+						dLost += 1
+					else
+						aLost += 1
+					end
+				end
+				local key = `{aLost},{dLost}`
+				counts[key] = (counts[key] or 0) + 1
+				total += 1
+			end)
+			local outcomes = {}
+			for key, n in counts do
+				local aLost, dLost = string.match(key, "(%d+),(%d+)")
+				table.insert(outcomes, { tonumber(aLost) :: number, tonumber(dLost) :: number, n / total })
+			end
+			THROWS[a][d] = outcomes
+		end
+	end
+end
+
+local chanceMemo: { [number]: number } = {}
+local CHANCE_CAP = 120 -- bigger fights are as good as decided; clamp to keep it quick
+
+function Conquest.winChance(attackers: number, defenders: number): number
+	attackers = math.clamp(math.floor(attackers), 1, CHANCE_CAP)
+	defenders = math.clamp(math.floor(defenders), 0, CHANCE_CAP)
+	if defenders == 0 then
+		return 1
+	end
+	if attackers < 2 then
+		return 0
+	end
+	local key = attackers * 1000 + defenders
+	local known = chanceMemo[key]
+	if known then
+		return known
+	end
+	local p = 0
+	for _, o in THROWS[math.min(3, attackers - 1)][math.min(2, defenders)] do
+		p += o[3] * Conquest.winChance(attackers - o[1], defenders - o[2])
+	end
+	chanceMemo[key] = p
+	return p
 end
 
 ---------------------------------------------------------------------------------------
