@@ -47,17 +47,17 @@ Hub shop items, slot `pose` or `victory`, on the shop's **🕺 Poses & wins** ta
 | Hello There 👋 | Free | | Arm Pump 🙌 | Free |
 | Thumbs Up 👍 | Free | | Happy Clap 👏 | Free |
 | Flex 💪 | Free | | Goggle Strut 🥽 🔥 | 550 Gems |
-| Hero Landing 🦸 🔥 | 450 Gems | | Loser Hop 🫲 🔥 | 500 Gems |
+| Hero Landing 🦸 🔥 | 450 Gems | | Loser Hop 🤟 🔥 | 500 Gems |
 | Dab 🙇 🔥 | 200 Gems | | Classic Bop 🕺 🔥 | 400 Gems |
 | Lean Back 😌 | 150 Gems | | Swingback 🔁 🔥 | 400 Gems |
 | Peace Out ✌️ | 120 Gems | | Running Man 🏃 🔥 | 350 Gems |
 | Superstar 🌟 | 300 Gems | | Heel Shuffle 👟 🔥 | 350 Gems |
 | Too Cool 😎 | 200 Gems | | Woah! 😮 🔥 | 250 Gems |
-| Heart Hands 🫶 | 200 Gems | | Moonslide 🌙 | 450 Gems |
+| Heart Hands 💖 | 200 Gems | | Moonslide 🌙 | 450 Gems |
 | Ta-da! 🎩 | 300 Gems | | Raise the Roof 🏠 | 200 Gems |
 | Royal Bow 👑 | 400 Gems | | Sprinkler 💦 | 250 Gems |
-| Bring It 🫵 | 180 Gems | | Robot 🤖 | 300 Gems |
-| Mastermind 🧠 | 120 Gems | | Disco Point 🪩 | 250 Gems |
+| Bring It 👉 | 180 Gems | | Robot 🤖 | 300 Gems |
+| Mastermind 🧠 | 120 Gems | | Disco Point 🕺 | 250 Gems |
 | Boxer 🥊 | 180 Gems | | Hip Groove 🎶 | 250 Gems |
 |  |  | | Stadium Wave 🌊 | 200 Gems |
 |  |  | | Blow Kisses 😘 | 250 Gems |

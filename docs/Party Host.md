@@ -41,7 +41,7 @@ Each game lists its own rules in `GameCatalog` (`houseRules`), and every game wi
 | Five Dice | Everyone rolls at once, Score card, Big Five bonus, Turn timer |
 | Sea Strike | Ocean size, Hit again, Salvo, Turn timer |
 | Whodunit | Walk anywhere, Show cards to all, Turn timer |
-| Property Party | Starting cash, Auctions, Rest Stop jackpot, Double on Start, Rent from Jail, Turn timer |
+| Property Party | Fast mode, Auctions, Rest Stop jackpot, $400 on Start, Starting cash, Rent from Jail, Turn timer |
 | Word Tiles | Board, Turn timer |
 | Conquest Isles | Turn length, Card trades, Game length, Slow start |
 | Hexlands | Points to win, Friendly Bandit, Safe hand on a 7, Balanced dice, Turn timer |

@@ -114,8 +114,8 @@ rules.Estates = {
 		"Own a whole color group to build houses and hotels for bigger rent.",
 	},
 	sections = {
-		{ title = "Your turn", lines = { "Roll two dice and move. Doubles roll again; three doubles in a row sends you to Jail.", "Free deed: buy it, or everyone bids for it in an auction.", "Someone's deed: pay rent. Card spaces draw a card; tax spaces cost cash." } },
-		{ title = "Building and deals", lines = { "With a full color group, build houses evenly, then hotels.", "Sell buildings or mortgage deeds to raise cash.", "Offer trades of deeds, cash and cards to other players any time on your turn." } },
+		{ title = "Your turn", lines = { "Roll two dice and move. Doubles roll again; three doubles in a row sends you to Jail.", "Free deed: buy it, or it goes to a live auction. Everyone bids at once; each bid restarts the countdown, and the top bid when it runs out wins.", "Someone's deed: pay rent. Card spaces draw a card; tax spaces cost cash." } },
+		{ title = "Building and deals", lines = { "With a full color group, build houses evenly, then hotels.", "Sell buildings or mortgage deeds to raise cash.", "Offer trades of deeds, cash and cards to other players any time on your turn. They can accept, decline or send back a counter-offer.", "Tap any deed on the board (or the table) to see its card. Manage opens all your sets at once." } },
 		{ title = "Jail", lines = { "Before rolling, pay $50 or use a Get Out of Jail Free card. Or roll: doubles get you out, and after 3 misses you pay and move." } },
 		{ title = "Winning", lines = { "Can't pay what you owe? Raise cash or go bankrupt.", "Last player standing wins. After the round limit, the highest net worth (cash, deeds and buildings) wins." } },
 	},

@@ -381,6 +381,55 @@ do
 	}
 end
 
+-- Game Night Pass, Season 2 "Snowed In": Snowball Fight (free track) and Warm Hands (premium).
+do
+	local scoop = { RS = { 55, 0, 12 }, LS = { 55, 0, -12 }, RE = { 25, 0, 0 }, LE = { 25, 0, 0 }, W = { -18, 0, 0 }, N = { -15, 0, 0 } }
+	local pack = { RS = { 70, -25, -8 }, LS = { 70, 25, 8 }, RE = { 85, 0, 0 }, LE = { 85, 0, 0 }, N = { -8, 0, 0 } }
+	local windup = { RS = { 165, 0, 30 }, RE = { 100, 0, 0 }, LS = { 70, 0, -15 }, LE = { 10, 0, 0 }, W = { 10, -25, 0 }, N = { 5, 15, 0 } }
+	local throw = { RS = { 80, 0, 10 }, RE = { 5, 0, 0 }, LS = { -15, 0, -25 }, W = { -12, 20, 0 }, N = { 8, -10, 0 } }
+	poses.pose_snowball = {
+		length = 1.9,
+		loop = { 1.15, 1.9 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.25, "out", crouch(30), scoop),
+			K(0.5, "io", crouch(15), pack),
+			K(0.65, "io", crouch(15), pack, { RE = { 95, 0, 0 }, LE = { 75, 0, 0 } }),
+			K(0.8, "io", crouch(15), pack, { RE = { 75, 0, 0 }, LE = { 95, 0, 0 } }),
+			K(0.95, "out", windup, WIDE),
+			K(1.15, "back", throw, WIDE, root(0, 15, 0, 0, 0, -0.1)),
+			K(1.5, "io", throw, WIDE, { RS = { 65, 0, 15 }, RE = { 15, 0, 0 }, W = { -8, 15, 0 }, N = { 14, -10, 0 } }, root(0, 15, 0)),
+			K(1.9, "io", throw, WIDE, root(0, 15, 0, 0, 0, -0.1)),
+		},
+		cues = { { t = 0.65, sound = "tick" }, { t = 0.8, sound = "tick" }, { t = 1.15, sound = "pop", burst = 18 } },
+	}
+end
+
+do
+	local hug = { RS = { 75, 0, -25 }, LS = { 75, 0, 25 }, RE = { 110, 0, 0 }, LE = { 110, 0, 0 }, N = { -12, 0, 0 }, W = { -6, 0, 0 } }
+	local blow = { RS = { 100, 0, -15 }, LS = { 100, 0, 15 }, RE = { 130, 0, 0 }, LE = { 130, 0, 0 }, N = { -4, 0, 0 } }
+	local rubA = { RE = { 124, 0, 0 }, LE = { 136, 0, 0 }, RW = { 0, 0, 20 }, LW = { 0, 0, -20 } }
+	local rubB = { RE = { 136, 0, 0 }, LE = { 124, 0, 0 }, RW = { 0, 0, -20 }, LW = { 0, 0, 20 } }
+	poses.pose_warmhands = {
+		length = 1.6,
+		loop = { 0.8, 1.6 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.2, "out", crouch(8), hug),
+			K(0.3, "lin", crouch(8), hug, root(0, 0, 0, 0.05)),
+			K(0.4, "lin", crouch(8), hug, root(0, 0, 0, -0.05)),
+			K(0.5, "lin", crouch(8), hug, root(0, 0, 0, 0.05)),
+			K(0.6, "lin", crouch(8), hug, root(0, 0, 0, -0.05)),
+			K(0.8, "back", blow, root(0, 0, 0, 0, 0.05)),
+			K(1.0, "io", blow, rubA),
+			K(1.2, "io", blow, rubB),
+			K(1.4, "io", blow, rubA),
+			K(1.6, "io", blow, root(0, 0, 0, 0, 0.05)),
+		},
+		cues = { { t = 0.8, sound = "pop", burst = 10 } },
+	}
+end
+
 ---------------------------------------------------------------- celebrations
 
 local dances: { [string]: Move } = {}
@@ -774,6 +823,40 @@ do
 			{ t = 1.75, sound = "pop" },
 			{ t = 2.25, sound = "callout", burst = 20 },
 			{ t = 3.25, burst = 12 },
+		},
+	}
+end
+
+-- Ice Skater (Game Night Pass, Season 2 premium tier 30): two long glides with arms out,
+-- a double spin with the arms pulled in then up, and an arabesque.
+do
+	local arms = { RS = { 0, 0, 95 }, LS = { 0, 0, -95 }, RE = { 10, 0, 0 }, LE = { 10, 0, 0 } }
+	local glideR = { RH = { -40, 0, 5 }, RK = { -10, 0, 0 }, LH = { 18, 0, 0 }, LK = { -28, 0, 0 }, LA = { 10, 0, 0 }, W = { -25, 0, 0 }, N = { 22, 0, 0 } }
+	local glideL = { LH = { -40, 0, -5 }, LK = { -10, 0, 0 }, RH = { 18, 0, 0 }, RK = { -28, 0, 0 }, RA = { 10, 0, 0 }, W = { -25, 0, 0 }, N = { 22, 0, 0 } }
+	local tuck = { RS = { 60, 0, -20 }, LS = { 60, 0, 20 }, RE = { 100, 0, 0 }, LE = { 100, 0, 0 } }
+	local up = { RS = { 10, 0, 165 }, LS = { 10, 0, -165 }, RE = { 10, 0, 0 }, LE = { 10, 0, 0 }, N = { 20, 0, 0 } }
+	local arabesque = { RS = { 10, 0, 160 }, LS = { 0, 0, -95 }, RH = { -55, 0, 0 }, RK = { -5, 0, 0 }, LK = { -8, 0, 0 }, W = { -22, 0, 0 }, N = { 25, 0, 0 } }
+	-- Yaw runs -375 -> 345 (two full turns; the test keeps angles within 400), so the
+	-- glides sit one turn back and the loop wraps on the same heading.
+	dances.win_iceskate = {
+		length = 4.0,
+		loop = { 0, 4.0 },
+		keys = {
+			K(0, "io", arms, glideR, root(0, -375, 0, -0.3, -0.1)),
+			K(1.0, "io", arms, glideL, root(0, -345, 0, 0.3, -0.1)),
+			K(2.0, "io", arms, glideR, root(0, -375, 0, -0.3, -0.1)),
+			K(2.3, "in", tuck, crouch(12, { 0, -360, 0 })),
+			K(2.55, "lin", tuck, root(0, 0, 0, 0, 0.1)),
+			K(2.8, "out", up, root(0, 360, 0, 0, 0.15)),
+			K(3.2, "back", arabesque, root(0, 360, 0)),
+			K(3.7, "io", arabesque, { W = { -26, 0, 0 } }, root(0, 360, 0)),
+			K(4.0, "io", arms, glideR, root(0, 345, 0, -0.3, -0.1)),
+		},
+		cues = {
+			{ t = 0, sound = "tick", burst = 4 },
+			{ t = 1.0, sound = "tick", burst = 4 },
+			{ t = 2.55, sound = "callout", burst = 16 },
+			{ t = 3.2, sound = "clap", burst = 20 },
 		},
 	}
 end

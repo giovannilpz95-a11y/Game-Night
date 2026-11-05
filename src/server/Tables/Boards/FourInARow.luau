@@ -75,6 +75,10 @@ function FourInARow.create(boardCF: CFrame, parent: Instance)
 	local pieces = Instance.new("Folder")
 	pieces.Name = "Pieces"
 	pieces.Parent = model
+	-- Each seat's disc color, for the ghost disc the client floats over a hovered column.
+	for seat, color in SEAT_COLORS do
+		model:SetAttribute(`SeatColor{seat}`, color)
+	end
 	model.Parent = parent
 
 	local discSize = cellSize * 0.82

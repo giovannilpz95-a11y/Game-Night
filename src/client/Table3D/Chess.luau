@@ -1,6 +1,7 @@
 -- Tap one of your pieces on the 3D board, then a highlighted square. Promotions open a
 -- small picker. Row/Col attributes on the cells use the 2D board's numbering (row 1 is
--- rank 8, col 1 is file a).
+-- rank 8, col 1 is file a). On your turn the piece under the mouse rises off its square
+-- if it can move, and the one you picked stays up until you move or let it go.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -24,6 +25,7 @@ function Chess.create(ctx: any)
 	local snapshot: any = nil
 	local selected: string? = nil
 	local picker: Frame? = nil
+	local hovered: string? = nil -- the square under the mouse
 
 	local function closePicker()
 		if picker then
@@ -46,8 +48,30 @@ function Chess.create(ctx: any)
 		return out
 	end
 
+	-- Lifts the picked piece high and a movable one under the mouse a little less.
+	local function lift(): boolean
+		local wanted = {}
+		local rose = false
+		if myTurn() then
+			for _, square in { hovered, selected } do
+				if square and #movesFrom(square) > 0 then
+					local r, c = cellOf(square)
+					local piece = ctx.pieceAt(r, c)
+					local cell = ctx.cell(r, c)
+					if piece and cell then
+						wanted[piece] = cell.Size.X * (if square == selected then 0.7 else 0.45)
+						rose = rose or square == hovered
+					end
+				end
+			end
+		end
+		ctx.lift(wanted)
+		return rose
+	end
+
 	local function render()
 		ctx.clearMarks()
+		lift()
 		if not selected then
 			return
 		end
@@ -96,6 +120,7 @@ function Chess.create(ctx: any)
 			button.Activated:Connect(function()
 				closePicker()
 				selected = nil
+				ctx.dropLift()
 				ctx.sendMove({ from = from, to = to, promotion = choice[1] })
 				render()
 			end)
@@ -132,6 +157,7 @@ function Chess.create(ctx: any)
 				elseif #choices == 1 then
 					selected = nil
 					closePicker()
+					ctx.dropLift()
 					ctx.sendMove({ from = choices[1].from, to = choices[1].to })
 					render()
 					return
@@ -140,6 +166,12 @@ function Chess.create(ctx: any)
 			closePicker()
 			selected = if #movesFrom(square) > 0 and square ~= selected then square else nil
 			render()
+		end,
+		-- Returns true when a piece rose (the controller plays a soft tick).
+		hover = function(cell: BasePart?): boolean
+			local r, c = cell and cell:GetAttribute("Row"), cell and cell:GetAttribute("Col")
+			hovered = if r and c then squareOf(r :: number, c :: number) else nil
+			return lift() and hovered ~= selected
 		end,
 		destroy = closePicker,
 	}

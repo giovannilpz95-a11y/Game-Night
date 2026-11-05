@@ -57,7 +57,12 @@ function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout
 	for pos, space in Rules.spaces do
 		local x, z, out = spot(pos)
 		local cf = boardCF * CFrame.new(x, 0.27, z)
-		Models.block(model, `Space_{pos}`, Vector3.new(U * 0.96, 0.04, U * 0.96), cf, CREAM)
+		local tile = Models.block(model, `Space_{pos}`, Vector3.new(U * 0.96, 0.04, U * 0.96), cf, CREAM)
+		if Rules.isDeed(pos) then
+			-- Tap it in Table view to open its deed card (client Table3D/Controller).
+			tile.CanQuery = true
+			tile:SetAttribute("TapId", pos)
+		end
 		if space.kind == "street" and Rules.groups[space.group] then
 			-- Color strip on the inner edge, like a real board.
 			-- 0.02 proud of the space, so their tops don't fight (flicker).

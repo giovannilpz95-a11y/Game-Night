@@ -123,15 +123,91 @@ return function(T)
 		T.eq(Showtime.kind("win_showstopper"), "victory")
 		T.ok(not ShopCatalog.isFree("win_showstopper"))
 		T.ok(table.find(Economy.ReactionBundle.items, "reactions_premiere") == nil, "not in the Robux bundle")
+		-- Season 2: Snowed In
+		T.ok(#(Reactions.pack("reactions_snowedin") :: any).reactions >= 6)
+		T.ok(table.find(Economy.ReactionBundle.items, "reactions_snowedin") == nil, "not in the Robux bundle")
+		T.eq(Showtime.kind("pose_snowball"), "pose")
+		T.eq(Showtime.kind("pose_warmhands"), "pose")
+		T.eq(Showtime.kind("win_iceskate"), "victory")
+		for _, id in { "pose_snowball", "pose_warmhands", "win_iceskate" } do
+			local move = Showtime.get(id) :: any
+			T.ok(move.fx and Showtime.Fx[move.fx] ~= nil, `{id} has particle colors`)
+		end
+	end)
+
+	T.test("Season 2 is written and starts when Season 1 ends", function()
+		T.ok(#Season.Tracks >= 2)
+		local _, rerun = Season.track(2)
+		T.ok(not rerun, "season 2 is its own track, not an encore")
+		T.eq(Season.startsAt(2), Season.endsAt(1))
+		T.eq(Season.startsAt(2), 1795996800, "Monday 30 November 2026 00:00 UTC")
+		-- Every track's last premium reward is new: not on an earlier track.
+		local seen = {}
+		for n, track in Season.Tracks do
+			for _, list in { track.free, track.premium } do
+				for _, reward in list do
+					if reward.item then
+						T.ok(not seen[reward.item], `{reward.item} is on two tracks`)
+						seen[reward.item] = true
+						T.eq((ShopCatalog.get(reward.item) :: any).season, n, reward.item)
+					end
+				end
+			end
+		end
+	end)
+
+	T.test("a season's themed weekly quests show up every week", function()
+		local track = Season.Tracks[2]
+		T.ok(track.weekly ~= nil and #(track.weekly :: any) > 0)
+		local themedIds = {}
+		for _, spec in track.weekly :: any do
+			T.ok(spec.theme >= 1 and spec.theme <= Season.WeeklyQuests, spec.id)
+			themedIds[spec.id] = true
+		end
+		for seed = 1, 40 do
+			local quests = Quests.makeWeekly(GAMES, T.Random.new(seed), track.weekly)
+			T.eq(#quests, Season.WeeklyQuests)
+			local themed, ids = 0, {}
+			for _, quest in quests do
+				T.ok(not ids[quest.id], "no repeats")
+				ids[quest.id] = true
+				T.eq(quest.stars, Season.WeeklyQuestStars)
+				if themedIds[quest.id] then
+					themed += 1
+				end
+			end
+			T.ok(themed >= 1, `seed {seed}: at least one themed quest`)
+		end
+		-- Themed category quests are skipped when no game has that category.
+		local onlyChess = { { id = "Chess", name = "Chess", category = "Strategy" } }
+		for seed = 1, 20 do
+			for _, quest in Quests.makeWeekly(onlyChess, T.Random.new(seed), track.weekly) do
+				T.ok(quest.category == nil or quest.category == "Strategy", quest.id)
+			end
+		end
+		-- The season roll uses the season's own track.
+		local data = fresh()
+		local inSeason2 = Season.startsAt(2) + 3600
+		Daily.roll(data, Profile.today(inSeason2), GAMES, T.Random.new(3))
+		SeasonPass.roll(data, inSeason2, GAMES, T.Random.new(3))
+		T.eq(data.season.id, 2)
+		local themed = 0
+		for _, quest in data.season.weekly.quests do
+			if themedIds[quest.id] then
+				themed += 1
+			end
+		end
+		T.ok(themed >= 1, "season 2 weeks have themed quests")
 	end)
 
 	T.test("premium pays back fewer Gems than it costs", function()
-		local track = Season.Tracks[1]
-		local premiumGems = 0
-		for _, reward in track.premium do
-			premiumGems += reward.gems or 0
+		for n, track in Season.Tracks do
+			local premiumGems = 0
+			for _, reward in track.premium do
+				premiumGems += reward.gems or 0
+			end
+			T.ok(premiumGems < Season.Premium.gems, `season {n}: {premiumGems} Gems back vs {Season.Premium.gems}`)
 		end
-		T.ok(premiumGems < Season.Premium.gems, `{premiumGems} Gems back vs {Season.Premium.gems}`)
 	end)
 
 	T.test("a regular player finishes the track in a season, a casual one gets halfway", function()

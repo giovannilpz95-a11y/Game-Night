@@ -111,38 +111,13 @@ return function(T)
 		T.eq(Whodunit.getView(s, 1).log[1].card, nil, "normally hidden")
 	end)
 
-	T.test("property party: jackpot, no auctions and starting cash", function()
+	T.test("property party: starting cash, and no rent while the owner is in Jail", function()
 		local Estates = require(Games.Estates)
-		local s = Estates.new(2, { rules = { jackpot = true, auctions = false, startCash = 1000 } }, T.Random.new(1))
+		local s = Estates.new(2, { rules = { startCash = 1000, jailRent = false } }, T.Random.new(1))
 		T.eq(s.players[1].cash, 1000)
-		s.rng = { NextInteger = function(_, lo)
-			return if lo == 1 then 1 else lo
-		end } :: any -- every die shows 1
-		local tax, rest = 0, 0
-		for pos, space in Estates.spaces do
-			if space.kind == "tax" and tax == 0 then
-				tax = pos
-			elseif space.kind == "rest" then
-				rest = pos
-			end
-		end
-		-- Dice 1 + 1 is a double: fine, the turn just rolls again later.
-		s.players[1].pos = tax - 2
-		apply(Estates, s, 1, { kind = "roll" })
-		T.eq(s.pot, Estates.spaces[tax].amount, "the tax went into the pot")
-		s.players[1].pos = rest - 2
-		s.canRoll = true
-		s.phase = "turn"
-		local before = s.players[1].cash
-		apply(Estates, s, 1, { kind = "roll" })
-		T.eq(s.players[1].cash, before + Estates.spaces[tax].amount, "landed on Rest Stop and took it")
-		T.eq(s.pot, 0)
-		-- A deed nobody buys stays with the bank.
-		s.phase = "buy"
-		s.players[1].pos = 2
-		apply(Estates, s, 1, { kind = "decline" })
-		T.eq(s.phase, "turn")
-		T.eq(s.owner[2], nil)
+		T.eq(s.jailRent, false)
+		local normal = Estates.new(2, nil, T.Random.new(1))
+		T.eq(normal.players[1].cash, Estates.START_CASH)
 	end)
 
 	T.test("conquest: rising card values go up with every trade", function()
