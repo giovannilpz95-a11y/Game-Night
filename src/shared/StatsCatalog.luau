@@ -63,6 +63,13 @@ StatsCatalog.games = {
 		},
 		score = { label = "Best score" },
 	},
+	SeaStrike = {
+		extra = {
+			{ key = "sunk", label = "Ships sunk", kind = "sum" },
+			{ key = "hits", label = "Hits", kind = "sum" },
+			{ key = "accuracy", label = "Best accuracy (%)", kind = "max" },
+		},
+	},
 	Whodunit = {
 		extra = {
 			{ key = "solved", label = "Cases solved", kind = "sum" },

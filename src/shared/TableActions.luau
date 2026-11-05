@@ -141,7 +141,8 @@ local KINDS: { [string]: { [string]: string } } = {
 		reject = "pass", discard = "card", doneRoads = "pass",
 	},
 	WordTiles = { place = "place", exchange = "draw" },
-	FiveDice = { roll = "dice", score = "place" }, -- holding dice stays still
+	FiveDice = { roll = "dice", score = "place" },
+	SeaStrike = { fire = "place", ready = "thumbsUp" }, -- moving ships stays hidden -- holding dice stays still
 	Speed = { play = "card" },
 	Spoons = { pass = "card", grab = "grab" },
 	GoFish = { ask = "point" },
