@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
 local Kit = require(script.Parent.Kit)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local HudKit = {}
@@ -366,6 +367,7 @@ function HudKit.callout(parent: Instance, text: string, color: Color3?, y: numbe
 	}, { Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }) })
 	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	HudKit.shine(pill, 42)
+	Audio.play("callout")
 	task.delay(1.6, function()
 		if not pill.Parent then
 			return
@@ -418,6 +420,7 @@ function HudKit.revealCard(parent: Instance, heading: string, title: string, sub
 			return
 		end
 		local half = TweenService:Create(card, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 240) })
+		Audio.play("flip")
 		half.Completed:Once(function()
 			if not card.Parent then
 				return

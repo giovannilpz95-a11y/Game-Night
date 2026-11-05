@@ -11,6 +11,7 @@ local Rules = require(ReplicatedStorage.Shared.Games.ColorClash)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local Fx = require(script.Parent.ColorClashFx)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local ColorClash = {}
@@ -157,6 +158,7 @@ local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ())
 		})
 		quarter.MouseEnter:Connect(function()
 			TweenService:Create(quarter, quick, { Position = out }):Play()
+			Audio.hoverAt(i, 4) -- the four colors a rising chord
 		end)
 		quarter.MouseLeave:Connect(function()
 			TweenService:Create(quarter, quick, { Position = rest }):Play()

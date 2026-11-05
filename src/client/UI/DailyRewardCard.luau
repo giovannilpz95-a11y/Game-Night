@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local Kit = require(script.Parent.Kit)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local DailyRewardCard = {}
@@ -109,6 +110,7 @@ function DailyRewardCard.create(parent: Instance)
 		footer.Text = footerText
 		overlay.Visible = true
 		Kit.popIn(panel)
+		Audio.coins(2 + math.min(daily.streak or 1, 6)) -- a longer streak, a longer run of dings
 	end
 
 	return {

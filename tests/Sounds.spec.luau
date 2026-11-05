@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local AudioFeel = require(ReplicatedStorage.Shared.AudioFeel)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 local TableActions = require(ReplicatedStorage.Shared.TableActions)
 local AudioSettings = require(ServerScriptService.Server.Core.AudioSettings)
@@ -18,6 +19,26 @@ local function checkSound(T, label: string, s: any)
 	end
 	if s.vary ~= nil then
 		T.ok(s.vary >= 0 and s.vary < 0.3, `{label}: vary out of range`)
+	end
+	if s.varyVolume ~= nil then
+		T.ok(s.varyVolume >= 0 and s.varyVolume < 0.4, `{label}: varyVolume out of range`)
+	end
+	if s.gap ~= nil then
+		T.ok(s.gap >= 0 and s.gap <= 1, `{label}: gap out of range`)
+	end
+	if s.streak ~= nil then
+		T.ok(s.streak > 0 and s.streak <= 2, `{label}: streak window out of range`)
+		T.ok(s.streakCap == nil or (s.streakCap >= 1 and s.streakCap <= #AudioFeel.Pentatonic), `{label}: streakCap out of range`)
+	end
+	if s.notes ~= nil then
+		T.ok(#s.notes >= 1 and #s.notes <= 6, `{label}: 1 to 6 notes`)
+		for _, n in s.notes do
+			T.ok(n >= -12 and n <= 24, `{label}: note out of range`)
+		end
+		T.ok(s.noteGap == nil or (s.noteGap > 0 and s.noteGap <= 0.5), `{label}: noteGap out of range`)
+	end
+	if s.duck ~= nil then
+		T.ok(s.duck > 0 and s.duck <= 10, `{label}: duck out of range`)
 	end
 end
 
@@ -47,6 +68,54 @@ return function(T)
 		for _, kind in { "card", "draw", "place", "move", "dice", "slap", "grab", "knock", "buzz" } do
 			T.ok(Sounds.Actions[kind] ~= nil, `{kind} is silent`)
 		end
+	end)
+
+	T.test("the sounds the code plays by name exist", function()
+		for _, name in { "click", "close", "hover", "tick", "turn", "callout", "coin", "cardHover", "flip", "win", "lose", "draw_game", "start" } do
+			T.ok(Sounds.Effects[name] ~= nil, `missing effect {name}`)
+		end
+		T.ok(Sounds.DuckShare > 0 and Sounds.DuckShare < 1, "duck share")
+	end)
+
+	T.test("pitch math: semitones, the pentatonic climb and resets", function()
+		T.ok(math.abs(AudioFeel.speedFor(12) - 2) < 1e-9, "an octave doubles the speed")
+		T.ok(math.abs(AudioFeel.speedFor(0) - 1) < 1e-9, "no change")
+		T.ok(math.abs(AudioFeel.speedFor(-12) - 0.5) < 1e-9, "an octave down halves it")
+		local state = AudioFeel.newStreaks()
+		T.eq(AudioFeel.streak(state, "card", 0, 0.3, 4), 0)
+		T.eq(AudioFeel.streak(state, "card", 0.2, 0.3, 4), 2)
+		T.eq(AudioFeel.streak(state, "card", 0.4, 0.3, 4), 4)
+		T.eq(AudioFeel.streak(state, "card", 0.6, 0.3, 4), 7)
+		T.eq(AudioFeel.streak(state, "card", 0.8, 0.3, 4), 7) -- capped
+		T.eq(AudioFeel.streak(state, "draw", 0.85, 0.3, 4), 0) -- each sound its own streak
+		T.eq(AudioFeel.streak(state, "card", 2, 0.3, 4), 0) -- a pause starts over
+		for i = 1, #AudioFeel.Pentatonic - 1 do
+			T.ok(AudioFeel.Pentatonic[i + 1] > AudioFeel.Pentatonic[i], "the scale only climbs")
+		end
+	end)
+
+	T.test("pitch math: gaps, countdown and positions", function()
+		local gate = {}
+		T.eq(AudioFeel.allow(gate, "click", 0, 0.05), true)
+		T.eq(AudioFeel.allow(gate, "click", 0.02, 0.05), false)
+		T.eq(AudioFeel.allow(gate, "tick", 0.02, 0.05), true)
+		T.eq(AudioFeel.allow(gate, "click", 0.08, 0.05), true)
+		local last = -1
+		for s = 5, 1, -1 do
+			local p = AudioFeel.countdown(s)
+			T.ok(p > last, `countdown rises at {s}s`)
+			last = p
+		end
+		T.eq(AudioFeel.countdown(1), 12)
+		T.eq(AudioFeel.position(1, 1), 0)
+		T.eq(AudioFeel.position(1, 7), 0)
+		local prev = -1
+		for i = 1, 7 do
+			local p = AudioFeel.position(i, 7)
+			T.ok(p > prev, "left to right climbs")
+			prev = p
+		end
+		T.ok(AudioFeel.position(20, 20) <= 24, "a big hand stays in range")
 	end)
 
 	T.test("audio settings clamp, round and ignore junk", function()
