@@ -325,6 +325,31 @@ return function(T)
 		T.eq(s.log[#s.log - 1].target, 2, "log names the trade target by seat, for the client")
 	end)
 
+	T.test("counter-offers: the target answers with their own deal, once", function()
+		local s = afterSetup(2, 8)
+		s.rng = scripted({ 1, 1 })
+		play(s, 1, { kind = "roll" })
+		for _, r in Hexlands.RES do
+			s.players[1].hand[r] = 0
+			s.players[2].hand[r] = 0
+		end
+		s.players[1].hand.lumber = 2
+		s.players[2].hand.stone = 2
+		play(s, 1, { kind = "offer", to = 2, give = { lumber = 1 }, get = { stone = 2 } })
+		rejects(s, 2, { kind = "counter", give = { stone = 3 }, get = { lumber = 1 } }, "can't give what you don't have")
+		play(s, 2, { kind = "counter", give = { stone = 1 }, get = { lumber = 1 } })
+		T.eq(s.phase, "trade")
+		T.eq(table.concat(Hexlands.getActiveSeats(s), ","), "1", "back to the player on turn")
+		T.eq(Hexlands.getView(s, 1).trade.counter, true)
+		rejects(s, 1, { kind = "counter", give = { lumber = 1 }, get = { stone = 1 } }, "no counter to a counter")
+		play(s, 1, { kind = "accept" })
+		T.eq(s.players[1].hand.stone, 1)
+		T.eq(s.players[1].hand.lumber, 1)
+		T.eq(s.players[2].hand.lumber, 1)
+		T.eq(s.phase, "main")
+		T.eq(Hexlands.getActiveSeats(s)[1], 1)
+	end)
+
 	T.test("action cards: can't play the turn you buy, one per turn, Guard moves the Bandit", function()
 		local s = afterSetup(2, 9)
 		s.rng = scripted({ 1, 1 })

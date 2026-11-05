@@ -79,6 +79,9 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 	local picker: any = nil -- { card = "harvest" | "hoard", picks = { res } }
 	local discard: { [string]: number } = {}
 	local offer = { to = nil :: number?, give = {} :: { [string]: number }, get = {} :: { [string]: number } }
+	-- A counter-offer being put together, for the trade with id counterFor.
+	local counter = { give = {} :: { [string]: number }, get = {} :: { [string]: number } }
+	local counterFor: number? = nil
 	local bankGive: string? = nil
 	local lastDice = ""
 
@@ -555,7 +558,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			return if mine then "Tap a hex to move the Bandit" else `{turnName} is moving the Bandit`
 		elseif phase == "trade" then
 			if me and view.trade.to == me then
-				return `{nameOf(view.trade.from)} offers you a trade`
+				return if view.trade.counter then `{nameOf(view.trade.from)} sent a counter-offer` else `{nameOf(view.trade.from)} offers you a trade`
 			end
 			return `{nameOf(view.trade.from)} offered {nameOf(view.trade.to)} a trade`
 		elseif phase == "roads" then
@@ -617,6 +620,26 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			button(r, "No thanks", function()
 				sendMove({ kind = "reject" })
 			end, 0.5, true, Theme.Bad)
+			-- Counter-offer (once per offer): starts from their offer turned around.
+			if not t.counter then
+				if counterFor ~= t.id then
+					counterFor = t.id
+					counter.give, counter.get = table.clone(t.get), table.clone(t.give)
+				end
+				heading("Or counter")
+				note("You give:")
+				counterRows(counter.give, function(res)
+					return you.hand[res]
+				end)
+				note("You get:")
+				counterRows(counter.get, function(_)
+					return 9
+				end)
+				local c = row(34)
+				button(c, "Send counter-offer", function()
+					sendMove({ kind = "counter", give = clean(counter.give), get = clean(counter.get) })
+				end, 1, total(counter.give) > 0 and total(counter.get) > 0 and canAfford(you.hand, clean(counter.give)), Theme.Accent)
+			end
 		end
 
 		if phase == "roads" and mine then

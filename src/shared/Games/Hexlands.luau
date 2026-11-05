@@ -34,6 +34,8 @@
 --   { kind = "bank", give = res, get = res }
 --   { kind = "offer", to = seat, give = { [res] = n }, get = { [res] = n } }
 --   { kind = "accept" }  { kind = "reject" }   (the trade's target answers)
+--   { kind = "counter", give = { [res] = n }, get = { [res] = n } }
+--       (the target answers with their own offer, once; the player on turn then answers it)
 --   { kind = "doneRoads" }                     (stop using Road Crew early)
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -864,6 +866,25 @@ function Hexlands.validateMove(state: any, seat: number, move: any): (boolean, s
 	end
 
 	if phase == "trade" then
+		if kind == "counter" then
+			local t = state.trade
+			if t.counter then
+				return false, "You can't counter a counter-offer"
+			end
+			local give, get = readCards(move.give), readCards(move.get)
+			if not give or not get or handSize(give) == 0 or handSize(get) == 0 then
+				return false, "Each side has to give something"
+			end
+			for _, r in RES do
+				if give[r] > 0 and get[r] > 0 then
+					return false, "Don't trade a resource for itself"
+				end
+			end
+			if not canPay(p.hand, give) then
+				return false, "You don't have those cards"
+			end
+			return true
+		end
 		if kind ~= "accept" and kind ~= "reject" then
 			return false, "Answer the trade"
 		end
@@ -1202,6 +1223,12 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 		state.trade = { from = seat, to = move.to, give = readCards(move.give), get = readCards(move.get) }
 		state.phase = "trade"
 		log(state, seat, "offered a trade to", move.to)
+	elseif kind == "counter" then
+		-- The offer turns around: now the player on turn answers.
+		local t = state.trade
+		state.tradeId += 1
+		state.trade = { from = seat, to = t.from, give = readCards(move.give), get = readCards(move.get), counter = true }
+		log(state, seat, "made a counter-offer to", t.from)
 	elseif kind == "accept" then
 		local t = state.trade
 		local from = state.players[t.from]
@@ -1397,7 +1424,7 @@ function Hexlands.getView(state: any, seat: number?): any
 	end
 	local trade = nil
 	if state.trade then
-		trade = { from = state.trade.from, to = state.trade.to, give = table.clone(state.trade.give), get = table.clone(state.trade.get) }
+		trade = { from = state.trade.from, to = state.trade.to, give = table.clone(state.trade.give), get = table.clone(state.trade.get), counter = state.trade.counter == true, id = state.tradeId }
 	end
 	local steal = nil
 	if state.lastSteal and seat and (state.lastSteal.from == seat or state.lastSteal.to == seat) then
