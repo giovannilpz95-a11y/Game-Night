@@ -83,13 +83,30 @@ function WordTiles.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			end
 			Scene.redraw(dynamic, function(dynamic)
 				local cell = SIZE / size
+				-- The last word played glows gold, with its score floating over it, so the
+				-- whole room sees what just went down (like the big word apps do).
+				local fresh: { [number]: boolean } = {}
+				local play = view.lastPlay
+				if play and play.kind == "place" then
+					local sumR, sumC, n = 0, 0, 0
+					for _, rc in play.cells or {} do
+						fresh[rc[1] * 100 + rc[2]] = true
+						sumR += rc[1]
+						sumC += rc[2]
+						n += 1
+					end
+					if n > 0 then
+						local text = if play.bingo then `+{play.score} ALL 7!` else `+{play.score}`
+						Scene.floatText(dynamic, cellCF(sumR / n, sumC / n, 1.1), 1.6, 0.5, text, { TextColor3 = Color3.fromRGB(255, 214, 90), TextStrokeColor3 = Color3.fromRGB(30, 24, 20), TextStrokeTransparency = 0.1 })
+					end
+				end
 				for r, row in view.rows or {} do
 					for c = 1, #row do
 						local ch = string.sub(row, c, c)
 						if ch ~= "." then
 							local cf = cellCF(r, c, 0.24)
 							Models.block(dynamic, "Tile", Vector3.new(cell * 0.88, 0.09, cell * 0.88), cf * CFrame.new(0, 0.045, 0), TILE)
-							Models.block(dynamic, "TileTop", Vector3.new(cell * 0.76, 0.02, cell * 0.76), cf * CFrame.new(0, 0.095, 0), TILE_TOP)
+							Models.block(dynamic, "TileTop", Vector3.new(cell * 0.76, 0.02, cell * 0.76), cf * CFrame.new(0, 0.095, 0), if fresh[r * 100 + c] then Color3.fromRGB(255, 226, 130) else TILE_TOP)
 							-- Blanks are stored in upper case: show them a little paler, with no value.
 							local blank = ch == string.upper(ch) and ch ~= string.lower(ch)
 							local letter = string.upper(ch)

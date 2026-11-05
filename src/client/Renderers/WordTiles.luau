@@ -88,6 +88,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	local passConfirm = false
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local calledPlay: string? = nil -- the last play already seen (nil until the first update)
 	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.66, -8, 1, -96), Parent = root })
 
 	local side = Kit.panel({ Position = UDim2.new(0.66, 8, 0, 0), Size = UDim2.new(0.34, -8, 1, -96), Parent = root })
@@ -368,6 +369,15 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 			recallAll()
 			swapMode = false
 		end
+
+		-- All seven tiles in one play gets the big call-out the word apps give it.
+		local play = view.lastPlay
+		local firstCell = play and play.cells and play.cells[1]
+		local playKey = if play then `{play.seat}|{play.score}|{if firstCell then firstCell[1] * 100 + firstCell[2] else 0}` else nil
+		if play and play.kind == "place" and play.bingo and calledPlay ~= nil and playKey ~= calledPlay then
+			HudKit.callout(root, `ALL 7 TILES!  +{play.score}`, Color3.fromRGB(255, 196, 64), 0.35)
+		end
+		calledPlay = playKey or ""
 
 		-- Board squares.
 		local last: { [number]: boolean } = {}

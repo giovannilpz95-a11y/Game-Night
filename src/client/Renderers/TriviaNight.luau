@@ -205,9 +205,20 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 				ring.Thickness = 0
 			end
 			pointsLabels[i].Text = ""
-			if reveal and isMine and snapshot.yourSeat then
-				local gained = view.lastPoints and view.lastPoints[snapshot.yourSeat] or 0
-				pointsLabels[i].Text = if gained > 0 then `+{gained}` else "Wrong"
+			if reveal then
+				-- How many picked each answer (the classic quiz-show reveal), plus your points.
+				local picked = 0
+				for _, choice in view.answersBySeat or {} do
+					if choice == i then
+						picked += 1
+					end
+				end
+				local mine = ""
+				if isMine and snapshot.yourSeat then
+					local gained = view.lastPoints and view.lastPoints[snapshot.yourSeat] or 0
+					mine = (if gained > 0 then `+{gained}` else "Wrong") .. "   "
+				end
+				pointsLabels[i].Text = `{mine}👤 {picked}`
 			end
 		end
 
