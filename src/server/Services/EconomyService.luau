@@ -343,7 +343,13 @@ function handlers.buy(player: Player, request: any)
 		return notify(player, err :: string)
 	end
 	local item = ShopCatalog.get(request.itemId)
-	notify(player, if item and item.slot == "reactions" then "Bought! It's on your 😀 reaction wheel in every game." else "Bought! Equip it from the shop.")
+	if item and (item.slot == "pose" or item.slot == "victory") then
+		-- Showtime moves equip straight away: that's why you bought it.
+		Shop.toggleEquip(data, item.id)
+		notify(player, if item.slot == "pose" then "Bought! That's your intro pose now." else "Bought! That's your win celebration now.")
+	else
+		notify(player, if item and item.slot == "reactions" then "Bought! It's on your 😀 reaction wheel in every game." else "Bought! Equip it from the shop.")
+	end
 	EconomyService.push(player)
 end
 

@@ -22,6 +22,7 @@ local FriendService = require(script.Parent.Services.FriendService)
 local ProgressionService = require(script.Parent.Services.ProgressionService)
 local TableActionService = require(script.Parent.Services.TableActionService)
 local ReactionService = require(script.Parent.Services.ReactionService)
+local ShowtimeService = require(script.Parent.Services.ShowtimeService)
 local PartyChatService = require(script.Parent.Services.PartyChatService)
 
 Net.init()
@@ -77,6 +78,7 @@ Net.event(Net.Names.StatsRequest).OnServerEvent:Connect(guarded(ProgressionServi
 Net.event(Net.Names.ChatRequest).OnServerEvent:Connect(guarded(PartyChatService.handleRequest))
 Net.event(Net.Names.TableAction).OnServerEvent:Connect(guarded(TableActionService.init(MatchService)))
 Net.event(Net.Names.Reaction).OnServerEvent:Connect(guarded(ReactionService.init(MatchService)))
+Net.event(Net.Names.Showtime).OnServerEvent:Connect(guarded(ShowtimeService.init(MatchService.skipIntro)))
 
 Players.PlayerRemoving:Connect(function(player)
 	limiter:forget(player.UserId)

@@ -70,6 +70,8 @@ require(script.Parent.Table3D.FaceViewer).start()
 require(script.Parent.Table3D.Spinner).start()
 require(script.Parent.Table3D.Avatars).start()
 require(script.Parent.Table3D.HeadReactions).start()
+local Showtime = require(script.Parent.Table3D.Showtime)
+Showtime.start()
 
 -- See-through: the room is the lobby.
 local lobby = Kit.new("Frame", {
@@ -436,10 +438,24 @@ Net.event(Net.Names.Notify).OnClientEvent:Connect(popups.toast)
 -- How to play: a short card when you sit down for a new match, unless you turned it off
 -- for that game.
 local cardShownFor: any = nil
+-- The card waits for the Showtime intro to finish.
+local cardAfterIntro: (() -> ())? = nil
+Showtime.onChanged(function(running: boolean)
+	matchView.setCinematic(running)
+	if not running and cardAfterIntro then
+		local show = cardAfterIntro
+		cardAfterIntro = nil
+		show()
+	end
+end)
 Net.event(Net.Names.MatchState).OnClientEvent:Connect(function(snapshot)
 	matchView.setSnapshot(snapshot)
 	if type(snapshot) ~= "table" then
 		rulesPanel.closeCard() -- left the match
+		cardAfterIntro = nil
+		if Showtime.running() == "intro" then
+			Showtime.stop()
+		end
 		return
 	end
 	local over = snapshot.result ~= nil or snapshot.aborted == true
@@ -450,9 +466,16 @@ Net.event(Net.Names.MatchState).OnClientEvent:Connect(function(snapshot)
 		local gameId = snapshot.gameId
 		local hidden = type(tips) == "table" and type(tips.hideCard) == "table" and tips.hideCard[gameId] == true
 		if not hidden then
-			rulesPanel.showCard(gameId, false, function(hide: boolean)
-				economyRequest:FireServer({ action = "tips", tip = "hideCard", gameId = gameId, hidden = hide })
-			end)
+			local function show()
+				rulesPanel.showCard(gameId, false, function(hide: boolean)
+					economyRequest:FireServer({ action = "tips", tip = "hideCard", gameId = gameId, hidden = hide })
+				end)
+			end
+			if Showtime.running() == "intro" and Showtime.matchId() == snapshot.matchId then
+				cardAfterIntro = show
+			else
+				show()
+			end
 		end
 	end
 end)

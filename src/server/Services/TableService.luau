@@ -345,7 +345,9 @@ end
 
 -- The match ended. Players stand up; the final board and the bots stay a few seconds
 -- so the result can be seen at the table, then the table is cleared.
-function TableService.release(matchId: string)
+-- `standAfter` (seconds): players stay seated that long first, for the winners'
+-- celebration (ShowtimeService.victory).
+function TableService.release(matchId: string, standAfter: number?)
 	local t = tableOfMatch[matchId]
 	if not t then
 		return
@@ -357,17 +359,30 @@ function TableService.release(matchId: string)
 		tag.Enabled = false
 	end
 	t.model:SetAttribute("State", "Free")
-	-- People stand up right away (the result shows on their screen), so nobody is left
-	-- sitting low at the table with the camera stuck there. The final board stays a
+	-- People stand up right away (or right after the winners' celebration), so nobody is
+	-- left sitting low at the table with the camera stuck there. The final board stays a
 	-- moment for anyone watching, then clears.
-	for tableSeat, occupant in t.occupants do
-		if occupant.userId then
-			vacate(t, tableSeat)
+	local function standUp()
+		for tableSeat, occupant in t.occupants do
+			if occupant.userId then
+				vacate(t, tableSeat)
+			end
 		end
 	end
 	t.holdToken += 1
 	local token = t.holdToken
-	task.delay(Config.TableHoldSeconds, function()
+	local wait = if type(standAfter) == "number" then math.clamp(standAfter, 0, 15) else 0
+	if wait > 0 then
+		task.delay(wait, function()
+			-- Unless the table was cleared or taken by a new match (a rematch) meanwhile.
+			if t.holdToken == token and not t.busy then
+				standUp()
+			end
+		end)
+	else
+		standUp()
+	end
+	task.delay(Config.TableHoldSeconds + wait, function()
 		if t.holdToken == token and not t.busy then
 			clearTable(t)
 		end

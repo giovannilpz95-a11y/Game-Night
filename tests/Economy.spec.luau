@@ -383,7 +383,7 @@ return function(T)
 	T.test("every shop item is in a known shop and has a way to get it", function()
 		for _, item in ShopCatalog.items do
 			T.ok(item.shop == "hub" or Economy.Coins[item.shop] ~= nil, `{item.id} has an unknown shop`)
-			T.ok(item.notForSale or Shop.coinPrice(item) or Shop.gemPrice(item, false), `{item.id} has no price`)
+			T.ok(item.notForSale or item.free or Shop.coinPrice(item) or Shop.gemPrice(item, false), `{item.id} has no price`)
 		end
 		for _, id in Economy.StarterPack.items do
 			T.ok(ShopCatalog.get(id) ~= nil, `starter item {id} missing`)

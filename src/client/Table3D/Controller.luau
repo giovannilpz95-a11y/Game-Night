@@ -49,6 +49,19 @@ function Controller.isCalm(): boolean
 	return calm
 end
 
+-- Showtime (Table3D/Showtime) has the camera: the table camera stands aside and stops
+-- hiding your own avatar (you're in the shots too).
+local cinematic = false
+local anyActive = false
+function Controller.setCinematic(value: boolean)
+	cinematic = value
+end
+
+-- Whether a table view is showing (the camera is the table camera's).
+function Controller.isAnyActive(): boolean
+	return anyActive
+end
+
 -- Parts of your own avatar that stay visible at the table (hands reaching for pieces);
 -- the rest is hidden so your body and accessories don't block the board.
 local KEEP_VISIBLE = {
@@ -395,6 +408,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			return
 		end
 		active = value
+		anyActive = value
 		if not value then
 			fadeSelf(false)
 			showSign(true)
@@ -702,11 +716,26 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	end
 
 	-- After Roblox's camera scripts (which leave a Scriptable camera alone anyway).
+	local wasCinematic = false
 	RunService:BindToRenderStep("GameNightTableCamera", Enum.RenderPriority.Camera.Value + 1, function(dt)
-		if active then
-			fadeSelf(true)
-			stepCamera(dt)
+		if not active then
+			wasCinematic = false
+			return
 		end
+		if cinematic then
+			if not wasCinematic then
+				wasCinematic = true
+				fadeSelf(false)
+			end
+			return
+		end
+		if wasCinematic then
+			-- Back from Showtime: the seat's view again (and its field of view).
+			wasCinematic = false
+			placeCamera()
+		end
+		fadeSelf(true)
+		stepCamera(dt)
 	end)
 
 	-- Keep looking while the board streams in, then give up and stay in 2D.

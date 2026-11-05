@@ -15,6 +15,7 @@ local Match = require(script.Parent.Parent.Core.Match)
 local TableService = require(script.Parent.TableService)
 local HostService = require(script.Parent.HostService)
 local TableActionService = require(script.Parent.TableActionService)
+local ShowtimeService = require(script.Parent.ShowtimeService)
 
 local MatchService = {}
 
@@ -31,6 +32,8 @@ type Entry = {
 	botLevel: string?, -- the checked bot difficulty (stats and the weekly board read it)
 	acted: number, -- the last move number the avatars at the table acted out
 	graced: { [number]: boolean }, -- seats whose first turn already got Config.FirstTurnGrace
+	intro: boolean, -- the Showtime intro is on: no turns yet (startPlay ends it)
+	introSkips: { [number]: boolean }, -- userIds who skipped the intro
 }
 
 local partyService: any = nil
@@ -80,13 +83,21 @@ local function finish(entry: Entry)
 		return
 	end
 	entry.ended = true
+	entry.intro = false
 	entry.turnEndsAt = nil
 	entry.timerId = nil
+	-- Winners at a table celebrate first (players stay seated for it); the celebration is
+	-- sent before the final snapshot so the result card waits for it on every screen.
+	local celebrate: number? = nil
+	if not entry.match.aborted then
+		local ok, seconds = pcall(ShowtimeService.victory, entry.match.id, entry.match.gameId, entry.table, entry.match.seats, entry.match.result)
+		celebrate = if ok then seconds else nil
+	end
 	broadcast(entry) -- clients keep showing the final board and result
 	if not entry.match.aborted then
-		TableActionService.finished(entry.table, entry.match.seats, entry.match.result)
+		TableActionService.finished(entry.table, entry.match.seats, entry.match.result, celebrate ~= nil)
 	end
-	TableService.release(entry.match.id)
+	TableService.release(entry.match.id, celebrate)
 	matches[entry.match.id] = nil
 	for userId, matchId in matchOfUser do
 		if matchId == entry.match.id then
@@ -137,6 +148,16 @@ end
 
 local scheduleTurn: (Entry) -> ()
 
+-- The intro is over (or everyone skipped it): the first turn starts now.
+local function startPlay(entry: Entry)
+	if entry.ended or not entry.intro then
+		return
+	end
+	entry.intro = false
+	scheduleTurn(entry)
+	broadcast(entry)
+end
+
 local function afterMove(entry: Entry)
 	-- The avatar who moved acts it out (a phase timeout isn't anyone's move).
 	local last = entry.match.lastMove
@@ -155,8 +176,8 @@ end
 
 function scheduleTurn(entry: Entry)
 	local match = entry.match
-	if match:isOver() then
-		return
+	if match:isOver() or entry.intro then
+		return -- during the intro nobody moves yet (startPlay schedules the first turn)
 	end
 
 	-- Bots: one pending move per seat. Other moves (a stroke, someone's guess) don't
@@ -331,6 +352,8 @@ local function startMatch(leader: Player, request: any)
 		botLevel = options.botLevel,
 		acted = 0,
 		graced = {},
+		intro = false,
+		introSkips = {},
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
@@ -351,8 +374,19 @@ local function startMatch(leader: Player, request: any)
 	if not tableInfo then
 		notify(leader, "All tables are busy, so this one is on screen. Try a table next game!")
 	end
-	scheduleTurn(entry)
-	broadcast(entry)
+	-- Showtime: the camera visits everyone at the table before the first turn. Sent
+	-- before the first snapshot so each screen starts on the intro, not the board.
+	local okIntro, introSeconds = pcall(ShowtimeService.intro, matchId, catalogEntry.id, tableInfo, seats)
+	if okIntro and introSeconds then
+		entry.intro = true
+		broadcast(entry)
+		task.delay(introSeconds, function()
+			startPlay(entry)
+		end)
+	else
+		scheduleTurn(entry)
+		broadcast(entry)
+	end
 	emit("started", { matchId = matchId, gameId = catalogEntry.id, seats = seats, botLevel = options.botLevel })
 
 	-- Remember it for Rematch: the rule picks HouseRules accepted, not the client's table.
@@ -443,6 +477,9 @@ function handlers.move(player: Player, request: any)
 	if not seat then
 		return
 	end
+	if entry.intro then
+		return -- the game starts when the intro ends
+	end
 	local move = request.move
 	local textField = entry.match.rules.textField
 	if textField and type(move) == "table" then
@@ -506,6 +543,9 @@ function handlers.resign(player: Player, _request: any)
 	if not seat then
 		return
 	end
+	if entry.intro then
+		return
+	end
 	local ok, err = entry.match:resign(seat)
 	if not ok then
 		return notify(player, err :: string)
@@ -540,6 +580,21 @@ function handlers.sync(player: Player, _request: any)
 	else
 		matchStateRemote:FireClient(player, nil)
 	end
+end
+
+-- A player skipped the intro: once every player still at the table has, play starts.
+function MatchService.skipIntro(player: Player, matchId: string)
+	local entry = entryFor(player)
+	if not entry or entry.match.id ~= matchId or not entry.intro then
+		return
+	end
+	entry.introSkips[player.UserId] = true
+	for _, seat in entry.match.seats do
+		if seat.kind == "player" and seat.userId and not seat.left and not entry.introSkips[seat.userId] then
+			return
+		end
+	end
+	startPlay(entry)
 end
 
 -- The table and match seat a player is playing at, for emotes: (tableInfo, seats, seat),

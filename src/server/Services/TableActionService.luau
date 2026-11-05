@@ -70,12 +70,15 @@ function TableActionService.thinking(tableInfo: any?, seats: { any }, seat: numb
 end
 
 -- The match ended with `result`: cheers and groans, after the last move has played out.
-function TableActionService.finished(tableInfo: any?, seats: { any }, result: any)
+-- `celebrating`: the winners are doing their Showtime celebration instead of a cheer.
+function TableActionService.finished(tableInfo: any?, seats: { any }, result: any, celebrating: boolean?)
 	if not tableInfo or not result then
 		return
 	end
 	for seat, kind in TableActions.reactions(result, #seats) do
-		send(tableInfo, seats, seat, { kind = kind }, 0.9)
+		if not (celebrating and kind == "cheer") then
+			send(tableInfo, seats, seat, { kind = kind }, 0.9)
+		end
 	end
 end
 
