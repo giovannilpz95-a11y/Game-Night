@@ -3,6 +3,7 @@
 -- Also builds a hand row: cards keep their shape at any screen size.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Kit)
@@ -184,6 +185,84 @@ function PlayingCard.empty(slot: Frame)
 	})
 end
 
+PlayingCard.HELD_CARD = 0.76 -- card height / hand height, held
+local LIFT = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+-- Marks a hand row as held (Table view's first-person seat): the next renderHand fans the
+-- cards like real ones held in front of you instead of laying them out in a flat row.
+function PlayingCard.setHeld(container: Frame, held: boolean)
+	container:SetAttribute("Held", held)
+end
+
+-- Held: overlapping cards in a fan (outer ones turned and a little lower). Hovering a
+-- card lifts it out of the hand, straightens it and brings it to full brightness. Cards
+-- you can't play are only a touch darker, never looking switched off.
+local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, onClick: ((number) -> ())?)
+	local count = #cards
+	local size = container.AbsoluteSize
+	local cardW = size.Y * PlayingCard.HELD_CARD * PlayingCard.RATIO
+	-- Cards overlap by about a third; big hands squeeze tighter to stay on screen.
+	local gap = -cardW * 0.3
+	if count > 1 and size.X > 0 and count * cardW + (count - 1) * gap > size.X then
+		gap = (size.X - count * cardW) / (count - 1)
+	end
+	list.Padding = UDim.new(0, math.floor(gap))
+	list.VerticalAlignment = Enum.VerticalAlignment.Top
+	local spread = if count > 1 then math.min(4, 28 / (count - 1)) else 0
+	for index, card in cards do
+		local offset = index - (count + 1) / 2
+		local slot = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(PlayingCard.HELD_CARD * PlayingCard.RATIO, 0, PlayingCard.HELD_CARD, 0),
+			SizeConstraint = Enum.SizeConstraint.RelativeYY,
+			LayoutOrder = index,
+			Parent = container,
+		})
+		local face = PlayingCard.face(card.id)
+		face.Parent = slot
+		local drop = (offset * spread / 28) ^ 2 * 0.5 -- the fan's curve, in card heights
+		local rest = UDim2.fromScale(0, drop + (if card.raised then -0.16 elseif card.glow then -0.06 else 0))
+		face.Position = rest
+		face.Rotation = offset * spread
+		local shade: Frame? = nil
+		if card.dim then
+			shade = Kit.new("Frame", {
+				BackgroundColor3 = Color3.new(0, 0, 0),
+				BackgroundTransparency = 0.8,
+				BorderSizePixel = 0,
+				Size = UDim2.fromScale(1, 1),
+				ZIndex = 3,
+				Parent = face,
+			}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.1, 0) }) })
+		end
+		if card.glow then
+			Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 4, Parent = face })
+		end
+		if onClick then
+			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
+			button.MouseEnter:Connect(function()
+				slot.ZIndex = 10
+				if shade then
+					shade.Visible = false
+				end
+				TweenService:Create(face, LIFT, { Position = UDim2.fromScale(0, -0.22), Rotation = 0 }):Play()
+			end)
+			button.MouseLeave:Connect(function()
+				slot.ZIndex = 1
+				if shade then
+					shade.Visible = true
+				end
+				TweenService:Create(face, LIFT, { Position = rest, Rotation = offset * spread }):Play()
+			end)
+			button.Activated:Connect(function()
+				if card.enabled ~= false then
+					onClick(if card.key ~= nil then card.key else card.id)
+				end
+			end)
+		end
+	end
+end
+
 -- A horizontal hand. container should have a fixed height; cards size from it.
 -- cards: { { id = number, enabled = boolean?, raised = boolean?, dim = boolean?, glow = boolean?,
 --   key = any? } } -- key: what onClick gets instead of id (for face-down picks)
@@ -196,6 +275,11 @@ function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((num
 		list.VerticalAlignment = Enum.VerticalAlignment.Bottom
 		list.Parent = container
 	end
+	if container:GetAttribute("Held") == true then
+		renderHeld(container, list, cards, onClick)
+		return
+	end
+	list.VerticalAlignment = Enum.VerticalAlignment.Bottom
 	-- Big hands overlap so they still fit across the screen.
 	local size = container.AbsoluteSize
 	local cardWidth = size.Y * 0.86 * PlayingCard.RATIO

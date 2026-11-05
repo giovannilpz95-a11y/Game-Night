@@ -9,6 +9,9 @@ local Theme = Kit.Theme
 
 local CardTable = {}
 
+-- Each layout's buttons frame -> its layout, so CardTable.buttons can place them.
+local layoutOf: { [Instance]: any } = setmetatable({}, { __mode = "k" }) :: any
+
 local BIG_LINE = 22 -- px for a chip's bigLine
 local NAME_H = 22 -- px for a chip's name row (avatar + name)
 
@@ -20,6 +23,11 @@ export type Layout = {
 	prompt: TextLabel,
 	buttons: Frame,
 	hand: Frame,
+	-- Table view: true lays the strip out like cards held at the table (see setDocked).
+	setDocked: (docked: boolean) -> (),
+	-- Set by the game: redraws the screen (called when the hand changes size or shape).
+	refresh: (() -> ())?,
+	bigButtons: { TextButton },
 }
 
 function CardTable.layout(container: Instance): Layout
@@ -73,7 +81,93 @@ function CardTable.layout(container: Instance): Layout
 	buttonList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	buttonList.Parent = buttons
 	local hand = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.62, 66), Size = UDim2.new(1, 0, 0.38, -66), Parent = root })
-	return { root = root, seats = seats, felt = felt, content = content, prompt = prompt, buttons = buttons, hand = hand }
+	local ui: Layout
+	-- Redraw once the hand has its new size (a docked layout, a resized screen), so the
+	-- cards are measured against the right frame.
+	local refreshQueued = false
+	local function queueRefresh()
+		if refreshQueued then
+			return
+		end
+		refreshQueued = true
+		task.defer(function()
+			refreshQueued = false
+			if ui.refresh and root.Parent then
+				ui.refresh()
+			end
+		end)
+	end
+	hand:GetPropertyChangedSignal("AbsoluteSize"):Connect(queueRefresh)
+
+	-- Table view docks the bottom of this screen (MatchView.DOCK, held). The cards on the
+	-- table are on the 3D table, so the seats and the felt go, and what's left is laid out
+	-- like cards held in front of you: a big fan along the bottom edge running a little off
+	-- the screen, the prompt just above it and the buttons in the bottom-right corner (or
+	-- in a row over the hand when there are many, like bids).
+	local function setDocked(docked: boolean)
+		seats.Visible = not docked
+		felt.Visible = not docked
+		PlayingCard.setHeld(hand, docked)
+		buttons:SetAttribute("Held", docked)
+		local promptY = if docked then 0.555 else 0.62
+		prompt.Position = UDim2.new(0, 0, promptY, 0)
+		promptPill.Position = UDim2.new(0.5, 0, promptY, -2)
+		if docked then
+			hand.Size = UDim2.new(0.72, 0, 0.47, 0)
+		else
+			hand.Position = UDim2.new(0, 0, 0.62, 66)
+			hand.Size = UDim2.new(1, 0, 0.38, -66)
+		end
+		for _, big in ui.bigButtons do
+			big.AnchorPoint = if docked then Vector2.new(1, 1) else Vector2.new(1, 0.5)
+			big.Position = if docked then UDim2.new(1, -14, 1, -66) else UDim2.new(0.97, 0, 0.81, 33)
+		end
+		CardTable.placeButtons(ui, #buttons:GetChildren() - 1)
+		queueRefresh()
+	end
+
+	ui = {
+		root = root,
+		seats = seats,
+		felt = felt,
+		content = content,
+		prompt = prompt,
+		buttons = buttons,
+		hand = hand,
+		setDocked = setDocked,
+		refresh = nil,
+		bigButtons = {},
+	}
+	layoutOf[buttons] = ui
+	return ui
+end
+
+-- Where the action buttons (and, held, the hand under them) go for `count` buttons.
+function CardTable.placeButtons(ui: Layout, count: number)
+	local frame = ui.buttons
+	local list = frame:FindFirstChildOfClass("UIListLayout")
+	local held = frame:GetAttribute("Held") == true
+	local corner = held and count <= 2
+	if corner then
+		frame.AnchorPoint = Vector2.new(1, 1)
+		frame.Position = UDim2.new(1, -14, 1, -14)
+		frame.Size = UDim2.new(0, 360, 0, 44)
+	elseif held then
+		frame.AnchorPoint = Vector2.new(0, 0)
+		frame.Position = UDim2.new(0, 0, 0.555, 26)
+		frame.Size = UDim2.new(1, 0, 0, 38)
+	else
+		frame.AnchorPoint = Vector2.new(0, 0)
+		frame.Position = UDim2.new(0, 0, 0.62, 24)
+		frame.Size = UDim2.new(1, 0, 0, 38)
+	end
+	if list then
+		list.HorizontalAlignment = if corner then Enum.HorizontalAlignment.Right else Enum.HorizontalAlignment.Center
+	end
+	if held then
+		-- Just under the prompt, or under the row of buttons when they're over the hand.
+		ui.hand.Position = UDim2.new(0.14, 0, 0.555, if corner or count == 0 then 30 else 68)
+	end
 end
 
 function CardTable.nameOf(snapshot: any, seat: number?): string
@@ -212,6 +306,10 @@ function CardTable.buttons(frame: Frame, list: { any })
 			HudKit.gradient(Color3.new(1, 1, 1), Color3.fromRGB(222, 222, 222)).Parent = button
 		end
 	end
+	local ui = layoutOf[frame]
+	if ui then
+		CardTable.placeButtons(ui, #list)
+	end
 end
 
 -- A big red action button (SNAP!, SLAP!) at the right end of the hand row, so it sits in
@@ -240,6 +338,7 @@ function CardTable.bigButton(ui: Layout, text: string, onClick: () -> ()): TextB
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(220, 120), Parent = button })
 	HudKit.gradient(Color3.new(1, 1, 1), Color3.fromRGB(215, 215, 215)).Parent = button
 	Kit.new("UIStroke", { Color = Color3.fromRGB(255, 230, 230), Thickness = 3, Transparency = 0.2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
+	table.insert(ui.bigButtons, button)
 	return button
 end
 
