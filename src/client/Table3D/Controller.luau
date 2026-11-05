@@ -20,6 +20,9 @@ local Players = game:GetService("Players")
 
 local Kit = require(script.Parent.Parent.UI.Kit)
 local Focus = require(script.Parent.Focus)
+local Lift = require(script.Parent.Lift)
+local Audio = require(script.Parent.Parent.Audio)
+local SeatView = require(ReplicatedStorage.Shared.SeatView)
 
 local Controller = {}
 
@@ -79,8 +82,17 @@ local FIRST_PERSON = {
 	President = true, SlapStack = true, Hearts = true, Spades = true, ThirtyOne = true,
 	Palace = true, OldMaid = true, Snap = true, GinRummy = true, OhHell = true,
 }
--- First-person camera (card games): how high over the tabletop and how far back from the
--- middle, in studs plus a share of the distance from the middle to your seat.
+-- Board games are seen from your chair too, looking down across the board to the others.
+-- SeatView picks the pitch, the turn (so the board sits beside a side panel) and, when
+-- the board or the far heads wouldn't fit, how far further back and up to sit.
+local SEATED_BOARD = {
+	Chess = true, Checkers = true, FourInARow = true, TicTacToe = true,
+	Estates = true, Hexlands = true, Conquest = true, Whodunit = true, WordTiles = true,
+	FiveDice = true, SeaStrike = true,
+}
+-- First-person camera: how high over the tabletop and how far back from the middle, in
+-- studs plus a share of the distance from the middle to your seat (board games start
+-- here and only ever sit further back).
 local EYE_ABOVE_TABLE = 4
 local EYE_RISE = 0.5
 local EYE_BACK = 1.2
@@ -116,6 +128,12 @@ export type Context = {
 	-- Draws a local highlight on a cell: "fill" covers it, "dot" is a small marker.
 	mark: (cell: BasePart, color: Color3, style: "fill" | "dot" | "ring" | "ball") -> (),
 	clearMarks: () -> (),
+	-- The pieces that float up off the board on your screen (Table3D/Lift), each with how
+	-- high in studs; anything left out settles back down. dropLift puts all down at once.
+	lift: (wanted: { [Instance]: number }) -> (),
+	dropLift: () -> (),
+	-- The server's piece standing on a cell (Row/Col attributes), if any.
+	pieceAt: (row: number, col: number) -> Instance?,
 	gui: ScreenGui, -- for small pickers (chess promotion)
 	addLocal: (instance: Instance) -> (), -- shown only to you, removed by clearMarks
 }
@@ -132,6 +150,12 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local waitingSince = 0
 	local marks = Instance.new("Folder")
 	marks.Name = "GameNightMarks"
+	local liftFolder = Instance.new("Folder")
+	liftFolder.Name = "GameNightLift"
+	local lifter = Lift.new(liftFolder)
+	local hoveredCell: BasePart? = nil
+	local mousePosition: Vector2? = nil -- last mouse spot over the world (nil over the UI)
+	local updateHover: () -> ()
 	local savedCameraType: Enum.CameraType? = nil
 	local savedFieldOfView = camera.FieldOfView
 	-- The camera's resting frame at your seat (placeCamera), what's on screen now (eased
@@ -140,7 +164,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local home: CFrame? = nil
 	local shown: CFrame? = nil
 	local moment: { point: Vector3, strength: number, at: number }? = nil
-	local firstPerson = false -- seated eye-level camera (card games)
+	local firstPerson = false -- seated eye-level camera (card and board games)
+	local seatedView: { key: string, view: SeatView.Result }? = nil -- board games' framing
 	-- First person: your own cards standing in their holder on the table sit right in
 	-- front of the camera (a big blank wall of card backs). Your hand is on screen, so
 	-- the holder in front of your seat and what's in it are hidden on this screen.
@@ -423,6 +448,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			savedFieldOfView = camera.FieldOfView
 			camera.CameraType = Enum.CameraType.Scriptable
 			marks.Parent = camera
+			liftFolder.Parent = camera
 		else
 			camera.CameraType = if savedCameraType and savedCameraType ~= Enum.CameraType.Scriptable then savedCameraType else Enum.CameraType.Custom
 			camera.FieldOfView = savedFieldOfView
@@ -431,6 +457,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			showRack()
 			marks.Parent = nil
 			marks:ClearAllChildren()
+			lifter.drop()
+			hoveredCell = nil
+			liftFolder.Parent = nil
 		end
 		onActiveChanged(value)
 	end
@@ -441,6 +470,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		handler, handlerFor = nil, nil
 		marks:ClearAllChildren()
+		lifter.drop()
+		hoveredCell = nil
 	end
 
 	local function placeCamera()
@@ -475,6 +506,76 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			-- Less screen to fill: step back a little.
 			local scale = 1 + inset * 0.6
 			back, up = back * scale, up * scale
+		end
+		if SEATED_BOARD[snapshot.gameId] and seat and seat:IsA("BasePart") then
+			-- From your chair: the whole board (pieces, taken pieces, the scene's bits)
+			-- and everyone else's head, in the part of the screen the panels leave free.
+			local model = tableModel :: Model
+			local reach = toSeat.Magnitude
+			local flat = -toSeat.Unit -- from your seat toward the middle
+			local right = flat:Cross(Vector3.yAxis)
+			local function local3(p: Vector3): SeatView.Point
+				local d = p - anchor
+				return { x = d:Dot(right), y = d.Y, z = d:Dot(flat) }
+			end
+			local boardPoints: { SeatView.Point } = {}
+			local gameBoard = model:FindFirstChild("GameBoard")
+			if gameBoard and gameBoard:IsA("Model") then
+				-- Measured once per match (and screen layout), with a stud of room around
+				-- it for what lands beside the board later (taken pieces, rolled dice), so
+				-- the camera doesn't creep on every capture.
+				local boxCF, size = gameBoard:GetBoundingBox()
+				size += Vector3.new(2, 0, 2)
+				for _, x in { -0.5, 0.5 } do
+					for _, y in { -0.5, 0.5 } do
+						for _, z in { -0.5, 0.5 } do
+							table.insert(boardPoints, local3(boxCF * Vector3.new(size.X * x, size.Y * y, size.Z * z)))
+						end
+					end
+				end
+			end
+			local headPoints: { SeatView.Point } = {}
+			for matchSeat in snapshot.seats or {} do
+				local other = (snapshot.table.seats or {})[matchSeat]
+				local part = other and matchSeat ~= snapshot.yourSeat and model:FindFirstChild(`Seat{other}`, true)
+				if part and part:IsA("BasePart") then
+					local at = local3(part.Position)
+					at.y = HEAD_ABOVE_TABLE
+					table.insert(headPoints, at)
+				end
+			end
+			local viewport = camera.ViewportSize
+			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
+			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
+			local key = `{snapshot.matchId}|{tableSeat}|{#headPoints}|{insetRight}|{insetBottom}|{viewport.X}x{viewport.Y}`
+			local view = if seatedView and seatedView.key == key and #boardPoints > 0 then seatedView.view else SeatView.solve(boardPoints, headPoints, reach * EYE_BACK, EYE_ABOVE_TABLE + reach * EYE_RISE, aspect, {
+				left = -1,
+				right = 1 - 2 * insetRight,
+				bottom = -1 + 2 * insetBottom,
+				top = 1 - 2 * topBar,
+			}, SeatView.FOV)
+			if #boardPoints > 0 then
+				seatedView = { key = key, view = view }
+			end
+			camera.FieldOfView = SeatView.FOV
+			local eye = anchor - flat * view.back + Vector3.new(0, view.height, 0)
+			local look = flat * math.cos(view.yaw) + right * math.sin(view.yaw)
+			home = CFrame.lookAt(eye, eye + look) * CFrame.Angles(-view.pitch, 0, 0)
+			Focus.set({
+				table = model,
+				board = gameBoard :: Model?,
+				middle = anchor,
+				toYou = -flat,
+				seatOf = function(tableSeat: number): BasePart?
+					local part = model:FindFirstChild(`Seat{tableSeat}`, true)
+					return if part and part:IsA("BasePart") then part else nil
+				end,
+			})
+			firstPerson = true
+			if not shown then
+				shown = camera.CFrame
+			end
+			return
 		end
 		if FIRST_PERSON[snapshot.gameId] and seat and seat:IsA("BasePart") then
 			-- From your place at the table, up high over your own seat and looking down
@@ -658,6 +759,20 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			clearMarks = function()
 				marks:ClearAllChildren()
 			end,
+			lift = lifter.set,
+			dropLift = lifter.drop,
+			pieceAt = function(row, col)
+				local pieces = (board :: Model):FindFirstChild("Pieces")
+				if not pieces then
+					return nil
+				end
+				for _, piece in pieces:GetChildren() do
+					if piece:GetAttribute("Row") == row and piece:GetAttribute("Col") == col then
+						return piece
+					end
+				end
+				return nil
+			end,
 			gui = gui,
 			addLocal = function(instance)
 				instance.Parent = marks
@@ -719,6 +834,39 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 	end
 
+	-- Mouse over the board: tells the game's handler which cell is under the cursor (it
+	-- lifts the piece there, or shows a ghost of yours), with a soft tick on each new
+	-- one. Mouse only: a tap already selects, and the selected piece lifts too.
+	local hoverParams = RaycastParams.new()
+	hoverParams.FilterType = Enum.RaycastFilterType.Include
+	function updateHover()
+		if not (handler and handler.hover and board) then
+			return
+		end
+		local cell: BasePart? = nil
+		local cells = board:FindFirstChild("Cells")
+		if mousePosition and cells and UserInputService.MouseEnabled then
+			hoverParams.FilterDescendantsInstances = { cells }
+			local ray = camera:ScreenPointToRay(mousePosition.X, mousePosition.Y)
+			local hit = workspace:Raycast(ray.Origin, ray.Direction * 200, hoverParams)
+			if hit and hit.Instance:IsA("BasePart") then
+				cell = hit.Instance
+			end
+		end
+		if cell ~= hoveredCell then
+			hoveredCell = cell
+			if handler.hover(cell) == true and cell then
+				Audio.play("cardHover", { pitch = 0.9 + ((cell:GetAttribute("Col") or 4) :: number) * 0.03 })
+			end
+		end
+	end
+
+	UserInputService.InputChanged:Connect(function(input, processed)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			mousePosition = if processed then nil else Vector2.new(input.Position.X, input.Position.Y)
+		end
+	end)
+
 	-- After Roblox's camera scripts (which leave a Scriptable camera alone anyway).
 	local wasCinematic = false
 	RunService:BindToRenderStep("GameNightTableCamera", Enum.RenderPriority.Camera.Value + 1, function(dt)
@@ -740,6 +888,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		fadeSelf(true)
 		stepCamera(dt)
+		updateHover()
+		lifter.step(dt)
 	end)
 
 	-- Keep looking while the board streams in, then give up and stay in 2D.
@@ -768,36 +918,40 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 
-	-- Hover: handlers with a `hover(cell?)` hear which cell the mouse is over (ghost discs).
-	local hovered: Instance? = nil
-	UserInputService.InputChanged:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+	-- Watch-only scenes can still have spots you tap to look at (Property Party's spaces
+	-- open their deed card). The server marks them with a TapId attribute; the game's 2D
+	-- renderer gets the id through onSceneTap.
+	local sceneTap: ((any) -> ())? = nil
+	local function tapScene(input: InputObject)
+		if not (sceneTap and board) then
 			return
 		end
-		if not active or not handler or not handler.hover or not board then
+		local targets = {}
+		for _, part in board:GetDescendants() do
+			if part:IsA("BasePart") and part:GetAttribute("TapId") ~= nil then
+				table.insert(targets, part)
+			end
+		end
+		if #targets == 0 then
 			return
 		end
-		local cells = board:FindFirstChild("Cells")
-		local hit: Instance? = nil
-		if cells then
-			local params = RaycastParams.new()
-			params.FilterType = Enum.RaycastFilterType.Include
-			params.FilterDescendantsInstances = { cells }
-			local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
-			local result = workspace:Raycast(ray.Origin, ray.Direction * 200, params)
-			hit = result and result.Instance
+		raycastParams.FilterDescendantsInstances = targets
+		local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
+		local hit = workspace:Raycast(ray.Origin, ray.Direction * 200, raycastParams)
+		if hit and hit.Instance then
+			sceneTap(hit.Instance:GetAttribute("TapId"))
 		end
-		if hit ~= hovered then
-			hovered = hit
-			handler.hover(hit)
-		end
-	end)
+	end
 
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or not active or not handler or not board then
+		if processed or not active or not board then
 			return
 		end
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		if not handler then
+			tapScene(input)
 			return
 		end
 		local cells = board:FindFirstChild("Cells")
@@ -842,6 +996,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end,
 		isActive = function(): boolean
 			return active
+		end,
+		-- Called with a TapId when a tappable spot of a watch-only scene is tapped.
+		setSceneTap = function(fn: ((any) -> ())?)
+			sceneTap = fn
 		end,
 		-- A gesture played at a table (Avatars.onAction): if it's yours, the camera
 		-- turns and moves in a little toward it, more for big moments.

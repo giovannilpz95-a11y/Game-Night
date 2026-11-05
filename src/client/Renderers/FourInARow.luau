@@ -1,4 +1,5 @@
 -- Four in a Row board: hover a column to see a ghost disc, tap anywhere in it to drop.
+-- With Pop Out, tapping a column whose bottom disc is yours asks "Drop" or "Pop out".
 -- New discs fall into place with a bounce.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -34,6 +35,7 @@ end
 
 function FourInARow.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
+	local openChoice: (number) -> ()
 	local hoverColumn: number? = nil
 	local shown: { [number]: number } = {}
 
@@ -99,6 +101,53 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Pop Out: when a column could take a drop or a pop, ask which.
+	local choice: Frame? = nil
+	local function closeChoice()
+		if choice then
+			choice:Destroy()
+			choice = nil
+		end
+	end
+	openChoice = function(c: number)
+		closeChoice()
+		local frame = Kit.new("Frame", {
+			BackgroundColor3 = Theme.Panel,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new((c - 0.5) / COLS, 0, 1, 6),
+			Size = UDim2.fromOffset(190, 44),
+			ZIndex = 20,
+			Parent = board,
+		}, {
+			Kit.corner(10),
+			Kit.new("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				Padding = UDim.new(0, 6),
+			}),
+		})
+		for _, option in { { "Drop", false }, { "Pop out", true } } do
+			local b = Kit.new("TextButton", {
+				Text = option[1],
+				Font = Enum.Font.GothamBold,
+				TextSize = 16,
+				TextColor3 = Theme.Text,
+				BackgroundColor3 = if option[2] then Theme.Accent else Theme.PanelLight,
+				Size = UDim2.fromOffset(86, 34),
+				ZIndex = 21,
+				Parent = frame,
+			}, { Kit.corner(8) })
+			b.Activated:Connect(function()
+				closeChoice()
+				if myTurn() then
+					sendMove(if option[2] then { column = c, pop = true } else { column = c })
+				end
+			end)
+		end
+		choice = frame
+	end
+
 	-- Invisible full-height buttons, one per column, on top of the holes.
 	for c = 1, COLS do
 		local button = Kit.new("TextButton", {
@@ -121,7 +170,16 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 			end
 		end)
 		button.Activated:Connect(function()
-			if myTurn() and snapshot.view.heights[c] < ROWS then
+			if not myTurn() then
+				return
+			end
+			local canDrop = snapshot.view.heights[c] < ROWS
+			local canPop = Rules.canPop(snapshot.view, snapshot.yourSeat, c)
+			if canDrop and canPop then
+				openChoice(c)
+			elseif canPop then
+				sendMove({ column = c, pop = true })
+			elseif canDrop then
 				sendMove({ column = c })
 			end
 		end)
@@ -129,6 +187,9 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 
 	local function render()
 		local view = snapshot.view
+		if not myTurn() then
+			closeChoice()
+		end
 		local winning: { [number]: boolean } = {}
 		for _, cell in view.winningCells or {} do
 			winning[cell[1] * 10 + cell[2]] = true

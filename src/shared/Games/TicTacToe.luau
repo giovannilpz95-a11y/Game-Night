@@ -4,6 +4,8 @@
 -- can show it fading the turn before it goes.
 -- Board cells are numbered 1..9, left to right, top to bottom. 0 = empty, else the seat.
 -- House rule "misere" (Upside down): whoever makes three in a row loses.
+-- House rule "vanish" (on by default): off plays the classic game, where marks stay and a
+-- full board is a draw.
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
@@ -40,6 +42,7 @@ export type State = {
 	winningLine: { number }?,
 	isDraw: boolean, -- only when the move cap is hit
 	misere: boolean,
+	classic: boolean?,
 	botLevel: string,
 }
 
@@ -60,7 +63,7 @@ end
 local function refreshFading(state: State)
 	for seat = 1, 2 do
 		local placed = state.placed[seat]
-		state.fading[seat] = if #placed >= TicTacToe.maxMarks then placed[1] else 0
+		state.fading[seat] = if not state.classic and #placed >= TicTacToe.maxMarks then placed[1] else 0
 	end
 end
 
@@ -77,6 +80,7 @@ function TicTacToe.new(seatCount: number, options: any?, _rng: Random?): State
 		winningLine = nil,
 		isDraw = false,
 		misere = rules.misere == true,
+		classic = rules.vanish == false,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 end
@@ -128,7 +132,7 @@ end
 function TicTacToe.applyMove(state: State, seat: number, move: any)
 	local placed = state.placed[seat]
 	-- The oldest mark leaves first, so it can't count toward the new line.
-	if #placed >= TicTacToe.maxMarks then
+	if not state.classic and #placed >= TicTacToe.maxMarks then
 		state.board[table.remove(placed, 1) :: number] = 0
 	end
 	state.board[move.cell] = seat
@@ -141,7 +145,7 @@ function TicTacToe.applyMove(state: State, seat: number, move: any)
 		-- Upside down: the line's maker loses, so the other seat wins.
 		state.winner = if state.misere then other(winner) else winner
 		state.winningLine = line
-	elseif state.moves >= TicTacToe.maxMoves then
+	elseif state.moves >= TicTacToe.maxMoves or (state.classic and table.find(state.board, 0) == nil) then
 		state.isDraw = true
 	else
 		state.turn = other(seat)
@@ -153,7 +157,7 @@ function TicTacToe.getResult(state: State): GameModule.Result?
 		local reason = if state.misere then "Made three in a row (upside down rules)" else "Three in a row"
 		return { winners = { state.winner }, isDraw = false, reason = reason }
 	elseif state.isDraw then
-		return { winners = {}, isDraw = true, reason = `No winner after {TicTacToe.maxMoves} moves` }
+		return { winners = {}, isDraw = true, reason = if state.classic then "The board is full" else `No winner after {TicTacToe.maxMoves} moves` }
 	end
 	return nil
 end
@@ -179,6 +183,7 @@ local function simulate(state: State, seat: number, cell: number): State
 		winningLine = nil,
 		isDraw = false,
 		misere = state.misere,
+		classic = state.classic,
 	}
 	TicTacToe.applyMove(s :: any, seat, { cell = cell })
 	return s :: any

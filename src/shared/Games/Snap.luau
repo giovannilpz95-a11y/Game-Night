@@ -52,6 +52,7 @@ function Snap.new(seatCount: number, options: any?, rng: Random?)
 		winners = nil,
 		reason = nil,
 		color = rules.match == "color",
+		penalty = if rules.penalty == 2 then 2 else 1, -- house rule: cards a wrong snap costs
 		botLevel = (options and options.botLevel) or "medium",
 	}
 end
@@ -205,10 +206,17 @@ function Snap.applyMove(state, seat: number, move: any)
 			if not left then
 				return
 			end
-			local pile = if #state.down[seat] > 0 then state.down[seat] else state.up[seat]
-			local card = table.remove(pile, if pile == state.up[seat] then 1 else #pile) :: number
-			table.insert(state.down[left], 1, card)
-			state.lastAction = { kind = "badSnap", seat = seat, to = left }
+			local paid = 0
+			for _ = 1, state.penalty or 1 do
+				if total(state, seat) == 0 then
+					break
+				end
+				local pile = if #state.down[seat] > 0 then state.down[seat] else state.up[seat]
+				local card = table.remove(pile, if pile == state.up[seat] then 1 else #pile) :: number
+				table.insert(state.down[left], 1, card)
+				paid += 1
+			end
+			state.lastAction = { kind = "badSnap", seat = seat, to = left, count = paid }
 			if total(state, seat) == 0 and state.turn == seat then
 				state.turn = nextWithCards(state, seat) or seat
 			end

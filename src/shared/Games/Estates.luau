@@ -5,8 +5,8 @@
 -- card spaces, taxes and the 4 corners. All of it is data in Estates.spaces and the two
 -- card decks, so a themed board is a content swap. Names here are our own (Party Town).
 --
--- A turn: roll two dice and move. Land on an unowned deed: buy it, or it goes to auction
--- (everyone bids in turn). Land on someone's deed: pay rent. Doubles roll again; a third
+-- A turn: roll two dice and move. Land on an unowned deed: buy it, or it goes to a live
+-- auction (everyone bids at once against a countdown that restarts on every bid). Land on someone's deed: pay rent. Doubles roll again; a third
 -- double sends you to Jail. On your turn you may also build (full color set, build
 -- evenly, limited houses and hotels), sell buildings, mortgage, and offer trades.
 -- If you owe more cash than you have, raise it (sell, mortgage, trade) or go bankrupt.
@@ -23,6 +23,11 @@
 --   { kind = "build" | "sell" | "mortgage" | "unmortgage", pos = 1..40 }
 --   { kind = "offer", to = seat, give = Side, get = Side }  (Side = { props, cash, cards })
 --   { kind = "accept" }          { kind = "reject" }        (the trade's target answers)
+--   { kind = "counter", give = Side, get = Side }            (...or sends one back)
+--
+-- House rules (options.rules): fast (deal 2 deeds each, quicker auctions, fewer rounds),
+-- jackpot (taxes and fees pile up on Rest Stop for whoever lands there), doubleStart
+-- ($400 for landing right on Start), auctions (false: a declined deed stays unsold).
 
 local GameModule = require(script.Parent.Parent.GameModule)
 
@@ -40,6 +45,10 @@ Estates.HOTELS = 12
 Estates.JAIL_POS = 11
 Estates.GO_TO_JAIL_POS = 31
 Estates.TRADES_PER_TURN = 3
+Estates.COUNTERS_PER_TRADE = 2
+Estates.AUCTION_SECONDS = 8 -- the auction countdown, restarted by every bid
+Estates.FAST_AUCTION_SECONDS = 5
+Estates.FAST_DEEDS = 2 -- deeds dealt to each player in fast mode
 local MOVE_LIMIT = 4000 -- safety valve: a stuck game still ends
 
 -- Color groups, in board order.
@@ -221,6 +230,8 @@ local function money(n: number): string
 	return `${n}`
 end
 
+local toBank: (any, number) -> ()
+
 local function alive(state): { number }
 	local out = {}
 	for seat = 1, state.seatCount do
@@ -350,9 +361,12 @@ end
 function Estates.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 8, "Property Party needs 2-8 seats")
 	local random = rng or Random.new()
+	local opts = if options and type(options.rules) == "table" then options.rules else {}
+	-- House rule "startCash": 1000 / 1500 / 2000.
+	local startCash = if type(opts.startCash) == "number" and opts.startCash >= 500 and opts.startCash <= 5000 then math.floor(opts.startCash) else Estates.START_CASH
 	local players = {}
 	for seat = 1, seatCount do
-		players[seat] = { cash = Estates.START_CASH, pos = 1, inJail = false, jailTries = 0, bankrupt = false, cards = {} }
+		players[seat] = { cash = startCash, pos = 1, inJail = false, jailTries = 0, bankrupt = false, cards = {} }
 	end
 	local decks = {}
 	for key, deck in Estates.decks do
@@ -368,6 +382,43 @@ function Estates.new(seatCount: number, options: any?, rng: Random?)
 		houses[pos] = 0
 		mortgaged[pos] = false
 	end
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	local fast = rules.fast == true
+	if fast then
+		-- Deal deeds face down, Monopoly-speed-mode style, but never a whole color set.
+		local deck = {}
+		for pos = 1, #spaces do
+			if isDeed(pos) then
+				table.insert(deck, pos)
+			end
+		end
+		shuffle(deck, random)
+		for _ = 1, Estates.FAST_DEEDS do
+			for seat = 1, seatCount do
+				for i, pos in deck do
+					local space = spaces[pos]
+					local completes = false
+					if space.kind == "street" then
+						completes = true
+						for _, other in groupMembers[space.group :: number] do
+							if other ~= pos and owner[other] ~= seat then
+								completes = false
+							end
+						end
+					end
+					if not completes then
+						owner[pos] = seat
+						table.remove(deck, i)
+						break
+					end
+				end
+			end
+		end
+	end
+	local maxRounds = Estates.roundsFor(seatCount)
+	if fast then
+		maxRounds = math.max(10, math.floor(maxRounds * 0.7))
+	end
 	return {
 		seatCount = seatCount,
 		rng = random,
@@ -381,7 +432,14 @@ function Estates.new(seatCount: number, options: any?, rng: Random?)
 		decks = decks, -- [deck] = list of card indexes, top first
 		turn = 1,
 		round = 1,
-		maxRounds = Estates.roundsFor(seatCount),
+		maxRounds = maxRounds,
+		fast = fast,
+		jackpot = rules.jackpot == true,
+		doubleStart = rules.doubleStart == true,
+		auctions = rules.auctions ~= false,
+		jailRent = rules.jailRent ~= false, -- house rule: off means owners in Jail collect no rent
+		pot = 0, -- jackpot rule: cash waiting on Rest Stop
+		clock = 0, -- bumped whenever a phase clock (the auction countdown) restarts
 		phase = "turn", -- turn | buy | auction | debt | trade | over
 		canRoll = true,
 		doubles = 0,
@@ -523,6 +581,13 @@ local function goBankrupt(state, seat: number, creditor: number?)
 	end
 end
 
+-- Money paid to the bank: with the jackpot rule it waits on Rest Stop instead.
+function toBank(state, amount: number)
+	if state.jackpot then
+		state.pot += amount
+	end
+end
+
 -- Seat owes `amount` to `to` (a seat, or nil for the bank). Pays at once if it can;
 -- otherwise the turn waits in the "debt" phase (or they go bankrupt if they can't
 -- possibly raise it). Returns true if it was paid now.
@@ -536,6 +601,8 @@ local function charge(state, seat: number, amount: number, to: number?, why: str
 		p.cash -= amount
 		if to then
 			state.players[to].cash += amount
+		else
+			toBank(state, amount)
 		end
 		log(state, seat, paidText)
 		return true
@@ -569,8 +636,13 @@ local resolveSpace: (any, number, string?) -> ()
 local function moveTo(state, seat: number, target: number, special: string?)
 	local p = state.players[seat]
 	if target < p.pos or target == 1 and p.pos ~= 1 then
-		p.cash += Estates.PASS_START
-		log(state, seat, `passed Start and collected {money(Estates.PASS_START)}`)
+		if target == 1 and state.doubleStart then
+			p.cash += Estates.PASS_START * 2
+			log(state, seat, `landed right on Start and collected {money(Estates.PASS_START * 2)}`)
+		else
+			p.cash += Estates.PASS_START
+			log(state, seat, `passed Start and collected {money(Estates.PASS_START)}`)
+		end
 	end
 	p.pos = target
 	resolveSpace(state, seat, special)
@@ -637,6 +709,11 @@ function resolveSpace(state, seat: number, special: string?)
 	local space = spaces[pos]
 	if space.kind == "gotojail" then
 		sendToJail(state, seat)
+	elseif space.kind == "rest" and state.jackpot and state.pot > 0 then
+		local pot = state.pot
+		state.pot = 0
+		p.cash += pot
+		log(state, seat, `hit the Rest Stop jackpot: {money(pot)}!`)
 	elseif space.kind == "tax" then
 		charge(state, seat, space.amount :: number, nil, space.name, `paid {money(space.amount :: number)} {space.name}`)
 	elseif space.kind == "lucky" or space.kind == "mail" then
@@ -654,6 +731,8 @@ function resolveSpace(state, seat: number, special: string?)
 			local rent = Estates.rentFor(state, pos, diceTotal, special)
 			if state.mortgaged[pos] then
 				log(state, seat, `landed on {space.name} (mortgaged, no rent)`)
+			elseif state.jailRent == false and state.players[owner].inJail then
+				log(state, seat, `landed on {space.name} (the owner is in Jail, no rent)`)
 			elseif rent > 0 then
 				charge(state, seat, rent, owner, `rent for {space.name}`, `paid {money(rent)} rent for {space.name}`)
 			end
@@ -665,7 +744,7 @@ end
 
 local function startAuction(state, pos: number)
 	local bidders = {}
-	-- Everyone still playing bids, starting after the player who declined.
+	-- Everyone still playing may bid (the one who declined too), all at once.
 	local seat = state.turn
 	for _ = 1, state.seatCount do
 		seat = seat % state.seatCount + 1
@@ -674,7 +753,8 @@ local function startAuction(state, pos: number)
 		end
 	end
 	state.phase = "auction"
-	state.auction = { pos = pos, high = 0, leader = nil, bidders = bidders, index = 1 }
+	state.clock += 1
+	state.auction = { pos = pos, high = 0, leader = nil, bidders = bidders, bids = 0 }
 	log(state, state.turn, `put {spaces[pos].name} up for auction`)
 end
 
@@ -691,15 +771,23 @@ local function finishAuction(state)
 	end
 end
 
--- After a bid or pass: done when everyone else passed.
-local function stepAuction(state)
+-- Who can still bid: everyone in the auction except the current leader.
+local function challengers(state): { number }
 	local a = state.auction
-	if #a.bidders == 0 or (#a.bidders == 1 and a.leader == a.bidders[1]) then
-		finishAuction(state)
-		return
+	local out = {}
+	for _, seat in a.bidders do
+		if seat ~= a.leader then
+			table.insert(out, seat)
+		end
 	end
-	if a.index > #a.bidders then
-		a.index = 1
+	return out
+end
+
+-- After a bid or pass: done when nobody is left to challenge the leader. Otherwise the
+-- countdown (getTimer) ends it.
+local function stepAuction(state)
+	if #challengers(state) == 0 then
+		finishAuction(state)
 	end
 end
 
@@ -850,8 +938,7 @@ function Estates.getActiveSeats(state): { number }
 	if state.phase == "over" then
 		return {}
 	elseif state.phase == "auction" then
-		local a = state.auction
-		return { a.bidders[a.index] }
+		return challengers(state)
 	elseif state.phase == "trade" then
 		return { state.trade.to }
 	end
@@ -942,6 +1029,26 @@ function Estates.validateMove(state, seat: number, move: any): (boolean, string?
 	elseif kind == "bankrupt" then
 		if phase ~= "debt" then
 			return false, "You can only go bankrupt when you can't pay"
+		end
+		return true
+	elseif kind == "counter" then
+		if phase ~= "trade" then
+			return false, "There's no trade offer"
+		end
+		local t = state.trade
+		if (t.counters or 0) >= Estates.COUNTERS_PER_TRADE then
+			return false, "No more counter-offers on this trade"
+		end
+		local ok, err = checkSide(state, seat, move.give)
+		if ok then
+			ok, err = checkSide(state, t.from, move.get)
+		end
+		if not ok then
+			return false, err
+		end
+		local give, get = cleanSide(move.give), cleanSide(move.get)
+		if #give.props + #get.props + give.cash + get.cash + give.cards + get.cards == 0 then
+			return false, "Add something to the trade"
 		end
 		return true
 	elseif kind == "accept" or kind == "reject" then
@@ -1080,6 +1187,7 @@ function Estates.applyMove(state, seat: number, move: any)
 		advanceTurn(state)
 	elseif kind == "payJail" then
 		p.cash -= Estates.JAIL_FEE
+		toBank(state, Estates.JAIL_FEE)
 		p.inJail = false
 		p.jailTries = 0
 		log(state, seat, `paid {money(Estates.JAIL_FEE)} to leave Jail`)
@@ -1101,23 +1209,31 @@ function Estates.applyMove(state, seat: number, move: any)
 		state.phase = "turn"
 		log(state, seat, `bought {spaces[pos].name} for {money(spaces[pos].price :: number)}`)
 	elseif kind == "decline" then
-		startAuction(state, p.pos)
+		if state.auctions then
+			startAuction(state, p.pos)
+		else
+			state.phase = "turn"
+			log(state, seat, `passed on {spaces[p.pos].name}`)
+		end
 	elseif kind == "bid" then
 		local a = state.auction
 		a.high = move.amount
 		a.leader = seat
-		a.index += 1
+		a.bids += 1
+		state.clock += 1 -- the countdown starts over
 		log(state, seat, `bid {money(move.amount)}`)
 		stepAuction(state)
 	elseif kind == "pass" then
 		local a = state.auction
-		table.remove(a.bidders, a.index)
+		table.remove(a.bidders, table.find(a.bidders, seat) :: number)
 		stepAuction(state)
 	elseif kind == "payDebt" then
 		local d = state.debt
 		p.cash -= d.amount
 		if d.to then
 			state.players[d.to].cash += d.amount
+		else
+			toBank(state, d.amount)
 		end
 		state.phase = "turn"
 		log(state, seat, `paid {money(d.amount)} ({d.why})`)
@@ -1188,6 +1304,17 @@ function Estates.applyMove(state, seat: number, move: any)
 		state.phase = t.returnPhase
 		state.trade = nil
 		log(state, seat, "turned down the trade")
+	elseif kind == "counter" then
+		local t = state.trade
+		state.trade = {
+			from = seat,
+			to = t.from,
+			give = cleanSide(move.give),
+			get = cleanSide(move.get),
+			returnPhase = t.returnPhase,
+			counters = (t.counters or 0) + 1,
+		}
+		log(state, seat, "sent back a counter-offer")
 	end
 
 	if state.phase ~= "over" and state.moves >= MOVE_LIMIT then
@@ -1239,6 +1366,7 @@ function Estates.getView(state, seat: number?)
 			cash = p.cash,
 			pos = p.pos,
 			inJail = p.inJail,
+			jailTries = p.jailTries,
 			bankrupt = p.bankrupt,
 			cards = #p.cards,
 			worth = Estates.netWorth(state, s),
@@ -1251,7 +1379,7 @@ function Estates.getView(state, seat: number?)
 	local auction = nil
 	if state.auction then
 		local a = state.auction
-		auction = { pos = a.pos, high = a.high, leader = a.leader, bidders = table.clone(a.bidders), bidder = a.bidders[a.index] }
+		auction = { pos = a.pos, high = a.high, leader = a.leader, bidders = table.clone(a.bidders), bids = a.bids }
 	end
 	return {
 		phase = state.phase,
@@ -1271,9 +1399,33 @@ function Estates.getView(state, seat: number?)
 		trade = GameModule.copy(state.trade),
 		lastCard = GameModule.copy(state.lastCard),
 		tradesLeft = Estates.TRADES_PER_TURN - state.tradesThisTurn,
+		pot = state.pot,
+		fast = state.fast,
+		jackpot = state.jackpot,
+		auctions = state.auctions,
+		auctionSeconds = Estates.auctionSeconds(state),
 		log = GameModule.copy(state.log),
 		yourSeat = seat,
 	}
+end
+
+function Estates.auctionSeconds(state): number
+	return if state.fast then Estates.FAST_AUCTION_SECONDS else Estates.AUCTION_SECONDS
+end
+
+-- The auction countdown: restarts on every bid (a new clock id), and sells the deed to
+-- the leader when it runs out.
+function Estates.getTimer(state): { id: number, seconds: number }?
+	if state.phase == "auction" then
+		return { id = state.clock, seconds = Estates.auctionSeconds(state) }
+	end
+	return nil
+end
+
+function Estates.onTimeout(state)
+	if state.phase == "auction" then
+		finishAuction(state)
+	end
 end
 
 function Estates.getSeatInfo(state): { [number]: string }
@@ -1304,7 +1456,10 @@ function Estates.getScores(state): { [number]: number }
 end
 
 function Estates.getBotDelay(state, _seat: number, rng: Random): number
-	if state.phase == "auction" or state.phase == "trade" then
+	if state.phase == "auction" then
+		-- Bots take a moment so people can get their own bids in.
+		return 0.9 + rng:NextNumber() * (if state.fast then 1 else 1.8)
+	elseif state.phase == "trade" then
 		return 0.6 + rng:NextNumber() * 0.4
 	end
 	return 0.7 + rng:NextNumber() * 0.4
@@ -1555,7 +1710,7 @@ function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 		local factor = if level == "easy" then 0.6 + rng:NextNumber() * 0.6 elseif level == "hard" then 1.2 else 0.95
 		local step = if a.high < 100 then 10 else 20
 		local bid = a.high + step
-		if a.leader ~= seat and bid <= value * factor and p.cash - bid >= reserve // 2 then
+		if bid <= value * factor and p.cash - bid >= reserve // 2 then
 			return { kind = "bid", amount = bid }
 		end
 		return { kind = "pass" }

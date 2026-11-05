@@ -82,7 +82,10 @@ if (auditAt >= 0 || runAt >= 0) {
   const args = rest.map((a) => JSON.stringify(a)).join(', ')
   bundle += `\nreturn require(game:GetService("Tests")[${JSON.stringify(name)}])({${args}})\n`
 } else {
-  bundle += '\nreturn __runSpecs()\n'
+  // `--only <Spec>` runs one spec file (e.g. --only MoreHouseRules.spec).
+  const onlyAt = process.argv.indexOf('--only')
+  const only = onlyAt >= 0 ? JSON.stringify(process.argv[onlyAt + 1]) : 'nil'
+  bundle += `\nreturn __runSpecs(${only})\n`
 }
 
 const run = state.loadstring(bundle, 'bundle', false)

@@ -362,7 +362,9 @@ end
 function WordTiles.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 4, "Word Tiles needs 2-4 seats")
 	local random = rng or Random.new()
-	local boardKey = if options and options.board == "classic" then "classic" else WordTiles.defaultBoard
+	-- The board comes from options.board or the "board" house rule.
+	local wanted = options and (options.board or (type(options.rules) == "table" and options.rules.board))
+	local boardKey = if wanted == "classic" then "classic" else WordTiles.defaultBoard
 	local def = WordTiles.boards[boardKey]
 	local bag = bagFrom(def.bag)
 	shuffle(bag, random)

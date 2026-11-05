@@ -462,7 +462,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		elseif snapshot.result then
 			title.Text = "Battle over"
 		elseif mine then
-			title.Text = if view.turn == mine then "Your shot! Tap the enemy ocean" else `{nameOf(view.turn)} is aiming…`
+			title.Text = if view.turn == mine then (if view.salvo and (view.shotsLeft or 1) > 1 then `Salvo! {view.shotsLeft} shots left` else "Your shot! Tap the enemy ocean") else `{nameOf(view.turn)} is aiming…`
 		else
 			title.Text = `{nameOf(2)}'s ocean · {nameOf(view.turn)} to fire`
 		end
@@ -475,6 +475,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		statusLabel.Visible = not editing
 		statusLabel.Text = if setup then (if mine and view.ready[mine] then "Locked in" else "")
 			elseif snapshot.result then ""
+			elseif view.salvo then "Salvo: one shot per ship you have left"
 			elseif view.streak then "Hit again is on: a hit fires again"
 			else ""
 		turnButton.BackgroundColor3 = if selected then Theme.Accent else Theme.PanelLight

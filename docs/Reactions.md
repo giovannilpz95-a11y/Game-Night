@@ -27,7 +27,7 @@ The 😀 button in the match header opens a wheel. Players with a seat in a matc
 | Chess Club | `reactions_chess` | 1,500 Chess Coins or 150 Gems | 🏰 🤴 🐴, Check!, Checkmate!, Brilliant!!, Blunder?!, En passant! |
 | Spooky Pack (October) | `reactions_spooky` | 200 Gems | 🎃 👻 🦇 🕷️ 🧟 🧙 🍬, Trick or treat |
 | Winter Pack (Dec, Jan) | `reactions_winter` | 200 Gems | ⛄ ❄️ 🎄 🎁 🦌 🔔 ☕, Happy holidays |
-| Sweethearts (February) | `reactions_love` | 150 Gems | 💘 🥰 😘 💔 🌹 🫶 💌, BFF |
+| Sweethearts (February) | `reactions_love` | 150 Gems | 💘 🥰 😘 💔 🌹 💖 💌, BFF |
 | Summer Pack (Jun to Aug) | `reactions_summer` | 150 Gems | 🌞 🍉 🍦 🥵 🏄 🌴 🦩 🌊 |
 | Every Gem pack at once | `Economy.ReactionBundle` | 499 R$ (developer product) | the 13 Gem packs, 104 reactions (skips ones you own) |
 

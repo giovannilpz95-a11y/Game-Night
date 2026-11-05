@@ -59,6 +59,48 @@ return function(T)
 		end
 	end
 
+	-- Every house rule turned away from its default (two mixes: each rule's first other
+	-- choice, then its last), so bots finish cleanly under the host's rules too.
+	for _, entry in GameCatalog.entries do
+		if not entry.module or #HouseRules.list(entry) == 0 then
+			continue
+		end
+		local rules = require(Shared.Games[entry.module])
+		for mix = 1, 2 do
+			local picks = {}
+			for _, rule in HouseRules.list(entry) do
+				local n = #rule.choices
+				local pick = if mix == 1 then rule.default % n + 1 else (if rule.default == n then n - 1 else n)
+				if rule.key ~= HouseRules.TurnTimer.key then
+					picks[rule.key] = pick
+				end
+			end
+			local ruleValues = HouseRules.resolve(entry, picks)
+			for _, seats in { entry.minSeats, entry.maxSeats } do
+				T.test(`{entry.module} {seats} seats plays cleanly with house rules mix {mix}`, function()
+					if rules.useDictionary then
+						rules.useDictionary(Dictionary.get)
+					end
+					local search = SEARCH[entry.module]
+					local r = BotSim(rules, {
+						seats = seats,
+						levels = "medium",
+						seed = mix * 53 + seats,
+						options = { rules = ruleValues },
+						maxEvents = if search then 6 else nil,
+					})
+					T.eq(#r.errors, 0, `error: {r.errors[1]}`)
+					T.eq(r.rejected, 0, `bot move rejected: {r.rejectReasons[1]}`)
+					if search then
+						T.ok(r.result or (r.stuck and string.find(r.stuck, "no result after", 1, true)), r.stuck)
+					else
+						T.ok(r.result, r.stuck)
+					end
+				end)
+			end
+		end
+	end
+
 	-- Hard bots should clearly beat easy ones where skill matters. Seeds are fixed, so a
 	-- drop here means a bot change made hard play worse.
 	local function hardVsEasy(module: string, seats: number, games: number): (number, number)

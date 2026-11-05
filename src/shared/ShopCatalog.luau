@@ -114,6 +114,22 @@ local items: { Item } = {
 	{ id = "win_showstopper", name = "Showstopper", shop = "hub", slot = "victory", tier = "Legendary", notForSale = true, season = 1 },
 	{ id = "reactions_premiere", name = "Premiere Night", shop = "hub", slot = "reactions", tier = "Epic", notForSale = true, season = 1 },
 
+	-- Game Night Pass, Season 2 "Snowed In" (shared/Season). Only the pass gives these.
+	-- The card backs are hub items so they'd work at every card table once card backs are drawn.
+	{ id = "season2_title_snowedin", name = "Title: Snowed In", shop = "hub", slot = "title", tier = "Common", notForSale = true, season = 2 },
+	{ id = "season2_trail_snowfall", name = "Snowfall Trail", shop = "hub", slot = "trail", tier = "Rare", notForSale = true, season = 2 },
+	{ id = "season2_cards_frost", name = "Frost Card Backs", shop = "hub", slot = "cards", tier = "Rare", notForSale = true, season = 2 },
+	{ id = "season2_title_blizzard", name = "Title: Blizzard Boss", shop = "hub", slot = "title", tier = "Epic", notForSale = true, season = 2 },
+	{ id = "season2_chair_rocker", name = "Fireside Rocker", shop = "hub", slot = "chair", tier = "Epic", notForSale = true, season = 2 },
+	{ id = "season2_title_cocoa", name = "Title: Cocoa Connoisseur", shop = "hub", slot = "title", tier = "Rare", notForSale = true, season = 2 },
+	{ id = "season2_cards_aurora", name = "Aurora Card Backs", shop = "hub", slot = "cards", tier = "Epic", notForSale = true, season = 2 },
+	{ id = "season2_nameplate_icicle", name = "Icicle Nameplate", shop = "hub", slot = "nameplate", tier = "Epic", notForSale = true, season = 2 },
+	{ id = "season2_table_lodge", name = "Ski Lodge Table", shop = "hub", slot = "theme", tier = "Legendary", notForSale = true, season = 2 },
+	{ id = "pose_snowball", name = "Snowball Fight", shop = "hub", slot = "pose", tier = "Rare", notForSale = true, season = 2 },
+	{ id = "pose_warmhands", name = "Warm Hands", shop = "hub", slot = "pose", tier = "Epic", notForSale = true, season = 2 },
+	{ id = "win_iceskate", name = "Ice Skater", shop = "hub", slot = "victory", tier = "Legendary", notForSale = true, season = 2 },
+	{ id = "reactions_snowedin", name = "Snowed In", shop = "hub", slot = "reactions", tier = "Epic", notForSale = true, season = 2 },
+
 	-- Chess shop
 	{ id = "chess_walnut_board", name = "Walnut Board", shop = "chess", slot = "board", tier = "Common", coins = 400 },
 	{ id = "chess_marble_pieces", name = "Marble Pieces", shop = "chess", slot = "pieces", tier = "Rare", coins = 1500 },

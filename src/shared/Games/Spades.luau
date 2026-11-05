@@ -12,6 +12,9 @@
 -- First team to the target (300 by default) wins; a team at -200 or below loses. After
 -- MAX_ROUNDS the higher score wins.
 --
+-- House rules (options.rules): nilBids (default on; off means every bid is 1-13), bags
+-- (default on: every 10 bags costs 100; off: bags are just +1 each).
+--
 -- Moves: { kind = "bid", bid = 0..13 }  (bid phase, in turn)
 --        { kind = "play", card = id }   (your turn)
 
@@ -93,6 +96,8 @@ function Spades.new(seatCount: number, options: any?, rng: Random?)
 		phaseId = 0,
 		over = false,
 		target = if type(rules.target) == "number" and rules.target > 0 then rules.target else Spades.TARGET,
+		allowNil = rules.nilBids ~= false,
+		bagPenalty = rules.bags ~= false,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	deal(state)
@@ -131,7 +136,7 @@ function Spades.getLegalMoves(state, seat: number): { any }
 		return moves
 	end
 	if state.phase == "bid" then
-		for bid = 0, 13 do
+		for bid = if state.allowNil == false then 1 else 0, 13 do
 			table.insert(moves, { kind = "bid", bid = bid })
 		end
 	elseif state.phase == "play" then
@@ -159,6 +164,9 @@ function Spades.validateMove(state, seat: number, move: any): (boolean, string?)
 		local bid = move.bid
 		if type(bid) ~= "number" or bid ~= bid or bid % 1 ~= 0 or bid < 0 or bid > 13 then
 			return false, "Bid 0 to 13"
+		end
+		if bid == 0 and state.allowNil == false then
+			return false, "Nil bids are off at this table"
 		end
 		return true
 	elseif move.kind == "play" then
@@ -210,7 +218,7 @@ local function endRound(state)
 		state.scores[team] += s.points
 		state.bags[team] += s.bags
 		s.bagPenalty = 0
-		while state.bags[team] >= 10 do
+		while state.bagPenalty ~= false and state.bags[team] >= 10 do
 			state.bags[team] -= 10
 			state.scores[team] -= 100
 			s.bagPenalty += 100
@@ -319,6 +327,7 @@ function Spades.getView(state, seat: number?)
 		lastTrick = GameModule.copy(state.lastTrick),
 		scores = table.clone(state.scores),
 		bags = table.clone(state.bags),
+		allowNil = state.allowNil ~= false,
 		roundSummary = GameModule.copy(state.roundSummary),
 		round = state.round,
 		target = state.target,
@@ -492,7 +501,11 @@ function Spades.chooseBotMove(state, seat: number, rng: Random): any?
 		return nil
 	end
 	if state.phase == "bid" then
-		return { kind = "bid", bid = chooseBid(state, seat, rng) }
+		local b = chooseBid(state, seat, rng)
+		if b == 0 and state.allowNil == false then
+			b = 1
+		end
+		return { kind = "bid", bid = b }
 	elseif state.phase == "play" then
 		return { kind = "play", card = choosePlay(state, seat, rng) }
 	end

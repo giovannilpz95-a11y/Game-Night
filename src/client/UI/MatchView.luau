@@ -561,6 +561,13 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	---------------------------------------------------------------- state
 	local renderer: any = nil
 	local rendererGameId: string? = nil
+	-- Tapping a spot on a watch-only table (a Property Party space) goes to the game's
+	-- 2D renderer, which shows what it is.
+	table3D.setSceneTap(function(id: any)
+		if renderer and renderer.tapTable then
+			renderer.tapTable(id)
+		end
+	end)
 	local wasMyTurn = false
 	local timerFor: number? = nil -- turnEndsAt the timer bars are measuring
 	local timerTotal = 1

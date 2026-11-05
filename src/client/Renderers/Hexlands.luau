@@ -104,7 +104,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		local victims = {}
 		for _, v in Rules.hexVertices[h] do
 			local owner = view.owner[v]
-			if owner ~= 0 and owner ~= me and not table.find(victims, owner) and view.players[owner].cards > 0 then
+			if owner ~= 0 and owner ~= me and not table.find(victims, owner) and view.players[owner].cards > 0
+				and not (view.friendly and (view.players[owner].points or 0) <= 2) then
 				table.insert(victims, owner)
 			end
 		end

@@ -132,7 +132,7 @@ local KINDS: { [string]: { [string]: string } } = {
 	Estates = {
 		roll = "dice", buy = "draw", build = "place", sell = "draw", bid = "knock", payJail = "card",
 		payDebt = "card", useCard = "card", accept = "thumbsUp", reject = "pass", decline = "pass",
-		offer = "point", mortgage = "card", unmortgage = "card", bankrupt = "groan",
+		offer = "point", counter = "point", mortgage = "card", unmortgage = "card", bankrupt = "groan",
 	},
 	Conquest = { place = "place", attack = "dice", occupy = "place", fortify = "place", trade = "card" },
 	Hexlands = {

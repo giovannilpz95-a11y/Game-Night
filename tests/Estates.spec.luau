@@ -133,22 +133,39 @@ return function(T)
 		T.eq(s.players[1].cash, 1500 + 200 - 200)
 	end)
 
-	T.test("declining starts an auction; the high bid wins", function()
+	T.test("declining starts a live auction; the high bid wins", function()
 		local s = newGame(3, { 1, 2 })
 		play(s, 1, { kind = "roll" })
 		play(s, 1, { kind = "decline" })
 		T.eq(s.phase, "auction")
-		T.eq(Estates.getActiveSeats(s)[1], 2, "bidding starts after the player who declined")
+		T.eq(#Estates.getActiveSeats(s), 3, "everyone can bid at once, the decliner too")
+		local clock = (Estates.getTimer(s) :: any).id
 		rejects(s, 2, { kind = "bid", amount = 0 })
 		rejects(s, 2, { kind = "bid", amount = 99999 }, "more than their cash")
 		play(s, 2, { kind = "bid", amount = 20 })
+		T.ok((Estates.getTimer(s) :: any).id ~= clock, "a bid restarts the countdown")
+		rejects(s, 2, { kind = "bid", amount = 30 }, "the leader can't outbid themselves")
 		rejects(s, 3, { kind = "bid", amount = 20 }, "must beat the high bid")
 		play(s, 3, { kind = "bid", amount = 30 })
 		play(s, 1, { kind = "pass" })
+		rejects(s, 1, { kind = "bid", amount = 40 }, "passed is out")
 		play(s, 2, { kind = "pass" })
 		T.eq(s.phase, "turn")
 		T.eq(s.owner[4], 3)
 		T.eq(s.players[3].cash, 1470)
+	end)
+
+	T.test("the auction countdown sells to the leader", function()
+		local s = newGame(3, { 1, 2 })
+		play(s, 1, { kind = "roll" })
+		play(s, 1, { kind = "decline" })
+		play(s, 1, { kind = "bid", amount = 15 })
+		T.eq(Estates.getTimer(s).seconds, Estates.AUCTION_SECONDS)
+		Estates.onTimeout(s)
+		T.eq(s.phase, "turn")
+		T.eq(s.owner[4], 1)
+		T.eq(s.players[1].cash, 1485)
+		T.eq(Estates.getTimer(s), nil, "no clock outside auctions")
 	end)
 
 	T.test("nobody bidding leaves the deed with the bank", function()
@@ -159,6 +176,57 @@ return function(T)
 		play(s, 1, { kind = "pass" })
 		T.eq(s.owner[4], nil)
 		T.eq(s.phase, "turn")
+	end)
+
+	T.test("house rule: no auctions leaves a declined deed unsold", function()
+		local s = Estates.new(2, { rules = { auctions = false } }, T.Random.new(1))
+		s.rng = scripted({ 1, 2 })
+		play(s, 1, { kind = "roll" })
+		play(s, 1, { kind = "decline" })
+		T.eq(s.phase, "turn")
+		T.eq(s.owner[4], nil)
+	end)
+
+	T.test("house rule: fast mode deals deeds but never a whole set", function()
+		for seed = 1, 20 do
+			local s = Estates.new(4, { rules = { fast = true } }, T.Random.new(seed))
+			for seat = 1, 4 do
+				local n = 0
+				for _, who in s.owner do
+					if who == seat then
+						n += 1
+					end
+				end
+				T.eq(n, Estates.FAST_DEEDS)
+				for g = 1, #Estates.groups do
+					T.ok(not Estates.ownsGroup(s, seat, g), "no free color set")
+				end
+			end
+			T.ok(s.maxRounds < Estates.roundsFor(4))
+			T.eq(Estates.auctionSeconds(s), Estates.FAST_AUCTION_SECONDS)
+		end
+	end)
+
+	T.test("house rule: jackpot collects taxes and fees on Rest Stop", function()
+		local s = Estates.new(2, { rules = { jackpot = true } }, T.Random.new(1))
+		s.rng = scripted({ 1, 3, 6, 5 })
+		play(s, 1, { kind = "roll" }) -- City Tax 200
+		T.eq(s.pot, 200)
+		play(s, 1, { kind = "endTurn" })
+		s.players[2].pos = 10
+		play(s, 2, { kind = "roll" }) -- 10 + 11 = Rest Stop
+		T.eq(s.players[2].pos, 21)
+		T.eq(s.pot, 0)
+		T.eq(s.players[2].cash, 1500 + 200)
+	end)
+
+	T.test("house rule: landing right on Start pays double", function()
+		local s = Estates.new(2, { rules = { doubleStart = true } }, T.Random.new(1))
+		s.rng = scripted({ 1, 2 })
+		s.players[1].pos = 38
+		play(s, 1, { kind = "roll" })
+		T.eq(s.players[1].pos, 1)
+		T.eq(s.players[1].cash, 1500 + 400)
 	end)
 
 	T.test("building needs the full set and goes evenly", function()
@@ -357,6 +425,26 @@ return function(T)
 		-- Streets in a color with buildings can't be traded.
 		play(s, 1, { kind = "build", pos = maple })
 		rejects(s, 1, { kind = "offer", to = 3, give = { props = { willow } }, get = { cash = 10 } })
+	end)
+
+	T.test("trades: a counter-offer goes back to the one who asked", function()
+		local s = newGame(2)
+		local maple, birch = posOf("Maple Row"), posOf("Birch Avenue")
+		s.owner[maple] = 1
+		s.owner[birch] = 2
+		play(s, 1, { kind = "offer", to = 2, give = { cash = 100 }, get = { props = { birch } } })
+		rejects(s, 2, { kind = "counter", give = { props = { maple } }, get = {} }, "can't give what isn't yours")
+		rejects(s, 2, { kind = "counter", give = {}, get = {} }, "empty")
+		play(s, 2, { kind = "counter", give = { props = { birch } }, get = { cash = 250 } })
+		T.eq(Estates.getActiveSeats(s)[1], 1)
+		T.eq(s.trade.from, 2)
+		play(s, 1, { kind = "counter", give = { cash = 180 }, get = { props = { birch } } })
+		rejects(s, 2, { kind = "counter", give = { props = { birch } }, get = { cash = 200 } }, "counters run out")
+		play(s, 2, { kind = "accept" })
+		T.eq(s.owner[birch], 1)
+		T.eq(s.players[1].cash, 1320)
+		T.eq(s.phase, "turn")
+		T.eq(s.turn, 1)
 	end)
 
 	T.test("bots turn down trades that hand over a color set", function()

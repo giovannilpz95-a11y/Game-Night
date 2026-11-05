@@ -13,6 +13,8 @@
 	House rules (options.rules):
 	  size    10 (classic: 5 ships) or 8 (quick: 4 ships, no Carrier)
 	  streak  a hit lets you fire again (off by default)
+	  salvo   each turn you fire one shot for every ship you still have afloat (one at a
+	          time, so you see each result)
 
 	Moves
 	  setup:  { kind = "place", ship = id, row, col, dir = "h" | "v" }  move/turn one ship
@@ -116,6 +118,7 @@ local function readRules(options: any?)
 	return {
 		size = if rules.size == 8 then 8 else 10,
 		streak = rules.streak == true,
+		salvo = rules.salvo == true,
 	}
 end
 
@@ -135,6 +138,8 @@ function SeaStrike.new(seatCount: number, options: any?, rng: Random?)
 		botLevel = (options and options.botLevel) or "medium",
 		size = r.size,
 		streak = r.streak,
+		salvo = r.salvo,
+		shotsLeft = 1, -- shots left this turn (more than 1 only with salvo)
 		shipDefs = defs,
 		phase = "setup",
 		setupId = 1,
@@ -246,9 +251,25 @@ function SeaStrike.validateMove(state, seat: number, move: any): (boolean, strin
 	return true
 end
 
+local function fleetLeft(fleet: { [string]: any }): number
+	local n = 0
+	for _, ship in fleet do
+		if not ship.sunk then
+			n += 1
+		end
+	end
+	return n
+end
+
+-- Shots `seat` gets this turn: 1, or (salvo) one per ship still afloat.
+local function shotsFor(state, seat: number): number
+	return if state.salvo then math.max(1, fleetLeft(state.fleets[seat])) else 1
+end
+
 local function startBattle(state)
 	state.phase = "battle"
 	state.turn = 1
+	state.shotsLeft = shotsFor(state, 1)
 end
 
 local function shipAt(fleet: { [string]: any }, row: number, col: number): any?
@@ -260,16 +281,6 @@ local function shipAt(fleet: { [string]: any }, row: number, col: number): any?
 		end
 	end
 	return nil
-end
-
-local function fleetLeft(fleet: { [string]: any }): number
-	local n = 0
-	for _, ship in fleet do
-		if not ship.sunk then
-			n += 1
-		end
-	end
-	return n
 end
 
 function SeaStrike.applyMove(state, seat: number, move: any)
@@ -314,8 +325,14 @@ function SeaStrike.applyMove(state, seat: number, move: any)
 		state.shots[seat][i] = MISS
 	end
 	state.lastShot = shot
-	if state.phase == "battle" and not (target and state.streak) then
-		state.turn = enemy
+	if state.phase == "battle" then
+		if not (target and state.streak) then
+			state.shotsLeft = (state.shotsLeft or 1) - 1
+		end
+		if state.shotsLeft <= 0 then
+			state.turn = enemy
+			state.shotsLeft = shotsFor(state, enemy)
+		end
 	end
 end
 
@@ -367,6 +384,8 @@ function SeaStrike.getView(state, seat: number?)
 		turn = if state.phase == "battle" then state.turn else nil,
 		ready = table.clone(state.ready),
 		streak = state.streak,
+		salvo = state.salvo,
+		shotsLeft = if state.phase == "battle" then state.shotsLeft else nil,
 		shipDefs = GameModule.copy(state.shipDefs),
 		boards = boards,
 		lastShot = if state.lastShot then table.clone(state.lastShot) else nil,

@@ -27,7 +27,8 @@
 -- reveal rule; every role shows when the game ends.
 --
 -- House rules (options.rules): wolves = 0 (auto) | 1 | 2, talkSeconds = 30 | 60 | 90,
--- reveal = true | false, guardian = true | false (both on by default),
+-- reveal = true | false, guardian = true | false (both on by default), seer = true | false
+-- (on by default), quietNight (the wolves catch nobody on the first night),
 -- hunter / witch = 0 (off) | 6 | 7 (from that many players) | 5 (always). Defaults: the
 -- Hunter from 6 players, the Witch from 7.
 --
@@ -118,7 +119,9 @@ function Werewolf.new(seatCount: number, options: any?, rng: Random?)
 	for _ = 1, wolves do
 		table.insert(pool, "wolf")
 	end
-	table.insert(pool, "seer")
+	if rules.seer ~= false then
+		table.insert(pool, "seer")
+	end
 	if withGuardian then
 		table.insert(pool, "guardian")
 	end
@@ -158,6 +161,7 @@ function Werewolf.new(seatCount: number, options: any?, rng: Random?)
 		lastShot = nil, -- { hunter = seat, target = seat? }
 		lastWords = nil, -- { seat, text?, day }
 		reveal = rules.reveal ~= false,
+		quietNight = rules.quietNight == true,
 		talkSeconds = talk,
 		phase = "roles",
 		day = 0, -- the first night is night 1; the day after it is day 1
@@ -323,7 +327,8 @@ local function resolveNight(state)
 			witchPick = { seat = seat, target = state.nightPicks[seat], potion = state.nightPotion }
 		end
 	end
-	if target == nil then
+	local quiet = state.quietNight and state.day == 1 -- house rule: nobody is caught on night 1
+	if target == nil and not quiet then
 		-- No wolf picked in time: the pack picks someone anyway, so the game moves on.
 		local options = {}
 		for t = 1, state.seatCount do
@@ -364,7 +369,9 @@ local function resolveNight(state)
 			GameModule.addStat(state, witchPick.seat, "saves")
 		end
 	end
-	if target and target ~= shield and not healed then
+	if quiet then
+		state.lastNight = { caught = nil, saved = false }
+	elseif target and target ~= shield and not healed then
 		knockOut(state, target, "night")
 		state.lastNight = { caught = target, saved = false }
 	else

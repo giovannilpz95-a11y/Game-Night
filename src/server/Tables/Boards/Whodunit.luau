@@ -176,7 +176,10 @@ function Whodunit.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 	Models.block(model, "Base", Vector3.new(SIZE + 0.4, 0.2, SIZE + 0.4), boardCF * CFrame.new(0, 0.1, 0), Color3.fromRGB(90, 64, 48), Enum.Material.Wood)
 	for room, name in Rules.theme.rooms do
 		local floor = roomCF(boardCF, room, FLOOR_Y)
-		Models.block(model, name, Vector3.new(CELL * 0.94, 0.05, CELL * 0.94), roomCF(boardCF, room, 0.225), FLOORS[room] or Color3.new(1, 1, 1))
+		local floorPart = Models.block(model, name, Vector3.new(CELL * 0.94, 0.05, CELL * 0.94), roomCF(boardCF, room, 0.225), FLOORS[room] or Color3.new(1, 1, 1))
+		-- Tap a room in Table view to walk there (Table3D/Controller -> renderer.tapTable).
+		floorPart.CanQuery = true
+		floorPart:SetAttribute("TapId", room)
 		-- Low walls on three sides, open toward seat 1 so the room can be seen into.
 		local wall = CELL * 0.94
 		Models.block(model, "Wall", Vector3.new(wall, 0.3, 0.06), floor * CFrame.new(0, 0.15, -wall / 2), WALL)
@@ -187,9 +190,12 @@ function Whodunit.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 		if furnish then
 			furnish(model, floor * CFrame.new(0, 0, -CELL * 0.3))
 		end
-		-- Room name floating over the room, facing each viewer, so walls and furniture
-		-- never hide it.
-		Scene.floatText(model, floor * CFrame.new(0, 0.9, -CELL * 0.3), CELL * 0.9, CELL * 0.22, name, { TextColor3 = Color3.fromRGB(60, 44, 34) })
+		-- Room name on a nameplate laid on the floor along the open front edge, so it stays
+		-- in its room from every seat (a floating label drifted off it in perspective).
+		-- The plate turns to face each viewer (Scene.flatGui).
+		local plate = floor * CFrame.new(0, 0.015, CELL * 0.37)
+		Models.block(model, "Nameplate", Vector3.new(CELL * 0.86, 0.02, CELL * 0.17), plate, Color3.fromRGB(60, 44, 34))
+		Scene.flatText(model, plate * CFrame.new(0, 0.02, 0), CELL * 0.84, CELL * 0.15, name, { TextColor3 = Color3.fromRGB(255, 244, 220) })
 	end
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent

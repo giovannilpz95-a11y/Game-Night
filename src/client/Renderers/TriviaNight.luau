@@ -233,7 +233,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 				local mine = ""
 				if isMine and snapshot.yourSeat then
 					local gained = view.lastPoints and view.lastPoints[snapshot.yourSeat] or 0
-					mine = (if gained > 0 then `+{gained}` else "Wrong") .. "   "
+					mine = (if gained > 0 then `+{gained}` elseif gained < 0 then `Wrong {gained}` else "Wrong") .. "   "
 				end
 				pointsLabels[i].Text = `{mine}👤 {picked}`
 			end

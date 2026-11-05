@@ -9,7 +9,7 @@ GameArt.categories = {
 	{ key = "Quick", name = "Quick", icon = "⚡", rgb = { 92, 200, 255 } },
 	{ key = "Cards", name = "Cards", icon = "🃏", rgb = { 240, 92, 110 } },
 	{ key = "Board", name = "Board", icon = "🎲", rgb = { 96, 206, 128 } },
-	{ key = "Strategy", name = "Strategy", icon = "♟️", rgb = { 168, 128, 255 } },
+	{ key = "Strategy", name = "Strategy", icon = "🧠", rgb = { 168, 128, 255 } },
 	{ key = "Word", name = "Word", icon = "🔤", rgb = { 255, 176, 72 } },
 	{ key = "Party", name = "Party", icon = "🎉", rgb = { 255, 120, 200 } },
 }

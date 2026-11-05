@@ -46,6 +46,7 @@ local entries: { Entry } = {
 		minMoves = 5,
 		houseRules = {
 			{ key = "misere", name = "Upside down", hint = "Making three in a row loses.", choices = Toggle, default = 1 },
+			{ key = "vanish", name = "Vanishing marks", hint = "Off: the classic game. Marks stay and a full board is a draw.", choices = Toggle, default = 2 },
 		},
 	},
 	{
@@ -64,6 +65,8 @@ local entries: { Entry } = {
 		minMoves = 10,
 		houseRules = {
 			{ key = "kingOfTheHill", name = "King of the hill", hint = "Also win by walking your king to one of the four center squares.", choices = Toggle, default = 1 },
+			{ key = "threeCheck", name = "Three-check", hint = "Also win by putting the other king in check three times.", choices = Toggle, default = 1 },
+			{ key = "shuffle", name = "Shuffle start", hint = "The back-row pieces start in a random order (the same for both sides). No castling.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -82,6 +85,8 @@ local entries: { Entry } = {
 		minMoves = 16,
 		houseRules = {
 			{ key = "forcedCaptures", name = "Must jump", hint = "Off: jumping is a choice, not a must.", choices = Toggle, default = 2 },
+			{ key = "flyingKings", name = "Flying kings", hint = "Kings slide any distance and can jump from far away, like international draughts.", choices = Toggle, default = 1 },
+			{ key = "backCaptures", name = "Men jump backward", hint = "Plain pieces may capture backward too (they still move forward).", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -98,6 +103,9 @@ local entries: { Entry } = {
 		typicalMinutes = 3,
 		minMinutes = 0.25,
 		minMoves = 7,
+		houseRules = {
+			{ key = "popOut", name = "Pop Out", hint = "On your turn you may pull one of your own discs out of the bottom instead of dropping one.", choices = Toggle, default = 1 },
+		},
 	},
 	{
 		id = "ColorClash",
@@ -196,6 +204,9 @@ local entries: { Entry } = {
 				choices = { { label = "10 s", value = 10 }, { label = "15 s", value = 15 }, { label = "25 s", value = 25 } },
 				default = 2,
 			},
+			{ key = "speed", name = "Speed points", hint = "Faster right answers score more. Off: every right answer is worth 1000.", choices = Toggle, default = 2 },
+			{ key = "streaks", name = "Streak bonus", hint = "Extra points for right answers in a row.", choices = Toggle, default = 2 },
+			{ key = "wrongPenalty", name = "Wrong answers cost", hint = "A wrong answer loses 250 points, so guessing is risky.", choices = Toggle, default = 1 },
 			{ key = "categoryVote", name = "Category vote", hint = "Before every 3 questions, everyone votes on the category.", choices = Toggle, default = 2 },
 		},
 		custom = "quiz",
@@ -230,6 +241,8 @@ local entries: { Entry } = {
 			},
 			{ key = "reveal", name = "Show roles when out", hint = "Off: nobody learns a role until the game ends.", choices = Toggle, default = 2 },
 			{ key = "guardian", name = "Guardian", hint = "A villager who shields one player each night.", choices = Toggle, default = 2 },
+			{ key = "seer", name = "Seer", hint = "A villager who checks one player each night.", choices = Toggle, default = 2 },
+			{ key = "quietNight", name = "Quiet first night", hint = "The wolves catch nobody on the first night, so everyone gets a day to talk.", choices = Toggle, default = 1 },
 			{
 				key = "hunter",
 				name = "Hunter",
@@ -295,6 +308,7 @@ local entries: { Entry } = {
 				default = 1,
 			},
 			{ key = "streak", name = "Hit again", hint = "A hit lets you fire again.", choices = Toggle, default = 1 },
+			{ key = "salvo", name = "Salvo", hint = "Each turn you fire one shot for every ship you still have afloat.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -311,6 +325,10 @@ local entries: { Entry } = {
 		typicalMinutes = 10,
 		minMinutes = 1,
 		minMoves = 8,
+		houseRules = {
+			{ key = "anyRoom", name = "Walk anywhere", hint = "Move to any room on your turn, not just the next one.", choices = Toggle, default = 1 },
+			{ key = "openShow", name = "Show cards to all", hint = "A card shown to answer a suggestion is shown to everyone. Easier, faster games.", choices = Toggle, default = 1 },
+		},
 	},
 	{
 		id = "Estates",
@@ -326,6 +344,19 @@ local entries: { Entry } = {
 		typicalMinutes = 25,
 		minMinutes = 3,
 		minMoves = 30,
+		houseRules = {
+			{ key = "fast", name = "Fast mode", hint = "Everyone starts with 2 random deeds, auctions are quicker and the game is shorter.", choices = Toggle, default = 1 },
+			{ key = "auctions", name = "Auctions", hint = "A deed nobody buys goes to a live auction. Off: it stays with the bank.", choices = Toggle, default = 2 },
+			{ key = "jackpot", name = "Rest Stop jackpot", hint = "Taxes and fees pile up on Rest Stop. Land there to take it all.", choices = Toggle, default = 1 },
+			{ key = "doubleStart", name = "$400 on Start", hint = "Landing right on Start pays double.", choices = Toggle, default = 1 },
+			{
+				key = "startCash",
+				name = "Starting cash",
+				choices = { { label = "$1,000", value = 1000 }, { label = "$1,500", value = 1500 }, { label = "$2,000", value = 2000 } },
+				default = 2,
+			},
+			{ key = "jailRent", name = "Rent from Jail", hint = "Off: owners sitting in Jail can't collect rent.", choices = Toggle, default = 2 },
+		},
 	},
 	{
 		id = "WordTiles",
@@ -341,6 +372,15 @@ local entries: { Entry } = {
 		typicalMinutes = 15,
 		minMinutes = 0.5, -- bot turns are quick, so gate on moves rather than time
 		minMoves = 12,
+		houseRules = {
+			{
+				key = "board",
+				name = "Board",
+				hint = "Classic is the full 15x15 board with 100 tiles (a longer game).",
+				choices = { { label = "Quick 11x11", value = "quick" }, { label = "Classic 15x15", value = "classic" } },
+				default = 1,
+			},
+		},
 	},
 	{
 		id = "Conquest",
@@ -363,6 +403,21 @@ local entries: { Entry } = {
 				choices = { { label = "60 s", value = 60 }, { label = "90 s", value = 90 }, { label = "150 s", value = 150 } },
 				default = 2,
 			},
+			{
+				key = "cards",
+				name = "Card trades",
+				hint = "Rising: every set traded at the table is worth more (4, 6, 8, 10, 12, 15, then +5).",
+				choices = { { label = "Fixed values", value = "fixed" }, { label = "Rising values", value = "rising" } },
+				default = 1,
+			},
+			{
+				key = "length",
+				name = "Game length",
+				hint = "Rounds before the most territories wins.",
+				choices = { { label = "Short", value = 0.75 }, { label = "Normal", value = 1 }, { label = "Long", value = 1.5 } },
+				default = 2,
+			},
+			{ key = "earlyLimit", name = "Slow start", hint = "Only 1-2 conquests a turn in the first rounds, so nobody runs away early.", choices = Toggle, default = 2 },
 		},
 	},
 	{
@@ -379,6 +434,23 @@ local entries: { Entry } = {
 		typicalMinutes = 20,
 		minMinutes = 1, -- a finished game always lasts longer than this; moves are the real gate
 		minMoves = 40,
+		houseRules = {
+			{
+				key = "target",
+				name = "Points to win",
+				choices = { { label = "8", value = 8 }, { label = "10 (classic)", value = 10 }, { label = "12", value = 12 } },
+				default = 1,
+			},
+			{ key = "friendly", name = "Friendly Bandit", hint = "The Bandit can't rob anyone with 2 points or fewer.", choices = Toggle, default = 1 },
+			{
+				key = "handLimit",
+				name = "Safe hand on a 7",
+				hint = "Hold more than this when a 7 is rolled and you discard half.",
+				choices = { { label = "7 cards", value = 7 }, { label = "9 cards", value = 9 } },
+				default = 1,
+			},
+			{ key = "balancedDice", name = "Balanced dice", hint = "Rolls come from a shuffled deck of all 36 dice results, so every number turns up about as often as it should.", choices = Toggle, default = 1 },
+		},
 	},
 	{
 		id = "Speed",
@@ -394,6 +466,10 @@ local entries: { Entry } = {
 		typicalMinutes = 4,
 		minMinutes = 0.5,
 		minMoves = 10,
+		houseRules = {
+			{ key = "wrap", name = "Ace and King connect", hint = "A King and an Ace count as one apart (K-A-2).", choices = Toggle, default = 2 },
+			{ key = "sameRank", name = "Same rank plays", hint = "A card of the same rank also goes on a pile.", choices = Toggle, default = 1 },
+		},
 	},
 	{
 		id = "Spoons",
@@ -439,6 +515,16 @@ local entries: { Entry } = {
 		typicalMinutes = 6,
 		minMinutes = 1,
 		minMoves = 10,
+		houseRules = {
+			{ key = "pairs", name = "Pairs", hint = "Collect pairs instead of all four of a rank (shorter games, good for kids).", choices = Toggle, default = 1 },
+			{ key = "luckyFish", name = "Lucky fish", hint = "Fishing the rank you asked for lets you go again.", choices = Toggle, default = 2 },
+			{
+				key = "handSize",
+				name = "Starting hand",
+				choices = { { label = "Auto (7 or 5)", value = 0 }, { label = "5 cards", value = 5 }, { label = "7 cards", value = 7 } },
+				default = 1,
+			},
+		},
 	},
 	{
 		id = "War",
@@ -454,6 +540,23 @@ local entries: { Entry } = {
 		typicalMinutes = 4,
 		minMinutes = 1,
 		minMoves = 20,
+		houseRules = {
+			{
+				key = "faceDown",
+				name = "War cards",
+				hint = "Cards each player puts face down in a war.",
+				choices = { { label = "3 cards", value = 3 }, { label = "1 card", value = 1 } },
+				default = 1,
+			},
+			{ key = "peace", name = "Peace", hint = "The LOWEST card wins each battle.", choices = Toggle, default = 1 },
+			{
+				key = "battleLimit",
+				name = "Battles",
+				hint = "Battles before whoever holds the most cards wins.",
+				choices = { { label = "30", value = 30 }, { label = "60", value = 60 }, { label = "100", value = 100 } },
+				default = 2,
+			},
+		},
 	},
 	{
 		id = "Cheat",
@@ -477,6 +580,7 @@ local entries: { Entry } = {
 				choices = { { label = "Fast (3 s)", value = 3 }, { label = "Normal (5 s)", value = 5 }, { label = "Slow (8 s)", value = 8 } },
 				default = 2,
 			},
+			{ key = "upDown", name = "Up, down or same", hint = "Each play may be the same rank as the last one, or one above or below it.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -501,6 +605,8 @@ local entries: { Entry } = {
 				choices = { { label = "1", value = 1 }, { label = "3", value = 3 }, { label = "5", value = 5 } },
 				default = 2,
 			},
+			{ key = "swaps", name = "Card swap", hint = "Between rounds the Beggar hands their best cards to the President.", choices = Toggle, default = 2 },
+			{ key = "twoClears", name = "2s clear the pile", hint = "Playing 2s clears the pile and you lead again.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -519,6 +625,9 @@ local entries: { Entry } = {
 		minMoves = 30,
 		houseRules = {
 			{ key = "sandwich", name = "Sandwich slaps", hint = "Also slap when the top card matches the one two below it (7-4-7).", choices = Toggle, default = 2 },
+			{ key = "topBottom", name = "Top and bottom", hint = "Also slap when the top card matches the bottom card of the pile.", choices = Toggle, default = 1 },
+			{ key = "marriage", name = "Marriage", hint = "Also slap a King and Queen together.", choices = Toggle, default = 1 },
+			{ key = "tens", name = "Tens", hint = "Also slap when the top two cards add up to 10 (Ace = 1).", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -543,6 +652,14 @@ local entries: { Entry } = {
 				choices = { { label = "50 points", value = 50 }, { label = "100 points", value = 100 } },
 				default = 1,
 			},
+			{ key = "passing", name = "Passing", hint = "Pass 3 cards before each round (left, right, across, none).", choices = Toggle, default = 2 },
+			{
+				key = "moon",
+				name = "Shooting the moon",
+				choices = { { label = "Others take 26", value = "others" }, { label = "You take -26", value = "self" } },
+				default = 1,
+			},
+			{ key = "jackDiamonds", name = "Jack of Diamonds", hint = "Whoever takes the Jack of Diamonds scores -10.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -567,6 +684,8 @@ local entries: { Entry } = {
 				choices = { { label = "200", value = 200 }, { label = "300", value = 300 }, { label = "500", value = 500 } },
 				default = 2,
 			},
+			{ key = "nilBids", name = "Nil bids", hint = "Bid 0 (Nil) for +100 if you take no tricks.", choices = Toggle, default = 2 },
+			{ key = "bags", name = "Bag penalty", hint = "Every 10 extra tricks (bags) costs 100 points.", choices = Toggle, default = 2 },
 		},
 	},
 	{
@@ -591,6 +710,8 @@ local entries: { Entry } = {
 				choices = { { label = "2", value = 2 }, { label = "3", value = 3 }, { label = "4", value = 4 } },
 				default = 2,
 			},
+			{ key = "trips", name = "Three of a kind", hint = "Three of a kind is worth 30.5.", choices = Toggle, default = 1 },
+			{ key = "knockDouble", name = "Knocker pays double", hint = "A knocker with the lowest hand loses 2 lives.", choices = Toggle, default = 2 },
 		},
 	},
 	{
@@ -607,6 +728,10 @@ local entries: { Entry } = {
 		typicalMinutes = 8,
 		minMinutes = 1,
 		minMoves = 20,
+		houseRules = {
+			{ key = "sevenLower", name = "7 or lower", hint = "After a 7, the next card must be 7 or lower.", choices = Toggle, default = 1 },
+			{ key = "burnFour", name = "Four burns", hint = "Four of the same rank in a row burns the pile.", choices = Toggle, default = 2 },
+		},
 	},
 	{
 		id = "OldMaid",
@@ -628,6 +753,13 @@ local entries: { Entry } = {
 				name = "Pairs",
 				hint = "What makes a pair.",
 				choices = { { label = "Same rank", value = "rank" }, { label = "Same rank and color", value = "color" } },
+				default = 1,
+			},
+			{
+				key = "card",
+				name = "Odd card",
+				hint = "Black Peter: the Jack of Spades is the card nobody wants.",
+				choices = { { label = "Old Maid (Queen)", value = "queen" }, { label = "Black Peter (Jack)", value = "jack" } },
 				default = 1,
 			},
 		},
@@ -652,6 +784,12 @@ local entries: { Entry } = {
 				name = "Match",
 				hint = "What counts as a snap.",
 				choices = { { label = "Same rank", value = "rank" }, { label = "Same rank and color", value = "color" } },
+				default = 1,
+			},
+			{
+				key = "penalty",
+				name = "Wrong snap costs",
+				choices = { { label = "1 card", value = 1 }, { label = "2 cards", value = 2 } },
 				default = 1,
 			},
 		},
@@ -685,6 +823,13 @@ local entries: { Entry } = {
 				choices = { { label = "10", value = 10 }, { label = "7", value = 7 }, { label = "Gin only", value = 0 } },
 				default = 1,
 			},
+			{ key = "oklahoma", name = "Oklahoma", hint = "The first upcard sets the knock limit (its value; an Ace means gin only).", choices = Toggle, default = 1 },
+			{
+				key = "undercut",
+				name = "Undercut bonus",
+				choices = { { label = "25", value = 25 }, { label = "10", value = 10 } },
+				default = 1,
+			},
 		},
 	},
 	{
@@ -708,6 +853,13 @@ local entries: { Entry } = {
 				hint = "Hand sizes from the first round to the last.",
 				choices = { { label = "5 down to 1", value = "short" }, { label = "7 down to 1", value = "classic" }, { label = "1 up to 7 and down", value = "updown" } },
 				default = 2,
+			},
+			{ key = "hook", name = "Dealer's hook", hint = "The dealer may not bid the number that makes the bids add up.", choices = Toggle, default = 2 },
+			{
+				key = "scoring",
+				name = "Scoring",
+				choices = { { label = "Exact bid only", value = "exact" }, { label = "Every trick counts", value = "tricks" } },
+				default = 1,
 			},
 		},
 	},

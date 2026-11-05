@@ -10,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local Rules = require(ReplicatedStorage.Shared.Games.Whodunit)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
+local Juice = require(script.Parent.Parent.UI.Juice)
 local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
@@ -37,7 +38,12 @@ end
 
 function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
-	local marks: { [number]: number } = {} -- card id -> index into MARKS
+	-- Your own marks in the notes grid: marks[card][seat] -> index into MARKS.
+	local marks: { [number]: { [number]: number } } = {}
+	local lastRooms: { [number]: number } = {} -- suspect -> room on the last render (pawn pops)
+	local roundKey: number? = nil -- the suggestion whose go-round is playing
+	local roundStart = 0
+	local endShownFor: string? = nil -- the match whose case file already flipped open
 	local pickSuspect: number? = nil
 	local pickItem: number? = nil
 	local accuseOpen = false
@@ -66,6 +72,15 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	})
 	local actionPanel = Kit.panel({ Size = UDim2.new(1, 0, 0.5, -6), Parent = side })
+	-- Accusing is kept apart from the everyday buttons: a red bar pinned at the bottom.
+	local accuseBar = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 38),
+		Visible = false,
+		Parent = actionPanel,
+	})
 	local actions = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -105,6 +120,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	Kit.list(6).Parent = logList
 
 	local render: () -> ()
+	local docked = false -- Table view: only the side panel shows
 	local function selectTab(tab: string)
 		bottomTab = tab
 		notes.Visible = tab == "notes"
@@ -167,11 +183,26 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	local function fitAccuseBox()
 		local wanted = accuseList.AbsoluteContentSize.Y + 48 + 24 -- footer + panel padding
 		local room = math.max(200, accuseOverlay.AbsoluteSize.Y * 0.98)
-		accuseBox.Size = UDim2.new(0.94, 0, 0, math.min(wanted, room))
+		-- Table view shows only the side column (the right 44%), so center on that.
+		accuseBox.Position = UDim2.fromScale(if docked then 0.78 else 0.5, 0.5)
+		accuseBox.Size = UDim2.new(if docked then 0.42 else 0.94, 0, 0, math.min(wanted, room))
 	end
 	accuseList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitAccuseBox)
 	accuseOverlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitAccuseBox)
 	Kit.new("UIPadding", { PaddingRight = UDim.new(0, 12), Parent = accuseScroll }) -- room for the scrollbar
+
+	-- Show-a-card pop-up: when your cards can disprove someone, the matching ones come up
+	-- big and you pick the one to slide across, face down to everyone but them.
+	local showOverlay = Kit.new("Frame", {
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.4,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		ZIndex = 30,
+		Parent = root,
+	})
+	local showKey: string? = nil
 
 	-- Helpers -----------------------------------------------------------------------
 
@@ -249,7 +280,6 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
-	local docked = false -- Table view: only the side panel shows
 
 	local function button(parent: Instance, label: string, order: number, onClick: () -> (), props: { [string]: any }?)
 		local b = Kit.button(label, onClick, { LayoutOrder = order, Parent = parent })
@@ -271,11 +301,17 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 
 	-- Map ---------------------------------------------------------------------------
 
+	local function ended(): boolean
+		return snapshot.view.phase == "over" or snapshot.result ~= nil or snapshot.aborted == true
+	end
+
 	local function renderMap(view: any)
 		Kit.clear(map)
 		local legal = {}
-		for _, room in view.legalRooms do
-			legal[room] = true
+		if not ended() then
+			for _, room in view.legalRooms do
+				legal[room] = true
+			end
 		end
 		local myRoom = if snapshot.yourSeat then view.suspectRoom[snapshot.yourSeat] else nil
 		for room = 1, 9 do
@@ -363,6 +399,10 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 					if suspect == snapshot.yourSeat then
 						Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = pawn })
 					end
+					-- Walked or pulled in by a suggestion since the last look: it pops in.
+					if lastRooms[suspect] ~= nil and lastRooms[suspect] ~= room then
+						Juice.popIn(pawn, 0.2)
+					end
 					if playing and view.eliminated[suspect] then
 						pawn.TextTransparency = 0.6
 					end
@@ -396,15 +436,24 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				end
 			end)
 		end
+		lastRooms = table.clone(view.suspectRoom)
 	end
 
 	-- Notes and log -----------------------------------------------------------------
 
 	local function renderNotes(view: any)
 		Kit.clear(notes)
-		local known = {}
+		local me = snapshot.yourSeat
+		-- Who's who: cards in your hand and cards shown to you, by holder.
+		local known: { [number]: number } = {}
 		for _, note in view.notes do
 			known[note.card] = note.by
+		end
+		-- Public: seats that couldn't disprove a suggestion hold none of its cards.
+		local lacks: { [number]: { [number]: boolean } } = {}
+		for _, pair in view.lacks or {} do
+			lacks[pair.card] = lacks[pair.card] or {}
+			lacks[pair.card][pair.seat] = true
 		end
 		local solution = {}
 		if view.solution then
@@ -412,63 +461,117 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			solution[Rules.itemCard(view.solution.item)] = true
 			solution[Rules.roomCard(view.solution.room)] = true
 		end
-		-- Two columns per section so all 21 cards fit; tap anywhere on a row to mark it.
+		-- Columns: every other player at the table, like the paper sheet's player columns.
+		local columns = {}
+		for seat = 1, view.seatCount do
+			if seat ~= me then
+				table.insert(columns, seat)
+			end
+		end
+		local NAME = 0.42
+		local colWidth = (1 - NAME) / math.max(1, #columns)
 		local order = 0
-		for _, section in { { "suspect", "Who" }, { "item", "With what" }, { "room", "Where" } } do
+		local function row(height: number): Frame
 			order += 1
-			text(notes, section[2], order, { Font = Theme.FontBold, TextColor3 = Theme.Accent, TextSize = 13 })
-			order += 1
-			local grid = Kit.new("Frame", {
+			return Kit.new("Frame", {
 				BackgroundTransparency = 1,
-				AutomaticSize = Enum.AutomaticSize.Y,
-				Size = UDim2.new(1, -6, 0, 0),
+				Size = UDim2.new(1, -6, 0, height),
 				LayoutOrder = order,
 				Parent = notes,
 			})
-			Kit.new("UIGridLayout", {
-				CellSize = UDim2.new(0.5, -3, 0, 27),
-				CellPadding = UDim2.fromOffset(6, 3),
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				Parent = grid,
+		end
+		-- Header: each player's initial in their color.
+		local head = row(24)
+		Kit.label("Tap a box to mark it", { TextSize = 11, TextColor3 = Theme.SubText, Size = UDim2.new(NAME, -4, 1, 0), Parent = head })
+		for i, seat in columns do
+			local chip = Kit.new("Frame", {
+				BackgroundColor3 = suspectColor(seat),
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(NAME + colWidth * (i - 0.5), 0, 0.5, 0),
+				Size = UDim2.fromOffset(22, 22),
+				Parent = head,
+			}, { Kit.corner(11) })
+			local name = nameOf(seat)
+			Kit.label(string.upper(string.sub(name, 1, 1)), {
+				Font = Theme.FontBold,
+				TextSize = 13,
+				TextColor3 = Color3.fromRGB(30, 26, 44),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Size = UDim2.fromScale(1, 1),
+				Parent = chip,
 			})
-			for index, id in Rules.categoryCards[section[1]] do
+			if view.eliminated[seat] then
+				chip.BackgroundTransparency = 0.6
+			end
+		end
+		for _, section in { { "suspect", "Who" }, { "item", "With what" }, { "room", "Where" } } do
+			order += 1
+			text(notes, section[2], order, { Font = Theme.FontBold, TextColor3 = Theme.Accent, TextSize = 13 })
+			for _, id in Rules.categoryCards[section[1]] do
 				local by = known[id]
-				local mark = marks[id] or 1
-				local row = Kit.new("TextButton", {
-					Text = "",
-					AutoButtonColor = by == nil,
+				local cleared = by ~= nil
+				local cardMarks = marks[id] or {}
+				for _, seat in columns do
+					if cardMarks[seat] == 4 then
+						cleared = true -- you ticked someone as holding it
+					end
+				end
+				local line = row(24)
+				local back = Kit.new("Frame", {
 					BackgroundColor3 = if solution[id] then Theme.Accent else Theme.PanelLight,
-					BackgroundTransparency = if solution[id] then 0.3 else 0.35,
+					BackgroundTransparency = if solution[id] then 0.3 else 0.5,
 					BorderSizePixel = 0,
-					LayoutOrder = index,
-					Parent = grid,
+					Size = UDim2.fromScale(1, 1),
+					Parent = line,
 				}, { Kit.corner(6) })
 				local card = Rules.cards[id]
 				local name = if card.category == "item" then `{ITEM_ICONS[card.index]} {card.name}` else card.name
-				Kit.label(name, {
-					TextSize = 13,
-					TextTransparency = if by then 0.55 else 0,
+				local shown = if by == me and me ~= nil then `{name} (yours)` else name
+				-- Crossed off like the paper notepad once you know someone holds it.
+				Kit.label(if cleared then `<s>{shown}</s>` else shown, {
+					RichText = true,
+					TextSize = 12,
+					TextTransparency = if cleared then 0.5 else 0,
 					TextTruncate = Enum.TextTruncate.AtEnd,
 					Position = UDim2.new(0, 6, 0, 0),
-					Size = UDim2.new(1, -60, 1, 0),
-					Parent = row,
+					Size = UDim2.new(NAME, -8, 1, 0),
+					Parent = back,
 				})
-				Kit.label(if by == snapshot.yourSeat then "Yours" elseif by then nameOf(by) else MARKS[mark], {
-					TextSize = if by then 11 else 16,
-					Font = Theme.FontBold,
-					TextColor3 = if by then Theme.Bad else MARK_COLORS[mark],
-					TextXAlignment = Enum.TextXAlignment.Right,
-					TextTruncate = Enum.TextTruncate.AtEnd,
-					Position = UDim2.new(1, -56, 0, 0),
-					Size = UDim2.new(0, 50, 1, 0),
-					Parent = row,
-				})
-				row.Activated:Connect(function()
-					if by == nil then
-						marks[id] = mark % #MARKS + 1
-						render()
+				for i, seat in columns do
+					-- What the game knows beats your own marks: ✓ for the one who showed it
+					-- to you, ✗ for everyone else then, and ✗ for anyone who passed on it.
+					local auto: number? = nil
+					if by ~= nil then
+						auto = if by == seat then 4 else 2
+					elseif lacks[id] and lacks[id][seat] then
+						auto = 2
 					end
-				end)
+					local mark = auto or cardMarks[seat] or 1
+					local cell = Kit.new("TextButton", {
+						Text = MARKS[mark],
+						Font = Theme.FontBold,
+						TextSize = if mark == 1 then 16 else 14,
+						TextColor3 = MARK_COLORS[mark],
+						TextTransparency = if auto then 0.35 else 0,
+						AutoButtonColor = auto == nil,
+						BackgroundColor3 = Theme.Panel,
+						BackgroundTransparency = if auto then 0.8 else 0.4,
+						BorderSizePixel = 0,
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.new(NAME + colWidth * (i - 0.5), 0, 0.5, 0),
+						Size = UDim2.new(colWidth, -4, 1, -4),
+						Parent = back,
+					}, { Kit.corner(4) })
+					cell.Activated:Connect(function()
+						if auto == nil then
+							marks[id] = marks[id] or {}
+							marks[id][seat] = mark % #MARKS + 1
+							Audio.play("click", { volume = 0.4 })
+							render()
+						end
+					end)
+				end
 			end
 		end
 	end
@@ -516,10 +619,11 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	-- Accusation picker ---------------------------------------------------------------
 
 	local function renderAccuse(view: any)
-		accuseOverlay.Visible = accuseOpen and view.canAccuse
+		accuseOverlay.Visible = accuseOpen and view.canAccuse and not ended()
 		if not accuseOverlay.Visible then
 			return
 		end
+		fitAccuseBox()
 		Kit.clear(accuseScroll)
 		Kit.clear(accuseFooter)
 		local z = 22
@@ -556,20 +660,190 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 
 	-- What to do now ------------------------------------------------------------------
 
-	local function accuseButton(order: number)
-		button(actions, "Accuse...", order, function()
+	local function accuseButton()
+		-- Separate and red, pinned under everything else: a wrong accusation knocks you out.
+		accuseBar.Visible = true
+		actions.Size = UDim2.new(1, 0, 1, -46)
+		button(accuseBar, "⚖ Accuse...", 1, function()
 			accuseOpen = true
 			render()
-		end, { BackgroundColor3 = Theme.Bad, TextColor3 = Theme.Text })
+		end, { BackgroundColor3 = Theme.Bad, TextColor3 = Theme.Text, Size = UDim2.fromScale(1, 1) })
+	end
+
+	local function categoryOf(id: number): string
+		local card = Rules.cards[id]
+		return if card.category == "item" then "Item" elseif card.category == "room" then "Room" else "Suspect"
+	end
+
+	-- A playing-card sized tile: category on top, name in the middle.
+	local function bigCard(parent: Instance, id: number, order: number, width: number, z: number?): TextButton
+		local card = Rules.cards[id]
+		local tile = Kit.new("TextButton", {
+			Text = "",
+			AutoButtonColor = true,
+			BackgroundColor3 = Color3.fromRGB(252, 246, 230),
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(width, math.floor(width * 1.4)),
+			LayoutOrder = order,
+			ZIndex = z or 1,
+			Parent = parent,
+		}, { Kit.corner(10), Kit.new("UIStroke", { Color = Color3.fromRGB(255, 214, 120), Thickness = 3 }) })
+		Kit.label(categoryOf(id), {
+			TextSize = 12,
+			TextColor3 = Color3.fromRGB(110, 96, 80),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.new(0, 4, 0, 6),
+			Size = UDim2.new(1, -8, 0, 16),
+			ZIndex = (z or 1) + 1,
+			Parent = tile,
+		})
+		local icon = if card.category == "item" then ITEM_ICONS[card.index] elseif card.category == "suspect" then "🕵" else "🚪"
+		Kit.label(icon, {
+			TextSize = math.floor(width * 0.3),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.new(0, 0, 0.18, 0),
+			Size = UDim2.new(1, 0, 0.32, 0),
+			ZIndex = (z or 1) + 1,
+			Parent = tile,
+		})
+		Kit.label(card.name, {
+			Font = Theme.FontBold,
+			TextSize = math.clamp(math.floor(width * 0.14), 12, 20),
+			TextColor3 = if card.category == "suspect" then HudKit.shade(suspectColor(card.index), 0.45) else Color3.fromRGB(40, 30, 24),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextWrapped = true,
+			Position = UDim2.new(0, 6, 0.54, 0),
+			Size = UDim2.new(1, -12, 0.4, 0),
+			ZIndex = (z or 1) + 1,
+			Parent = tile,
+		})
+		return tile
+	end
+
+	-- The show-a-card pop-up (built once per suggestion so it doesn't flicker).
+	local function renderShow(view: any)
+		local want = view.phase == "show" and #view.showOptions > 0 and not ended()
+		if not want then
+			showOverlay.Visible = false
+			showKey = nil
+			return
+		end
+		local key = `{view.logCount}`
+		showOverlay.Visible = true
+		if showKey == key then
+			return
+		end
+		showKey = key
+		Kit.clear(showOverlay)
+		local entry = view.suggestion
+		local box = Kit.panel({
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(if docked then 0.78 else 0.5, 0.5),
+			Size = UDim2.fromOffset(math.max(320, #view.showOptions * 150 + 40), 330),
+			BackgroundColor3 = Theme.PanelLight,
+			ZIndex = 31,
+			Parent = showOverlay,
+		})
+		Kit.label(`Show {nameOf(entry.seat)} a card`, { Font = Theme.FontTitle, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 28), ZIndex = 32, Parent = box })
+		Kit.label(`They suggested {suggestionText(entry)}. Only they will see the card you pick.`, {
+			TextSize = 13,
+			TextColor3 = Theme.SubText,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.fromOffset(0, 30),
+			Size = UDim2.new(1, 0, 0, 34),
+			ZIndex = 32,
+			Parent = box,
+		})
+		local row = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 74), Size = UDim2.new(1, 0, 1, -74), ZIndex = 32, Parent = box })
+		local list = Kit.list(14, true)
+		list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		list.Parent = row
+		for i, id in view.showOptions do
+			local tile = bigCard(row, id, i, 130, 33)
+			tile.Activated:Connect(function()
+				Audio.play("card")
+				showOverlay.Visible = false
+				sendMove({ kind = "show", card = id })
+			end)
+		end
+		Juice.popIn(box)
+		Juice.stagger(row, 0.08)
+		Audio.play("pop")
+	end
+
+	-- The go-round after a suggestion: each seat clockwise lights up in turn with "no
+	-- card", until someone shows one (face down, unless it's to you).
+	local STEP = 0.55
+	local roundShown = 0
+	local function goRound(view: any, entry: any, order: number): number
+		local me = snapshot.yourSeat
+		local key = view.logCount
+		if roundKey ~= key then
+			roundKey = key
+			roundStart = os.clock()
+			roundShown = 0
+		end
+		local seq = {}
+		for _, seat in entry.passed do
+			table.insert(seq, { seat = seat, text = "No card", color = Theme.Bad, sound = "knock" })
+		end
+		if entry.shower then
+			local says = if view.phase == "show" then "Choosing..."
+				elseif entry.card and entry.seat == me then `Shows you {cardName(entry.card)}`
+				elseif entry.card and entry.shower == me then `You showed {cardName(entry.card)}`
+				else "🂠 Shows a card"
+			table.insert(seq, { seat = entry.shower, text = says, color = Theme.Good, sound = if view.phase == "show" then nil else "card" })
+		end
+		local strip = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = UDim2.new(1, 0, 0, 0),
+			LayoutOrder = order,
+			Parent = actions,
+		})
+		Kit.list(4).Parent = strip
+		local visible = math.min(#seq, math.floor((os.clock() - roundStart) / STEP) + 1)
+		for i = 1, visible do
+			local step = seq[i]
+			local chip = Kit.new("Frame", {
+				BackgroundColor3 = Theme.PanelLight,
+				BorderSizePixel = 0,
+				Size = UDim2.new(1, 0, 0, 26),
+				LayoutOrder = i,
+				Parent = strip,
+			}, { Kit.corner(8) })
+			Kit.new("Frame", { BackgroundColor3 = suspectColor(step.seat), BorderSizePixel = 0, Size = UDim2.new(0, 6, 1, 0), Parent = chip }, { Kit.corner(3) })
+			Kit.label(nameOf(step.seat), { Font = Theme.FontBold, TextSize = 13, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(0.45, -12, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip })
+			Kit.label(step.text, { TextSize = 13, TextColor3 = step.color, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.new(0.45, 0, 0, 0), Size = UDim2.new(0.55, -8, 1, 0), Parent = chip })
+			if i > roundShown then
+				Juice.popIn(chip, 0.5)
+				if step.sound then
+					Audio.play(step.sound, { volume = 0.6 })
+				end
+			end
+		end
+		roundShown = math.max(roundShown, visible)
+		if visible < #seq then
+			task.delay(roundStart + visible * STEP - os.clock() + 0.02, function()
+				if roundKey == key then
+					render()
+				end
+			end)
+		end
+		-- Seconds until the go-round has finished.
+		return math.max(0, roundStart + #seq * STEP - os.clock())
 	end
 
 	local function renderActions(view: any)
 		Kit.clear(actions)
+		Kit.clear(accuseBar)
+		accuseBar.Visible = false
+		actions.Size = UDim2.fromScale(1, 1)
 		local me = snapshot.yourSeat
 		-- The panel's ring shows whose move it is (gold when it's yours).
-		local acting = if view.phase == "over" then nil else snapshot.activeSeats[1]
+		local acting = if ended() then nil else snapshot.activeSeats[1]
 		HudKit.turnTint(actionPanel, acting, acting ~= nil and acting == me)
-		local myTurn = me ~= nil and view.turn == me and view.phase ~= "show" and view.phase ~= "over"
+		local myTurn = me ~= nil and view.turn == me and view.phase ~= "show" and not ended()
 		local entry = view.suggestion
 		local turnName = nameOf(view.turn)
 
@@ -584,11 +858,33 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		if view.phase == "over" then
 			local sol = view.solution
 			text(actions, "The case file:", 3, { Font = Theme.FontBold, TextSize = 16 })
-			text(actions, `{theme.suspects[sol.suspect]} with the {theme.items[sol.item]} in the {theme.rooms[sol.room]}`, 4, {
+			-- The three cards come out of the envelope one at a time.
+			local row = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 4, Parent = actions })
+			local list = Kit.list(8, true)
+			list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			list.Parent = row
+			for i, id in { Rules.suspectCard(sol.suspect), Rules.itemCard(sol.item), Rules.roomCard(sol.room) } do
+				bigCard(row, id, i, 84).AutoButtonColor = false
+			end
+			if endShownFor ~= snapshot.matchId then
+				endShownFor = snapshot.matchId
+				Juice.stagger(row, 0.6)
+				for i = 0, 2 do
+					task.delay(i * 0.6, function()
+						Audio.play("flip")
+					end)
+				end
+			end
+			text(actions, `{theme.suspects[sol.suspect]} with the {theme.items[sol.item]} in the {theme.rooms[sol.room]}`, 5, {
 				Font = Theme.FontBold,
-				TextSize = 18,
+				TextSize = 16,
 				TextColor3 = Theme.Accent,
 			})
+			return
+		end
+		if ended() then
+			-- Ended early (everyone left, or the host ended it): nothing left to do here.
+			text(actions, "This game has ended.", 3, { Font = Theme.FontBold, TextSize = 16, TextColor3 = Theme.SubText })
 			return
 		end
 
@@ -601,49 +897,54 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		if view.phase == "show" then
 			local asker = nameOf(entry.seat)
 			text(actions, `{asker} suggested {suggestionText(entry)}.`, 4, { TextSize = 15 })
+			goRound(view, entry, 5)
 			if #view.showOptions > 0 then
-				text(actions, `Show {asker} one card in secret. Only they will see it.`, 5, { Font = Theme.FontBold, TextSize = 15, TextColor3 = Theme.Accent })
+				text(actions, `Pick a card to show {asker}. Only they will see it.`, 6, { Font = Theme.FontBold, TextSize = 15, TextColor3 = Theme.Accent })
 				for i, id in view.showOptions do
-					button(actions, `Show {cardName(id)}`, 5 + i, function()
+					button(actions, `Show {cardName(id)}`, 6 + i, function()
 						sendMove({ kind = "show", card = id })
 					end)
 				end
-			else
-				text(actions, `Waiting for {nameOf(entry.shower)} to show a card...`, 5, { TextColor3 = Theme.SubText, TextSize = 15 })
 			end
 			return
 		end
 
 		if view.phase == "after" and entry then
 			local asker = nameOf(entry.seat)
-			-- The card slid across to you, turned face up in the middle of the screen.
+			text(actions, `{asker} suggested {suggestionText(entry)}.`, 4, { TextSize = 15 })
+			local wait = goRound(view, entry, 5)
+			-- The card slid across to you, turned face up in the middle of the screen once
+			-- the go-round reaches the one who showed it.
 			if entry.card and entry.seat == me then
-				local key = `{entry.suspect}|{entry.item}|{entry.room}|{entry.shower}|{entry.card}|{snapshot.moveNumber}`
+				local key = `{entry.suspect}|{entry.item}|{entry.room}|{entry.shower}|{entry.card}|{view.logCount}`
 				if revealed ~= entry and not revealedKeys[key] then
 					revealedKeys[key] = true
-					local card = Rules.cards[entry.card]
-					local kind = if card.category == "item" then "Item" elseif card.category == "room" then "Room" else "Suspect"
-					HudKit.revealCard(root, `{nameOf(entry.shower)} showed you`, cardName(entry.card), `{kind} · not in the case file`)
+					local id, shower = entry.card, entry.shower
+					task.delay(math.max(0, wait - STEP * 0.5), function()
+						if root.Parent then
+							HudKit.revealCard(root, `{nameOf(shower)} showed you`, cardName(id), `{categoryOf(id)} · not in the case file`)
+						end
+					end)
 				end
 				revealed = entry
 			end
-			text(actions, `{asker} suggested {suggestionText(entry)}.`, 4, { TextSize = 15 })
 			if entry.shower == nil then
-				text(actions, "Nobody could disprove it!", 5, { Font = Theme.FontBold, TextSize = 17, TextColor3 = Theme.Accent })
-			elseif entry.card and entry.seat == me then
-				text(actions, `{nameOf(entry.shower)} showed you:`, 5, { TextSize = 15 })
-				text(actions, cardName(entry.card), 6, { Font = Theme.FontBold, TextSize = 22, TextColor3 = Theme.Accent })
-			elseif entry.card and entry.shower == me then
-				text(actions, `You showed {cardName(entry.card)}.`, 5, { TextSize = 15, TextColor3 = Theme.SubText })
-			else
-				text(actions, `{nameOf(entry.shower)} showed {asker == "You" and "you" or asker} a card.`, 5, { TextSize = 15, TextColor3 = Theme.SubText })
+				text(actions, "Nobody could disprove it!", 6, { Font = Theme.FontBold, TextSize = 17, TextColor3 = Theme.Accent })
+				if roundShown >= #entry.passed and not revealedKeys[`none|{view.logCount}`] then
+					revealedKeys[`none|{view.logCount}`] = true
+					task.delay(wait, function()
+						if root.Parent then
+							HudKit.callout(root, "Nobody could disprove it!", Theme.Accent)
+						end
+					end)
+				end
 			end
 			if myTurn then
 				button(actions, "End turn", 10, function()
 					sendMove({ kind = "end" })
 				end)
 				if view.canAccuse then
-					accuseButton(11)
+					accuseButton()
 				end
 			end
 			return
@@ -652,8 +953,8 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		if view.phase == "move" then
 			if myTurn then
 				if docked then
-					-- Table view hides the map: walk with a button per room you can reach.
-					text(actions, "Your turn! Pick a room to walk to.", 4, { Font = Theme.FontBold, TextSize = 16, TextColor3 = Theme.Accent })
+					-- Table view: tap a room on the table, or use a button per room you can reach.
+					text(actions, "Your turn! Tap a room on the table, or pick one here.", 4, { Font = Theme.FontBold, TextSize = 16, TextColor3 = Theme.Accent })
 					for i, room in view.legalRooms do
 						button(actions, theme.rooms[room], 20 + i, function()
 							sendMove({ kind = "move", room = room })
@@ -667,7 +968,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				end
 				if view.canAccuse then
 					text(actions, "Sure you know? You can accuse now instead.", 6, { TextSize = 13, TextColor3 = Theme.SubText })
-					accuseButton(7)
+					accuseButton()
 				end
 			else
 				text(actions, `{turnName} {if turnName == "You" then "are" else "is"} walking the halls...`, 4, { TextSize = 15, TextColor3 = Theme.SubText })
@@ -698,7 +999,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			end
 		end, { BackgroundColor3 = if ready then Theme.Accent else Theme.Panel, TextColor3 = if ready then Theme.AccentText else Theme.SubText })
 		if view.canAccuse then
-			accuseButton(8)
+			accuseButton()
 		end
 	end
 
@@ -712,6 +1013,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		renderNotes(view)
 		renderLog(view)
 		renderAccuse(view)
+		renderShow(view)
 	end
 
 	-- An accusation: the case file envelope in the middle of the screen. Its flap opens,
@@ -885,6 +1187,9 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				pickSuspect, pickItem = nil, nil
 				accuseOpen = false
 				accusePick = { suspect = nil, item = nil, room = nil }
+				lastRooms = {}
+				roundKey = nil
+				showKey = nil
 			end
 			snapshot = newSnapshot
 			local accusations = snapshot.view.accusations or {}
@@ -896,6 +1201,16 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				selectTab("notes")
 			end
 			render()
+		end,
+		-- A room tapped on the 3D table (Table view): walk there if you can.
+		tapTable = function(id: any)
+			if not snapshot or ended() or type(id) ~= "number" then
+				return
+			end
+			if table.find(snapshot.view.legalRooms, id) then
+				Audio.play("click")
+				sendMove({ kind = "move", room = id })
+			end
 		end,
 		destroy = function()
 			root:Destroy()

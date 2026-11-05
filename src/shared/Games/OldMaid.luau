@@ -31,15 +31,20 @@ OldMaid.DRAW_LIMIT = 600 -- safety cap; the Old Maid's holder loses when it's hi
 OldMaid.OLD_MAID = PlayingCards.make(12, 1) -- Queen of Spades
 OldMaid.REMOVED = PlayingCards.make(12, 4) -- Queen of Clubs
 local GIVER_MOVES = 4 -- shuffles and lifts per draw
+-- House rule "card" = "jack" plays Black Peter: the Jack of Spades is the odd card and
+-- the Jack of Clubs comes out.
+OldMaid.BLACK_PETER = PlayingCards.make(11, 1)
+OldMaid.BLACK_PETER_REMOVED = PlayingCards.make(11, 4)
 
 local rank = PlayingCards.rank
 
 -- Takes every pair out of a hand. Returns the ranks paired. byColor: pairs must also
 -- share a color (each rank has two black and two red cards, so all still pair up).
-local function removePairs(hand: { number }, byColor: boolean?): { number }
+local function removePairs(hand: { number }, byColor: boolean?, odd: number?): { number }
+	odd = odd or OldMaid.OLD_MAID
 	local byRank = {}
 	for _, id in hand do
-		if id ~= OldMaid.OLD_MAID then
+		if id ~= odd then
 			local r = rank(id) + (if byColor and PlayingCards.isRed(id) then 13 else 0)
 			byRank[r] = byRank[r] or {}
 			table.insert(byRank[r], id)
@@ -90,7 +95,7 @@ local function checkEnd(state)
 	end
 	if state.draws >= OldMaid.DRAW_LIMIT then
 		for _, seat in left do
-			if table.find(state.hands[seat], OldMaid.OLD_MAID) then
+			if table.find(state.hands[seat], state.oldMaid or OldMaid.OLD_MAID) then
 				state.loser = seat
 			end
 		end
@@ -112,7 +117,9 @@ function OldMaid.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 6, "Old Maid needs 2-6 seats")
 	local random = rng or Random.new()
 	local deck = PlayingCards.newDeck(random)
-	table.remove(deck, table.find(deck, OldMaid.REMOVED) :: number)
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	local peter = rules.card == "jack"
+	table.remove(deck, table.find(deck, if peter then OldMaid.BLACK_PETER_REMOVED else OldMaid.REMOVED) :: number)
 	local hands, pairs = {}, {}
 	for seat = 1, seatCount do
 		hands[seat] = {}
@@ -121,8 +128,8 @@ function OldMaid.new(seatCount: number, options: any?, rng: Random?)
 	for i, id in deck do
 		table.insert(hands[(i - 1) % seatCount + 1], id)
 	end
-	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local state = {
+		oldMaid = if peter then OldMaid.BLACK_PETER else OldMaid.OLD_MAID,
 		seatCount = seatCount,
 		rng = random,
 		hands = hands, -- in a hidden order; the drawer picks a position
@@ -141,7 +148,7 @@ function OldMaid.new(seatCount: number, options: any?, rng: Random?)
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	for seat = 1, seatCount do
-		state.pairs[seat] = removePairs(hands[seat], state.byColor)
+		state.pairs[seat] = removePairs(hands[seat], state.byColor, state.oldMaid)
 		PlayingCards.shuffle(hands[seat], random)
 	end
 	checkEnd(state)
@@ -231,7 +238,7 @@ function OldMaid.applyMove(state, seat: number, move: any)
 	local hand = state.hands[seat]
 	table.insert(hand, card)
 	state.draws += 1
-	local paired = removePairs(hand, state.byColor)
+	local paired = removePairs(hand, state.byColor, state.oldMaid)
 	for _, r in paired do
 		table.insert(state.pairs[seat], r)
 	end
@@ -285,7 +292,7 @@ function OldMaid.getView(state, seat: number?)
 		lastDrawn = seen,
 		draws = state.draws,
 		loser = state.loser,
-		oldMaid = OldMaid.OLD_MAID,
+		oldMaid = state.oldMaid or OldMaid.OLD_MAID,
 		byColor = state.byColor,
 		over = state.over,
 		lifted = state.lifted,

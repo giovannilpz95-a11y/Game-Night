@@ -8,6 +8,9 @@
 -- A player with no cards is out. Last one holding cards wins. Classic War can run very
 -- long, so after BATTLE_LIMIT battles whoever holds the most cards wins.
 --
+-- House rules (options.rules): faceDown (cards put down in a war: 1 or 3), peace (lowest
+-- card wins instead), battleLimit (battles before most cards wins).
+--
 -- Moves: { kind = "flip" }. Every player still in must flip before the battle resolves;
 -- slow players are flipped for by the turn timer.
 
@@ -39,6 +42,7 @@ function War.new(seatCount: number, options: any?, rng: Random?)
 		piles[seat] = {}
 	end
 	-- 52 doesn't split evenly three ways; the extra card is put aside.
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local perSeat = #deck // seatCount
 	for i = 1, perSeat * seatCount do
 		table.insert(piles[(i - 1) % seatCount + 1], deck[i])
@@ -49,6 +53,9 @@ function War.new(seatCount: number, options: any?, rng: Random?)
 		piles = piles, -- piles[seat][1] is the top card
 		flipped = {}, -- seats that flipped this battle
 		battles = 0,
+		faceDown = if rules.faceDown == 1 then 1 else WAR_FACE_DOWN,
+		peace = rules.peace == true,
+		battleLimit = if type(rules.battleLimit) == "number" then rules.battleLimit else War.BATTLE_LIMIT,
 		lastBattle = nil,
 		winners = nil,
 		reason = nil,
@@ -83,7 +90,7 @@ local function checkEnd(state)
 		state.reason = "Everyone ran out of cards"
 		return
 	end
-	if state.battles >= War.BATTLE_LIMIT then
+	if state.battles >= (state.battleLimit or War.BATTLE_LIMIT) then
 		local best, top = {}, -1
 		for _, seat in alive do
 			local n = #state.piles[seat]
@@ -111,7 +118,7 @@ local function resolve(state)
 			if card then
 				table.insert(pot, card)
 				flips[seat] = card
-				local p = power(card)
+				local p = if state.peace then 15 - power(card) else power(card)
 				if p > bestPower then
 					best, bestPower = { seat }, p
 				elseif p == bestPower then
@@ -130,7 +137,7 @@ local function resolve(state)
 		local next = {}
 		for _, seat in best do
 			local pile = state.piles[seat]
-			local down = math.min(WAR_FACE_DOWN, #pile - 1)
+			local down = math.min(state.faceDown or WAR_FACE_DOWN, #pile - 1)
 			for _ = 1, down do
 				table.insert(pot, table.remove(pile, 1) :: number)
 			end
@@ -233,7 +240,8 @@ function War.getView(state, seat: number?)
 		pileCounts = counts,
 		flipped = flipped,
 		battles = state.battles,
-		battleLimit = War.BATTLE_LIMIT,
+		battleLimit = state.battleLimit or War.BATTLE_LIMIT,
+		peace = state.peace,
 		lastBattle = battle,
 		canFlip = seat ~= nil and table.find(War.getActiveSeats(state), seat) ~= nil,
 	}

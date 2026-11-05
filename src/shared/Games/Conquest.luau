@@ -22,6 +22,11 @@
 	and after Conquest.roundsFor(seats) rounds the player with the most territories wins.
 
 	The map is data (regions, territories, links) so new maps are a content swap.
+
+	House rules (options.rules): turnLength (seconds per turn), cards ("fixed": set values
+	above; "rising": every trade at the table is worth more, 4, 6, 8, 10, 12, 15, then +5),
+	length (rounds before scoring: 0.75 / 1 / 1.5 times the normal count), earlyLimit
+	(default on: the cap on conquests per turn in the first rounds).
 ]]
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -192,6 +197,29 @@ function Conquest.setValue(kinds: { string }): number?
 	return best
 end
 
+-- Rising card values (the classic escalating trade-ins): the nth trade at the table.
+local RISING = { 4, 6, 8, 10, 12, 15 }
+function Conquest.risingValue(n: number): number
+	return RISING[n] or (15 + (n - #RISING) * 5)
+end
+
+-- What the next trade by anyone is worth with these rules (nil: it depends on the set).
+function Conquest.tradeValue(state, kinds: { string }): number?
+	local value = Conquest.setValue(kinds)
+	if value and state.cards == "rising" then
+		return Conquest.risingValue((state.trades or 0) + 1)
+	end
+	return value
+end
+
+-- Conquests allowed this turn (the early-game cap can be turned off).
+function Conquest.limitFor(state): number
+	if state.earlyLimit == false then
+		return math.huge
+	end
+	return Conquest.conquestLimit(state.round)
+end
+
 -- The best set in a hand: (indices, value) or nil.
 function Conquest.bestSet(hand: { string }): ({ number }?, number?)
 	local bestIdx, bestValue = nil, nil
@@ -355,7 +383,10 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 		eliminated = {},
 		turn = 1,
 		round = 1,
-		maxRounds = Conquest.roundsFor(seatCount),
+		maxRounds = math.max(4, math.floor(Conquest.roundsFor(seatCount) * (if type(rules.length) == "number" and rules.length > 0 and rules.length <= 2 then rules.length else 1) + 0.5)),
+		cards = if rules.cards == "rising" then "rising" else "fixed",
+		trades = 0,
+		earlyLimit = rules.earlyLimit ~= false,
 		phase = "reinforce",
 		reinforcements = 0,
 		conqueredThisTurn = false,
@@ -575,7 +606,7 @@ function Conquest.validateMove(state, seat: number, move: any): (boolean, string
 		if state.armies[from] < 2 then
 			return false, "You need at least 2 armies to attack"
 		end
-		local limit = Conquest.conquestLimit(state.round)
+		local limit = Conquest.limitFor(state)
 		if state.conquestsThisTurn >= limit then
 			return false, if limit == 1 then "You can take 1 territory a turn this round" else `You can take {limit} territories a turn this round`
 		end
@@ -680,7 +711,8 @@ function Conquest.applyMove(state, seat: number, move: any)
 	if kind == "trade" then
 		local hand = state.hands[seat]
 		local kinds = { hand[move.cards[1]], hand[move.cards[2]], hand[move.cards[3]] }
-		local value = Conquest.setValue(kinds) :: number
+		local value = Conquest.tradeValue(state, kinds) :: number
+		state.trades = (state.trades or 0) + 1
 		local indices = { move.cards[1], move.cards[2], move.cards[3] }
 		table.sort(indices, function(a, b)
 			return a > b
@@ -844,7 +876,7 @@ function Conquest.getLegalMoves(state, seat: number): { any }
 		table.insert(moves, { kind = "occupy", count = state.occupy.min })
 		table.insert(moves, { kind = "occupy", count = state.occupy.max })
 	elseif phase == "attack" then
-		local canAttack = state.conquestsThisTurn < Conquest.conquestLimit(state.round)
+		local canAttack = state.conquestsThisTurn < Conquest.limitFor(state)
 		for t = 1, TERRITORY_COUNT do
 			if canAttack and state.owner[t] == seat and state.armies[t] >= 2 then
 				for _, n in Conquest.neighbors[t] do
@@ -914,7 +946,10 @@ function Conquest.getView(state, seat: number?)
 		hand = if seat and state.hands[seat] then table.clone(state.hands[seat]) else nil,
 		mustTrade = if seat == state.turn then mustTrade(state, state.turn) else false,
 		turnId = state.turnId,
-		conquestsLeft = math.max(0, Conquest.conquestLimit(state.round) - state.conquestsThisTurn),
+		conquestsLeft = math.min(99, math.max(0, Conquest.limitFor(state) - state.conquestsThisTurn)),
+		earlyLimit = state.earlyLimit ~= false,
+		cards = state.cards,
+		nextRising = if state.cards == "rising" then Conquest.risingValue((state.trades or 0) + 1) else nil,
 		rallying = if seat then Conquest.isRallying(state.owner, seat) else false,
 		log = log,
 		status = seatStatus(state, seat),
@@ -1026,7 +1061,7 @@ local function botPlace(state, seat: number, rng: Random): any
 end
 
 local function botAttack(state, seat: number, rng: Random): any?
-	if state.conquestsThisTurn >= Conquest.conquestLimit(state.round) then
+	if state.conquestsThisTurn >= Conquest.limitFor(state) then
 		return nil
 	end
 	local level = state.botLevel

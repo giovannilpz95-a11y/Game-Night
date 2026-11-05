@@ -13,6 +13,9 @@
 -- flip a face-down card blind: if it can't be played, you pick up the pile with it.
 -- First player out of cards wins. After TURN_LIMIT turns, fewest cards left wins.
 --
+-- House rules (options.rules): sevenLower (after a 7 the next card must be 7 or lower),
+-- burnFour (default on: four of a kind in a row burns the pile).
+--
 -- Moves: { kind = "swap", hand = id, up = id }  |  { kind = "ready" }   (setup, everyone)
 --        { kind = "play", cards = { id, ... } }  (from your hand, or face-up when it's empty)
 --        { kind = "pickup" }  (only when you can't play)
@@ -53,6 +56,7 @@ function Palace.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 5, "Palace needs 2-5 seats")
 	local random = rng or Random.new()
 	local deck = PlayingCards.newDeck(random)
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local hands, up, down, ready = {}, {}, {}, {}
 	for seat = 1, seatCount do
 		down[seat], up[seat], hands[seat] = {}, {}, {}
@@ -78,6 +82,8 @@ function Palace.new(seatCount: number, options: any?, rng: Random?)
 		burned = 0,
 		ready = ready,
 		phase = "setup", -- "setup" | "play"
+		sevenLower = rules.sevenLower == true,
+		burnFour = rules.burnFour ~= false,
 		turn = 1,
 		turns = 0,
 		lastAction = nil,
@@ -99,6 +105,9 @@ function Palace.canPlay(state, id: number): boolean
 	local t = top(state)
 	if t == nil or rank(t) == 2 then
 		return true
+	end
+	if state.sevenLower and rank(t) == 7 then
+		return power(id) <= 7
 	end
 	return power(id) >= power(t)
 end
@@ -155,7 +164,7 @@ local function burns(state): boolean
 	if rank(state.pile[n]) == 10 then
 		return true
 	end
-	if n >= 4 then
+	if n >= 4 and state.burnFour ~= false then
 		local r = rank(state.pile[n])
 		for i = n - 3, n - 1 do
 			if rank(state.pile[i]) ~= r then
@@ -449,6 +458,7 @@ function Palace.getView(state, seat: number?)
 		burned = state.burned,
 		source = if seat then Palace.source(state, seat) else nil,
 		playable = playable,
+		sevenLower = state.sevenLower,
 		turn = state.turn,
 		phase = state.phase,
 		lastAction = GameModule.copy(state.lastAction),

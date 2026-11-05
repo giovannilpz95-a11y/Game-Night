@@ -12,6 +12,9 @@
 -- A player with no cards is out. Last player with cards wins. After FLIP_LIMIT flips the
 -- player with the most cards wins.
 --
+-- More slap house rules (off by default): topBottom (top card matches the bottom card),
+-- marriage (a King and Queen together), tens (the top two cards add up to 10, Ace = 1).
+--
 -- Moves: { kind = "flip" } (your turn)  |  { kind = "slap" } (anyone with cards, any time)
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -59,6 +62,9 @@ function SlapStack.new(seatCount: number, options: any?, rng: Random?)
 		winners = nil,
 		reason = nil,
 		sandwich = rules.sandwich ~= false,
+		topBottom = rules.topBottom == true,
+		marriage = rules.marriage == true,
+		tens = rules.tens == true,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 end
@@ -86,6 +92,18 @@ function SlapStack.canSlap(state): boolean
 	end
 	if state.sandwich and n >= 3 and rank(c[n]) == rank(c[n - 2]) then
 		return true
+	end
+	if state.topBottom and n >= 3 and rank(c[n]) == rank(c[1]) then
+		return true
+	end
+	if n >= 2 then
+		local a, b = rank(c[n]), rank(c[n - 1])
+		if state.marriage and ((a == 12 and b == 13) or (a == 13 and b == 12)) then
+			return true
+		end
+		if state.tens and a <= 10 and b <= 10 and a + b == 10 then
+			return true
+		end
 	end
 	return false
 end
@@ -287,6 +305,9 @@ function SlapStack.getView(state, _seat: number?)
 		challenge = GameModule.copy(state.challenge),
 		collect = state.collect,
 		sandwich = state.sandwich,
+		topBottom = state.topBottom,
+		marriage = state.marriage,
+		tens = state.tens,
 		lastAction = GameModule.copy(state.lastAction),
 		flips = state.flips,
 	}

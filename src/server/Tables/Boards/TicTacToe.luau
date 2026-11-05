@@ -57,6 +57,10 @@ function TicTacToe.create(boardCF: CFrame, parent: Instance)
 	end, function(r, c)
 		return if (r + c) % 2 == 0 then Color3.fromRGB(240, 232, 214) else Color3.fromRGB(222, 210, 186)
 	end, Color3.fromRGB(70, 46, 32))
+	-- Each seat's mark color, for the ghost mark the client floats over a hovered cell.
+	for seat, color in SEAT_COLORS do
+		board.model:SetAttribute(`SeatColor{seat}`, color)
+	end
 	local shown: { [number]: Instance } = {}
 	local shownSeat: { [number]: number } = {}
 

@@ -30,6 +30,7 @@ Showtime.Fx = {
 	gold = { { 255, 200, 64 }, { 255, 236, 160 } },
 	disco = { { 160, 90, 255 }, { 60, 220, 255 }, { 255, 80, 200 } },
 	bubbles = { { 150, 220, 255 }, { 220, 250, 255 } },
+	frost = { { 235, 245, 255 }, { 170, 215, 255 }, { 255, 255, 255 } },
 }
 
 -- Order matters: the shop lists them in this order, and the first free one is the default.
@@ -45,13 +46,15 @@ Showtime.Poses = {
 	-- Game Night Pass rewards (shared/Season); the shop shows which pass gives them.
 	{ id = "pose_spotlight", name = "Spotlight", icon = "🔦", blurb = "Squint into the lights, then point up", fx = "stars" },
 	{ id = "pose_redcarpet", name = "Red Carpet", icon = "📸", blurb = "Strut, wave, blow a kiss to the cameras", fx = "gold" },
+	{ id = "pose_snowball", name = "Snowball Fight", icon = "☃️", blurb = "Scoop, pack, wind up and let it fly", fx = "frost" },
+	{ id = "pose_warmhands", name = "Warm Hands", icon = "🧤", blurb = "Shiver, then blow on your hands", fx = "frost" },
 	{ id = "pose_peace", name = "Peace Out", icon = "✌️", blurb = "Peace sign and a head tilt", fx = "stars" },
 	{ id = "pose_superstar", name = "Superstar", icon = "🌟", blurb = "Crouch, then point to the sky", fx = "stars" },
 	{ id = "pose_cool", name = "Too Cool", icon = "😎", blurb = "Arms crossed, leaning back", fx = "disco" },
-	{ id = "pose_heart", name = "Heart Hands", icon = "🫶", blurb = "A heart for the table", fx = "hearts" },
+	{ id = "pose_heart", name = "Heart Hands", icon = "💖", blurb = "A heart for the table", fx = "hearts" },
 	{ id = "pose_tada", name = "Ta-da!", icon = "🎩", blurb = "Jazz hands, wiggling fingers", fx = "confetti" },
 	{ id = "pose_bow", name = "Royal Bow", icon = "👑", blurb = "A deep bow with a flourish", fx = "gold" },
-	{ id = "pose_challenge", name = "Bring It", icon = "🫵", blurb = "Point at the table, then beckon", fx = "fire" },
+	{ id = "pose_challenge", name = "Bring It", icon = "👉", blurb = "Point at the table, then beckon", fx = "fire" },
 	{ id = "pose_thinker", name = "Mastermind", icon = "🧠", blurb = "Hand on chin, plotting", fx = "disco" },
 	{ id = "pose_boxer", name = "Boxer", icon = "🥊", blurb = "Guard up, bob, jab", fx = "fire" },
 } :: { Move }
@@ -60,7 +63,7 @@ Showtime.Dances = {
 	{ id = "win_pump", name = "Arm Pump", icon = "🙌", blurb = "Jump with both fists in the air", fx = "confetti" },
 	{ id = "win_clap", name = "Happy Clap", icon = "👏", blurb = "Step, clap overhead, step, clap", fx = "stars" },
 	{ id = "win_goggles", name = "Goggle Strut", icon = "🥽", blurb = "Goggle hands, heel taps, arm swings", fx = "fire", hot = true },
-	{ id = "win_lhop", name = "Loser Hop", icon = "🫲", blurb = "An L on the forehead, hop hop hop", fx = "confetti", hot = true },
+	{ id = "win_lhop", name = "Loser Hop", icon = "🤟", blurb = "An L on the forehead, hop hop hop", fx = "confetti", hot = true },
 	{ id = "win_bop", name = "Classic Bop", icon = "🕺", blurb = "Punch, punch, arms up, clap", fx = "disco", hot = true },
 	{ id = "win_swing", name = "Swingback", icon = "🔁", blurb = "Arms swing, hips swing the other way", fx = "bubbles", hot = true },
 	{ id = "win_runman", name = "Running Man", icon = "🏃", blurb = "Knee up, slide back, switch", fx = "stars", hot = true },
@@ -70,7 +73,7 @@ Showtime.Dances = {
 	{ id = "win_roof", name = "Raise the Roof", icon = "🏠", blurb = "Push it up, push it up", fx = "confetti" },
 	{ id = "win_sprinkler", name = "Sprinkler", icon = "💦", blurb = "Tick, tick, tick... swoosh", fx = "bubbles" },
 	{ id = "win_robot", name = "Robot", icon = "🤖", blurb = "Stiff, jerky, perfect", fx = "stars" },
-	{ id = "win_disco", name = "Disco Point", icon = "🪩", blurb = "Point up, point down, hips", fx = "disco" },
+	{ id = "win_disco", name = "Disco Point", icon = "🕺", blurb = "Point up, point down, hips", fx = "disco" },
 	{ id = "win_groove", name = "Hip Groove", icon = "🎶", blurb = "Hip circles and shoulder rolls", fx = "disco" },
 	{ id = "win_wave", name = "Stadium Wave", icon = "🌊", blurb = "Arms up, step side to side", fx = "bubbles" },
 	{ id = "win_heart", name = "Blow Kisses", icon = "😘", blurb = "Kisses for the fans", fx = "hearts" },
@@ -78,6 +81,7 @@ Showtime.Dances = {
 	{ id = "win_money", name = "Make It Rain", icon = "💸", blurb = "Flicking bills to the crowd", fx = "gold" },
 	{ id = "win_champion", name = "Champion", icon = "🏆", blurb = "Trophy up, flex, spin", fx = "gold" },
 	{ id = "win_showstopper", name = "Showstopper", icon = "🎭", blurb = "Kick line, jazz hands, take a bow", fx = "gold" },
+	{ id = "win_iceskate", name = "Ice Skater", icon = "⛸️", blurb = "Glide, glide, double spin, arabesque", fx = "frost" },
 } :: { Move }
 
 local byId: { [string]: Move } = {}

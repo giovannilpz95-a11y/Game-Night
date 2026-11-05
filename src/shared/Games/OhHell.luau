@@ -9,6 +9,10 @@
 -- Make your bid exactly for 10 + your bid; miss it by any amount and score nothing.
 -- Highest score after the last round wins.
 --
+-- House rules (options.rules): hook (default on: the dealer's banned bid above),
+-- scoring ("exact": only an exact bid scores; "tricks": every trick scores 1, and an
+-- exact bid adds 10).
+--
 -- Moves: { kind = "bid", bid = 0..hand size }  (bid phase, in turn)
 --        { kind = "play", card = id }          (your turn)
 
@@ -104,6 +108,8 @@ function OhHell.new(seatCount: number, options: any?, rng: Random?)
 		phase = "bid", -- "bid" | "play" | "trick" | "round" | "done"
 		phaseId = 0,
 		over = false,
+		hook = rules.hook ~= false,
+		everyTrick = rules.scoring == "tricks",
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	deal(state)
@@ -112,7 +118,7 @@ end
 
 -- The bid the dealer may not make (nil for everyone else, or when it can't add up).
 function OhHell.forbiddenBid(state, seat: number): number?
-	if seat ~= state.dealer then
+	if seat ~= state.dealer or state.hook == false then
 		return nil
 	end
 	local sum = 0
@@ -196,6 +202,9 @@ local function endRound(state)
 	for seat = 1, state.seatCount do
 		local bid, took = state.bids[seat], state.tricks[seat]
 		local points = if bid == took then OhHell.EXACT_BONUS + bid else 0
+		if state.everyTrick then
+			points = took + (if bid == took then OhHell.EXACT_BONUS else 0)
+		end
 		state.scores[seat] += points
 		if bid == took then
 			state.made[seat] += 1

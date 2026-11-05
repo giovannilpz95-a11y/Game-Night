@@ -9,6 +9,10 @@
 -- Shooting the moon: take all 26 points in a round and everyone else gets 26 instead.
 -- When someone reaches the target score (50 by default), the lowest score wins.
 --
+-- House rules (options.rules): passing (default on; off skips the pass every round),
+-- moon ("others": everyone else takes 26, "self": you take -26 instead), jackDiamonds
+-- (whoever takes the Jack of Diamonds scores -10).
+--
 -- Moves: { kind = "pass", cards = { id, id, id } }  (pass phase, everyone at once)
 --        { kind = "play", card = id }               (your turn)
 
@@ -31,6 +35,7 @@ local SPADES, HEARTS, CLUBS = 1, 2, 4
 local suit = PlayingCards.suit
 local power = PlayingCards.aceHigh
 local QUEEN_OF_SPADES = PlayingCards.make(12, SPADES)
+local JACK_OF_DIAMONDS = PlayingCards.make(11, 3)
 local TWO_OF_CLUBS = PlayingCards.make(2, CLUBS)
 Hearts.QUEEN_OF_SPADES = QUEEN_OF_SPADES
 Hearts.TWO_OF_CLUBS = TWO_OF_CLUBS
@@ -61,7 +66,8 @@ local function deal(state)
 		table.insert(state.hands[(i - 1) % 4 + 1], id)
 	end
 	state.round += 1
-	state.passIndex = (state.round - 1) % 4 + 1
+	state.passIndex = if state.noPassing then 4 else (state.round - 1) % 4 + 1
+	state.jackTaker = nil
 	state.passing = {}
 	state.trick = {}
 	state.lastTrick = nil
@@ -107,6 +113,10 @@ function Hearts.new(seatCount: number, options: any?, rng: Random?)
 		phase = "pass", -- "pass" | "play" | "trick" | "round"
 		phaseId = 0,
 		over = false,
+		noPassing = rules.passing == false,
+		moonSelf = rules.moon == "self",
+		jackDiamonds = rules.jackDiamonds == true,
+		jackTaker = nil,
 		target = if type(rules.target) == "number" and rules.target > 0 then rules.target else Hearts.TARGET,
 		botLevel = (options and options.botLevel) or "medium",
 	}
@@ -260,7 +270,14 @@ local function endRound(state)
 	end
 	local roundPoints = {}
 	for seat = 1, 4 do
-		roundPoints[seat] = if moon then (if seat == moon then 0 else 26) else state.taken[seat]
+		if moon and state.moonSelf then
+			roundPoints[seat] = if seat == moon then -26 else 0
+		else
+			roundPoints[seat] = if moon then (if seat == moon then 0 else 26) else state.taken[seat]
+		end
+		if state.jackDiamonds and state.jackTaker == seat then
+			roundPoints[seat] -= 10
+		end
 		state.scores[seat] += roundPoints[seat]
 	end
 	state.roundPoints = roundPoints
@@ -307,6 +324,11 @@ function Hearts.applyMove(state, seat: number, move: any)
 		p += points(play.card)
 	end
 	state.taken[winner] += p
+	for _, play in state.trick do
+		if play.card == JACK_OF_DIAMONDS and state.jackDiamonds then
+			state.jackTaker = winner
+		end
+	end
 	state.lastTrick = { plays = Tricks.copy(state.trick), winner = winner, points = p }
 	state.tricksPlayed += 1
 	state.turn = winner
