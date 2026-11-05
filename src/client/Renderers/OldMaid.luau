@@ -144,11 +144,18 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	ui.refresh = function()
+		if snapshot then
+			render()
+		end
+	end
+
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
 			render()
 		end,
+		setDocked = ui.setDocked,
 		destroy = function()
 			ui.root:Destroy()
 		end,

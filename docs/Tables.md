@@ -55,6 +55,8 @@ Every table gets a sign post at its edge with its state on both faces, and a pen
 
 The table camera eases toward its resting spot at your seat rather than jumping: it glides in from your avatar's view and follows dock changes smoothly. While you play, it turns slightly toward whoever's turn it is. When a gesture plays at your table (`Avatars.onAction`), it turns toward that gesture and moves in a little, more for big moments like a slap, a dice roll or a win. A very slow drift keeps the view from feeling frozen. **Camera motion: Calm** in the ⋯ menu turns off the lean, push-ins and drift for the session, leaving only a quick smooth glide. The tuning constants are at the top of `client/Table3D/Controller.luau`.
 
+Card games use a seated first-person camera (`FIRST_PERSON` in the Controller). Their docks are `held` in `MatchView.DOCK`: the dock has no tray, the felt and seat rows are hidden (the 3D table shows them), and your hand is fanned like real cards along the bottom edge. Hovering a card lifts and straightens it. Mark a hand row with `PlayingCard.setHeld` and `PlayingCard.renderHand` draws the fan. The shared `CardTable` layout does this in `ui.setDocked`. Go Fish, Speed and Spoons do it in their own renderers.
+
 Cells are parts in the board's `Cells` folder with `Row`/`Col` attributes (Four in a Row: one invisible part per column with `Col`). The client raycasts only against that folder, so pieces never get in the way.
 
 ## Adding a game to the tables

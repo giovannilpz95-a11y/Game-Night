@@ -218,11 +218,42 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 		end)
 	end
 
+	-- Redraw when the hand changes size, so the cards are measured against the new frame.
+	local refreshQueued = false
+	hand:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if refreshQueued then
+			return
+		end
+		refreshQueued = true
+		task.defer(function()
+			refreshQueued = false
+			if snapshot and root.Parent then
+				render()
+			end
+		end)
+	end)
+
+	-- Table view docks the bottom of this screen (MatchView.DOCK, held): the table's cards
+	-- are on the 3D table, so the top rows and the felt go and your hand is held like real
+	-- cards, a big fan along the bottom edge running a little off the screen.
+	local function setDocked(docked: boolean)
+		players.Visible = not docked
+		felt.Visible = not docked
+		prompt.TextStrokeTransparency = if docked then 0.35 else 1
+		PlayingCard.setHeld(hand, docked)
+		hand.Position = if docked then UDim2.new(0.14, 0, 0.74, 0) else UDim2.new(0, 0, 0.74, 0)
+		hand.Size = if docked then UDim2.new(0.72, 0, 0.4, 0) else UDim2.new(1, 0, 0.26, 0)
+		if snapshot then
+			render()
+		end
+	end
+
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
 			render()
 		end,
+		setDocked = setDocked,
 		destroy = function()
 			keyConnection:Disconnect()
 			root:Destroy()
