@@ -11,6 +11,7 @@ local Chess = {}
 
 local SELECTED = Color3.fromRGB(255, 214, 102)
 local TARGET = Color3.fromRGB(80, 220, 120)
+local PREMOVE = Color3.fromRGB(222, 110, 90)
 
 local function squareOf(row: number, col: number): string
 	return ChessRules.squareName((8 - row) * 8 + (col - 1))
@@ -24,6 +25,9 @@ end
 function Chess.create(ctx: any)
 	local snapshot: any = nil
 	local selected: string? = nil
+	-- Premoves (see the 2D board): played as soon as your turn comes, if still legal.
+	local preSel: string? = nil
+	local premove: { from: string, to: string }? = nil
 	local picker: Frame? = nil
 	-- Offer / accept a draw, bottom right over the room.
 	local draw = DrawOffer.new(ctx.gui, ctx.sendMove, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16) })
@@ -51,6 +55,21 @@ function Chess.create(ctx: any)
 
 	local function render()
 		ctx.clearMarks()
+		local pre = {}
+		if preSel then
+			table.insert(pre, preSel)
+		end
+		if premove then
+			table.insert(pre, premove.from)
+			table.insert(pre, premove.to)
+		end
+		for _, square in pre do
+			local r, c = cellOf(square)
+			local cell = ctx.cell(r, c)
+			if cell then
+				ctx.mark(cell, PREMOVE, "fill")
+			end
+		end
 		if not selected then
 			return
 		end
@@ -114,15 +133,43 @@ function Chess.create(ctx: any)
 			if not myTurn() then
 				selected = nil
 				closePicker()
+			elseif premove then
+				local pre = premove
+				premove, preSel = nil, nil
+				for _, m in snapshot.view.legalMoves or {} do
+					if m.from == pre.from and m.to == pre.to then
+						ctx.sendMove({ from = m.from, to = m.to, promotion = if m.promotion then "q" else nil })
+						break
+					end
+				end
+			end
+			if snapshot.result ~= nil or snapshot.aborted then
+				premove, preSel = nil, nil
 			end
 			render()
 		end,
 		click = function(cell: BasePart)
 			local r, c = cell:GetAttribute("Row"), cell:GetAttribute("Col")
-			if not (r and c) or not myTurn() then
+			if not (r and c) or not snapshot then
 				return
 			end
 			local square = squareOf(r :: number, c :: number)
+			if not myTurn() then
+				if snapshot.yourSeat and snapshot.result == nil and not snapshot.aborted then
+					local code = snapshot.view.board[(ChessRules.parseSquare(square) :: number) + 1]
+					local mine = code ~= 0 and ((code > 0) == (snapshot.yourSeat == 1))
+					if preSel and square ~= preSel and not mine then
+						premove = { from = preSel, to = square }
+						preSel = nil
+					elseif mine and square ~= preSel then
+						preSel, premove = square, nil
+					else
+						preSel, premove = nil, nil
+					end
+					render()
+				end
+				return
+			end
 			if selected then
 				local choices = {}
 				for _, m in movesFrom(selected) do

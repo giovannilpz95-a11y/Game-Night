@@ -20,6 +20,7 @@ local DARK = Color3.fromRGB(176, 128, 92)
 local SELECTED = Color3.fromRGB(255, 214, 102)
 local LAST_MOVE = Color3.fromRGB(214, 196, 110)
 local CHECK = Color3.fromRGB(235, 87, 87)
+local PREMOVE = Color3.fromRGB(222, 110, 90)
 
 -- Game row 1 is rank 8 (the top as White sees it).
 local function squareOf(row: number, col: number): string
@@ -55,7 +56,12 @@ end
 function Chess.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local selected: string? = nil
+	-- Premoves: off your turn, pick a piece and a square; it plays the moment your turn
+	-- comes, if it's legal then.
+	local preSel: string? = nil
+	local premove: { from: string, to: string }? = nil
 	local shownCodes: { [string]: number } = {}
+	local shownFlipped: boolean? = nil
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -230, 1, 0), Parent = root })
@@ -95,6 +101,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local render: () -> ()
+	local clearMarks: () -> ()
 	local grid: BoardGrid.Grid
 
 	local function myTurn(): boolean
@@ -145,10 +152,23 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local function onClick(row: number, col: number)
+		local square = squareOf(row, col)
 		if not myTurn() then
+			if snapshot and snapshot.yourSeat and snapshot.result == nil and not snapshot.aborted then
+				local code = snapshot.view.board[(ChessRules.parseSquare(square) :: number) + 1]
+				local mine = code ~= 0 and ((code > 0) == (snapshot.yourSeat == 1))
+				if preSel and square ~= preSel and not mine then
+					premove = { from = preSel, to = square }
+					preSel = nil
+				elseif mine and square ~= preSel then
+					preSel, premove = square, nil
+				else
+					preSel, premove = nil, nil
+				end
+				render()
+			end
 			return
 		end
-		local square = squareOf(row, col)
 		if selected then
 			local choices = {}
 			for _, m in movesFrom(selected) do
@@ -173,14 +193,108 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		render()
 	end
 
-	grid = BoardGrid.create(boardArea, 8, onClick)
+	grid = BoardGrid.create(boardArea, 8, function(row, col)
+		clearMarks()
+		onClick(row, col)
+	end)
+
+	-- Right-click marks, like the big chess sites: right-click a square to ring it, or
+	-- right-drag from one square to another for an arrow. Any left click clears them.
+	-- Only you see them.
+	local MARK = Color3.fromRGB(255, 160, 40)
+	local inner = grid.cell(1, 1).Parent :: Frame
+	local markLayer = Kit.new("Frame", { Name = "Marks", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = inner })
+	local marks: { [string]: boolean } = {} -- "a1" (ring) or "a1>c3" (arrow)
+	local function center(row: number, col: number): Vector2
+		local p = grid.cell(row, col).Position
+		return Vector2.new(p.X.Scale + 1 / 16, p.Y.Scale + 1 / 16)
+	end
+	local function drawMarks()
+		Kit.clear(markLayer)
+		for key in marks do
+			local from, to = string.match(key, "^(%w+)>(%w+)$")
+			if from and to then
+				local a = center(cellOf(from))
+				local b = center(cellOf(to))
+				local d = b - a
+				local angle = math.deg(math.atan2(d.Y, d.X))
+				local tip = b - d.Unit * 0.03
+				Kit.new("Frame", {
+					BackgroundColor3 = MARK,
+					BackgroundTransparency = 0.2,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale((a.X + tip.X) / 2, (a.Y + tip.Y) / 2),
+					Size = UDim2.fromScale((tip - a).Magnitude, 0.022),
+					Rotation = angle,
+					ZIndex = 8,
+					Parent = markLayer,
+				}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+				Kit.label("▶", {
+					TextScaled = true,
+					TextColor3 = MARK,
+					TextTransparency = 0.1,
+					TextXAlignment = Enum.TextXAlignment.Center,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(tip.X, tip.Y),
+					Size = UDim2.fromScale(0.07, 0.07),
+					Rotation = angle,
+					ZIndex = 9,
+					Parent = markLayer,
+				})
+			else
+				local c = center(cellOf(key))
+				Kit.new("Frame", {
+					BackgroundTransparency = 1,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(c.X, c.Y),
+					Size = UDim2.fromScale(0.115, 0.115),
+					ZIndex = 8,
+					Parent = markLayer,
+				}, {
+					Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+					Kit.new("UIStroke", { Color = MARK, Thickness = 4, Transparency = 0.15 }),
+				})
+			end
+		end
+	end
+	function clearMarks()
+		if next(marks) then
+			table.clear(marks)
+			drawMarks()
+		end
+	end
+	local dragFrom: string? = nil
+	for row = 1, 8 do
+		for col = 1, 8 do
+			local cell = grid.cell(row, col)
+			cell.MouseButton2Down:Connect(function()
+				dragFrom = squareOf(row, col)
+			end)
+			cell.MouseButton2Up:Connect(function()
+				local from, to = dragFrom, squareOf(row, col)
+				dragFrom = nil
+				if not from then
+					return
+				end
+				local key = if from == to then to else `{from}>{to}`
+				marks[key] = if marks[key] then nil else true
+				drawMarks()
+			end)
+		end
+	end
 
 	function render()
 		if not snapshot then
 			return
 		end
 		local view = snapshot.view
-		grid.setFlipped(snapshot.yourSeat == 2)
+		local flipped = snapshot.yourSeat == 2
+		if flipped ~= shownFlipped then
+			shownFlipped = flipped
+			grid.setFlipped(flipped)
+			clearMarks()
+		end
 		local over = snapshot.result ~= nil or snapshot.aborted == true
 		local acting = if over then nil else snapshot.activeSeats[1]
 		HudKit.turnTint(side, acting, acting ~= nil and acting == snapshot.yourSeat)
@@ -202,6 +316,8 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 				local base = if (row + col) % 2 == 0 then LIGHT else DARK
 				if square == selected then
 					base = SELECTED
+				elseif square == preSel or (premove and (square == premove.from or square == premove.to)) then
+					base = base:Lerp(PREMOVE, 0.75)
 				elseif last and (square == last.from or square == last.to) then
 					base = base:Lerp(LAST_MOVE, 0.55)
 				end
@@ -279,6 +395,19 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			if not myTurn() then
 				selected = nil
 				closePicker()
+			elseif premove then
+				-- Your turn: play the premove if it's still legal.
+				local pre = premove
+				premove, preSel = nil, nil
+				for _, m in snapshot.view.legalMoves or {} do
+					if m.from == pre.from and m.to == pre.to then
+						sendMove({ from = m.from, to = m.to, promotion = if m.promotion then "q" else nil })
+						break
+					end
+				end
+			end
+			if snapshot.result ~= nil or snapshot.aborted then
+				premove, preSel = nil, nil
 			end
 			render()
 		end,

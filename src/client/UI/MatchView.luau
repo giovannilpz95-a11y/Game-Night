@@ -85,10 +85,11 @@ local function esc(text: string): string
 end
 
 -- Green while there's time, orange under 10 s, red under 5 s.
+-- Red from 10 seconds, like the chess sites' clocks.
 local function timerColor(left: number): Color3
-	if left <= 5 then
+	if left <= 10 then
 		return Theme.Bad
-	elseif left <= 10 then
+	elseif left <= 20 then
 		return Theme.Warn
 	end
 	return Theme.Good

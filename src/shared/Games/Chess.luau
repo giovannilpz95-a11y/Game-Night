@@ -7,6 +7,9 @@
 -- White pieces are positive, black negative. Seat 1 plays White, seat 2 Black.
 --
 -- Move (over the network): { from = "e2", to = "e4", promotion = "q" | "r" | "b" | "n" | nil }
+-- Takebacks: right after your move, { kind = "takeback" } asks to take it back (out of
+-- turn: getInterruptSeats). The other player can { kind = "acceptTakeback" } on their
+-- turn; moving on declines. TAKEBACKS per player per game.
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
@@ -574,6 +577,11 @@ function Chess.new(seatCount: number, options: any?, _rng: Random?)
 		drawOffer = nil :: number?, -- the seat offering
 		drawDeclined = nil :: number?, -- the seat whose offer was just turned down
 		lastOffer = {} :: { [number]: number }, -- #moveList when each seat last offered
+		-- Takebacks: what each ply changed, so the last one can be undone.
+		undo = {} :: { { fen: string, lastMove: any, seat: number, took: boolean } },
+		takebackAsk = nil :: number?, -- the seat asking to take its last move back
+		takebackDeclined = nil :: number?,
+		takebacks = { [1] = 0, [2] = 0 } :: { [number]: number }, -- granted per seat
 	}
 	state.history[positionKey(pos)] = 1
 	return state
@@ -606,15 +614,48 @@ function Chess.canOfferDraw(state, seat: number): boolean
 	return not isOver(state) and seatToSide(seat) == state.pos.side and (last == nil or #state.moveList - last >= OFFER_GAP)
 end
 
+-- Takebacks: only the move you just made, a few times a game, one request at a time.
+local TAKEBACKS = 3
+function Chess.canAskTakeback(state, seat: number): boolean
+	local last = state.undo[#state.undo]
+	return not isOver(state)
+		and last ~= nil
+		and last.seat == seat
+		and seatToSide(seat) ~= state.pos.side
+		and state.takebackAsk == nil
+		and state.takebackDeclined ~= seat
+		and (state.takebacks[seat] or 0) < TAKEBACKS
+end
+
+local function takebackPendingFor(state, seat: number): boolean
+	return state.takebackAsk ~= nil and state.takebackAsk ~= seat and not isOver(state) and seatToSide(seat) == state.pos.side
+end
+
+-- The seat that may ask for a takeback right now moves out of turn (see Match).
+function Chess.getInterruptSeats(state): { number }
+	for seat = 1, 2 do
+		if Chess.canAskTakeback(state, seat) then
+			return { seat }
+		end
+	end
+	return {}
+end
+
 local function offerPendingFor(state, seat: number): boolean
 	return state.drawOffer ~= nil and state.drawOffer ~= seat and not isOver(state) and seatToSide(seat) == state.pos.side
 end
 
 function Chess.getLegalMoves(state, seat: number): { any }
-	if isOver(state) or seatToSide(seat) ~= state.pos.side then
+	if isOver(state) then
 		return {}
 	end
+	if seatToSide(seat) ~= state.pos.side then
+		return if Chess.canAskTakeback(state, seat) then { { kind = "takeback" } } else {}
+	end
 	local out = {}
+	if takebackPendingFor(state, seat) then
+		table.insert(out, { kind = "acceptTakeback" })
+	end
 	if offerPendingFor(state, seat) then
 		table.insert(out, { kind = "acceptDraw" })
 	end
@@ -649,8 +690,20 @@ function Chess.validateMove(state, seat: number, move: any): (boolean, string?)
 	if isOver(state) then
 		return false, "The game is over"
 	end
+	if type(move) == "table" and move.kind == "takeback" then
+		if not Chess.canAskTakeback(state, seat) then
+			return false, "You can't take that back"
+		end
+		return true
+	end
 	if seatToSide(seat) ~= state.pos.side then
 		return false, "It's not your turn"
+	end
+	if type(move) == "table" and move.kind == "acceptTakeback" then
+		if not takebackPendingFor(state, seat) then
+			return false, "No takeback was asked for"
+		end
+		return true
 	end
 	if type(move) == "table" and move.kind == "acceptDraw" then
 		if not offerPendingFor(state, seat) then
@@ -672,7 +725,37 @@ function Chess.validateMove(state, seat: number, move: any): (boolean, string?)
 	return true
 end
 
+-- Undoes the last ply: back to the position before it, with its move, capture and
+-- repetition count gone.
+local function undoLast(state)
+	local entry = table.remove(state.undo)
+	if not entry then
+		return
+	end
+	local key = positionKey(state.pos)
+	state.history[key] = math.max(0, (state.history[key] or 1) - 1)
+	state.pos = Chess.fromFen(entry.fen)
+	table.remove(state.moveList)
+	if entry.took then
+		table.remove(state.captured[entry.seat])
+	end
+	state.lastMove = entry.lastMove
+end
+
 function Chess.applyMove(state, seat: number, move: any)
+	if move.kind == "takeback" then
+		state.takebackAsk = seat
+		return
+	elseif move.kind == "acceptTakeback" then
+		local asker = state.takebackAsk :: number
+		state.takebackAsk = nil
+		state.takebackDeclined = nil
+		state.takebacks[asker] = (state.takebacks[asker] or 0) + 1
+		state.drawOffer = nil
+		undoLast(state)
+		state.tookBack = { seat = asker, count = #state.moveList }
+		return
+	end
 	if move.kind == "acceptDraw" then
 		state.isDraw = true
 		state.reason = "Draw agreed"
@@ -682,12 +765,17 @@ function Chess.applyMove(state, seat: number, move: any)
 	-- Moving on turns down an offer that was waiting for you.
 	state.drawDeclined = if state.drawOffer and state.drawOffer ~= seat then state.drawOffer else nil
 	state.drawOffer = nil
+	-- ...and a takeback request. (Your own next move clears your declined flag.)
+	state.takebackDeclined = if state.takebackAsk and state.takebackAsk ~= seat then state.takebackAsk else nil
+	state.takebackAsk = nil
+	state.tookBack = nil
 	if move.offerDraw == true then
 		state.drawOffer = seat
 		state.lastOffer[seat] = #state.moveList
 	end
 	local pos = state.pos
 	local m = findMove(state, move) :: Move
+	table.insert(state.undo, { fen = Chess.toFen(pos), lastMove = state.lastMove, seat = seat, took = m.captured ~= 0 })
 	table.insert(state.moveList, sanFor(pos, m, legalMoves(pos)))
 	if m.captured ~= 0 then
 		table.insert(state.captured[seat], math.abs(m.captured))
@@ -749,6 +837,11 @@ function Chess.getView(state, seat: number?): any
 		drawOffer = state.drawOffer,
 		drawDeclined = state.drawDeclined,
 		canOfferDraw = seat ~= nil and Chess.canOfferDraw(state, seat),
+		takebackAsk = state.takebackAsk,
+		takebackDeclined = state.takebackDeclined,
+		tookBack = GameModule.copy(state.tookBack),
+		canAskTakeback = seat ~= nil and Chess.canAskTakeback(state, seat),
+		takebacksLeft = if seat then TAKEBACKS - (state.takebacks[seat] or 0) else 0,
 	}
 	if seat and not isOver(state) and seatToSide(seat) == pos.side then
 		view.legalMoves = Chess.getLegalMoves(state, seat)
@@ -999,9 +1092,15 @@ function Chess.rankMoves(pos: Pos, maxDepth: number, seconds: number, exact: boo
 	return ranked
 end
 
+local TAKEBACK_YES = { easy = 1, medium = 0.75, hard = 0.35 }
+
 function Chess.chooseBotMove(state, seat: number, rng: Random): any?
 	if isOver(state) or seatToSide(seat) ~= state.pos.side then
 		return nil
+	end
+	-- A takeback request: friendly bots say yes, sharp ones less often.
+	if takebackPendingFor(state, seat) and rng:NextNumber() < (TAKEBACK_YES[state.botLevel] or 0.75) then
+		return { kind = "acceptTakeback" }
 	end
 	-- A draw offer: take it when losing, or in a long, level game.
 	if offerPendingFor(state, seat) then
