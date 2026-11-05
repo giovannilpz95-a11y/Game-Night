@@ -1,11 +1,14 @@
 -- Color Clash table: the draw pile and the discard pile in the middle, your hand fanned
 -- along the bottom (playable cards lift up, the rest dim). Tap a card to play it; Wild
--- cards open a color wheel in the middle of the screen. A card you draw and can play is
+-- cards open a color wheel in the middle of the screen (colors up/right/down/left, so
+-- arrows or a D-pad can pick one). A card you draw and can play is
 -- held up in the middle with Play / Keep. Draw / Pass buttons sit beside the piles.
 -- Cards are drawn in code with our own look (Coral, Honey, Teal, Violet).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local ContextActionService = game:GetService("ContextActionService")
+local GuiService = game:GetService("GuiService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.ColorClash)
 local Kit = require(script.Parent.Parent.UI.Kit)
@@ -111,39 +114,61 @@ local function cardVisual(id: number?): Frame
 	return face
 end
 
--- The four-color wheel filling `parent`: four quarters (each a button that pushes out a
--- little on hover) around a dark hub. `z` is the lowest ZIndex it uses.
-local QUARTERS = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } } -- the corner each color fills
-local WHEEL_GAP = 0.012 -- of the wheel's size, between the quarters
-local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ())
+-- The wild color picker filling `parent`: the four colors as round buttons pointing up,
+-- right, down and left around a dark hub, so a controller's D-pad or the arrow keys can
+-- pick one (see ColorClash.create). `z` is the lowest ZIndex it uses. Returns `light(i)`,
+-- which pushes color i out as the highlighted one (nil lights none).
+local DIRECTIONS = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } } -- Coral up, Honey right, Teal down, Violet left
+local ARROWS = { "▲", "▶", "▼", "◀" }
+local PETAL = 0.4 -- of the picker's size
+local PETAL_REACH = 0.29 -- petal middle from the picker's middle
+local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ()): (number?) -> ()
 	local quick = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	-- A dark ring behind the petals, so it still reads as one wheel.
+	Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromRGB(28, 24, 40),
+		BackgroundTransparency = 0.25,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.86, 0.86),
+		ZIndex = z,
+		Parent = parent,
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.5 }),
+	})
+	local petals = {}
+	local hovered: number? = nil
+	local lit: number? = nil
+	local function settle(i: number)
+		local petal = petals[i]
+		local d = DIRECTIONS[i]
+		local on = hovered == i or lit == i
+		local reach = PETAL_REACH + (if on then 0.05 else 0)
+		TweenService:Create(petal.button, quick, { Position = UDim2.fromScale(0.5 + d[1] * reach, 0.5 + d[2] * reach) }):Play()
+		TweenService:Create(petal.scale, quick, { Scale = if on then 1.12 else 1 }):Play()
+		petal.stroke.Thickness = if lit == i then 5 else 2
+		petal.stroke.Transparency = if on then 0 else 0.35
+	end
 	for i, color in COLORS do
-		local qx, qy = QUARTERS[i][1], QUARTERS[i][2]
-		local outX, outY = qx * 2 - 1, qy * 2 - 1 -- away from the middle
-		local rest = UDim2.fromScale(qx * 0.5 + outX * WHEEL_GAP, qy * 0.5 + outY * WHEEL_GAP)
-		local out = UDim2.fromScale(qx * 0.5 + outX * WHEEL_GAP * 4, qy * 0.5 + outY * WHEEL_GAP * 4)
-		-- A square that clips a full circle to the one quarter in its corner.
-		local quarter = Kit.new("TextButton", {
+		local d = DIRECTIONS[i]
+		local button = Kit.new("TextButton", {
 			Text = "",
 			AutoButtonColor = false,
-			BackgroundTransparency = 1,
-			ClipsDescendants = true,
-			Position = rest,
-			Size = UDim2.fromScale(0.5, 0.5),
-			ZIndex = z,
-			Parent = parent,
-		})
-		Kit.new("Frame", {
 			BackgroundColor3 = color,
 			BorderSizePixel = 0,
-			Position = UDim2.fromScale(-qx, -qy), -- the circle's middle on the inner corner
-			Size = UDim2.fromScale(2, 2),
-			ZIndex = z,
-			Parent = quarter,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5 + d[1] * PETAL_REACH, 0.5 + d[2] * PETAL_REACH),
+			Size = UDim2.fromScale(PETAL, PETAL),
+			ZIndex = z + 1,
+			Parent = parent,
 		}, {
 			Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
 			Kit.new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200)) }),
 		})
+		local stroke = Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.35, Parent = button })
+		local scale = Kit.new("UIScale", { Scale = 1, Parent = button })
 		Kit.label(Rules.colorNames[i], {
 			Font = Theme.FontBold,
 			TextScaled = true,
@@ -151,19 +176,37 @@ local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ())
 			TextStrokeTransparency = 0.4,
 			TextXAlignment = Enum.TextXAlignment.Center,
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(if qx == 0 then 0.42 else 0.58, if qy == 0 then 0.42 else 0.58),
-			Size = UDim2.fromScale(0.6, 0.2),
-			ZIndex = z + 1,
-			Parent = quarter,
+			Position = UDim2.fromScale(0.5, 0.56),
+			Size = UDim2.fromScale(0.8, 0.26),
+			ZIndex = z + 2,
+			Parent = button,
 		})
-		quarter.MouseEnter:Connect(function()
-			TweenService:Create(quarter, quick, { Position = out }):Play()
+		-- Which way to press for it.
+		Kit.label(ARROWS[i], {
+			Font = Theme.FontBold,
+			TextScaled = true,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextTransparency = 0.25,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5 + d[1] * 0.3, 0.5 + d[2] * 0.3 - (if d[2] == 0 then 0.06 else 0)),
+			Size = UDim2.fromScale(0.2, 0.2),
+			ZIndex = z + 2,
+			Parent = button,
+		})
+		petals[i] = { button = button, stroke = stroke, scale = scale }
+		button.MouseEnter:Connect(function()
+			hovered = i
+			settle(i)
 			Audio.hoverAt(i, 4) -- the four colors a rising chord
 		end)
-		quarter.MouseLeave:Connect(function()
-			TweenService:Create(quarter, quick, { Position = rest }):Play()
+		button.MouseLeave:Connect(function()
+			if hovered == i then
+				hovered = nil
+			end
+			settle(i)
 		end)
-		quarter.Activated:Connect(function()
+		button.Activated:Connect(function()
 			onPick(i)
 		end)
 	end
@@ -172,7 +215,7 @@ local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ())
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.22, 0.22),
+		Size = UDim2.fromScale(0.2, 0.2),
 		ZIndex = z + 2,
 		Parent = parent,
 	}, {
@@ -186,10 +229,22 @@ local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ())
 		TextXAlignment = Enum.TextXAlignment.Center,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.12, 0.12),
+		Size = UDim2.fromScale(0.11, 0.11),
 		ZIndex = z + 3,
 		Parent = parent,
 	})
+	return function(i: number?)
+		local before = lit
+		lit = i
+		for j in petals do
+			if j == before or j == i then
+				settle(j)
+			end
+		end
+		if i and i ~= before then
+			Audio.hoverAt(i, 4)
+		end
+	end
 end
 
 -- The mark that pops up off the table for each action card (and the 7-0 swaps).
@@ -435,8 +490,72 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		Parent = overlay,
 	})
 
-	local function closePicker()
+	-- Arrow keys / D-pad / left stick pick a direction on the wheel, A / Enter / Space
+	-- plays it, B / Backspace puts the wild back. Bound only while the wheel is open, above
+	-- the camera and movement controls so the arrows don't also move anything.
+	local lights: { (number?) -> () } = {}
+	local litColor: number? = nil
+	local function light(i: number?)
+		litColor = i
+		for _, set in lights do
+			set(i)
+		end
+	end
+	local WHEEL_ACTION = "ColorClashWheel"
+	local DIRECTION_KEYS = {
+		[Enum.KeyCode.Up] = 1, [Enum.KeyCode.DPadUp] = 1, [Enum.KeyCode.W] = 1,
+		[Enum.KeyCode.Right] = 2, [Enum.KeyCode.DPadRight] = 2, [Enum.KeyCode.D] = 2,
+		[Enum.KeyCode.Down] = 3, [Enum.KeyCode.DPadDown] = 3, [Enum.KeyCode.S] = 3,
+		[Enum.KeyCode.Left] = 4, [Enum.KeyCode.DPadLeft] = 4, [Enum.KeyCode.A] = 4,
+	}
+	local CONFIRM_KEYS = { [Enum.KeyCode.ButtonA] = true, [Enum.KeyCode.Return] = true, [Enum.KeyCode.KeypadEnter] = true, [Enum.KeyCode.Space] = true }
+	local BACK_KEYS = { [Enum.KeyCode.ButtonB] = true, [Enum.KeyCode.Backspace] = true }
+	local stickHeld = false
+	local closePicker: () -> ()
+	local pick: (color: number) -> ()
+	local function onWheelInput(_: string, inputState: Enum.UserInputState, input: InputObject): Enum.ContextActionResult
+		if input.KeyCode == Enum.KeyCode.Thumbstick1 then
+			local p = input.Position
+			if math.max(math.abs(p.X), math.abs(p.Y)) < 0.6 then
+				stickHeld = false
+			elseif not stickHeld then
+				stickHeld = true
+				-- The stick's Y is up-positive.
+				light(if math.abs(p.Y) >= math.abs(p.X) then (if p.Y > 0 then 1 else 3) else (if p.X > 0 then 2 else 4))
+			end
+			return Enum.ContextActionResult.Sink
+		end
+		if inputState ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Sink
+		end
+		local direction = DIRECTION_KEYS[input.KeyCode]
+		if direction then
+			light(direction)
+		elseif CONFIRM_KEYS[input.KeyCode] then
+			if litColor then
+				pick(litColor)
+			end
+		elseif BACK_KEYS[input.KeyCode] then
+			closePicker()
+		end
+		return Enum.ContextActionResult.Sink
+	end
+	local wheelKeys = { Enum.KeyCode.Thumbstick1 }
+	for key in DIRECTION_KEYS do
+		table.insert(wheelKeys, key)
+	end
+	for key in CONFIRM_KEYS do
+		table.insert(wheelKeys, key)
+	end
+	for key in BACK_KEYS do
+		table.insert(wheelKeys, key)
+	end
+
+	function closePicker()
 		pendingWild = nil
+		ContextActionService:UnbindAction(WHEEL_ACTION)
+		light(nil)
+		stickHeld = false
 		picker.Visible = false
 		pickerShade.Visible = false
 		backButton.Visible = false
@@ -445,23 +564,38 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			closeWheel3D = nil
 		end
 	end
-	local function pick(color: number)
+	function pick(color: number)
 		if pendingWild then
 			sendMove({ kind = "play", card = pendingWild, color = color })
 		end
 		closePicker()
 	end
-	buildWheel(picker, 53, pick)
+	table.insert(lights, buildWheel(picker, 53, pick))
 	pickerShade.Activated:Connect(closePicker)
 	backButton.Activated:Connect(closePicker)
 	local function openPicker(id: number)
 		closePicker()
 		pendingWild = id
 		showOverlay()
+		-- A controller's selection would still sit on the wild in your hand; let go of it
+		-- so A on the wheel doesn't also press that card again.
+		GuiService.SelectedObject = nil
+		ContextActionService:BindActionAtPriority(WHEEL_ACTION, onWheelInput, false, Enum.ContextActionPriority.High.Value + 10, table.unpack(wheelKeys))
 		if docked then
-			closeWheel3D = Fx.wheel(function(frame: Frame)
-				buildWheel(frame, 1, pick)
+			local lights3D: ((number?) -> ())? = nil
+			local close3D = Fx.wheel(function(frame: Frame)
+				lights3D = buildWheel(frame, 1, pick)
 			end)
+			if close3D and lights3D then
+				local set = lights3D
+				table.insert(lights, set)
+				closeWheel3D = function()
+					table.remove(lights, table.find(lights, set))
+					close3D()
+				end
+			else
+				closeWheel3D = close3D
+			end
 		end
 		if closeWheel3D then
 			backButton.Visible = true
@@ -934,6 +1068,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			squeezeHand()
 		end,
 		destroy = function()
+			ContextActionService:UnbindAction(WHEEL_ACTION)
 			overlay:Destroy()
 			root:Destroy()
 		end,
