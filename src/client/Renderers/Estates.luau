@@ -54,7 +54,39 @@ local KIND_ICONS = {
 }
 local HOP = 0.12 -- seconds per space when a token walks
 local DICE_TIME = 0.6 -- the dice tumble before they land
-local DIE_PIPS = { "⚀", "⚁", "⚂", "⚃", "⚄", "⚅" }
+-- Pip spots on a die face (0-1 across, 0-1 down), drawn as dots: die glyphs don't
+-- show in every Roblox font.
+local PIPS = {
+	{ { 0.5, 0.5 } },
+	{ { 0.27, 0.27 }, { 0.73, 0.73 } },
+	{ { 0.25, 0.25 }, { 0.5, 0.5 }, { 0.75, 0.75 } },
+	{ { 0.27, 0.27 }, { 0.73, 0.27 }, { 0.27, 0.73 }, { 0.73, 0.73 } },
+	{ { 0.25, 0.25 }, { 0.75, 0.25 }, { 0.5, 0.5 }, { 0.25, 0.75 }, { 0.75, 0.75 } },
+	{ { 0.27, 0.22 }, { 0.73, 0.22 }, { 0.27, 0.5 }, { 0.73, 0.5 }, { 0.27, 0.78 }, { 0.73, 0.78 } },
+}
+
+-- Draws `value` (1-6, or nil for blank) on a die face frame.
+local function setPips(face: Frame, value: number?, zIndex: number?)
+	for _, child in face:GetChildren() do
+		if child.Name == "Pip" then
+			child:Destroy()
+		end
+	end
+	for _, spot in (if value then PIPS[value] else {}) :: { { number } } do
+		local pip = Instance.new("Frame")
+		pip.Name = "Pip"
+		pip.AnchorPoint = Vector2.new(0.5, 0.5)
+		pip.Position = UDim2.fromScale(spot[1], spot[2])
+		pip.Size = UDim2.fromScale(0.2, 0.2)
+		pip.BackgroundColor3 = Color3.fromRGB(40, 36, 50)
+		pip.BorderSizePixel = 0
+		pip.ZIndex = zIndex or face.ZIndex + 1
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0.5, 0)
+		corner.Parent = pip
+		pip.Parent = face
+	end
+end
 
 -- Grid cell (column, row; 0-based) of each board position. Start is bottom-right and
 -- play goes clockwise: along the bottom, up the left, across the top, down the right.
@@ -305,14 +337,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			Size = UDim2.fromScale(0.42, 1),
 			Parent = diceRow,
 		}, { Kit.corner(10), Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }), Kit.new("UIStroke", { Thickness = 2, Color = Color3.fromRGB(60, 60, 70) }) })
-		dice[i] = Kit.label("", {
-			Font = Theme.FontBold,
-			TextScaled = true,
-			TextColor3 = TILE_TEXT,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			Size = UDim2.fromScale(1, 1),
-			Parent = die,
-		})
+		dice[i] = die
 	end
 	local potLabel = Kit.label("", {
 		Font = Theme.FontBold,
@@ -1007,7 +1032,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		local function setCard(order: number, titleText: string, color: Color3, members: { number }, full: boolean)
 			local card = Kit.new("Frame", z({ BackgroundColor3 = Theme.PanelLight, BorderSizePixel = 0, LayoutOrder = order, Parent = scroll }), { Kit.corner(10) })
 			local band = Kit.new("Frame", z({ BackgroundColor3 = color, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 24), Parent = card }), { Kit.corner(10) })
-			Kit.label(titleText .. (if full then "  ★ Full set" else ""), z({ TextSize = 14, Font = Theme.FontBold, TextColor3 = textOn(color), TextWrapped = false, Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), Parent = band }))
+			Kit.label(titleText .. (if full then " (full set)" else ""), z({ TextSize = 14, Font = Theme.FontBold, TextColor3 = textOn(color), TextWrapped = false, Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), Parent = band }))
 			local list = Kit.new("Frame", z({ BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 28), Size = UDim2.new(1, -12, 1, -32), Parent = card }))
 			Kit.list(4).Parent = list
 			for i, pos in members do
@@ -1043,7 +1068,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 						}))
 					end
 					if space.kind == "street" then
-						small("−", "sell", (Rules.canSell(fake, me, pos)), Theme.Warn, 26)
+						small("-", "sell", (Rules.canSell(fake, me, pos)), Theme.Warn, 26)
 						small("+", "build", (Rules.canBuild(fake, me, pos)) and not debt, Theme.Good, 26)
 					end
 					if view.mortgaged[pos] then
@@ -1298,16 +1323,17 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 				ZIndex = 62,
 				Parent = holder,
 			}, { Kit.corner(math.floor(dieSize * 0.18)), Kit.new("UIStroke", { Thickness = 3, Color = Color3.fromRGB(40, 36, 50) }) })
-			labels[i] = Kit.label(DIE_PIPS[math.random(1, 6)], { Font = Theme.FontBold, TextScaled = true, TextColor3 = TILE_TEXT, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 63, Parent = die })
+			labels[i] = die
+			setPips(die, math.random(1, 6), 63)
 			TweenService:Create(die, TweenInfo.new(DICE_TIME, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Rotation = if i == 1 then -8 else 8 }):Play()
 			Juice.popIn(die, 0.3)
 			task.spawn(function()
 				local start = os.clock()
 				while os.clock() - start < DICE_TIME * 0.8 do
-					labels[i].Text = DIE_PIPS[math.random(1, 6)]
+					setPips(die, math.random(1, 6), 63)
 					task.wait(0.06)
 				end
-				labels[i].Text = DIE_PIPS[value]
+				setPips(die, value, 63)
 				Juice.bump(die, 0.2)
 			end)
 		end
@@ -1362,8 +1388,26 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		task.delay(2.8, gone)
 	end
 
+	-- The pop-ups live on the ScreenGui, so they hide whenever this board isn't on
+	-- screen (the match view closed, the results are up).
+	local function onScreen(): boolean
+		local node: Instance? = container
+		while node and not node:IsA("ScreenGui") do
+			if node:IsA("GuiObject") and not node.Visible then
+				return false
+			end
+			node = node.Parent
+		end
+		return node ~= nil and (node :: ScreenGui).Enabled
+	end
+	local lastCheck = 0
+
 	-- Countdown on the auction pop-up.
 	local heartbeat = RunService.Heartbeat:Connect(function()
+		if not quiet and os.clock() - lastCheck > 0.2 then
+			lastCheck = os.clock()
+			overlay.Visible = onScreen()
+		end
 		if not (timerBar and snapshot and snapshot.turnEndsAt and snapshot.view.phase == "auction") then
 			return
 		end
@@ -1596,6 +1640,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	-- Rendering ------------------------------------------------------------------------------
 	local lastLogN = 0
 	local lastCardN = 0
+	local lastDiceKey = "none"
 	local firstRender = true
 
 	-- Which pop-up to show: a choice the game is waiting on comes first, then whatever you
@@ -1714,8 +1759,12 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			lastLogN = view.log[#view.log].n
 		end
 		local d = view.dice
-		for i = 1, 2 do
-			dice[i].Text = if d then DIE_PIPS[d[i]] else "-"
+		local diceKey = if d then `{d[1]},{d[2]}` else ""
+		if diceKey ~= lastDiceKey then
+			lastDiceKey = diceKey
+			for i = 1, 2 do
+				setPips(dice[i], if d then d[i] else nil)
+			end
 		end
 		local walkAt = start
 		if rolled and d then
