@@ -1,6 +1,7 @@
 -- Color Clash table: the draw pile and the discard pile in the middle, your hand fanned
 -- along the bottom (playable cards lift up, the rest dim). Tap a card to play it; Wild
--- cards open a 4-color picker. Draw / Pass buttons sit beside the piles.
+-- cards open a color wheel in the middle of the screen. A card you draw and can play is
+-- held up in the middle with Play / Keep. Draw / Pass buttons sit beside the piles.
 -- Cards are drawn in code with our own look (Coral, Honey, Teal, Violet).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8,6 +9,7 @@ local TweenService = game:GetService("TweenService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.ColorClash)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local Theme = Kit.Theme
 
 local ColorClash = {}
@@ -262,43 +264,244 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		handList.HorizontalAlignment = if fits then Enum.HorizontalAlignment.Center else Enum.HorizontalAlignment.Left
 	end
 	hand:GetPropertyChangedSignal("AbsoluteSize"):Connect(squeezeHand)
+	local handHover = PlayingCard.hover(hand)
 	-- One padding for the hand (a second UIPadding would be ignored). The bottom keeps
 	-- the cards clear of the scroll bar.
 	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 24), PaddingRight = UDim.new(0, 24), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 10), Parent = hand })
 
-	-- Wild color picker.
-	local picker = Kit.panel({
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.42),
-		Size = UDim2.new(0, 340, 0, 150),
-		BackgroundColor3 = Theme.PanelLight,
+	-- Overlays in the middle of the screen (the wild color picker, the card you just
+	-- drew). They sit on the whole screen, not in this board: Table view docks only the
+	-- bottom of the board, and the middle of the screen is the table.
+	local overlay = Kit.new("Frame", {
+		Name = "ColorClashOverlay",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 50,
 		Visible = false,
-		ZIndex = 20,
 		Parent = root,
 	})
-	Kit.label("Pick a color", { Font = Theme.FontBold, TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 21, Parent = picker })
+	local function showOverlay()
+		local screen = container:FindFirstAncestorWhichIsA("ScreenGui")
+		overlay.Parent = screen or root
+		overlay.Visible = true
+	end
+	local pop = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local quick = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+	-- Wild color picker: a round wheel of the four colors that bursts out of the middle
+	-- of the table, each quarter its own button. Tap outside it to put the wild back.
 	local pendingWild: number? = nil
+	local pickerShade = Kit.new("TextButton", {
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.55,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		ZIndex = 51,
+		Parent = overlay,
+	})
+	local picker = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromScale(0.5, 0.5),
+		SizeConstraint = Enum.SizeConstraint.RelativeYY,
+		Visible = false,
+		ZIndex = 52,
+		Parent = overlay,
+	}, { Kit.new("UISizeConstraint", { MinSize = Vector2.new(220, 220), MaxSize = Vector2.new(420, 420) }) })
+	local pickerScale = Kit.new("UIScale", { Scale = 1, Parent = picker })
+	local GAP = 0.012 -- of the wheel's size, between the quarters
+	-- Quarter i: which corner of the wheel it fills (x, y as 0 or 1).
+	local QUARTERS = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } }
+	local quarterRest: { [GuiObject]: UDim2 } = {}
+	local quarterOut: { [GuiObject]: UDim2 } = {}
+	local function closePicker()
+		pendingWild = nil
+		picker.Visible = false
+		pickerShade.Visible = false
+	end
 	for i, color in COLORS do
-		Kit.button(Rules.colorNames[i], function()
+		local qx, qy = QUARTERS[i][1], QUARTERS[i][2]
+		local outX, outY = qx * 2 - 1, qy * 2 - 1 -- away from the middle
+		local rest = UDim2.fromScale(qx * 0.5 + outX * GAP, qy * 0.5 + outY * GAP)
+		-- A square that clips a full circle to the one quarter in its corner.
+		local quarter = Kit.new("TextButton", {
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundTransparency = 1,
+			ClipsDescendants = true,
+			Position = rest,
+			Size = UDim2.fromScale(0.5, 0.5),
+			ZIndex = 53,
+			Parent = picker,
+		})
+		quarterRest[quarter] = rest
+		quarterOut[quarter] = UDim2.fromScale(qx * 0.5 + outX * GAP * 4, qy * 0.5 + outY * GAP * 4)
+		Kit.new("Frame", {
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+			-- The circle's middle sits on the quarter's inner corner.
+			Position = UDim2.fromScale(-qx, -qy),
+			Size = UDim2.fromScale(2, 2),
+			ZIndex = 53,
+			Parent = quarter,
+		}, {
+			Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			Kit.new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200)) }),
+		})
+		Kit.label(Rules.colorNames[i], {
+			Font = Theme.FontBold,
+			TextScaled = true,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0.4,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			-- Toward the outside of the quarter, where it's widest.
+			Position = UDim2.fromScale(if qx == 0 then 0.42 else 0.58, if qy == 0 then 0.42 else 0.58),
+			Size = UDim2.fromScale(0.6, 0.2),
+			ZIndex = 54,
+			Parent = quarter,
+		})
+		quarter.MouseEnter:Connect(function()
+			TweenService:Create(quarter, quick, { Position = quarterOut[quarter] }):Play()
+		end)
+		quarter.MouseLeave:Connect(function()
+			TweenService:Create(quarter, quick, { Position = quarterRest[quarter] }):Play()
+		end)
+		quarter.Activated:Connect(function()
 			if pendingWild then
 				sendMove({ kind = "play", card = pendingWild, color = i })
 			end
-			pendingWild = nil
-			picker.Visible = false
-		end, {
+			closePicker()
+		end)
+	end
+	-- A dark hub in the middle, like the pile under the wheel.
+	Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromRGB(28, 24, 40),
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.22, 0.22),
+		ZIndex = 55,
+		Parent = picker,
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3 }),
+	})
+	Kit.label("★", {
+		Font = Theme.FontBold,
+		TextScaled = true,
+		TextColor3 = Theme.Accent,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.12, 0.12),
+		ZIndex = 56,
+		Parent = picker,
+	})
+	pickerShade.Activated:Connect(closePicker)
+	local function openPicker(id: number)
+		pendingWild = id
+		showOverlay()
+		pickerShade.Visible = true
+		picker.Visible = true
+		picker.Rotation = -40
+		pickerScale.Scale = 0.15
+		for quarter, rest in quarterRest do
+			quarter.Position = rest
+		end
+		TweenService:Create(pickerScale, pop, { Scale = 1 }):Play()
+		TweenService:Create(picker, pop, { Rotation = 0 }):Play()
+	end
+
+	-- The card you just drew, when it can be played: held up in the middle with Play on
+	-- one side and Keep on the other.
+	local drawnBand = Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromRGB(30, 26, 46),
+		BackgroundTransparency = 0.25,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.new(1, 0, 0.16, 0),
+		Visible = false,
+		ZIndex = 50,
+		Parent = overlay,
+	}, {
+		Kit.new("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.2, 0.1),
+				NumberSequenceKeypoint.new(0.8, 0.1),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}),
+	})
+	local drawnSlot = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(CARD_RATIO * 1.9, 1.9),
+		SizeConstraint = Enum.SizeConstraint.RelativeYY,
+		ZIndex = 52,
+		Parent = drawnBand,
+	})
+	local drawnScale = Kit.new("UIScale", { Scale = 1, Parent = drawnSlot })
+	local drawnShown: number? = nil
+	local function bandButton(text: string, color: Color3, x: number, onClick: () -> ()): TextButton
+		local button = Kit.button(text, onClick, {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(x, 0.5),
+			Size = UDim2.new(0.16, 0, 0.5, 0),
 			BackgroundColor3 = color,
 			TextColor3 = Color3.new(1, 1, 1),
 			TextStrokeTransparency = 0.5,
-			Position = UDim2.new((i - 1) / 4, 4, 0, 36),
-			Size = UDim2.new(0.25, -8, 0, 70),
-			ZIndex = 21,
-			Parent = picker,
+			TextScaled = true,
+			ZIndex = 53,
+			Parent = drawnBand,
 		})
+		Kit.new("UISizeConstraint", { MinSize = Vector2.new(110, 40), MaxSize = Vector2.new(240, 64), Parent = button })
+		Kit.new("UITextSizeConstraint", { MaxTextSize = 26, Parent = button })
+		Kit.new("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), Parent = button })
+		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
+		return button
 	end
-	Kit.button("Cancel", function()
-		pendingWild = nil
-		picker.Visible = false
-	end, { BackgroundTransparency = 1, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 24), ZIndex = 21, Parent = picker })
+	local function playDrawn()
+		local id = drawnShown
+		if not id then
+			return
+		end
+		local card = Rules.cards[id]
+		if card.kind == "wild" or card.kind == "wild4" then
+			openPicker(id)
+		else
+			sendMove({ kind = "play", card = id })
+		end
+	end
+	bandButton("Play it", Color3.fromRGB(70, 170, 100), 0.3, playDrawn)
+	bandButton("Keep it", Color3.fromRGB(70, 110, 200), 0.7, function()
+		sendMove({ kind = "pass" })
+	end)
+	local function showDrawn(id: number?)
+		if id == drawnShown then
+			return
+		end
+		drawnShown = id
+		Kit.clear(drawnSlot)
+		if not id then
+			drawnBand.Visible = false
+			return
+		end
+		cardVisual(id).Parent = drawnSlot
+		showOverlay()
+		drawnBand.Visible = true
+		drawnScale.Scale = 0.3
+		drawnSlot.Rotation = -12
+		TweenService:Create(drawnScale, pop, { Scale = 1 }):Play()
+		TweenService:Create(drawnSlot, pop, { Rotation = 0 }):Play()
+	end
 
 	local function nameOf(seat: number): string
 		if seat == snapshot.yourSeat then
@@ -356,14 +559,17 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 
 		drawAction.Visible = myTurn and not view.canPass
 		drawAction.Text = if view.pendingDraw > 0 then `Take {view.pendingDraw} cards` else "Draw a card"
-		passAction.Visible = myTurn and view.canPass
+		-- After drawing a card you can play, it's shown in the middle with Play / Keep.
+		local drawnPlayable = myTurn and view.canPass and view.drawnCard ~= nil
+		showDrawn(if drawnPlayable then view.drawnCard else nil)
+		passAction.Visible = myTurn and view.canPass and not drawnPlayable
 		if not myTurn then
-			picker.Visible = false
-			pendingWild = nil
+			closePicker()
 		end
 
 		-- Hand.
 		Kit.clear(hand)
+		handHover.clear()
 		local playable = {}
 		for _, id in view.playable or {} do
 			playable[id] = true
@@ -407,14 +613,14 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			-- Hover: the card comes up out of the hand, straightens, sits on top of its
 			-- neighbours and shows at full brightness.
 			local lift = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			button.MouseEnter:Connect(function()
+			-- One card at a time (PlayingCard.hover picks the top card under the mouse).
+			handHover.add(slot, function()
 				slot.ZIndex = 10
 				if shade then
 					shade.Visible = false
 				end
 				TweenService:Create(face, lift, { Position = UDim2.fromScale(0, -0.22), Rotation = 0 }):Play()
-			end)
-			button.MouseLeave:Connect(function()
+			end, function()
 				slot.ZIndex = 1
 				if shade then
 					shade.Visible = true
@@ -427,8 +633,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				end
 				local card = Rules.cards[id]
 				if card.kind == "wild" or card.kind == "wild4" then
-					pendingWild = id
-					picker.Visible = true
+					openPicker(id)
 				else
 					sendMove({ kind = "play", card = id })
 				end
@@ -454,7 +659,6 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			if docked then
 				pendingLabel.Parent = root
 				pendingLabel.Position = UDim2.new(0, 0, 0.58, 0)
-				picker.Position = UDim2.fromScale(0.5, 0.74)
 				hand.Position = UDim2.new(0.14, 0, 0.6, 0)
 				hand.Size = UDim2.new(0.72, 0, 0.47, 0)
 				hand.ScrollBarThickness = 0
@@ -465,7 +669,6 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			else
 				pendingLabel.Parent = felt
 				pendingLabel.Position = UDim2.new(0, 0, 1, -34)
-				picker.Position = UDim2.fromScale(0.5, 0.42)
 				hand.Position = UDim2.new(0, 0, 0.6, 48)
 				hand.Size = UDim2.new(1, 0, 0.4, -48)
 				hand.ScrollBarThickness = 6
@@ -477,6 +680,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			squeezeHand()
 		end,
 		destroy = function()
+			overlay:Destroy()
 			root:Destroy()
 		end,
 	}

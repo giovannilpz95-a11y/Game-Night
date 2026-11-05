@@ -65,6 +65,7 @@ local screen = Kit.new("ScreenGui", {
 Layout.init(screen)
 Perf.start()
 require(script.Parent.Table3D.FaceViewer).start()
+require(script.Parent.Table3D.Spinner).start()
 require(script.Parent.Table3D.Avatars).start()
 require(script.Parent.Table3D.HeadReactions).start()
 
