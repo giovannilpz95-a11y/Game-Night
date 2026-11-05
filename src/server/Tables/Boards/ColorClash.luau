@@ -152,7 +152,7 @@ function ColorClash.create(boardCF: CFrame, parent: Instance, layout: Scene.Layo
 		for seat, count in view.handCounts or {} do
 			Scene.hand(folder, boardCF, layout, seat, count)
 		end
-		Scene.pile(folder, drawSpot(boardCF, layout), view.deckCount or 0, true)
+		Scene.pile(folder, drawSpot(boardCF, layout), view.deckCount or 0, true, true)
 		local middle = Cards.center(boardCF, 0)
 		local shown = (view.color and COLORS[view.color]) or Models.GOLD
 		Models.cyl(folder, "ColorRing", 2.45, 0.02, middle, shown, Enum.Material.Neon)

@@ -9,6 +9,7 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local OldMaid = {}
@@ -18,6 +19,8 @@ local MAID_RED = Color3.fromRGB(235, 70, 90)
 function OldMaid.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local ui = CardTable.layout(container)
+	local arrivals = CardFx.arrivals()
+	local draws = CardFx.watch()
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -117,6 +120,16 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = `{nameOf(view.turn)}'s turn` .. (if holding then " · you have the Old Maid, keep a straight face!" else "")
 		end
 
+		-- A pair pops off the table; other players' draws fly from the hand they took from.
+		if draws(CardFx.key(a, `{view.turn}|{#(view.hand or {})}`)) and a and not view.over then
+			if a.rank then
+				CardFx.pop("PAIR!", Theme.Accent, ui.root)
+			end
+			if a.seat ~= me then
+				CardFx.dealTo(snapshot, a.seat, 1, CardFx.seatPoint(snapshot, a.from, 0.78))
+			end
+		end
+
 		if myTurn then
 			-- The target's cards, face down, where your hand usually is: tap one to take it.
 			local backs = {}
@@ -132,7 +145,10 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 		for _, id in view.hand or {} do
 			table.insert(cards, { id = id, raised = id == view.oldMaid })
 		end
-		PlayingCard.renderHand(ui.hand, cards, nil)
+		local faces = PlayingCard.renderHand(ui.hand, cards, nil)
+		-- The card you took flies in from that player's hand (the deal from the middle).
+		local from = if seen and seen.seat == me then CardFx.seatOnScreen(snapshot, seen.from) else nil
+		arrivals.update(faces, from or CardFx.middleOnScreen() or CardFx.guiOnScreen(ui.felt))
 		-- Outline the Old Maid so you can't miss her.
 		for _, slot in ui.hand:GetChildren() do
 			if slot:IsA("Frame") and slot.LayoutOrder > 0 and cards[slot.LayoutOrder] and cards[slot.LayoutOrder].id == view.oldMaid then

@@ -9,6 +9,7 @@ local President = require(ReplicatedStorage.Shared.Games.President)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local PresidentRenderer = {}
@@ -18,6 +19,8 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 	local selected: { number } = {}
 	local ui = CardTable.layout(container)
 	local render: () -> ()
+	local arrivals = CardFx.arrivals()
+	local clears = CardFx.watch()
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -124,7 +127,15 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 			local could = myTurn and (view.pile == nil or (p > view.pile.power and counts[p] >= view.pile.count))
 			table.insert(cards, { id = id, raised = table.find(selected, id) ~= nil, glow = could, dim = myTurn and not could, enabled = myTurn })
 		end
-		PlayingCard.renderHand(ui.hand, cards, function(id: number)
+		-- Off your turn: all dimmed, the cards that could beat the pile lifted.
+		local pile = view.pile
+		if me and pile and not myTurn and view.phase == "play" and not snapshot.result then
+			CardFx.offTurn(cards, function(id: number): boolean
+				local p = President.power(id)
+				return p > pile.power and counts[p] >= pile.count
+			end)
+		end
+		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
 			-- Picking a different rank starts a new selection.
 			if #selected > 0 and PlayingCards.rank(selected[1]) ~= PlayingCards.rank(id) then
 				selected = {}
@@ -132,6 +143,19 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 			CardTable.toggle(selected, id, 4)
 			render()
 		end)
+		-- A new deal flies in from the middle; swapped cards from whoever gave them.
+		local from = CardFx.middleOnScreen() or CardFx.guiOnScreen(ui.felt)
+		for _, e in view.exchange or {} do
+			if me and e.to == me and e.gave and e.from then
+				from = CardFx.seatOnScreen(snapshot, e.from) or from
+			end
+		end
+		arrivals.update(faces, from)
+		-- The pile is cleared (everyone passed, or a 2): it pops off the table.
+		local a = view.lastAction
+		if clears(CardFx.key(a, view.round)) and a and a.kind == "clear" then
+			CardFx.pop("CLEAR!", Theme.Accent, ui.root)
+		end
 	end
 
 	ui.refresh = function()
