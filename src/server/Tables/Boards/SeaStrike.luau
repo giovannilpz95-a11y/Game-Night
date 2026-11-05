@@ -85,13 +85,14 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			-- Faint grid lines on the target board: thin strips just in front of its face.
 			for i = 0, n do
 				local x = (i - n / 2) * TARGET_CELL
-				Models.block(model, "GridV", Vector3.new(0.012, tspan, 0.004), target * CFrame.new(x, 0.1 + tspan / 2, PANEL_T / 2 + 0.002), WATER)
+				Models.block(model, "GridV", Vector3.new(0.012, tspan, 0.004), target * CFrame.new(x, 0.1 + tspan / 2, PANEL_T / 2 + 0.026), WATER)
 				local y = 0.1 + i * TARGET_CELL
-				Models.block(model, "GridH", Vector3.new(tspan, 0.012, 0.004), target * CFrame.new(0, y, PANEL_T / 2 + 0.003), WATER)
+				Models.block(model, "GridH", Vector3.new(tspan, 0.012, 0.004), target * CFrame.new(0, y, PANEL_T / 2 + 0.012), WATER)
 			end
 		end
 	end
 
+	model.Parent = parent
 	return {
 		model = model,
 		update = function(view: any, _snapshot: any)
