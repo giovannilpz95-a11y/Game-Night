@@ -768,6 +768,31 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 
+	-- Hover: handlers with a `hover(cell?)` hear which cell the mouse is over (ghost discs).
+	local hovered: Instance? = nil
+	UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+			return
+		end
+		if not active or not handler or not handler.hover or not board then
+			return
+		end
+		local cells = board:FindFirstChild("Cells")
+		local hit: Instance? = nil
+		if cells then
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Include
+			params.FilterDescendantsInstances = { cells }
+			local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
+			local result = workspace:Raycast(ray.Origin, ray.Direction * 200, params)
+			hit = result and result.Instance
+		end
+		if hit ~= hovered then
+			hovered = hit
+			handler.hover(hit)
+		end
+	end)
+
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed or not active or not handler or not board then
 			return
