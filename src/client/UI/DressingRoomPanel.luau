@@ -4,7 +4,7 @@
 -- Opening it walks you onto the stage in the lobby's Dressing Room corner and the camera
 -- frames your real avatar (UI/DressingCamera). The catalog panel docks on the right (or
 -- along the bottom on a tall screen) and the rest of the screen is the stage, with + / -
--- / Fit zoom buttons, pinch and mouse-wheel zoom and drag to turn.
+-- / Fit zoom buttons, pinch and mouse-wheel zoom and drag to spin the avatar.
 --
 -- The panel has three views: Shop (catalog tabs with "For you" first, search, a grid that
 -- loads more as you scroll), My look (what you have on, buy, reset, save to Roblox) and
@@ -20,6 +20,7 @@ local AvatarFraming = require(ReplicatedStorage.Shared.AvatarFraming)
 local DressingRoom = require(ReplicatedStorage.Shared.DressingRoom)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local Recommendations = require(ReplicatedStorage.Shared.Recommendations)
+local Trending = require(ReplicatedStorage.Shared.Trending)
 local DressingCamera = require(script.Parent.DressingCamera)
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
@@ -40,11 +41,17 @@ local SORTS = {
 	{ key = "RecentlyCreated", name = "Newest" },
 }
 
--- "For you" sits in front of the shared browse categories.
-local FOR_YOU = { key = "foryou", name = "✨ For you", types = {} }
-local TABS = { FOR_YOU }
-for _, category in DressingRoom.Categories do
+-- "For you" sits in front of the shared browse categories and "Trending" right after
+-- Popular. Both have their own order, so sorting or searching switches to Popular.
+local FOR_YOU = { key = "foryou", name = "✨ For you", types = {}, special = true }
+local TRENDING = { key = "trending", name = "🔥 Trending", types = {}, special = true }
+local POPULAR_INDEX = 2
+local TABS: { any } = { FOR_YOU }
+for i, category in DressingRoom.Categories do
 	table.insert(TABS, category)
+	if i == 1 then
+		table.insert(TABS, TRENDING)
+	end
 end
 
 local function enumItem(enum: any, name: string): EnumItem?
@@ -140,6 +147,50 @@ local function similarTo(seed: Recommendations.Seed): { Recommendations.Pick }
 		end
 	end
 	return picks
+end
+
+-- "Similar items" for several seeds at once, asked in parallel. Lists come back in seed order.
+local function similarLists(batch: { Recommendations.Seed }): { { Recommendations.Pick } }
+	local lists: { { any } } = {}
+	local left = #batch
+	local thread = coroutine.running()
+	for i, seed in batch do
+		task.spawn(function()
+			lists[i] = similarTo(seed)
+			left -= 1
+			if left == 0 and coroutine.status(thread) == "suspended" then
+				task.spawn(thread)
+			end
+		end)
+	end
+	if left > 0 then
+		coroutine.yield()
+	end
+	local ordered = {}
+	for i = 1, #batch do
+		table.insert(ordered, lists[i] or {})
+	end
+	return ordered
+end
+
+-- Names and prices for a list of asset ids, as catalog cards (id -> card).
+local function itemDetails(ids: { number }): { [number]: any }
+	local out = {}
+	if #ids == 0 then
+		return out
+	end
+	local ok, result = pcall(function()
+		return (AvatarEditorService :: any):GetBatchItemDetails(ids, Enum.AvatarItemType.Asset)
+	end)
+	if ok and type(result) == "table" then
+		for _, entry in result do
+			local card = Trending.fromDetails(entry)
+			if card then
+				out[card.Id] = card
+			end
+		end
+	end
+	return out
 end
 
 -- The items on your own avatar (and whatever you have on right now), as seeds.
@@ -246,7 +297,7 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 			Kit.corner(20).Parent = b
 		end
 	end
-	local stageHint = Kit.label("Drag to turn · pinch or scroll to zoom", {
+	local stageHint = Kit.label("Drag to spin your avatar · pinch or scroll to zoom", {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -8),
 		Size = UDim2.new(1, -120, 0, 18),
@@ -671,26 +722,7 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 					table.insert(batch, seeds[i])
 				end
 				cursor += #batch
-				local lists: { { any } } = {}
-				local left = #batch
-				local thread = coroutine.running()
-				for i, seed in batch do
-					task.spawn(function()
-						lists[i] = similarTo(seed)
-						left -= 1
-						if left == 0 and coroutine.status(thread) == "suspended" then
-							task.spawn(thread)
-						end
-					end)
-				end
-				if left > 0 then
-					coroutine.yield()
-				end
-				local ordered = {}
-				for i = 1, #batch do
-					table.insert(ordered, lists[i] or {})
-				end
-				local merged = Recommendations.merge(ordered, exclude, creators, 60)
+				local merged = Recommendations.merge(similarLists(batch), exclude, creators, 60)
 				for _, pick in merged do
 					exclude[pick.Id] = true
 				end
@@ -718,9 +750,87 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 		return next, #seeds > 0
 	end
 
+	-- Asks the server for the Trending list and waits (up to 5 seconds) for the answer.
+	-- If it doesn't come, the last list we got is used.
+	local trendingPayload: any = nil
+	local trendingWaiters: { (any) -> () } = {}
+	local function fetchTrending(): any
+		local thread = coroutine.running()
+		local done = false
+		local function finish(payload: any)
+			if not done then
+				done = true
+				task.spawn(thread, payload)
+			end
+		end
+		table.insert(trendingWaiters, finish)
+		send({ action = "trending" })
+		task.delay(5, function()
+			finish(trendingPayload)
+		end)
+		return coroutine.yield()
+	end
+
+	-- "Trending": what Game Night players wear the most (the server keeps count), then items
+	-- similar to the top ones, then Popular's best sellers.
+	local function trendingFeed(): () -> ({ any }, boolean)
+		local items: { any }? = nil
+		local listIndex = 1
+		local seeds: { Recommendations.Seed } = {}
+		local seedCursor = 1
+		local exclude: { [number]: boolean } = {}
+		local popular: any = nil
+		local function next(): ({ any }, boolean)
+			if not items then
+				local list = Trending.fromServer(fetchTrending())
+				items = list
+				for i = 1, math.min(Trending.SIMILAR_SEEDS, #list) do
+					table.insert(seeds, { id = list[i].id, t = list[i].t })
+				end
+			end
+			local list = items :: { any }
+			if listIndex <= #list then
+				local ids = {}
+				for i = listIndex, math.min(#list, listIndex + DressingRoom.SearchPageSize - 1) do
+					table.insert(ids, list[i].id)
+				end
+				local details = itemDetails(ids)
+				local out = {}
+				for i, id in ids do
+					local item = list[listIndex + i - 1]
+					exclude[id] = true
+					table.insert(out, details[id] or { Id = id, Name = item.name or "Item" })
+				end
+				listIndex += #ids
+				return out, false
+			end
+			if seedCursor <= #seeds then
+				local batch = {}
+				for i = seedCursor, math.min(#seeds, seedCursor + Recommendations.SEEDS_PER_BATCH - 1) do
+					table.insert(batch, seeds[i])
+				end
+				seedCursor += #batch
+				local merged = Recommendations.merge(similarLists(batch), exclude, {}, 60)
+				for _, pick in merged do
+					exclude[pick.Id] = true
+				end
+				return merged, false
+			end
+			if not popular then
+				popular = searchCatalog({ types = DressingRoom.Categories[1].types, sort = "Bestselling" })
+			else
+				popular:AdvanceToNextPageAsync()
+			end
+			return pageEntries(popular, exclude), popular.IsFinished
+		end
+		return next
+	end
+
 	local function runSearch()
 		local tab = TABS[tabIndex]
-		if tab == FOR_YOU then
+		if tab == TRENDING then
+			startFeed(trendingFeed(), "Nothing trending yet.", "Most worn in Game Night, then similar items")
+		elseif tab == FOR_YOU then
 			picksKey = lookKey
 			local next, hasSeeds = picksFeed()
 			if hasSeeds then
@@ -737,16 +847,16 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 	sortButton.Activated:Connect(function()
 		sortIndex = sortIndex % #SORTS + 1
 		sortButton.Text = `↕ {SORTS[sortIndex].name}`
-		if TABS[tabIndex] == FOR_YOU then
-			tabIndex = 2 -- sorting is for browsing; "For you" has its own order
+		if TABS[tabIndex].special then
+			tabIndex = POPULAR_INDEX -- sorting is for browsing; For you and Trending have their own order
 			renderTabs()
 		end
 		runSearch()
 	end)
 	searchBox.FocusLost:Connect(function(enterPressed)
 		if enterPressed then
-			if TABS[tabIndex] == FOR_YOU and searchBox.Text ~= "" then
-				tabIndex = 2
+			if TABS[tabIndex].special and searchBox.Text ~= "" then
+				tabIndex = POPULAR_INDEX
 				renderTabs()
 			end
 			runSearch()
@@ -758,11 +868,12 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 		for index, tab in TABS do
 			local selected = index == tabIndex
 			local b = Kit.button(tab.name, function()
-				if tabIndex == index and not (tab == FOR_YOU and picksKey ~= lookKey) then
+				-- Tapping For you (after a change) or Trending again refreshes it.
+				if tabIndex == index and not (tab == FOR_YOU and picksKey ~= lookKey) and tab ~= TRENDING then
 					return
 				end
 				tabIndex = index
-				if tab == FOR_YOU then
+				if tab.special then
 					searchBox.Text = ""
 				end
 				renderTabs()
@@ -1091,7 +1202,7 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 		fitGrid()
 	end
 
-	-- Stage input: drag to turn, two fingers to pinch, mouse wheel to zoom.
+	-- Stage input: drag to spin the avatar, two fingers to pinch, mouse wheel to zoom.
 	local mouseDown = false
 	local lastMouse = Vector2.zero
 	local touches: { [InputObject]: Vector2 } = {}
@@ -1212,6 +1323,14 @@ function DressingRoomPanel.create(parent: Instance, send: (any) -> ())
 		close = close,
 		isOpen = function(): boolean
 			return root.Visible
+		end,
+		setTrending = function(payload: any)
+			trendingPayload = payload
+			local waiters = trendingWaiters
+			trendingWaiters = {}
+			for _, finish in waiters do
+				finish(payload)
+			end
 		end,
 		setState = function(newState: any)
 			state = newState

@@ -93,4 +93,31 @@ function AvatarFraming.clampPitch(pitch: number): number
 	return clamp(pitch, AvatarFraming.PITCH_MIN, AvatarFraming.PITCH_MAX)
 end
 
+-- Dragging across the stage spins the avatar like a turntable (the camera stays put).
+-- Dragging right turns the avatar to its left, the way a hand would push it.
+AvatarFraming.SPIN_PER_PIXEL = 0.012 -- radians per pixel dragged
+AvatarFraming.SPIN_SMOOTHING = 14 -- how fast the shown turn catches up with the drag
+
+function AvatarFraming.spin(yaw: number, dx: number): number
+	return (yaw + dx * AvatarFraming.SPIN_PER_PIXEL) % (math.pi * 2)
+end
+
+-- Eases `shown` toward `target` along the short way round. Both are radians.
+function AvatarFraming.easeYaw(shown: number, target: number, dt: number): number
+	local diff = (target - shown + math.pi) % (math.pi * 2) - math.pi
+	local alpha = 1 - math.exp(-dt * AvatarFraming.SPIN_SMOOTHING)
+	if math.abs(diff) < 1e-3 then
+		return target
+	end
+	return (shown + diff * alpha) % (math.pi * 2)
+end
+
+-- Leaving the Dressing Room takes you back to where you were when you opened it, unless
+-- something else already moved you (a table seat, a respawn far away): then you stay.
+AvatarFraming.RETURN_RADIUS = 12 -- studs from the stage spot that still count as "on stage"
+
+function AvatarFraming.shouldReturn(distanceFromStage: number, seated: boolean): boolean
+	return not seated and distanceFromStage <= AvatarFraming.RETURN_RADIUS
+end
+
 return AvatarFraming

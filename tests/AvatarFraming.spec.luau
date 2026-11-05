@@ -71,4 +71,24 @@ return function(T)
 		T.ok(F.headBias(F.ZOOM_MIN) > F.headBias(0.7), "closer = more head")
 		T.eq(F.clampPitch(5), F.PITCH_MAX)
 	end)
+
+	T.test("drag spins the avatar and the shown turn eases the short way round", function()
+		T.ok(F.spin(0, 100) > 0, "drag right turns")
+		T.ok(math.abs(F.spin(0, -1) - (math.pi * 2 - F.SPIN_PER_PIXEL)) < 1e-9, "wraps into 0..2pi")
+		-- From 350 degrees to 10 degrees goes forward through 0, not back through 180.
+		local shown = math.rad(350)
+		local nextYaw = F.easeYaw(shown, math.rad(10), 1 / 60)
+		T.ok(nextYaw > shown or nextYaw < math.rad(10), "short way round")
+		local y = shown
+		for _ = 1, 300 do
+			y = F.easeYaw(y, math.rad(10), 1 / 60)
+		end
+		T.eq(y, math.rad(10))
+	end)
+
+	T.test("closing returns you to your spot unless something else moved you", function()
+		T.ok(F.shouldReturn(0, false), "still on stage")
+		T.ok(not F.shouldReturn(0, true), "seated at a table")
+		T.ok(not F.shouldReturn(F.RETURN_RADIUS + 1, false), "moved away")
+	end)
 end

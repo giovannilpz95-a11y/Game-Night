@@ -20,6 +20,7 @@ Net.Names = {
 	Reward = "Reward", -- server -> client: { title, lines } after a match or daily login
 	DressingRoomRequest = "DressingRoomRequest", -- client -> server: { action = "tryOn" | "takeOff" | "buy" | ..., ... }
 	DressingRoomState = "DressingRoomState", -- server -> client: current look, saved looks, slots
+	DressingRoomTrending = "DressingRoomTrending", -- server -> client: { items = { { id, t, name? } } }, most worn first
 	PartyList = "PartyList", -- server -> client: tables you can join (friends-only and password)
 	HostRequest = "HostRequest", -- client -> server: { action = "sync" | "save" | "delete", kind, slot, ... }
 	HostState = "HostState", -- server -> client: your saved word lists and quiz decks

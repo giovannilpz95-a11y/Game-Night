@@ -20,13 +20,15 @@ Players browse the Roblox catalog, try items on, and wear the look everywhere in
 | `client/UI/DressingCamera.luau` | Stands you on the Dressing Room stage, pauses your controls and frames your avatar with the real camera |
 | `shared/AvatarFraming.luau` | Panel/stage split for every screen shape, fit-the-whole-avatar distance, zoom steps (pure, tested) |
 | `shared/Recommendations.luau` | "For you": picks seeds from what you wear, ranks similar items (pure, tested) |
+| `shared/Trending.luau` | "Trending": fading wear counts, batching, ranking, client payloads (pure, tested) |
+| `server/Services/TrendingService.luau` | Counts wears per server and sums them across servers in MemoryStore |
 
 ## The room and the camera
-Opening the Dressing Room (Looks on the HUD rail, or the "Try on outfits" prompt at the corner's stage or mirror) walks you into the lobby's Dressing Room corner. You stand on a `FittingSpot` on the photo stage (three spots, the first free one wins) facing the room, with the backdrop behind you. Your controls pause and the camera frames your real avatar, so every change shows as soon as the server applies it. Other players standing right next to you are hidden on your screen while you dress.
+Opening the Dressing Room (Avatar on the HUD rail, or the "Try on outfits" prompt at the corner's stage or mirror) walks you into the lobby's Dressing Room corner. You stand on a `FittingSpot` on the photo stage (three spots, the first free one wins) facing the room, with the backdrop behind you. Walking and jumping are off (controls disabled, WalkSpeed/JumpPower 0, movement keys sunk, re-checked a few times a second) and the camera frames your real avatar, so every change shows as soon as the server applies it. Other players standing right next to you are hidden on your screen while you dress.
 
 - The panel docks on the right on wide screens and along the bottom on tall ones; the rest of the screen is the stage. `AvatarFraming.split` decides this from the screen size and safe insets.
-- The camera distance fits the avatar's whole bounding box (big hats and wings included) in the stage, and re-fits when accessories change. **+ / −** buttons, a pinch or the mouse wheel zoom from 0.3x to 1.8x of that; zooming in moves the focus toward the head. Drag to turn around the avatar. **Fit** resets.
-- Closing the window gives the camera and controls back; you stay in the corner. If a match starts, the window closes and the table view takes the camera.
+- The camera distance fits the avatar's whole bounding box (big hats and wings included) in the stage, and re-fits when accessories change. **+ / −** buttons, a pinch or the mouse wheel zoom from 0.3x to 1.8x of that; zooming in moves the focus toward the head. Dragging sideways spins the avatar on its spot like a turntable (the camera stays put; the turn replicates, so others see it). **Fit** resets zoom and turn.
+- Closing the window gives the camera and controls back and puts you back where you stood when you opened it (`AvatarFraming.shouldReturn`: not if you're seated or more than 12 studs from the stage, e.g. a match seated you). If a match starts, the window closes and the table view takes the camera.
 - No Dressing Room corner in the place (`Config.Lobby.buildRoom = false`)? It frames you where you stand.
 
 ## Shop: infinite scroll and For you
@@ -39,7 +41,13 @@ The grid loads the next catalog page when you're within two rows of the end, up 
 4. When the seeds run out it shows the best sellers from the creators you wear most (`CatalogSearchParams.CreatorName`).
 A brand new avatar with nothing to go on gets Popular instead. Changing your look marks the picks out of date; tap For you again to refresh.
 
-Remotes: `DressingRoomRequest` (client asks) and `DressingRoomState` (server sends the look, saved looks and slots). The **Dressing Room** button sits next to Shop on the wallet bar and hides at a table.
+**Trending** sits right after Popular: what Game Night players wear the most.
+1. Counting (server): each player counts once per item per kind per server. Kinds: `avatar` (on their own avatar or Game Night look when they join, weight 1), `tryOn` (1) and `buy` (3). Only items the Dressing Room sells count.
+2. Fading: every count adds `2^((now - EPOCH) / 7 days)`, so a wear today is worth twice one from a week ago and the stored totals never need rewriting.
+3. Sharing: once a minute each server adds its 40 biggest counts to the MemoryStore sorted map `GN_Trending_v1` (key = asset id, sort key = score, 45-day expiry). Every two minutes it reads the top 100 back. Without MemoryStore (unpublished place) the list is just this server's counts.
+4. The client asks with `{ action = "trending" }` (4 per 10 s) and gets `DressingRoomTrending { items = { { id, t, name? } } }`. It shows the list (names and prices from `GetBatchItemDetails`), then items similar to the top 8 (the same `GetRecommendedAssetsAsync` path as For you), then Popular best sellers. Tapping Trending again refreshes it; sorting or searching switches to Popular.
+
+Remotes: `DressingRoomRequest` (client asks), `DressingRoomState` (server sends the look, saved looks and slots) and `DressingRoomTrending` (the Trending list). The **Dressing Room** button sits next to Shop on the wallet bar and hides at a table.
 
 ## How a look works
 A look is `{ base = "mine" | "blank", items = { { id, t } } }`, saved as `currentLook` in the profile and worn on every spawn.
