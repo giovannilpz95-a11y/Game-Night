@@ -19,6 +19,7 @@
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
+local Offers = require(script.Parent.Parent.Offers)
 
 local Checkers = {}
 
@@ -67,7 +68,7 @@ function Checkers.new(seatCount: number, options: any?, _rng: Random?)
 			end
 		end
 	end
-	return {
+	local state = {
 		board = board,
 		turn = 1,
 		quietPlies = 0,
@@ -80,6 +81,8 @@ function Checkers.new(seatCount: number, options: any?, _rng: Random?)
 		flyingKings = options ~= nil and options.rules ~= nil and options.rules.flyingKings == true,
 		backCaptures = options ~= nil and options.rules ~= nil and options.rules.backCaptures == true,
 	}
+	Offers.init(state)
+	return state
 end
 
 type Opts = { optional: boolean?, flying: boolean?, backward: boolean? }
@@ -225,10 +228,35 @@ local function isOver(state): boolean
 end
 
 function Checkers.getActiveSeats(state): { number }
-	return if isOver(state) then {} else { state.turn }
+	return if isOver(state) then {} else { Offers.answerer(state) or state.turn }
+end
+
+local function cloneBoard(board)
+	local out = {}
+	for r, row in board do
+		out[r] = table.clone(row)
+	end
+	return out
+end
+
+-- Puts the game back to before its last move (takebacks).
+local function undoOne(state)
+	local entry = table.remove(state.undo)
+	if entry then
+		state.board = entry.board
+		state.turn = entry.turn
+		state.quietPlies = entry.quietPlies
+		state.lastMove = entry.lastMove
+	end
 end
 
 function Checkers.getLegalMoves(state, seat: number): { any }
+	if state.offer and not isOver(state) then
+		if seat ~= Offers.answerer(state) then
+			return {}
+		end
+		return { { type = "answer", accept = true }, { type = "answer", accept = false } }
+	end
 	if isOver(state) or seat ~= state.turn then
 		return {}
 	end
@@ -255,6 +283,12 @@ function Checkers.validateMove(state, seat: number, move: any): (boolean, string
 	if isOver(state) then
 		return false, "The game is over"
 	end
+	if Offers.isMove(move) then
+		return Offers.validate(state, seat, move, state.turn)
+	end
+	if state.offer then
+		return false, "Waiting for an answer"
+	end
 	if seat ~= state.turn then
 		return false, "It's not your turn"
 	end
@@ -268,6 +302,19 @@ function Checkers.validateMove(state, seat: number, move: any): (boolean, string
 end
 
 function Checkers.applyMove(state, seat: number, move: any)
+	if Offers.isMove(move) then
+		if Offers.apply(state, seat, move, undoOne) == "draw" then
+			state.isDraw = true
+			state.reason = "Draw agreed"
+		end
+		return
+	end
+	table.insert(state.undo, {
+		board = cloneBoard(state.board),
+		turn = state.turn,
+		quietPlies = state.quietPlies,
+		lastMove = state.lastMove,
+	})
 	-- Store a clean copy (the move came from the network).
 	local clean: Move = { from = { move.from[1], move.from[2] }, path = {} }
 	for _, sq in move.path do
@@ -309,12 +356,21 @@ function Checkers.getResult(state): GameModule.Result?
 end
 
 function Checkers.getView(state, seat: number?): any
+	local undo, asked = state.undo, state.asked
+	state.undo, state.asked = nil, nil
 	local view = GameModule.copy(state)
-	if seat and not isOver(state) and seat == state.turn then
+	state.undo, state.asked = undo, asked
+	view.offer = nil
+	view.takebacks = nil
+	view.moveCount = #undo
+	if seat and not isOver(state) and not state.offer and seat == state.turn then
 		local moves, mustJump = generate(state.board, seat, optsOf(state))
 		view.legalMoves = moves
 		view.mustJump = mustJump
 	end
+	Offers.addToView(view, state, seat, if isOver(state) then nil else state.turn, function(s)
+		return if s == 1 then "Dark" else "Light"
+	end)
 	return view
 end
 
@@ -400,6 +456,13 @@ local LEVELS = {
 }
 
 function Checkers.chooseBotMove(state, seat: number, rng: Random): any?
+	if state.offer and not isOver(state) then
+		if seat ~= Offers.answerer(state) then
+			return nil
+		end
+		-- Takebacks are fine; a draw only when the bot isn't clearly ahead.
+		return { type = "answer", accept = state.offer.kind == "takeback" or evaluate(state.board, seat) < 60 }
+	end
 	local level = LEVELS[state.botLevel] or LEVELS.medium
 	local moves = generate(state.board, seat, optsOf(state))
 	if #moves == 0 then

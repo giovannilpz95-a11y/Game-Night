@@ -15,3 +15,8 @@ Back to [[Home]].
   - Think time (`getBotDelay`): about 1-3 s on top of the search, longer with more legal moves.
 - Bot search runs on the server and doesn't yield. If many bot games run at once, move it to an Actor (Parallel Luau).
 - Models: `ReplicatedStorage.Assets.Chess.<Piece>_<White|Black>` (see `client/UI/PieceView.luau`).
+- Online extras (like chess.com and Lichess):
+  - Draw offers and takebacks go through `src/shared/Offers.luau`: `{ type = "offer", kind = "draw" | "takeback" }`, then `{ type = "answer", accept }` from the other seat. While an offer is open only the answerer is active, so the AFK clock and bots answer it (bots accept takebacks, and draws when they aren't ahead). A takeback undoes two plies from the `undo` stack (3 per player). Offers come to the client as `view.menuActions` (shown in the ⋯ menu) and `view.ask` (the prompt over the board, drawn by `MatchView`).
+  - Premoves: `Chess.premoves(fen, seat)` lists moves as if it were that seat's turn, including onto its own pieces (recaptures). The 2D and 3D boards queue one and send it when the turn comes if it's legal.
+  - Drag to move on the 2D board, dots for quiet moves and rings for captures, coordinates on the edge squares.
+  - Move list: every move is a button; `view.past[i]` is the FEN after move i, `view.startFen` the start. `<`, `>` and Live step through.

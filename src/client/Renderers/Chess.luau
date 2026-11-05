@@ -1,13 +1,21 @@
--- Chess board: tap one of your pieces, then a highlighted square. Pawns reaching the last
--- rank open a promotion picker. Shows the last move, check, captured pieces and the moves.
+-- Chess board: tap one of your pieces, then a highlighted square, or drag it there. Pawns
+-- reaching the last rank open a promotion picker. Shows the last move, check, captured
+-- pieces, board coordinates and the moves, like chess.com and Lichess:
+--   * dots for quiet moves, rings for captures
+--   * premoves: pick a move while the other side thinks; it plays the moment your turn
+--     comes if it's still legal (tap anywhere else to cancel)
+--   * tap a move in the list (or < >) to look back at that position; Live returns
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 local ChessRules = require(ReplicatedStorage.Shared.Games.Chess)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local Chess = {}
@@ -19,6 +27,9 @@ local DARK = Color3.fromRGB(176, 128, 92)
 local SELECTED = Color3.fromRGB(255, 214, 102)
 local LAST_MOVE = Color3.fromRGB(214, 196, 110)
 local CHECK = Color3.fromRGB(235, 87, 87)
+local PREMOVE = Color3.fromRGB(110, 150, 230)
+local REVIEW = Color3.fromRGB(120, 170, 255)
+local FILE_LETTERS = "abcdefgh"
 
 -- Game row 1 is rank 8 (the top as White sees it).
 local function squareOf(row: number, col: number): string
@@ -55,6 +66,11 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local selected: string? = nil
 	local shownCodes: { [string]: number } = {}
+	local viewing: number? = nil -- a past move being looked at (nil = the live board)
+	local premove: { from: string, to: string }? = nil
+	local premoveFrom: string? = nil -- picked a piece to premove with
+	local connections: { RBXScriptConnection } = {}
+	local drag: any = nil
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -230, 1, 0), Parent = root })
@@ -71,11 +87,34 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitSide)
 	fitSide()
 	local capturedLabel = Kit.label("", { TextSize = 14, TextColor3 = Theme.SubText, Size = UDim2.new(1, 0, 0, 44), TextYAlignment = Enum.TextYAlignment.Top, Parent = side })
+	-- Step through the game: back, forward, and back to the live board.
+	local nav = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 1, -34), Size = UDim2.new(1, 0, 0, 30), Parent = side }, { Kit.list(4, true) })
+	local navButtons: { [string]: TextButton } = {}
+	local stepTo: (number?) -> ()
+	for i, spec in { { "back", "<" }, { "forward", ">" }, { "live", "Live" } } do
+		navButtons[spec[1]] = Kit.button(spec[2], function()
+			local total = snapshot and #snapshot.view.past or 0
+			if spec[1] == "back" then
+				stepTo(math.max(0, (viewing or total) - 1))
+			elseif spec[1] == "forward" then
+				stepTo(if viewing then viewing + 1 else nil)
+			else
+				stepTo(nil)
+			end
+		end, {
+			BackgroundColor3 = Theme.Panel,
+			TextColor3 = Theme.Text,
+			TextSize = 14,
+			Size = if spec[1] == "live" then UDim2.new(0.4, -4, 1, 0) else UDim2.new(0.3, -3, 1, 0),
+			LayoutOrder = i,
+			Parent = nav,
+		})
+	end
 	local moves = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Position = UDim2.new(0, 0, 0, 50),
-		Size = UDim2.new(1, 0, 1, -50),
+		Size = UDim2.new(1, 0, 1, -88),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 4,
@@ -141,7 +180,52 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		promotionPicker = picker
 	end
 
+	local function myColor(code: number): boolean
+		return code ~= 0 and (code > 0) == (snapshot.yourSeat == 1)
+	end
+
+	local function premoveTargets(from: string): { [string]: boolean }
+		local out = {}
+		for _, m in ChessRules.premoves(snapshot.view.fen, snapshot.yourSeat) do
+			if m.from == from then
+				out[m.to] = true
+			end
+		end
+		return out
+	end
+
+	-- Premoves: while the other side thinks, pick a piece and a square for it.
+	local function canPremove(): boolean
+		local over = snapshot.result ~= nil or snapshot.aborted == true
+		return not over and snapshot.yourSeat ~= nil and snapshot.view.ask == nil and snapshot.view.turn ~= snapshot.yourSeat
+	end
+
+	local function onPremoveClick(square: string)
+		local sq = ChessRules.parseSquare(square) :: number
+		local code = snapshot.view.board[sq + 1]
+		if premoveFrom and premoveTargets(premoveFrom)[square] then
+			premove = { from = premoveFrom, to = square }
+			premoveFrom = nil
+			Audio.play("click", { volume = 0.6 })
+		elseif myColor(code) and square ~= premoveFrom then
+			premoveFrom = square
+			premove = nil
+		else
+			premoveFrom = nil
+			premove = nil
+		end
+		render()
+	end
+
 	local function onClick(row: number, col: number)
+		if viewing then
+			stepTo(nil) -- back to the live board first
+			return
+		end
+		if snapshot and canPremove() then
+			onPremoveClick(squareOf(row, col))
+			return
+		end
 		if not myTurn() then
 			return
 		end
@@ -170,42 +254,217 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		render()
 	end
 
+	-- Drag a piece to its square (tap-tap still works). A press on a piece that can move
+	-- (or premove) picks it; letting go over another square plays it there.
+	local function cellAt(point: Vector2): (number?, number?)
+		for r = 1, 8 do
+			for c = 1, 8 do
+				local cell = grid.cell(r, c)
+				local p, sz = cell.AbsolutePosition, cell.AbsoluteSize
+				if point.X >= p.X and point.X <= p.X + sz.X and point.Y >= p.Y and point.Y <= p.Y + sz.Y then
+					return r, c
+				end
+			end
+		end
+		return nil, nil
+	end
+
+	local function startDrag(row: number, col: number, input: InputObject)
+		if drag or viewing or not snapshot then
+			return
+		end
+		local square = squareOf(row, col)
+		local sq = ChessRules.parseSquare(square) :: number
+		local code = snapshot.view.board[sq + 1]
+		local live = myTurn() and #movesFrom(square) > 0
+		if not live and not (canPremove() and myColor(code)) then
+			return
+		end
+		local cell = grid.cell(row, col)
+		local ghost = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Size = UDim2.fromOffset(cell.AbsoluteSize.X * 1.15, cell.AbsoluteSize.Y * 1.15),
+			Visible = false,
+			ZIndex = 30,
+			Parent = root,
+		})
+		local visual = pieceVisual(code)
+		visual.ZIndex = 31
+		visual.Parent = ghost
+		drag = { row = row, col = col, square = square, ghost = ghost, start = Vector2.new(input.Position.X, input.Position.Y), moved = false }
+	end
+
+	table.insert(connections, UserInputService.InputChanged:Connect(function(input)
+		if not drag or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then
+			return
+		end
+		local point = Vector2.new(input.Position.X, input.Position.Y)
+		if not drag.moved and (point - drag.start).Magnitude > 10 then
+			drag.moved = true
+			drag.ghost.Visible = true
+			grid.content(drag.row, drag.col).Visible = false
+			Audio.play("lift", { volume = 0.5 })
+			-- Show where it can go while it's in the air.
+			if myTurn() then
+				selected = drag.square
+			else
+				premoveFrom = drag.square
+				premove = nil
+			end
+			render()
+		end
+		if drag.moved then
+			local guiPoint = point + Vector2.new(0, GuiService:GetGuiInset().Y)
+			local inset = root.AbsolutePosition
+			drag.ghost.Position = UDim2.fromOffset(guiPoint.X - inset.X, guiPoint.Y - inset.Y)
+		end
+	end))
+
+	table.insert(connections, UserInputService.InputEnded:Connect(function(input)
+		if not drag or (input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch) then
+			return
+		end
+		local d = drag
+		drag = nil
+		d.ghost:Destroy()
+		grid.content(d.row, d.col).Visible = true
+		if not d.moved then
+			return -- a tap: the cell's Activated handles it
+		end
+		local point = Vector2.new(input.Position.X, input.Position.Y) + Vector2.new(0, GuiService:GetGuiInset().Y)
+		local r, c = cellAt(point)
+		if r and c and (r ~= d.row or c ~= d.col) then
+			onClick(r :: number, c :: number)
+		else
+			render()
+		end
+	end))
+
 	grid = BoardGrid.create(boardArea, 8, onClick)
+	for r = 1, 8 do
+		for c = 1, 8 do
+			local cell = grid.cell(r, c)
+			cell.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					startDrag(r, c, input)
+				end
+			end)
+			-- Coordinates in the corners of the edge squares, like the big chess sites.
+			Kit.new("TextLabel", {
+				Name = "Rank",
+				BackgroundTransparency = 1,
+				Position = UDim2.fromScale(0.04, 0.02),
+				Size = UDim2.fromScale(0.3, 0.26),
+				Font = Enum.Font.GothamBold,
+				TextScaled = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = "",
+				ZIndex = 2,
+				Parent = cell,
+			})
+			Kit.new("TextLabel", {
+				Name = "File",
+				BackgroundTransparency = 1,
+				Position = UDim2.fromScale(0.66, 0.72),
+				Size = UDim2.fromScale(0.3, 0.26),
+				Font = Enum.Font.GothamBold,
+				TextScaled = true,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				Text = "",
+				ZIndex = 2,
+				Parent = cell,
+			})
+		end
+	end
+
+	function stepTo(index: number?)
+		local total = snapshot and #snapshot.view.past or 0
+		if index ~= nil and index >= total then
+			index = nil
+		end
+		if index ~= viewing then
+			viewing = index
+			selected = nil
+			closePicker()
+			Audio.play("piece", { volume = 0.5 })
+			render()
+		end
+	end
 
 	function render()
 		if not snapshot then
 			return
 		end
 		local view = snapshot.view
-		grid.setFlipped(snapshot.yourSeat == 2)
+		local flipped = snapshot.yourSeat == 2
+		grid.setFlipped(flipped)
 		local over = snapshot.result ~= nil or snapshot.aborted == true
 		local acting = if over then nil else snapshot.activeSeats[1]
 		HudKit.turnTint(side, acting, acting ~= nil and acting == snapshot.yourSeat)
 
-		local targets = {}
-		if selected then
+		-- The board to draw: live, or a past position from the move list.
+		local boardAt: (number) -> number
+		local last = view.lastMove
+		local past = view.past or {}
+		if viewing == 0 or (viewing and past[viewing]) then
+			local fen = if viewing == 0 then view.startFen else past[viewing :: number].fen
+			local pos = ChessRules.fromFen(fen)
+			boardAt = function(sq)
+				return pos.board[sq]
+			end
+			last = if viewing == 0 then nil else past[viewing :: number]
+		else
+			viewing = nil
+			boardAt = function(sq)
+				return view.board[sq + 1]
+			end
+		end
+
+		local targets, targetColor = {}, Color3.fromRGB(30, 30, 30)
+		if viewing then
+			-- looking back: no move hints
+		elseif selected then
 			for _, m in movesFrom(selected) do
 				targets[m.to] = true
 			end
+		elseif premoveFrom and canPremove() then
+			targets = premoveTargets(premoveFrom)
+			targetColor = PREMOVE
 		end
-		local last = view.lastMove
+		if not canPremove() then
+			premoveFrom = nil
+		end
 
 		for row = 1, 8 do
 			for col = 1, 8 do
 				local square = squareOf(row, col)
 				local sq = ChessRules.parseSquare(square) :: number
-				local code = view.board[sq + 1]
+				local code = boardAt(sq)
 				local cell = grid.cell(row, col)
-				local base = if (row + col) % 2 == 0 then LIGHT else DARK
-				if square == selected then
+				local light = (row + col) % 2 == 0
+				local base = if light then LIGHT else DARK
+				if square == selected or square == premoveFrom then
 					base = SELECTED
+				elseif premove and (square == premove.from or square == premove.to) then
+					base = base:Lerp(PREMOVE, 0.6)
 				elseif last and (square == last.from or square == last.to) then
-					base = base:Lerp(LAST_MOVE, 0.55)
+					base = base:Lerp(if viewing then REVIEW else LAST_MOVE, 0.55)
 				end
-				if view.inCheck and square == view.kingSquare then
+				if not viewing and view.inCheck and square == view.kingSquare then
 					base = base:Lerp(CHECK, 0.7)
 				end
 				cell.BackgroundColor3 = base
+
+				-- Coordinates on the edges as you see the board.
+				local bottomRow = if flipped then 1 else 8
+				local leftCol = if flipped then 8 else 1
+				local rankLabel = cell:FindFirstChild("Rank") :: TextLabel
+				local fileLabel = cell:FindFirstChild("File") :: TextLabel
+				rankLabel.Text = if col == leftCol then tostring(9 - row) else ""
+				fileLabel.Text = if row == bottomRow then string.sub(FILE_LETTERS, col, col) else ""
+				rankLabel.TextColor3 = if light then DARK else LIGHT
+				fileLabel.TextColor3 = rankLabel.TextColor3
 
 				local content = grid.content(row, col)
 				if shownCodes[square] ~= code then
@@ -216,20 +475,29 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 					end
 				end
 
+				-- A dot for a quiet move, a ring around a piece you can take.
 				local dot = cell:FindFirstChild("Target")
+				local capture = code ~= 0
+				if dot and (not targets[square] or dot:GetAttribute("Capture") ~= capture or dot:GetAttribute("Pre") ~= (targetColor == PREMOVE)) then
+					dot:Destroy()
+					dot = nil
+				end
 				if targets[square] and not dot then
-					Kit.new("Frame", {
+					local marker = Kit.new("Frame", {
 						Name = "Target",
-						BackgroundColor3 = Color3.fromRGB(30, 30, 30),
-						BackgroundTransparency = 0.6,
+						BackgroundColor3 = targetColor,
+						BackgroundTransparency = if capture then 1 else 0.55,
 						AnchorPoint = Vector2.new(0.5, 0.5),
 						Position = UDim2.fromScale(0.5, 0.5),
-						Size = if code ~= 0 then UDim2.fromScale(0.95, 0.95) else UDim2.fromScale(0.3, 0.3),
+						Size = if capture then UDim2.fromScale(0.9, 0.9) else UDim2.fromScale(0.3, 0.3),
 						ZIndex = 3,
 						Parent = cell,
 					}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-				elseif not targets[square] and dot then
-					dot:Destroy()
+					marker:SetAttribute("Capture", capture)
+					marker:SetAttribute("Pre", targetColor == PREMOVE)
+					if capture then
+						Kit.new("UIStroke", { Color = targetColor, Thickness = 4, Transparency = 0.35, Parent = marker })
+					end
 				end
 			end
 		end
@@ -260,28 +528,82 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			capturedLabel.Text ..= `\nChecks: White {view.checks[1]}/3 · Black {view.checks[2]}/3`
 		end
 
-		Kit.clear(moves)
-		for i = 1, #view.moveList, 2 do
-			local number = (i + 1) // 2
-			local text = `{number}. {view.moveList[i]}`
-			if view.moveList[i + 1] then
-				text ..= `   {view.moveList[i + 1]}`
+		-- Each move is a button: tap it to see the board after it.
+		local plies = #view.moveList
+		do
+			Kit.clear(moves)
+			for i = 1, plies, 2 do
+				local number = (i + 1) // 2
+				local row = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = number, Parent = moves }, { Kit.list(2, true) })
+				Kit.label(`{number}.`, { TextSize = 13, TextColor3 = Theme.SubText, Size = UDim2.new(0, 28, 1, 0), LayoutOrder = 0, Parent = row })
+				for k = 0, 1 do
+					local ply = i + k
+					local san = view.moveList[ply]
+					if san then
+						local current = if viewing then ply == viewing else ply == plies
+						Kit.new("TextButton", {
+							Text = san,
+							Font = if current then Theme.FontBold else Theme.Font,
+							TextSize = 14,
+							TextColor3 = Theme.Text,
+							BackgroundColor3 = if current then Theme.Accent else Theme.Panel,
+							BackgroundTransparency = if current then 0.3 else 1,
+							AutoButtonColor = true,
+							Size = UDim2.new(0.5, -16, 1, 0),
+							LayoutOrder = ply,
+							Parent = row,
+						}, { Kit.corner(6) }).Activated:Connect(function()
+							stepTo(ply)
+						end)
+					end
+				end
 			end
-			Kit.label(text, { TextSize = 14, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = number, Parent = moves })
+			if not viewing then
+				moves.CanvasPosition = Vector2.new(0, 1e6)
+			end
 		end
-		moves.CanvasPosition = Vector2.new(0, 1e6)
+		navButtons.back.Visible = plies > 0
+		navButtons.forward.Visible = plies > 0
+		navButtons.live.Visible = plies > 0
+		navButtons.live.BackgroundColor3 = if viewing then Theme.Accent else Theme.Panel
+		if premove then
+			capturedLabel.Text ..= `\nPremove: {premove.from}-{premove.to}`
+		end
 	end
 
 	return {
 		update = function(newSnapshot: any)
+			local hadMoves = snapshot and #snapshot.view.moveList or 0
 			snapshot = newSnapshot
 			if not myTurn() then
 				selected = nil
 				closePicker()
 			end
+			if #snapshot.view.moveList ~= hadMoves and viewing then
+				viewing = nil -- a new move brings you back to the live board
+			end
+			-- The turn came: play the queued premove if it's still legal.
+			if premove and myTurn() then
+				local queued = premove
+				premove = nil
+				for _, m in snapshot.view.legalMoves do
+					if m.from == queued.from and m.to == queued.to then
+						sendMove({ from = m.from, to = m.to, promotion = if m.promotion then "q" else nil })
+						break
+					end
+				end
+			elseif premove and (snapshot.result ~= nil or snapshot.aborted) then
+				premove = nil
+			end
 			render()
 		end,
 		destroy = function()
+			for _, connection in connections do
+				connection:Disconnect()
+			end
+			if drag then
+				drag.ghost:Destroy()
+			end
 			root:Destroy()
 		end,
 	}

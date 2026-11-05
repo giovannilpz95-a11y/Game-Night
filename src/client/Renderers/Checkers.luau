@@ -1,6 +1,7 @@
--- Checkers board. Tap a piece, then tap each landing square in turn (multi-jumps take
--- several taps; the move is sent when the jump sequence is complete). When a capture is
--- forced, only the pieces that can jump glow.
+-- Checkers board. Tap a piece, then a landing square. A multi-jump finishes by itself as
+-- soon as only one route is left (like Board Game Arena and the checkers apps); the rest
+-- of that route shows as numbered hops. When a capture is forced, only the pieces that
+-- can jump glow. The strip on top counts the pieces each side has taken.
 
 local Kit = require(script.Parent.Parent.UI.Kit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
@@ -94,8 +95,11 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 				local nextSq = m.path[#partial + 1]
 				if nextSq[1] == r and nextSq[2] == c then
 					table.insert(partial, { r, c })
-					if #m.path == #partial then
-						sendMove({ from = m.from, path = m.path })
+					-- Only one way to finish from here: play the whole jump.
+					local left = candidates()
+					local chosen = if #m.path == #partial then m elseif #left == 1 then left[1] else nil
+					if chosen then
+						sendMove({ from = chosen.from, path = chosen.path })
 						selected, partial = nil, {}
 					end
 					render()
@@ -122,7 +126,20 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 		end
 		local view = snapshot.view
 		grid.setFlipped(snapshot.yourSeat == 2)
-		hint.Text = if view.mustJump then "You must jump!" else ""
+		-- Pieces taken so far (each side starts with 12).
+		local left = { 0, 0 }
+		for r = 1, 8 do
+			for c = 1, 8 do
+				local v = view.board[r][c]
+				if v ~= 0 then
+					local seat = (v - 1) % 2 + 1
+					left[seat] += 1
+				end
+			end
+		end
+		local taken = `Taken: Dark {12 - left[2]} · Light {12 - left[1]}`
+		hint.Text = if view.mustJump and #legal() > 0 then `You must jump!   {taken}` else taken
+		hint.TextColor3 = if view.mustJump and #legal() > 0 then Theme.Accent else Theme.SubText
 
 		local nextSquares: { [number]: boolean } = {}
 		for _, m in candidates() do
@@ -139,6 +156,16 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 		local trail: { [number]: boolean } = {}
 		for _, sq in partial do
 			trail[sq[1] * 10 + sq[2]] = true
+		end
+		-- The hops of each route still open, numbered, so the whole path shows.
+		local hops: { [number]: number } = {}
+		for _, m in candidates() do
+			for i, sq in m.path do
+				if i > #partial then
+					local key = sq[1] * 10 + sq[2]
+					hops[key] = math.min(hops[key] or i, i)
+				end
+			end
 		end
 
 		for r = 1, 8 do
@@ -158,6 +185,29 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 					color = color:Lerp(GLOW, 0.4)
 				end
 				cell.BackgroundColor3 = color
+
+				local hop = cell:FindFirstChild("Hop") :: TextLabel?
+				local jumping = #legal() > 0 and view.mustJump
+				if hops[key] and jumping then
+					if not hop then
+						hop = Kit.new("TextLabel", {
+							Name = "Hop",
+							BackgroundColor3 = GLOW,
+							BackgroundTransparency = 0.2,
+							AnchorPoint = Vector2.new(0.5, 0.5),
+							Position = UDim2.fromScale(0.5, 0.5),
+							Size = UDim2.fromScale(0.36, 0.36),
+							Font = Enum.Font.GothamBlack,
+							TextScaled = true,
+							TextColor3 = Color3.fromRGB(60, 40, 20),
+							ZIndex = 4,
+							Parent = cell,
+						}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+					end
+					(hop :: TextLabel).Text = tostring(hops[key])
+				elseif hop then
+					hop:Destroy()
+				end
 
 				local v = view.board[r][c]
 				-- While mid-jump, show the piece where it has got to.
