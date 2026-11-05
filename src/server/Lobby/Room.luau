@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local L = require(ReplicatedStorage.Shared.LobbyLayout)
 local Props = require(script.Parent.Props)
 local Optimize = require(script.Parent.Optimize)
+local Overlaps = require(script.Parent.Overlaps)
 
 local Room = {}
 
@@ -401,6 +402,13 @@ function Room.build(parent: Instance): (Model, { [string]: Model })
 	local corner = room:FindFirstChild("DressingCorner", true)
 	if corner then
 		Optimize.persistent(corner)
+	end
+	-- Props are many flush boxes: move apart any two faces that would fight (flicker).
+	local started = os.clock()
+	local fixed, left = Overlaps.fix(room)
+	print(`[GameNight] lobby room: {fixed} overlapping faces moved apart in {math.round((os.clock() - started) * 1000)} ms`)
+	if left > 0 then
+		warn(`[GameNight] lobby room: {left} overlapping faces left after {fixed} fixes`)
 	end
 	local parts, shadowsOff = Optimize.decor(room)
 	print(`[GameNight] lobby room: {parts} parts, {shadowsOff} small ones without shadows`)

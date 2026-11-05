@@ -17,7 +17,7 @@ function ThirtyOne.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			local shown = showdown and showdown.hands and showdown.hands[tostring(seat)]
 			if shown then
 				for i, id in shown do
-					Scene.card(folder, Scene.seatSpot(boardCF, layout, seat, 1.2, (i - 2) * 0.7), Scene.playingFront(PlayingCards, id))
+					Scene.card(folder, Scene.seatSpot(boardCF, layout, seat, 1.2, (i - 2) * 0.7) * CFrame.new(0, (i - 1) * Scene.STACK, 0), Scene.playingFront(PlayingCards, id))
 				end
 			else
 				Scene.hand(folder, boardCF, layout, seat, count)

@@ -132,7 +132,7 @@ local function discardPile(folder: Instance, boardCF: CFrame, layout: Scene.Layo
 		local facing = CFrame.lookAt(Vector3.zero, -dir) -- the card's bottom edge toward its player
 		local offset = dir * 0.12 + Vector3.new(jitter(play.card, 1) * 0.22, 0, jitter(play.card, 2) * 0.22)
 		local yaw = math.rad(jitter(play.card, 3) * 22)
-		local cf = boardCF * CFrame.new(offset + Vector3.new(0, 0.07 + (i - 1) * (Scene.CARD_T + 0.004), 0)) * facing * CFrame.Angles(0, yaw, 0)
+		local cf = boardCF * CFrame.new(offset + Vector3.new(0, 0.07 + (i - 1) * Scene.STACK, 0)) * facing * CFrame.Angles(0, yaw, 0)
 		-- Only the top card shows the wild's chosen color.
 		Scene.card(folder, cf, front(play.card, if i == #recent then view.color else nil))
 	end

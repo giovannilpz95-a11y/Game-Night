@@ -60,7 +60,7 @@ local FURNITURE: { (m: Instance, cf: CFrame) -> () } = {
 		end
 	end,
 	function(m, cf) -- Grand Hall: rug and pillars
-		Models.block(m, "Rug", Vector3.new(1.3, 0.01, 0.6), cf * CFrame.new(0, 0.005, 0.5), Color3.fromRGB(170, 50, 60), Enum.Material.Fabric)
+		Models.block(m, "Rug", Vector3.new(1.3, 0.03, 0.6), cf * CFrame.new(0, 0.005, 0.5), Color3.fromRGB(170, 50, 60), Enum.Material.Fabric)
 		for _, x in { -0.6, 0.6 } do
 			Models.cyl(m, "Pillar", 0.2, 0.6, cf * CFrame.new(x, 0, 0), Models.IVORY)
 			Models.cyl(m, "PillarCap", 0.28, 0.06, cf * CFrame.new(x, 0.6, 0), Models.GOLD)
@@ -74,7 +74,7 @@ local FURNITURE: { (m: Instance, cf: CFrame) -> () } = {
 	end,
 	function(m, cf) -- Pool: water with a float ring
 		Models.block(m, "PoolEdge", Vector3.new(1.3, 0.05, 0.66), cf * CFrame.new(0, 0.025, 0.1), Models.IVORY)
-		Models.block(m, "Water", Vector3.new(1.16, 0.06, 0.52), cf * CFrame.new(0, 0.03, 0.1), Color3.fromRGB(70, 180, 220), Enum.Material.Glass)
+		Models.block(m, "Water", Vector3.new(1.16, 0.06, 0.52), cf * CFrame.new(0, 0, 0.1), Color3.fromRGB(70, 180, 220), Enum.Material.Glass)
 		Models.cyl(m, "Float", 0.3, 0.04, cf * CFrame.new(0.28, 0.06, 0.1), Color3.fromRGB(245, 120, 90))
 	end,
 	function(m, cf) -- Garage: a little car

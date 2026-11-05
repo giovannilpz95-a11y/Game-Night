@@ -31,6 +31,15 @@ When a match starts, the party is moved to a free table in the room and everyone
 | `client/Table3D/Controller.luau` | Camera from your seat, taps on the board turned into cell clicks, your own highlights. |
 | `client/Table3D/<module>.luau` | Per-game input (select a piece, pick a target), same logic as the 2D renderer. |
 
+## No overlapping faces (z-fighting)
+Two visible faces in the same place, facing the same way, flicker as the renderer swaps which is in front. `tests/Overlaps.spec.luau` builds every model made from parts (each table and stool, the pieces at three sizes, the lobby room with its tables and lamps, and every game's scene early and late in a bot game) and fails if any two faces lie within 0.01 studs of each other and overlap. The test runs the builders on a fake of Roblox's geometry types (`tools/test-roblox.luau`).
+
+- Layer things at least `Scene.LAYER` (0.016) apart: a stripe, inlay or label stands that far proud of the face under it. `Models.PROUD` (0.02) is the same rule for details on pieces, in studs whatever the piece's size.
+- Cards in a pile or fan step by `Scene.STACK` (0.05), which clears a card back's raised panel and emblem. `Scene.pile` returns where the next card goes. On a card mat (`Boards/_Cards`), `Scene.seatSpot` puts cards on top of the mat.
+- Two parts that meet flush (a shelf between two side panels) share faces: make one a little smaller or set it back.
+- The lobby room is many flush boxes, so `Room.build` runs `Overlaps.fix`, which sets back one face of each fighting pair (or moves a thin part out) until none are left. Its Output line says how many it moved and how long it took.
+- `node tools/run-tests.mjs --run OverlapReport [furniture|pieces|lobby|games] [GameId]` lists every fight with part names, sizes and where.
+
 ## Where tables come from
 In this order:
 1. **Tables placed in Studio:** any Model in Workspace tagged `GameTable` (CollectionService). Give it attributes `TableId` (e.g. `Quick-1`) and `Zone` (`Quick`, `Strategy`, `Cards`, `Party`, matching `GameCatalog.category`), `Seat` parts, and a `BoardAnchor` (Attachment or part) at the center of the table top. Seats are renamed `Seat1..N` in order around the table, starting from the +Z side.
