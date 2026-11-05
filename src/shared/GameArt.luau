@@ -23,6 +23,7 @@ GameArt.icons = {
 	SketchGuess = "✏️",
 	TriviaNight = "❓",
 	Werewolf = "🐺",
+	FiveDice = "🎲",
 	Whodunit = "🔍",
 	Estates = "🏠",
 	WordTiles = "🔠",

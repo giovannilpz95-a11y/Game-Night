@@ -14,6 +14,7 @@ When a match starts, the party is moved to a free table in the room and everyone
 | Conquest Isles | The map as region-colored lands with borders and sea lanes, an army stack with its count on every territory |
 | Whodunit | The 3x3 mansion with room names, each suspect's pawn (seat N's color) and the items, plus the case file |
 | Word Tiles | The board with premium squares, every tile laid, and each player's rack |
+| Five Dice | A felt dice tray with a wooden rim: the roller's loose dice tumble in the middle and the dice they keep line up at the rim on their side (a leather cup before the first roll; with "Everyone rolls at once" each player rolls in front of their seat). A score pad with the total at every seat, the last box scored floating over it, and a gold rim for a Big Five |
 | Trivia Night, Sketch & Guess | A four-sided screen over the table: the question and answers (right one lit at the reveal), or the live drawing with the hint |
 
 ## Where the code lives
