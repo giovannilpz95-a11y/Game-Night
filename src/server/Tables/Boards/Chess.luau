@@ -16,6 +16,8 @@ local DARK = Color3.fromRGB(150, 104, 72)
 local LAST_MOVE = Color3.fromRGB(230, 200, 90)
 local CHECK = Color3.fromRGB(235, 70, 70)
 
+local VALUE = { 1, 3, 3, 5, 9, 0 } -- pawn, knight, bishop, rook, queen, king
+
 local ALL_NAMES = {}
 for _, name in NAMES do
 	table.insert(ALL_NAMES, `{name}_White`)
@@ -59,6 +61,71 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 	local shown: { [number]: Instance } = {}
 	local shownCode: { [number]: number } = {}
 
+	-- Taken pieces stand in a row beside the board on the taker's right, like at a real
+	-- board, smallest first, with the material lead ("+3") at the end of the row.
+	local takenFolder = Instance.new("Folder")
+	takenFolder.Name = "Taken"
+	takenFolder.Parent = board.model
+	local takenKey = ""
+	local function drawTaken(captured: any)
+		local key = table.concat((captured and captured[1]) or {}, ",") .. "/" .. table.concat((captured and captured[2]) or {}, ",")
+		if key == takenKey then
+			return
+		end
+		takenKey = key
+		takenFolder:ClearAllChildren()
+		local worth = { 0, 0 }
+		local step = board.cellSize * 0.5
+		local small = factor * 0.62
+		for seat = 1, 2 do
+			local list = table.clone((captured and captured[seat]) or {})
+			table.sort(list)
+			-- White (seat 1) sits on +Z facing -Z, so their right is +X; Black's is -X.
+			local side = if seat == 1 then 1 else -1
+			local x = side * (size / 2 + 0.75)
+			for i, kind in list do
+				worth[seat] += VALUE[kind] or 0
+				local col = (i - 1) // 8
+				local row = (i - 1) % 8
+				local z = side * (size / 2 - 0.25 - row * step)
+				local surface = boardCF * CFrame.new(x + side * col * step, 0, z)
+				local white = seat == 2 -- seat 1 takes Black's pieces
+				local template = Pieces.find("Chess", `{NAMES[kind]}_{if white then "White" else "Black"}`)
+				local piece = if template then Pieces.stand(template, small, surface) else fallbackPiece(kind, white, surface, board.cellSize * 0.62)
+				piece.Parent = takenFolder
+			end
+		end
+		for seat = 1, 2 do
+			local lead = worth[seat] - worth[3 - seat]
+			if lead > 0 then
+				local side = if seat == 1 then 1 else -1
+				local holder = Pieces.part({
+					Name = "Lead",
+					Size = Vector3.new(0.05, 0.05, 0.05),
+					CFrame = boardCF * CFrame.new(side * (size / 2 + 0.75), 1.1, side * (size / 2 - 0.25 + step)),
+					Transparency = 1,
+					CanQuery = false,
+					Parent = takenFolder,
+				})
+				local gui = Instance.new("BillboardGui")
+				gui.Size = UDim2.new(1.1, 0, 0.55, 0)
+				gui.LightInfluence = 0
+				gui.MaxDistance = 60
+				gui.Parent = holder
+				local label = Instance.new("TextLabel")
+				label.Size = UDim2.fromScale(1, 1)
+				label.BackgroundTransparency = 1
+				label.TextScaled = true
+				label.Font = Enum.Font.GothamBold
+				label.Text = `+{lead}`
+				label.TextColor3 = Color3.fromRGB(255, 220, 120)
+				label.TextStrokeColor3 = Color3.fromRGB(20, 18, 30)
+				label.TextStrokeTransparency = 0.2
+				label.Parent = gui
+			end
+		end
+	end
+
 	return {
 		model = board.model,
 		update = function(view: any)
@@ -97,6 +164,7 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 				tints[r * 100 + c] = CHECK
 			end
 			Square.tint(board, 8, tints)
+			drawTaken(view.captured)
 		end,
 		destroy = function()
 			board.model:Destroy()

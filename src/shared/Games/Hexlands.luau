@@ -416,6 +416,10 @@ function Hexlands.new(seatCount: number, options: any, rng: any)
 		endReason = nil,
 		moves = 0,
 		log = {},
+		-- Public, like at a real table: what the last roll paid each seat, and how often each
+		-- total has come up (the "dice stats" the big online versions show).
+		lastGain = nil, -- { turn, roll, gains = { ["seat"] = { [res] = n } }, hexes = { h } }
+		rollCounts = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, -- [total] for 2..12 (1 unused)
 		botOffered = false,
 		tradeId = 0,
 	}
@@ -668,6 +672,14 @@ Hexlands.playableCard = playableCard
 -- Turn flow -------------------------------------------------------------------------
 
 local function produce(state: any, roll: number)
+	local gains: { [string]: { [string]: number } } = {}
+	local paid: { number } = {}
+	for h, tile in state.tiles do
+		if tile.number == roll and h ~= state.bandit then
+			table.insert(paid, h)
+		end
+	end
+	state.lastGain = { turn = state.turnNumber, roll = roll, gains = gains, hexes = paid }
 	for _, r in RES do
 		local want = {}
 		local total, takers = 0, 0
@@ -694,6 +706,11 @@ local function produce(state: any, roll: number)
 					n = math.min(n, state.bank[r])
 					state.players[seat].hand[r] += n
 					state.bank[r] -= n
+					if n > 0 then
+						local mine = gains[tostring(seat)] or {}
+						mine[r] = (mine[r] or 0) + n
+						gains[tostring(seat)] = mine
+					end
 				end
 			end
 		end
@@ -1088,6 +1105,10 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 	elseif kind == "roll" then
 		local a, b = state.rng:NextInteger(1, 6), state.rng:NextInteger(1, 6)
 		state.dice = { a, b }
+		state.rollCounts[a + b] += 1
+		if a + b == 7 then
+			state.lastGain = { turn = state.turnNumber, roll = 7, gains = {}, hexes = {} }
+		end
 		log(state, seat, `rolled {a + b}`)
 		if a + b == 7 then
 			afterRollSeven(state)
@@ -1411,6 +1432,8 @@ function Hexlands.getView(state: any, seat: number?): any
 		bank = table.clone(state.bank),
 		deckLeft = #state.deck,
 		dice = state.dice and table.clone(state.dice),
+		lastGain = GameModule.copy(state.lastGain),
+		rollCounts = table.clone(state.rollCounts),
 		discards = dense(state.discards, state.seatCount, 0),
 		trade = trade,
 		tradesLeft = Hexlands.TRADES_PER_TURN - state.tradesThisTurn,

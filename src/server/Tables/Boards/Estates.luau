@@ -76,9 +76,96 @@ function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout
 	model.Parent = parent
 	local memo = {}
 
+	-- Tokens live outside the redraw so they can walk: after a roll a token hops space by
+	-- space round the board (the classic digital-board moment), instead of jumping there.
+	local tokenFolder = Instance.new("Folder")
+	tokenFolder.Name = "Tokens"
+	tokenFolder.Parent = model
+	type Token = { model: Model, offset: CFrame, pos: number, jail: boolean, walk: thread? }
+	local tokens: { [number]: Token } = {}
+	local HOP = 0.17 -- seconds per space
+
+	local function tokenCF(seat: number, pos: number, inJail: boolean): CFrame
+		local angle = (seat - 1) / 8 * math.pi * 2
+		local cf = tops[pos] * CFrame.new(Vector3.new(math.cos(angle), 0, math.sin(angle)) * U * 0.22)
+		if inJail then
+			cf *= CFrame.new(U * 0.15, 0, -U * 0.15)
+		end
+		return cf
+	end
+
+	local function place(t: Token, cf: CFrame)
+		if t.model.Parent then
+			t.model:PivotTo(cf * t.offset)
+		end
+	end
+
+	local function hop(t: Token, from: CFrame, to: CFrame, seconds: number, height: number)
+		local start = os.clock()
+		while true do
+			local a = math.min(1, (os.clock() - start) / seconds)
+			local cf = from:Lerp(to, a) * CFrame.new(0, math.sin(a * math.pi) * height, 0)
+			place(t, cf)
+			if a >= 1 then
+				break
+			end
+			task.wait()
+		end
+	end
+
+	local function moveToken(seat: number, p: any)
+		local t = tokens[seat]
+		if p.bankrupt or not p.pos or not tops[p.pos] then
+			if t then
+				if t.walk then
+					task.cancel(t.walk)
+				end
+				t.model:Destroy()
+				tokens[seat] = nil
+			end
+			return
+		end
+		local jail = p.inJail == true
+		if not t then
+			local cf = tokenCF(seat, p.pos, jail)
+			local m = Models.token(tokenFolder, cf, seat, Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1), U * 0.72)
+			tokens[seat] = { model = m, offset = cf:ToObjectSpace(m:GetPivot()), pos = p.pos, jail = jail }
+			return
+		end
+		if t.pos == p.pos and t.jail == jail then
+			return
+		end
+		if t.walk then
+			task.cancel(t.walk)
+			t.walk = nil
+		end
+		local from, to = t.pos, p.pos
+		t.pos, t.jail = to, jail
+		local steps = (to - from) % #Rules.spaces
+		t.walk = task.spawn(function()
+			if not jail and steps >= 1 and steps <= 12 then
+				-- A dice move: hop along every space on the way.
+				local here = tokenCF(seat, from, false)
+				for k = 1, steps do
+					local nextPos = (from + k - 1) % #Rules.spaces + 1
+					local there = tokenCF(seat, nextPos, false)
+					hop(t, here, there, HOP, U * 0.35)
+					here = there
+				end
+			else
+				-- A card or Jail: one long glide over the board.
+				hop(t, t.model:GetPivot() * t.offset:Inverse(), tokenCF(seat, to, jail), 0.7, U * 1.2)
+			end
+			t.walk = nil
+		end)
+	end
+
 	return {
 		model = model,
 		update = function(view: any, _snapshot: any)
+			for seat, p in view.players or {} do
+				moveToken(seat, p)
+			end
 			if not Scene.changed(memo, view) then
 				return
 			end
@@ -104,18 +191,6 @@ function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout
 						end
 					end
 				end
-				-- Tokens: a small ring of offsets so several players on one space all show.
-				for seat, p in view.players or {} do
-					if not p.bankrupt and p.pos and tops[p.pos] then
-						local angle = (seat - 1) / 8 * math.pi * 2
-						local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * U * 0.22
-						local cf = tops[p.pos] * CFrame.new(offset)
-						if p.inJail then
-							cf *= CFrame.new(U * 0.15, 0, -U * 0.15)
-						end
-						Models.token(dynamic, cf, seat, Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1), U * 0.72)
-					end
-				end
 				-- Dice in the middle.
 				for i, value in view.dice or {} do
 					Models.die(dynamic, boardCF * CFrame.new((i - 1.5) * 0.75, 0.25, U * 1.5) * CFrame.Angles(0, math.rad(i * 17), 0), value, 0.5)
@@ -123,6 +198,11 @@ function Estates.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout
 			end)
 		end,
 		destroy = function()
+			for _, t in tokens do
+				if t.walk then
+					task.cancel(t.walk)
+				end
+			end
 			model:Destroy()
 		end,
 	}

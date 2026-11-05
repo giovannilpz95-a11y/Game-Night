@@ -235,14 +235,27 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		-- Captured pieces and move list
+		-- Taken pieces as piece symbols, smallest first, with the material lead like
+		-- the big chess sites show it ("♟♟♞ +3").
+		local VALUE = { 1, 3, 3, 5, 9, 0 }
+		local SYMBOL = { "♟", "♞", "♝", "♜", "♛", "♚" }
+		local worth = { 0, 0 }
 		local function capturedText(seat: number): string
-			local letters = {}
-			for _, kind in view.captured[seat] or {} do
-				table.insert(letters, if kind == 1 then "P" else LETTERS[kind])
+			local list = table.clone(view.captured[seat] or {})
+			table.sort(list)
+			local symbols = {}
+			for _, kind in list do
+				worth[seat] += VALUE[kind] or 0
+				table.insert(symbols, SYMBOL[kind] or LETTERS[kind] or "?")
 			end
-			return table.concat(letters, " ")
+			return table.concat(symbols, "")
 		end
-		capturedLabel.Text = `White took: {capturedText(1)}\nBlack took: {capturedText(2)}`
+		local white, black = capturedText(1), capturedText(2)
+		local function lead(seat: number): string
+			local d = worth[seat] - worth[3 - seat]
+			return if d > 0 then `  +{d}` else ""
+		end
+		capturedLabel.Text = `White took: {white}{lead(1)}\nBlack took: {black}{lead(2)}`
 
 		Kit.clear(moves)
 		for i = 1, #view.moveList, 2 do
