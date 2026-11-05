@@ -2,11 +2,19 @@
 -- hops from their chair up onto the table, performs the move standing (full body, with
 -- its sounds and particle bursts on the beat) and hops back. The real body stays seated
 -- and is hidden on this screen meanwhile. Every client does this locally.
+--
+-- Effects that sell it: a soft spotlight over the stand-in, motion trails off the hands
+-- and feet, a dust puff and a glowing ring where it lands, and every beat reported to
+-- Stage.onHit so Showtime can kick its camera. Low-detail mode (client/Perf) keeps only
+-- the ring and the dust.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local Dance = require(script.Parent.Dance)
+local FxMath = require(script.Parent.FxMath)
+local Perf = require(script.Parent.Parent.Perf)
 local Puppet = require(script.Parent.Puppet)
 local Audio = require(script.Parent.Parent.Audio)
 
@@ -46,11 +54,14 @@ type Show = {
 	colors: ColorSequence?,
 	emitter: ParticleEmitter?,
 	ambient: ParticleEmitter?,
+	light: BasePart?, -- the spotlight rig above the stand-in
+	landed: boolean,
 	done: boolean,
 }
 
 local shows: { [Model]: Show } = {}
 local folder: Folder? = nil
+local hitListeners: { (BasePart, number) -> () } = {}
 
 local function stageFolder(): Folder
 	if folder and folder.Parent then
@@ -100,6 +111,108 @@ local function emitter(parent: Instance, colors: ColorSequence, rate: number): P
 	return e
 end
 
+local function hit(show: Show, power: number)
+	for _, fn in hitListeners do
+		task.spawn(fn, show.puppet.root, power)
+	end
+end
+
+local function firstColor(colors: ColorSequence?): Color3
+	return if colors then colors.Keypoints[1].Value else Color3.fromRGB(255, 236, 140)
+end
+
+-- A glowing ring that spreads over the tabletop and a puff of dust, where feet land.
+local function landingFx(at: CFrame, colors: ColorSequence?, big: boolean)
+	local ring = Instance.new("Part")
+	ring.Name = "LandingRing"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Material = Enum.Material.Neon
+	ring.Color = firstColor(colors)
+	ring.Transparency = 0.35
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.CastShadow = false
+	ring.Size = Vector3.new(0.05, 0.6, 0.6)
+	-- A cylinder's axis is X: stand it up so the disc lies flat on the table.
+	ring.CFrame = CFrame.new(at.Position + Vector3.new(0, 0.04, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+	ring.Parent = stageFolder()
+	local spread = if big then 7 else 5
+	TweenService:Create(ring, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.05, spread, spread),
+		Transparency = 1,
+	}):Play()
+	local dust = Instance.new("ParticleEmitter")
+	dust.Color = ColorSequence.new(Color3.fromRGB(235, 225, 210))
+	dust.Rate = 0
+	dust.Lifetime = NumberRange.new(0.45, 0.8)
+	dust.Speed = NumberRange.new(4, 7)
+	dust.SpreadAngle = Vector2.new(85, 85)
+	dust.EmissionDirection = Enum.NormalId.Top
+	dust.Acceleration = Vector3.new(0, 2, 0)
+	dust.Drag = 6
+	dust.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 1.4) })
+	dust.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
+	dust.Parent = ring
+	dust:Emit(if Perf.isLow() then 6 else 14)
+	task.delay(1, function()
+		ring:Destroy()
+	end)
+end
+
+-- Ribbons off the hands and feet that trail every swing.
+local function trails(puppet: Puppet.Puppet, colors: ColorSequence?)
+	local color = firstColor(colors)
+	for _, name in { "RightHand", "LeftHand", "RightFoot", "LeftFoot" } do
+		local part = puppet:part(name)
+		if not part then
+			continue
+		end
+		local a0 = Instance.new("Attachment")
+		a0.Position = Vector3.new(0, 0.22, 0)
+		a0.Parent = part
+		local a1 = Instance.new("Attachment")
+		a1.Position = Vector3.new(0, -0.22, 0)
+		a1.Parent = part
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = a0
+		trail.Attachment1 = a1
+		trail.Color = ColorSequence.new(Color3.new(1, 1, 1), color)
+		trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 1) })
+		trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
+		trail.Lifetime = 0.22
+		trail.MinLength = 0.05
+		trail.LightEmission = 0.6
+		trail.FaceCamera = true
+		trail.Parent = part
+	end
+end
+
+-- A soft spotlight from above that follows the stand-in onto the table.
+local function spotlight(over: CFrame): BasePart
+	local rig = Instance.new("Part")
+	rig.Name = "Spotlight"
+	rig.Transparency = 1
+	rig.Anchored = true
+	rig.CanCollide = false
+	rig.CanQuery = false
+	rig.CanTouch = false
+	rig.Size = Vector3.new(0.2, 0.2, 0.2)
+	rig.CFrame = CFrame.new(over.Position + Vector3.new(0, 9, 0))
+	local light = Instance.new("SpotLight")
+	light.Face = Enum.NormalId.Bottom
+	light.Angle = 55
+	light.Range = 16
+	light.Brightness = 0
+	light.Color = Color3.fromRGB(255, 240, 220)
+	light.Shadows = true
+	light.Parent = rig
+	rig.Parent = stageFolder()
+	TweenService:Create(light, TweenInfo.new(0.4), { Brightness = 3 }):Play()
+	return rig
+end
+
 local function finish(show: Show)
 	if show.done then
 		return
@@ -108,6 +221,17 @@ local function finish(show: Show)
 	shows[show.body] = nil
 	show.puppet:destroy()
 	unhide(show)
+	local light = show.light
+	if light then
+		show.light = nil
+		local spot = light:FindFirstChildOfClass("SpotLight")
+		if spot then
+			TweenService:Create(spot, TweenInfo.new(0.3), { Brightness = 0 }):Play()
+		end
+		task.delay(0.35, function()
+			light:Destroy()
+		end)
+	end
 end
 
 local function arc(from: CFrame, to: CFrame, k: number): CFrame
@@ -141,6 +265,12 @@ local function step()
 			-- Ease out of the move just before hopping back.
 			local fade = math.clamp((outAt - t) / 0.2, 0, 1)
 			local transforms = Dance.cframes(Dance.sample(show.move, mt), fade)
+			if not show.landed then
+				show.landed = true
+				landingFx(show.to - Vector3.new(0, show.puppet.standHeight, 0), show.colors, show.ambient ~= nil)
+				Audio.playAt("tick", show.to.Position)
+				hit(show, 0.35)
+			end
 			if landing < 1 then
 				-- Squash on landing, then into the move.
 				local dip = -0.45 * math.sin(math.pi * landing)
@@ -155,6 +285,7 @@ local function step()
 				if cue.burst and show.emitter then
 					show.emitter:Emit(cue.burst)
 				end
+				hit(show, FxMath.cuePower(cue))
 			end
 			show.lastT = mt
 		end
@@ -199,6 +330,8 @@ function Stage.perform(body: Model, feet: CFrame, move: Dance.Move, seconds: num
 		colors = colors,
 		emitter = nil,
 		ambient = nil,
+		light = nil,
+		landed = false,
 		done = false,
 	}
 	puppet.root.CFrame = from
@@ -208,6 +341,10 @@ function Stage.perform(body: Model, feet: CFrame, move: Dance.Move, seconds: num
 	if ambient then
 		local head = puppet:part("Head") or torso
 		show.ambient = emitter(head, burstColors, 18)
+	end
+	if not Perf.isLow() then
+		trails(puppet, colors)
+		show.light = spotlight(to)
 	end
 	hide(show)
 	shows[body] = show
@@ -223,6 +360,12 @@ function Stage.perform(body: Model, feet: CFrame, move: Dance.Move, seconds: num
 			finish(show)
 		end,
 	}
+end
+
+-- Calls `fn(standInRoot, power)` on every beat of every show (landing, bursts, the big
+-- hits), `power` 0..1 (Table3D/FxMath.cuePower).
+function Stage.onHit(fn: (BasePart, number) -> ())
+	table.insert(hitListeners, fn)
 end
 
 -- Ends every show now (a new match took the table).
