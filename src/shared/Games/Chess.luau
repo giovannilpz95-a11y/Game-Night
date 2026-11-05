@@ -569,6 +569,11 @@ function Chess.new(seatCount: number, options: any?, _rng: Random?)
 		reason = nil :: string?,
 		botLevel = (options and options.botLevel) or "medium",
 		kingOfTheHill = options ~= nil and options.rules ~= nil and options.rules.kingOfTheHill == true,
+		-- Draw offers: made along with a move (offerDraw = true); the other player can
+		-- accept on their turn ({ kind = "acceptDraw" }), and any move declines it.
+		drawOffer = nil :: number?, -- the seat offering
+		drawDeclined = nil :: number?, -- the seat whose offer was just turned down
+		lastOffer = {} :: { [number]: number }, -- #moveList when each seat last offered
 	}
 	state.history[positionKey(pos)] = 1
 	return state
@@ -594,11 +599,25 @@ local function toWire(m: Move): any
 	}
 end
 
+-- A seat may offer a draw again only after a few moves each, so it can't be spammed.
+local OFFER_GAP = 10 -- plies
+function Chess.canOfferDraw(state, seat: number): boolean
+	local last = state.lastOffer[seat]
+	return not isOver(state) and seatToSide(seat) == state.pos.side and (last == nil or #state.moveList - last >= OFFER_GAP)
+end
+
+local function offerPendingFor(state, seat: number): boolean
+	return state.drawOffer ~= nil and state.drawOffer ~= seat and not isOver(state) and seatToSide(seat) == state.pos.side
+end
+
 function Chess.getLegalMoves(state, seat: number): { any }
 	if isOver(state) or seatToSide(seat) ~= state.pos.side then
 		return {}
 	end
 	local out = {}
+	if offerPendingFor(state, seat) then
+		table.insert(out, { kind = "acceptDraw" })
+	end
 	for _, m in legalMoves(state.pos) do
 		table.insert(out, toWire(m))
 	end
@@ -633,6 +652,20 @@ function Chess.validateMove(state, seat: number, move: any): (boolean, string?)
 	if seatToSide(seat) ~= state.pos.side then
 		return false, "It's not your turn"
 	end
+	if type(move) == "table" and move.kind == "acceptDraw" then
+		if not offerPendingFor(state, seat) then
+			return false, "No draw was offered"
+		end
+		return true
+	end
+	if type(move) == "table" and move.offerDraw ~= nil then
+		if type(move.offerDraw) ~= "boolean" then
+			return false, "Bad move"
+		end
+		if move.offerDraw and not Chess.canOfferDraw(state, seat) then
+			return false, "You offered a draw a moment ago"
+		end
+	end
 	if not findMove(state, move) then
 		return false, "That move isn't allowed"
 	end
@@ -640,6 +673,19 @@ function Chess.validateMove(state, seat: number, move: any): (boolean, string?)
 end
 
 function Chess.applyMove(state, seat: number, move: any)
+	if move.kind == "acceptDraw" then
+		state.isDraw = true
+		state.reason = "Draw agreed"
+		state.drawOffer = nil
+		return
+	end
+	-- Moving on turns down an offer that was waiting for you.
+	state.drawDeclined = if state.drawOffer and state.drawOffer ~= seat then state.drawOffer else nil
+	state.drawOffer = nil
+	if move.offerDraw == true then
+		state.drawOffer = seat
+		state.lastOffer[seat] = #state.moveList
+	end
 	local pos = state.pos
 	local m = findMove(state, move) :: Move
 	table.insert(state.moveList, sanFor(pos, m, legalMoves(pos)))
@@ -700,6 +746,9 @@ function Chess.getView(state, seat: number?): any
 		moveList = table.clone(state.moveList),
 		captured = GameModule.copy(state.captured),
 		fen = Chess.toFen(pos),
+		drawOffer = state.drawOffer,
+		drawDeclined = state.drawDeclined,
+		canOfferDraw = seat ~= nil and Chess.canOfferDraw(state, seat),
 	}
 	if seat and not isOver(state) and seatToSide(seat) == pos.side then
 		view.legalMoves = Chess.getLegalMoves(state, seat)
@@ -953,6 +1002,13 @@ end
 function Chess.chooseBotMove(state, seat: number, rng: Random): any?
 	if isOver(state) or seatToSide(seat) ~= state.pos.side then
 		return nil
+	end
+	-- A draw offer: take it when losing, or in a long, level game.
+	if offerPendingFor(state, seat) then
+		local score = evaluate(state.pos)
+		if score < -150 or (#state.moveList >= 80 and math.abs(score) < 40) then
+			return { kind = "acceptDraw" }
+		end
 	end
 	local level = LEVELS[state.botLevel] or LEVELS.medium
 	local ranked = Chess.rankMoves(state.pos, level.depth, level.seconds, level.slack > 0)
