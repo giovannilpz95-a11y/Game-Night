@@ -306,6 +306,60 @@ return function(T)
 		T.eq(s.lastAction.victim, 1)
 	end)
 
+	T.test("jump-in: an identical card goes down out of turn and play carries on", function()
+		local coral5b = find(function(c) return c.color == 1 and c.value == 5 and c ~= cards[coral5] end)
+		local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
+		local s = setup(4, { { coral5, honey7 }, { teal3 }, { coral5b, honey5, wild } }, coral9)
+		-- Off: nothing to jump.
+		play(s, 1, { kind = "play", card = coral5 })
+		T.eq(#ColorClash.getJumpIns(s, 3), 0, "rule off")
+		T.eq((ColorClash.validateMove(s, 3, { kind = "jump", card = coral5b })), false)
+		s.jumpIn = true
+		T.eq(s.turn, 2)
+		T.eq(ColorClash.getJumpIns(s, 3)[1], coral5b)
+		T.eq(#ColorClash.getJumpIns(s, 2), 0, "your own turn: just play")
+		T.eq(ColorClash.getInterruptSeats(s)[1], 3)
+		T.eq((ColorClash.validateMove(s, 3, { kind = "jump", card = honey5 })), false, "same number, other color")
+		T.eq((ColorClash.validateMove(s, 3, { kind = "jump", card = wild })), false, "no wilds")
+		T.eq((ColorClash.validateMove(s, 3, { kind = "play", card = coral5b })), false, "a normal play is still out of turn")
+		play(s, 3, { kind = "jump", card = coral5b })
+		T.eq(s.lastAction.jumped, true)
+		T.eq(s.lastAction.seat, 3)
+		T.eq(s.turn, 4, "play goes on from the jumper; seat 2 lost their turn")
+		T.ok(not table.find(s.hands[3], coral5b))
+		T.eq(ColorClash.getView(s, 1).jumpIns[1], nil)
+	end)
+
+	T.test("jump-in: a jumped Skip skips whoever is after the jumper", function()
+		local coralSkipB = find(function(c) return c.color == 1 and c.kind == "skip" and c ~= cards[coralSkip] end)
+		local s = setup(4, { { coralSkip, honey7 }, { teal3 }, { honey5 }, { coralSkipB, coral5 } }, find(function(c) return c.color == 1 and c.value == 9 end))
+		s.jumpIn = true
+		play(s, 1, { kind = "play", card = coralSkip })
+		T.eq(s.turn, 3)
+		play(s, 4, { kind = "jump", card = coralSkipB })
+		T.eq(s.lastAction.victim, 1)
+		T.eq(s.turn, 2)
+	end)
+
+	T.test("jump-in: bots sometimes jump and never move out of turn otherwise", function()
+		local coral5b = find(function(c) return c.color == 1 and c.value == 5 and c ~= cards[coral5] end)
+		local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
+		local jumps = 0
+		for i = 1, 40 do
+			local s = setup(3, { { coral5, honey7 }, { teal3 }, { coral5b, honey5 } }, coral9)
+			s.jumpIn = true
+			play(s, 1, { kind = "play", card = coral5 })
+			local rng = T.Random.new(i)
+			T.eq(ColorClash.chooseBotMove(s, 1, rng), nil, "nothing to jump with")
+			local move = ColorClash.chooseBotMove(s, 3, rng)
+			if move then
+				T.ok(ColorClash.validateMove(s, 3, move))
+				jumps += 1
+			end
+		end
+		T.ok(jumps > 5 and jumps < 40, `bots jump some of the time ({jumps}/40)`)
+	end)
+
 	T.test("rejects junk moves from the network", function()
 		local s = ColorClash.new(2, nil, T.Random.new(2))
 		T.eq((ColorClash.validateMove(s, 1, "x")), false)
@@ -321,11 +375,20 @@ return function(T)
 			for seats = 2, 8, 3 do
 				local rng = T.Random.new(seats * 10 + #level)
 				-- Every other game with 7-0 on, so swaps get played out too.
-				local s = ColorClash.new(seats, { botLevel = level, rules = { sevenZero = seats % 2 == 0 } }, rng)
+				local s = ColorClash.new(seats, { botLevel = level, rules = { sevenZero = seats % 2 == 0, jumpIn = seats > 2 } }, rng)
 				local plies = 0
 				while not ColorClash.getResult(s) and plies < 2000 do
 					local seat = ColorClash.getActiveSeats(s)[1]
-					local move = GameModule.chooseBotMove(ColorClash, s, seat, rng)
+					local move = nil
+					-- Jump-ins get the first chance to slam a card down.
+					for _, other in ColorClash.getInterruptSeats(s) do
+						move = ColorClash.chooseBotMove(s, other, rng)
+						if move then
+							seat = other
+							break
+						end
+					end
+					move = move or GameModule.chooseBotMove(ColorClash, s, seat, rng)
 					T.ok(ColorClash.validateMove(s, seat, move), "bot made an illegal move")
 					ColorClash.applyMove(s, seat, move)
 					plies += 1

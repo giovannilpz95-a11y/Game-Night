@@ -61,6 +61,20 @@ function Match.isSeatActive(self: Match, seat: number): boolean
 	return table.find(self:getActiveSeats(), seat) ~= nil
 end
 
+-- Seats that may move out of turn right now (Color Clash jump-ins): the game's optional
+-- getInterruptSeats. They aren't on the turn clock; bots there may choose not to move.
+function Match.getInterruptSeats(self: Match): { number }
+	if self:isOver() or not self.rules.getInterruptSeats then
+		return {}
+	end
+	return self.rules.getInterruptSeats(self.state)
+end
+
+-- Can this seat send a move right now (its turn, or an out-of-turn interrupt)?
+function Match.canMove(self: Match, seat: number): boolean
+	return self:isSeatActive(seat) or table.find(self:getInterruptSeats(), seat) ~= nil
+end
+
 function Match.isBot(self: Match, seat: number): boolean
 	return self.seats[seat] ~= nil and self.seats[seat].kind == "bot"
 end
@@ -88,7 +102,7 @@ function Match.submitMove(self: Match, seat: number, move: any): (boolean, strin
 	if self:isOver() then
 		return false, "The game is over"
 	end
-	if not self:isSeatActive(seat) then
+	if not self:canMove(seat) then
 		return false, "It's not your turn"
 	end
 	local ok, err = self.rules.validateMove(self.state, seat, move)
@@ -173,7 +187,12 @@ end
 -- Lets a bot (or the AFK timer) move for a seat. Returns true if a move was made.
 function Match.playForSeat(self: Match, seat: number): boolean
 	if not self:isSeatActive(seat) then
-		return false
+		-- Out of turn the game's own bot decides, and nil means "let it go".
+		if not self:canMove(seat) or not self.rules.chooseBotMove then
+			return false
+		end
+		local move = self.rules.chooseBotMove(self.state, seat, self.rng)
+		return move ~= nil and (self:submitMove(seat, move))
 	end
 	local move = GameModule.chooseBotMove(self.rules, self.state, seat, self.rng)
 	if move == nil then

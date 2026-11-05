@@ -163,6 +163,8 @@ function ColorClash.create(boardCF: CFrame, parent: Instance, layout: Scene.Layo
 		local action = view.lastAction
 		if action and action.called then
 			Cards.speech(folder, boardCF, layout, action.seat, "Last card!", Color3.fromRGB(255, 225, 150))
+		elseif action and action.jumped then
+			Cards.speech(folder, boardCF, layout, action.seat, "Jump in!", Color3.fromRGB(255, 240, 120))
 		elseif action and action.kind == "catch" then
 			Cards.speech(folder, boardCF, layout, action.seat, "Caught you! Draw 2", Color3.fromRGB(255, 200, 200))
 		elseif action and action.swap then

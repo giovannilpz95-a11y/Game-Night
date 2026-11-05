@@ -182,11 +182,18 @@ function scheduleTurn(entry: Entry)
 
 	-- Bots: one pending move per seat. Other moves (a stroke, someone's guess) don't
 	-- cancel it; when it fires the bot looks at the game as it is then.
-	for _, seat in match:getActiveSeats() do
+	-- Seats that may jump in out of turn get a bot try too (it may pass on it).
+	local botSeats = table.clone(match:getActiveSeats())
+	for _, seat in match:getInterruptSeats() do
+		if not table.find(botSeats, seat) then
+			table.insert(botSeats, seat)
+		end
+	end
+	for _, seat in botSeats do
 		if match:isBot(seat) and not entry.botPending[seat] then
 			entry.botPending[seat] = true
 			local delay = match:botDelay(seat, Config.BotMoveDelay)
-			if delay >= 1.2 and not match:getTimer() then
+			if delay >= 1.2 and not match:getTimer() and match:isSeatActive(seat) then
 				TableActionService.thinking(entry.table, match.seats, seat)
 			end
 			task.delay(delay, function()

@@ -19,6 +19,36 @@ return function(T)
 		T.ok(m:isSeatActive(2))
 	end)
 
+	T.test("interrupt seats may move out of turn (Color Clash jump-in)", function()
+		local ColorClash = require(ReplicatedStorage.Shared.Games.ColorClash)
+		local m = Match.new("m2", ColorClash, {
+			{ kind = "player", userId = 10, name = "Gio" },
+			{ kind = "player", userId = 11, name = "Sam" },
+			{ kind = "bot", name = "Bot Ava" },
+		}, { rules = { jumpIn = true } }, T.Random.new(3))
+		local s = m.state
+		local cards = ColorClash.cards
+		local a, b
+		for id, card in cards do
+			if card.color == 2 and card.value == 4 then
+				if a then
+					b = id
+					break
+				end
+				a = id
+			end
+		end
+		s.discard = { a }
+		s.color = 2
+		s.turn = 1
+		table.insert(s.hands[2], b)
+		T.eq((m:submitMove(2, { kind = "draw" })), false, "still not their turn for anything else")
+		T.ok(m:canMove(2))
+		T.ok(m:submitMove(2, { kind = "jump", card = b }))
+		T.eq(s.turn, 3)
+		T.eq((m:playForSeat(1)), false, "seat 1 has nothing to jump with")
+	end)
+
 	T.test("bot plays its turn", function()
 		local m = newMatch()
 		m:submitMove(1, { cell = 1 })

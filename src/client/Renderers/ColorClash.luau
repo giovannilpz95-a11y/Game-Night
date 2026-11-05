@@ -259,9 +259,12 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	-- "Last card!": armed with the button before playing your second-to-last card.
 	local armed = false
 	local canCall = false
+	-- Jump-in: set while the card being played goes down out of turn.
+	local jumping = false
 	local function sendPlay(id: number, color: number?, target: number?)
-		sendMove({ kind = "play", card = id, color = color, target = target, call = if canCall then armed else nil })
+		sendMove({ kind = if jumping then "jump" else "play", card = id, color = color, target = target, call = if canCall then armed else nil })
 		armed = false
+		jumping = false
 	end
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
@@ -377,6 +380,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local catchStroke = Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = catchAction })
 	HudKit.pulse(catchStroke)
 	local shownAction: string? = nil
+	local shownJump: string? = nil
 	-- Call-outs float over the middle of the whole screen (in Table view this board is
 	-- only the strip along the bottom).
 	local function say(text: string, color: Color3?, y: number?)
@@ -967,6 +971,9 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			end
 			local key = `{action.kind}|{action.seat}|{action.card}|{action.target}|{total}`
 			if shownAction ~= nil and key ~= shownAction then
+				if action.jumped then
+					say(if action.seat == snapshot.yourSeat then "YOU JUMPED IN!" else `{string.upper(nameOf(action.seat))} JUMPED IN!`, Color3.fromRGB(255, 220, 60), 0.36)
+				end
 				if action.kind == "catch" then
 					say(if action.target == snapshot.yourSeat then "CAUGHT! You draw 2" else `CAUGHT! {nameOf(action.target)} draws 2`, Theme.Bad)
 				elseif action.kind == "play" and action.victim then
@@ -985,7 +992,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		elseif shownAction == nil then
 			shownAction = "" -- the first render: say nothing about what came before
 		end
-		canCall = myTurn and view.lastCall == true and #(view.hand or {}) == 2
+		canCall = (myTurn or next(view.jumpIns or {}) ~= nil) and view.lastCall == true and #(view.hand or {}) == 2
 		if not canCall then
 			armed = false
 		end
@@ -1003,10 +1010,25 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		showDrawn(if drawnPlayable then view.drawnCard else nil)
 		keepButton.Visible = view.canPass == true
 		passAction.Visible = myTurn and view.canPass and not drawnPlayable
-		if not myTurn then
+		local jumpable = {}
+		for _, id in view.jumpIns or {} do
+			jumpable[id] = true
+		end
+		local canJump = not myTurn and next(jumpable) ~= nil
+		if myTurn then
+			jumping = false
+		end
+		if not myTurn and not (jumping and canJump) then
+			jumping = false
 			closePicker()
 			closeSwap()
 		end
+		-- Holding the same card as the top one: shout it, once per top card.
+		local jumpKey = if canJump then `{view.topCard}|{#(view.recent or {})}|{view.deckCount}` else nil
+		if jumpKey and jumpKey ~= shownJump then
+			say("JUMP IN!  Slam the glowing card", Color3.fromRGB(255, 220, 60), 0.72)
+		end
+		shownJump = jumpKey
 
 		-- Hand.
 		Kit.clear(hand)
@@ -1041,7 +1063,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		end
 		local count = #held
 		for index, id in held do
-			local canPlay = myTurn and playable[id] == true
+			local canPlay = (myTurn and playable[id] == true) or (canJump and jumpable[id] == true)
 			local lifted = canPlay or (not myTurn and wouldFit(id))
 			-- Held like real cards: fanned out, the outer cards turned and a little lower.
 			local offset = index - (count + 1) / 2
@@ -1076,6 +1098,9 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			end
 			if id == view.drawnCard then
 				Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 5, Parent = face })
+			elseif canJump and jumpable[id] then
+				-- The card you can jump in with glows.
+				HudKit.pulse(Kit.new("UIStroke", { Color = Color3.fromRGB(255, 220, 60), Thickness = 5, Parent = face }))
 			end
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
 			-- Hover: the card comes up out of the hand, straightens and sits on top of its
@@ -1093,6 +1118,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				if not canPlay then
 					return
 				end
+				jumping = not myTurn
 				playCard(id)
 			end)
 		end
