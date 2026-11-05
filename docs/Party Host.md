@@ -30,17 +30,40 @@ Each game lists its own rules in `GameCatalog` (`houseRules`), and every game wi
 
 | Game | House rules |
 |---|---|
-| Tic-Tac-Toe | Upside down (three in a row loses), Turn timer |
-| Chess | King of the hill (a king on d4/e4/d5/e5 wins), Turn timer |
-| Checkers | Must jump on/off, Turn timer |
-| Four in a Row | Turn timer |
-| Color Clash | Stack draw cards, Draw until you can play, Starting hand (5/7/10), Turn timer |
-| Sketch & Guess | Rounds (1-3), Drawing time (60/80/120 s), the host's word list |
-| Trivia Night | Questions (5/10/15/20), Time to answer (10/15/25 s), the host's quiz deck |
+| Tic-Tac-Toe | Upside down, Vanishing marks, Turn timer |
+| Chess | King of the hill, Three-check, Shuffle start, Turn timer |
+| Checkers | Must jump, Flying kings, Men jump backward, Turn timer |
+| Four in a Row | Pop Out, Turn timer |
+| Color Clash | Stack draw cards, Draw until you can play, Chain anything, Force play, 7-0, Starting hand, Turn timer |
+| Sketch & Guess | Rounds, Drawing time, Drawing tools |
+| Trivia Night | Questions, Time to answer, Speed points, Streak bonus, Wrong answers cost |
+| Werewolf | Talk time, Werewolves, Show roles when out, Guardian, Seer, Quiet first night |
+| Five Dice | Everyone rolls at once, Score card, Big Five bonus, Turn timer |
+| Sea Strike | Ocean size, Hit again, Salvo, Turn timer |
+| Whodunit | Walk anywhere, Show cards to all, Turn timer |
+| Property Party | Starting cash, Auctions, Rest Stop jackpot, Double on Start, Rent from Jail, Turn timer |
+| Word Tiles | Board, Turn timer |
+| Conquest Isles | Turn length, Card trades, Game length, Slow start |
+| Hexlands | Points to win, Friendly Bandit, Safe hand on a 7, Balanced dice, Turn timer |
+| Speed | Ace and King connect, Same rank plays, Turn timer |
+| Spoons | Passing speed |
+| Go Fish | Pairs, Lucky fish, Starting hand, Turn timer |
+| War | War cards, Peace, Battles, Turn timer |
+| I Doubt It | Doubt window, Up, down or same, Turn timer |
+| President | Rounds, Card swap, 2s clear the pile, Turn timer |
+| Slap Stack | Sandwich slaps, Top and bottom, Marriage, Tens, Turn timer |
+| Hearts | Game ends at, Passing, Shooting the moon, Jack of Diamonds, Turn timer |
+| Spades | Play to, Nil bids, Bag penalty, Turn timer |
+| Thirty-One | Lives, Three of a kind, Knocker pays double, Turn timer |
+| Palace | 7 or lower, Four burns, Turn timer |
+| Old Maid | Pairs, Odd card, Turn timer |
+| Snap | Match, Wrong snap costs, Turn timer |
+| Gin Rummy | Play to, Knock at, Oklahoma, Undercut bonus, Turn timer |
+| Oh Hell | Rounds, Dealer's hook, Scoring, Turn timer |
 
 The leader sends picks as `{ [ruleKey] = choiceIndex }` with the start request. `MatchService` turns them into values with `HouseRules.resolve` (bad picks fall back to normal), refuses anything non-default without the pass, and passes `options.rules` to the game. Everyone in the party gets a toast listing the rules that changed.
 
-**Adding a house rule:** add it to the game's `houseRules` in `GameCatalog`, read `options.rules.<key>` in the game's `new`, and add a test. Choices are `{ label, value }`; `default` is the index everyone plays with.
+**Adding a house rule:** add it to the game's `houseRules` in `GameCatalog`, read `options.rules.<key>` in the game's `new`, and add a test (`tests/MoreHouseRules.spec.luau` has one per game; `tests/BotSim.spec.luau` also plays every game with all its rules flipped). Choices are `{ label, value }`; `default` is the index everyone plays with.
 
 ### Custom word lists and quiz decks
 **Host tools** (Party panel) has 3 word lists and 3 quiz decks per host, saved in the profile (`custom` in `server/Core/Profile.luau`).
