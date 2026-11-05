@@ -172,6 +172,20 @@ rules.FiveDice = {
 	},
 }
 
+rules.SeaStrike = {
+	goal = "Sink every ship in your rival's hidden fleet before they sink yours.",
+	card = {
+		"Your fleet starts placed for you. Tap a ship to pick it up, tap the grid to drop it, Turn to rotate. Then Ready!",
+		"Take turns tapping a square on the enemy grid to fire. Red peg: hit. White peg: miss.",
+		"Hit every square of a ship to sink it. Sink the whole fleet to win.",
+	},
+	sections = {
+		{ title = "Your fleet", lines = { "Carrier (5), Battleship (4), Cruiser (3), Submarine (3), Destroyer (2).", "Ships go across or down, never diagonal, and can't overlap. They may touch.", "Shuffle places them at random. When the setup clock runs out, you're made ready." } },
+		{ title = "Firing", lines = { "On your turn, fire at one square of the enemy grid you haven't tried yet.", "You hear hit or miss. When a ship's last square is hit, it sinks and everyone hears which ship it was." } },
+		{ title = "Tips", lines = { "After a hit, try the squares next to it. Two hits in a line show which way the ship lies.", "Ships need room: big empty areas are where the big ships hide." } },
+	},
+}
+
 rules.Whodunit = {
 	goal = "Be the first to name who swiped the Golden Trophy, with what, and where.",
 	card = {

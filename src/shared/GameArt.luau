@@ -24,6 +24,7 @@ GameArt.icons = {
 	TriviaNight = "❓",
 	Werewolf = "🐺",
 	FiveDice = "🎲",
+	SeaStrike = "⚓",
 	Whodunit = "🔍",
 	Estates = "🏠",
 	WordTiles = "🔠",

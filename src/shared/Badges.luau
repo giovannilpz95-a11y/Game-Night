@@ -85,6 +85,7 @@ Badges.list = {
 	{ id = "trivia_100", name = "Know-It-All", desc = "Get 100 Trivia Night answers right", icon = "🧠", tier = 2, stat = "games.TriviaNight.extra.correct", goal = 100, gameId = "TriviaNight" },
 	{ id = "werewolf_alpha", name = "Pack Leader", desc = "Win 5 games of Werewolf as a werewolf", icon = "🐺", tier = 2, stat = "games.Werewolf.extra.wolfWins", goal = 5, gameId = "Werewolf" },
 	{ id = "fivedice_big", name = "Big Five", desc = "Roll 10 Big Fives in Five Dice", icon = "🎲", tier = 2, stat = "games.FiveDice.extra.bigFives", goal = 10, gameId = "FiveDice" },
+	{ id = "seastrike_50", name = "Admiral", desc = "Sink 50 ships in Sea Strike", icon = "⚓", tier = 2, stat = "games.SeaStrike.extra.sunk", goal = 50, gameId = "SeaStrike" },
 	{ id = "whodunit_5", name = "Detective", desc = "Solve 5 cases in Whodunit", icon = "🔍", tier = 2, stat = "games.Whodunit.extra.solved", goal = 5, gameId = "Whodunit" },
 	{ id = "estates_10", name = "Tycoon", desc = "Own 10 properties at once in Property Party", icon = "🏠", tier = 2, stat = "games.Estates.extra.properties", goal = 10, gameId = "Estates" },
 	{ id = "wordtiles_100", name = "Wordsmith", desc = "Play 100 words in Word Tiles", icon = "🔤", tier = 2, stat = "games.WordTiles.extra.words", goal = 100, gameId = "WordTiles" },
