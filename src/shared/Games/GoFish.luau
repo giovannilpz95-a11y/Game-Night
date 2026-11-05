@@ -7,6 +7,10 @@
 -- book straight away. A player whose hand is empty draws a card on their turn (if the
 -- pond is empty too, they sit out). When all 13 books are down, most books wins.
 --
+-- House rules (options.rules): pairs (collect pairs instead of books of four: 26 to
+-- find), luckyFish (default on: fishing the rank you asked for lets you go again),
+-- handSize (0 = 7 with 2-3 players, 5 with more).
+--
 -- Moves: { kind = "ask", target = seat, rank = 1..13 }
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -25,7 +29,11 @@ function GoFish.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 6, "Go Fish needs 2-6 seats")
 	local random = rng or Random.new()
 	local pond = PlayingCards.newDeck(random)
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local handSize = if seatCount <= 3 then 7 else 5
+	if type(rules.handSize) == "number" and rules.handSize >= 5 and rules.handSize <= 7 then
+		handSize = rules.handSize
+	end
 	local hands, books, asked = {}, {}, {}
 	for seat = 1, seatCount do
 		hands[seat] = {}
@@ -49,6 +57,8 @@ function GoFish.new(seatCount: number, options: any?, rng: Random?)
 		lastDrawn = nil, -- { seat, card }: only that seat sees the card
 		turns = 0,
 		over = false,
+		bookSize = if rules.pairs == true then 2 else 4,
+		luckyFish = rules.luckyFish ~= false,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	-- A dealt hand can already hold a book.
@@ -69,15 +79,22 @@ end
 
 function GoFish._collectBooks(state, seat: number): { number }
 	local made = {}
+	local size = state.bookSize or 4
 	local counts = PlayingCards.rankCounts(state.hands[seat])
 	for r, n in counts do
-		if n == 4 then
-			table.insert(made, r)
-			table.insert(state.books[seat], r)
+		if n >= size then
+			-- Four of a kind makes two pairs in pairs mode.
+			local sets = n // size
+			for _ = 1, sets do
+				table.insert(made, r)
+				table.insert(state.books[seat], r)
+			end
 			state.asked[seat][r] = nil
-			local keep = {}
+			local keep, drop = {}, sets * size
 			for _, id in state.hands[seat] do
-				if rank(id) ~= r then
+				if rank(id) == r and drop > 0 then
+					drop -= 1
+				else
 					table.insert(keep, id)
 				end
 			end
@@ -108,7 +125,7 @@ end
 -- Makes sure the player whose turn it is can ask someone, drawing or skipping as needed.
 function GoFish._settleTurn(state)
 	for _ = 1, state.seatCount * 2 + 2 do
-		if totalBooks(state) >= 13 then
+		if totalBooks(state) >= 52 // (state.bookSize or 4) then
 			state.over = true
 			return
 		end
@@ -213,7 +230,7 @@ function GoFish.applyMove(state, seat: number, move: any)
 	-- Go fish!
 	local id = drawCard(state, seat)
 	action.fished = id ~= nil
-	action.luckyFish = id ~= nil and rank(id) == r
+	action.luckyFish = state.luckyFish ~= false and id ~= nil and rank(id) == r
 	if id then
 		state.lastDrawn = { seat = seat, card = id }
 	end

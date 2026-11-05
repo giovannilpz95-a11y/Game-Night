@@ -23,6 +23,11 @@
 -- First to Hexlands.TARGET_POINTS on their own turn wins. After MAX_ROUNDS (by seat count)
 -- the most points wins.
 --
+-- House rules (options.rules): target (points to win: 8, 10 or 12), friendly (the Bandit
+-- can't rob anyone with 2 points or fewer), handLimit (cards you may hold on a 7: 7 or 9),
+-- balancedDice (rolls come from a shuffled deck of all 36 dice pairs, so every total turns
+-- up about as often as it should; reshuffled with 5 left).
+--
 -- Moves (all tables, checked field by field in validateMove):
 --   { kind = "place", vertex = v }             { kind = "road", edge = e }   (setup / Road Crew / build)
 --   { kind = "camp", vertex = v }              { kind = "town", vertex = v }
@@ -422,7 +427,21 @@ function Hexlands.new(seatCount: number, options: any, rng: any)
 		rollCounts = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, -- [total] for 2..12 (1 unused)
 		botOffered = false,
 		tradeId = 0,
+		target = Hexlands.TARGET_POINTS,
+		handLimit = Hexlands.HAND_LIMIT,
+		friendly = false,
+		balancedDice = false,
+		diceDeck = nil, -- balancedDice: the dice pairs left, { { a, b } }
 	}
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	if type(rules.target) == "number" and rules.target >= 5 and rules.target <= 15 then
+		state.target = math.floor(rules.target)
+	end
+	if type(rules.handLimit) == "number" and rules.handLimit >= 5 and rules.handLimit <= 12 then
+		state.handLimit = math.floor(rules.handLimit)
+	end
+	state.friendly = rules.friendly == true
+	state.balancedDice = rules.balancedDice == true
 	log(state, nil, "Place your first camp and road")
 	return state
 end
@@ -461,9 +480,9 @@ end
 Hexlands.points = points
 
 local function checkWin(state: any, seat: number)
-	if state.winner == nil and state.phase ~= "setup" and points(state, seat) >= Hexlands.TARGET_POINTS then
+	if state.winner == nil and state.phase ~= "setup" and points(state, seat) >= (state.target or Hexlands.TARGET_POINTS) then
 		state.winner = { seat }
-		state.endReason = `{Hexlands.TARGET_POINTS} points`
+		state.endReason = `{state.target or Hexlands.TARGET_POINTS} points`
 		state.phase = "over"
 	end
 end
@@ -647,7 +666,8 @@ local function banditVictims(state: any, seat: number, h: number): { number }
 	local out = {}
 	for _, v in hexVertices[h] do
 		local owner = state.owner[v]
-		if owner and owner ~= seat and not table.find(out, owner) and handSize(state.players[owner].hand) > 0 then
+		if owner and owner ~= seat and not table.find(out, owner) and handSize(state.players[owner].hand) > 0
+			and not (state.friendly and publicPoints(state, owner) <= 2) then
 			table.insert(out, owner)
 		end
 	end
@@ -754,7 +774,7 @@ local function afterRollSeven(state: any)
 	local any = false
 	for seat = 1, state.seatCount do
 		local n = handSize(state.players[seat].hand)
-		if n > Hexlands.HAND_LIMIT then
+		if n > (state.handLimit or Hexlands.HAND_LIMIT) then
 			state.discards[seat] = n // 2
 			any = true
 		end
@@ -1103,7 +1123,23 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 		end
 		state.phase = state.banditReturn
 	elseif kind == "roll" then
-		local a, b = state.rng:NextInteger(1, 6), state.rng:NextInteger(1, 6)
+		local a, b
+		if state.balancedDice then
+			if state.diceDeck == nil or #state.diceDeck <= 5 then
+				local deck = {}
+				for x = 1, 6 do
+					for y = 1, 6 do
+						table.insert(deck, { x, y })
+					end
+				end
+				shuffle(deck, state.rng)
+				state.diceDeck = deck
+			end
+			local pair = table.remove(state.diceDeck) :: { number }
+			a, b = pair[1], pair[2]
+		else
+			a, b = state.rng:NextInteger(1, 6), state.rng:NextInteger(1, 6)
+		end
 		state.dice = { a, b }
 		state.rollCounts[a + b] += 1
 		if a + b == 7 then
@@ -1419,7 +1455,8 @@ function Hexlands.getView(state: any, seat: number?): any
 		turn = currentSeat(state),
 		round = state.round,
 		maxRounds = state.maxRounds,
-		target = Hexlands.TARGET_POINTS,
+		target = state.target or Hexlands.TARGET_POINTS,
+		friendly = state.friendly,
 		tiles = GameModule.copy(state.tiles),
 		harbors = GameModule.copy(state.harbors),
 		bandit = state.bandit,
@@ -1874,7 +1911,7 @@ function Hexlands.chooseBotMove(state: any, seat: number, rng: any): any?
 		local now = handNeed(state, seat, after)
 		local _, leadPoints = leader(state, t.from)
 		local fromPoints = publicPoints(state, t.from)
-		local helpsLeader = fromPoints >= Hexlands.TARGET_POINTS - 2 and fromPoints >= leadPoints
+		local helpsLeader = fromPoints >= (state.target or Hexlands.TARGET_POINTS) - 2 and fromPoints >= leadPoints
 		local good = now < before or (now == before and handSize(t.give) > handSize(t.get))
 		if level == "easy" then
 			good = good or rng:NextNumber() < 0.3

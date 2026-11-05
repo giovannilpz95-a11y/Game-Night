@@ -9,6 +9,9 @@
 -- everyone else loses a life. No chips and no betting, only lives (shown as hearts).
 -- Out of lives, out of the game. The last player standing wins.
 --
+-- House rules (options.rules): trips (three of a kind = 30.5), knockDouble (default on:
+-- a knocker with the lowest hand loses two lives).
+--
 -- Moves: { kind = "draw", from = "stock" | "discard" }  |  { kind = "knock" }
 --        { kind = "discard", card = id }  (after drawing)
 
@@ -34,7 +37,11 @@ local function cardValue(id: number): number
 end
 
 -- Best single-suit total of a hand.
-function ThirtyOne.value(hand: { number }): number
+-- trips (house rule): three of a kind is worth 30.5, beating any 30.
+function ThirtyOne.value(hand: { number }, trips: boolean?): number
+	if trips and #hand == 3 and rank(hand[1]) == rank(hand[2]) and rank(hand[2]) == rank(hand[3]) then
+		return 30.5
+	end
 	local totals = { 0, 0, 0, 0 }
 	for _, id in hand do
 		totals[suit(id)] += cardValue(id)
@@ -86,7 +93,7 @@ local function deal(state)
 	state.showdown = nil
 	-- A dealt 31 is a Blitz straight away.
 	for _, seat in aliveSeats(state) do
-		if value(state.hands[seat]) == 31 then
+		if value(state.hands[seat], state.trips) == 31 then
 			reveal(state, seat)
 			return
 		end
@@ -122,6 +129,8 @@ function ThirtyOne.new(seatCount: number, options: any?, rng: Random?)
 		lastAction = nil,
 		turnsTotal = 0,
 		winners = nil,
+		trips = rules.trips == true,
+		knockDouble = rules.knockDouble ~= false,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	deal(state)
@@ -133,7 +142,7 @@ function reveal(state, blitz: number?)
 	local alive = aliveSeats(state)
 	local values, hands, lost = {}, {}, {}
 	for _, seat in alive do
-		values[tostring(seat)] = value(state.hands[seat])
+		values[tostring(seat)] = value(state.hands[seat], state.trips)
 		hands[tostring(seat)] = table.clone(state.hands[seat])
 	end
 	if blitz then
@@ -145,11 +154,11 @@ function reveal(state, blitz: number?)
 	else
 		local low = math.huge
 		for _, seat in alive do
-			low = math.min(low, value(state.hands[seat]))
+			low = math.min(low, value(state.hands[seat], state.trips))
 		end
 		for _, seat in alive do
-			if value(state.hands[seat]) == low then
-				lost[tostring(seat)] = if seat == state.knocker then 2 else 1
+			if value(state.hands[seat], state.trips) == low then
+				lost[tostring(seat)] = if seat == state.knocker and state.knockDouble ~= false then 2 else 1
 			end
 		end
 	end
@@ -307,7 +316,7 @@ function ThirtyOne.applyMove(state, seat: number, move: any)
 	table.insert(state.discard, move.card)
 	local prev = state.lastAction
 	state.lastAction = { kind = "discard", seat = seat, card = move.card, from = prev and prev.from, took = prev and prev.card }
-	if value(hand) == 31 then
+	if value(hand, state.trips) == 31 then
 		reveal(state, seat)
 		return
 	end
@@ -349,7 +358,7 @@ function ThirtyOne.getView(state, seat: number?)
 	end
 	return {
 		hand = hand,
-		handValue = if hand then value(hand) else nil,
+		handValue = if hand then value(hand, state.trips) else nil,
 		handCounts = counts,
 		lives = table.clone(state.lives),
 		startLives = state.startLives,
@@ -382,7 +391,7 @@ end
 -- Bots ------------------------------------------------------------------------
 
 -- Best hand value after taking `extra` and throwing one card away (not `keep`).
-local function bestAfter(hand: { number }, extra: number, keep: number?): (number, number)
+local function bestAfter(state, hand: { number }, extra: number, keep: number?): (number, number)
 	local four = table.clone(hand)
 	table.insert(four, extra)
 	local best, throw = -1, four[1]
@@ -390,7 +399,7 @@ local function bestAfter(hand: { number }, extra: number, keep: number?): (numbe
 		if id ~= keep then
 			local rest = table.clone(four)
 			table.remove(rest, i)
-			local v = value(rest)
+			local v = value(rest, state.trips)
 			if v > best then
 				best, throw = v, id
 			end
@@ -407,7 +416,7 @@ function ThirtyOne.chooseBotMove(state, seat: number, rng: Random): any?
 	end
 	local hand = state.hands[seat]
 	if state.phase == "draw" then
-		local now = value(hand)
+		local now = value(hand, state.trips)
 		if ThirtyOne.canKnock(state, seat) then
 			local at = KNOCK_AT[state.botLevel] or 26
 			if state.botLevel == "hard" and state.lives[seat] == 1 then
@@ -419,7 +428,7 @@ function ThirtyOne.chooseBotMove(state, seat: number, rng: Random): any?
 		end
 		local top = state.discard[#state.discard]
 		if top then
-			local after = bestAfter(hand, top, top)
+			local after = bestAfter(state, hand, top, top)
 			local margin = if state.botLevel == "easy" then 4 else 1
 			if after >= now + margin then
 				return { kind = "draw", from = "discard" }
@@ -433,7 +442,7 @@ function ThirtyOne.chooseBotMove(state, seat: number, rng: Random): any?
 		end
 		local three = table.clone(hand)
 		local extra = table.remove(three) :: number
-		local _, throw = bestAfter(three, extra, state.taken)
+		local _, throw = bestAfter(state, three, extra, state.taken)
 		return { kind = "discard", card = throw }
 	end
 	return nil

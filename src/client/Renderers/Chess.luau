@@ -256,6 +256,9 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			return if d > 0 then `  +{d}` else ""
 		end
 		capturedLabel.Text = `White took: {white}{lead(1)}\nBlack took: {black}{lead(2)}`
+		if view.checks then
+			capturedLabel.Text ..= `\nChecks: White {view.checks[1]}/3 · Black {view.checks[2]}/3`
+		end
 
 		Kit.clear(moves)
 		for i = 1, #view.moveList, 2 do

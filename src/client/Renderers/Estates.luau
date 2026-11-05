@@ -631,15 +631,16 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		local canTrade = view.tradesLeft > 0
 		if view.phase == "buy" then
 			local space = spaces[myPlayer.pos]
-			actionText.Text = `Buy {space.name} for {money(space.price)}?\nIf you don't, it goes to auction.`
+			local auctions = view.auctions ~= false
+			actionText.Text = if auctions then `Buy {space.name} for {money(space.price)}?\nIf you don't, it goes to auction.` else `Buy {space.name} for {money(space.price)}?\nIf you don't, it stays with the bank.`
 			if myPlayer.cash >= space.price then
 				addButton(`Buy {money(space.price)}`, function()
 					sendMove({ kind = "buy" })
 				end, nil, 1)
 			else
-				actionText.Text ..= "\nNot enough cash: mortgage a deed (tap it) or auction it."
+				actionText.Text ..= if auctions then "\nNot enough cash: mortgage a deed (tap it) or auction it." else "\nNot enough cash: mortgage a deed (tap it) or pass."
 			end
-			addButton("Auction it", function()
+			addButton(if auctions then "Auction it" else "Pass", function()
 				sendMove({ kind = "decline" })
 			end, Theme.PanelLight, 2)
 		elseif view.phase == "debt" then
@@ -769,6 +770,9 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		local me = snapshot.yourSeat
 
 		roundLabel.Text = `Round {math.min(view.round, view.maxRounds)} of {view.maxRounds} · richest player wins at the end`
+		if view.pot then
+			roundLabel.Text ..= ` · Rest Stop jackpot {money(view.pot)}`
+		end
 
 		-- Tiles: owner outline, houses, mortgages, tokens.
 		for pos, t in tiles do

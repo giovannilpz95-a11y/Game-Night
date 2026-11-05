@@ -11,7 +11,9 @@
 --
 -- The correct answer is never in a view until the reveal.
 --
--- House rules (options.rules): questions = 5..20, answerSeconds = 10 | 15 | 25.
+-- House rules (options.rules): questions = 5..20, answerSeconds = 10 | 15 | 25,
+-- speed (default on: earlier right answers score more; off: every right answer is 1000),
+-- streaks (default on: the streak bonus), wrongPenalty (a wrong answer costs 250 points).
 -- options.customQuestions: a Party Host's quiz deck (already filtered by the server),
 -- { { c = category, q = question, a = { right, wrong, wrong, wrong } } }. Used instead of
 -- our bank when set.
@@ -75,6 +77,9 @@ function TriviaNight.new(seatCount: number, options: any?, rng: Random?)
 		streaks = table.create(seatCount, 0),
 		lastPoints = {},
 		finished = false,
+		speed = rules.speed ~= false,
+		streakBonus = rules.streaks ~= false,
+		wrongPenalty = rules.wrongPenalty == true,
 	}
 	TriviaNight._nextQuestion(state)
 	return state
@@ -112,7 +117,10 @@ local function reveal(state)
 	for seat = 1, state.seatCount do
 		if state.answers[seat] ~= state.correct then
 			state.streaks[seat] = 0
-			state.lastPoints[seat] = 0
+			-- A wrong answer under the penalty rule keeps its -250; no answer scores 0.
+			if not (state.wrongPenalty and state.answers[seat] ~= nil) then
+				state.lastPoints[seat] = 0
+			end
 		end
 	end
 end
@@ -167,10 +175,16 @@ function TriviaNight.applyMove(state, seat: number, move: any)
 		state.streaks[seat] += 1
 		GameModule.addStat(state, seat, "correct")
 		GameModule.maxStat(state, seat, "streak", state.streaks[seat])
-		local points = math.max(500, 1000 - 100 * (state.correctCount - 1))
-		points += math.min(MAX_STREAK_BONUS, STREAK_BONUS * (state.streaks[seat] - 1))
+		local points = if state.speed == false then 1000 else math.max(500, 1000 - 100 * (state.correctCount - 1))
+		if state.streakBonus ~= false then
+			points += math.min(MAX_STREAK_BONUS, STREAK_BONUS * (state.streaks[seat] - 1))
+		end
 		state.scores[seat] += points
 		state.lastPoints[seat] = points
+	elseif state.wrongPenalty then
+		state.streaks[seat] = 0
+		state.scores[seat] -= 250
+		state.lastPoints[seat] = -250
 	end
 	if state.answeredCount >= state.seatCount then
 		reveal(state)
@@ -222,7 +236,8 @@ function TriviaNight.getSeatInfo(state): { [number]: string }
 		if state.phase == "question" and state.answers[seat] ~= nil then
 			tag = "  ✓ answered"
 		elseif state.phase == "reveal" then
-			tag = if state.answers[seat] == state.correct then `  +{state.lastPoints[seat] or 0}` else "  +0"
+			local got = state.lastPoints[seat] or 0
+			tag = if state.answers[seat] == state.correct then `  +{got}` elseif got < 0 then `  {got}` else "  +0"
 		end
 		info[seat] = `{state.scores[seat]} pts{tag}`
 	end

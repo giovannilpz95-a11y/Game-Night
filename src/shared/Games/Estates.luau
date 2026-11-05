@@ -14,6 +14,11 @@
 -- Games end when one player is left, or after `maxRounds` rounds (picked by seat count
 -- to keep a match around 20-30 minutes): then the highest net worth wins.
 --
+-- House rules (options.rules): startCash (1000 / 1500 / 2000), auctions (default on; off:
+-- a deed nobody buys stays with the bank), jackpot (taxes, fines and Jail fees go into a
+-- pot on Rest Stop, and whoever lands there takes it), doubleStart (landing right on Start
+-- pays double), jailRent (default on; off: owners in Jail collect no rent).
+--
 -- Moves (all tables, checked field by field in validateMove):
 --   { kind = "roll" }            { kind = "endTurn" }
 --   { kind = "payJail" }         { kind = "useCard" }       (in Jail, before rolling)
@@ -350,9 +355,11 @@ end
 function Estates.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 8, "Property Party needs 2-8 seats")
 	local random = rng or Random.new()
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	local startCash = if type(rules.startCash) == "number" and rules.startCash >= 500 and rules.startCash <= 5000 then math.floor(rules.startCash) else Estates.START_CASH
 	local players = {}
 	for seat = 1, seatCount do
-		players[seat] = { cash = Estates.START_CASH, pos = 1, inJail = false, jailTries = 0, bankrupt = false, cards = {} }
+		players[seat] = { cash = startCash, pos = 1, inJail = false, jailTries = 0, bankrupt = false, cards = {} }
 	end
 	local decks = {}
 	for key, deck in Estates.decks do
@@ -373,6 +380,11 @@ function Estates.new(seatCount: number, options: any?, rng: Random?)
 		rng = random,
 		botLevel = (options and options.botLevel) or "medium",
 		players = players,
+		auctions = rules.auctions ~= false,
+		jackpot = rules.jackpot == true,
+		doubleStart = rules.doubleStart == true,
+		jailRent = rules.jailRent ~= false,
+		pot = 0, -- the Rest Stop jackpot (jackpot house rule)
 		owner = owner, -- [pos] = seat (nil = bank)
 		houses = houses, -- [pos] = 0..5 (5 = hotel)
 		mortgaged = mortgaged,
@@ -523,6 +535,13 @@ local function goBankrupt(state, seat: number, creditor: number?)
 	end
 end
 
+-- Money paid to the bank. With the jackpot house rule it goes into the Rest Stop pot.
+local function toBank(state, amount: number)
+	if state.jackpot then
+		state.pot = (state.pot or 0) + amount
+	end
+end
+
 -- Seat owes `amount` to `to` (a seat, or nil for the bank). Pays at once if it can;
 -- otherwise the turn waits in the "debt" phase (or they go bankrupt if they can't
 -- possibly raise it). Returns true if it was paid now.
@@ -536,6 +555,8 @@ local function charge(state, seat: number, amount: number, to: number?, why: str
 		p.cash -= amount
 		if to then
 			state.players[to].cash += amount
+		else
+			toBank(state, amount)
 		end
 		log(state, seat, paidText)
 		return true
@@ -569,8 +590,9 @@ local resolveSpace: (any, number, string?) -> ()
 local function moveTo(state, seat: number, target: number, special: string?)
 	local p = state.players[seat]
 	if target < p.pos or target == 1 and p.pos ~= 1 then
-		p.cash += Estates.PASS_START
-		log(state, seat, `passed Start and collected {money(Estates.PASS_START)}`)
+		local pay = if state.doubleStart and target == 1 then Estates.PASS_START * 2 else Estates.PASS_START
+		p.cash += pay
+		log(state, seat, if pay > Estates.PASS_START then `landed on Start and collected {money(pay)}` else `passed Start and collected {money(pay)}`)
 	end
 	p.pos = target
 	resolveSpace(state, seat, special)
@@ -641,6 +663,11 @@ function resolveSpace(state, seat: number, special: string?)
 		charge(state, seat, space.amount :: number, nil, space.name, `paid {money(space.amount :: number)} {space.name}`)
 	elseif space.kind == "lucky" or space.kind == "mail" then
 		drawCard(state, seat, space.kind)
+	elseif space.kind == "rest" and state.jackpot and (state.pot or 0) > 0 then
+		local pot = state.pot
+		state.pot = 0
+		p.cash += pot
+		log(state, seat, `hit the jackpot: {money(pot)}!`)
 	elseif isDeed(pos) then
 		local owner = state.owner[pos]
 		if owner == nil then
@@ -654,6 +681,8 @@ function resolveSpace(state, seat: number, special: string?)
 			local rent = Estates.rentFor(state, pos, diceTotal, special)
 			if state.mortgaged[pos] then
 				log(state, seat, `landed on {space.name} (mortgaged, no rent)`)
+			elseif not state.jailRent and state.players[owner].inJail then
+				log(state, seat, `landed on {space.name} (the owner is in Jail, no rent)`)
 			elseif rent > 0 then
 				charge(state, seat, rent, owner, `rent for {space.name}`, `paid {money(rent)} rent for {space.name}`)
 			end
@@ -1080,6 +1109,7 @@ function Estates.applyMove(state, seat: number, move: any)
 		advanceTurn(state)
 	elseif kind == "payJail" then
 		p.cash -= Estates.JAIL_FEE
+		toBank(state, Estates.JAIL_FEE)
 		p.inJail = false
 		p.jailTries = 0
 		log(state, seat, `paid {money(Estates.JAIL_FEE)} to leave Jail`)
@@ -1101,7 +1131,12 @@ function Estates.applyMove(state, seat: number, move: any)
 		state.phase = "turn"
 		log(state, seat, `bought {spaces[pos].name} for {money(spaces[pos].price :: number)}`)
 	elseif kind == "decline" then
-		startAuction(state, p.pos)
+		if state.auctions == false then
+			state.phase = "turn"
+			log(state, seat, `passed on {spaces[p.pos].name}`)
+		else
+			startAuction(state, p.pos)
+		end
 	elseif kind == "bid" then
 		local a = state.auction
 		a.high = move.amount
@@ -1118,6 +1153,8 @@ function Estates.applyMove(state, seat: number, move: any)
 		p.cash -= d.amount
 		if d.to then
 			state.players[d.to].cash += d.amount
+		else
+			toBank(state, d.amount)
 		end
 		state.phase = "turn"
 		log(state, seat, `paid {money(d.amount)} ({d.why})`)
@@ -1266,6 +1303,8 @@ function Estates.getView(state, seat: number?)
 		mortgaged = table.clone(state.mortgaged),
 		housesLeft = state.housesLeft,
 		hotelsLeft = state.hotelsLeft,
+		auctions = state.auctions ~= false,
+		pot = if state.jackpot then state.pot or 0 else nil,
 		auction = auction,
 		debt = GameModule.copy(state.debt),
 		trade = GameModule.copy(state.trade),

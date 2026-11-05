@@ -14,6 +14,9 @@
 -- If the stock gets down to 2 cards with no knock, the hand is a wash. First to the
 -- target (50 by default) wins; after MAX_HANDS the higher score wins.
 --
+-- More house rules: oklahoma (the first upcard sets the knock limit: its deadwood value,
+-- an Ace means gin only), undercut (the undercut bonus: 25 or 10).
+--
 -- Moves: { kind = "draw", from = "stock" | "discard" }  (draw phase)
 --        { kind = "discard", card = id }                (discard phase)
 --        { kind = "knock", card = id }                  (discard phase: discard and knock)
@@ -60,6 +63,12 @@ local function deal(state)
 	state.lastAction = nil
 	state.picked = { {}, {} }
 	state.phaseId += 1
+	if state.oklahoma then
+		-- Oklahoma: the first upcard sets this hand's knock limit (an Ace means gin only).
+		local r = PlayingCards.rank(state.discard[1])
+		local upValue = if r == 1 then 0 elseif r >= 10 then 10 else r
+		state.knockLimit = math.min(state.baseKnock or GinRummy.KNOCK_LIMIT, upValue)
+	end
 end
 
 function GinRummy.new(seatCount: number, options: any?, rng: Random?)
@@ -85,6 +94,9 @@ function GinRummy.new(seatCount: number, options: any?, rng: Random?)
 		picked = { {}, {} }, -- cards each seat took from the discard pile this hand (public)
 		target = target,
 		knockLimit = knock,
+		baseKnock = knock,
+		oklahoma = rules.oklahoma == true,
+		undercutBonus = if type(rules.undercut) == "number" and rules.undercut >= 0 then rules.undercut else GinRummy.UNDERCUT_BONUS,
 		over = false,
 		botLevel = (options and options.botLevel) or "medium",
 	}
@@ -210,7 +222,7 @@ local function knock(state, seat: number)
 	if gin then
 		kind, winner, points = "gin", seat, GinRummy.GIN_BONUS + defense.value
 	elseif defense.value <= kArr.value then
-		kind, winner, points = "undercut", defender, GinRummy.UNDERCUT_BONUS + (kArr.value - defense.value)
+		kind, winner, points = "undercut", defender, (state.undercutBonus or GinRummy.UNDERCUT_BONUS) + (kArr.value - defense.value)
 	else
 		kind, winner, points = "knock", seat, defense.value - kArr.value
 	end

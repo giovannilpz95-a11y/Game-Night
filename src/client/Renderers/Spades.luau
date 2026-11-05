@@ -104,7 +104,7 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 		local buttons = {}
 		if bidding then
 			table.insert(buttons, { text = "-", color = Theme.PanelLight, onClick = function()
-				bid = math.max(0, bid - 1)
+				bid = math.max(if view.allowNil == false then 1 else 0, bid - 1)
 				render()
 			end })
 			table.insert(buttons, { text = if bid == 0 then "Bid Nil" else `Bid {bid}`, onClick = function()

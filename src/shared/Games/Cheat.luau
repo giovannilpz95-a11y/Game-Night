@@ -9,8 +9,12 @@
 -- The first player to empty their hand (and survive any doubt) wins. A very long game
 -- ends after PLAY_LIMIT plays: fewest cards left wins.
 --
+-- House rule "upDown" (up, down or same): instead of the next rank in order, each play
+-- may claim the same rank as the last claim, or one above or below it.
+--
 -- Moves:
---   { kind = "play", cards = { id, ... } }  (your turn: 1-4 cards, claimed as the called rank)
+--   { kind = "play", cards = { id, ... }, claim = rank? }  (your turn: 1-4 cards, claimed
+--       as the called rank; with upDown, claim picks one of Cheat.claims)
 --   { kind = "doubt" }                       (doubt phase, anyone but the player)
 --   { kind = "pass" }                        (doubt phase: "I believe you")
 
@@ -59,10 +63,21 @@ function Cheat.new(seatCount: number, options: any?, rng: Random?)
 		plays = 0,
 		winners = nil,
 		reason = nil,
+		upDown = rules.upDown == true,
 		doubtSeconds = if type(rules.doubtSeconds) == "number" and rules.doubtSeconds > 0 then rules.doubtSeconds else Cheat.DOUBT_SECONDS,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	return state
+end
+
+-- Ranks the next play may claim: the called rank, plus one above and one below with the
+-- "up, down or same" house rule (Kings and Aces wrap around).
+function Cheat.claims(state): { number }
+	local c = state.called
+	if not state.upDown then
+		return { c }
+	end
+	return { (c - 2) % 13 + 1, c, c % 13 + 1 }
 end
 
 local function nextSeat(state, seat: number): number
@@ -95,7 +110,7 @@ local function advance(state)
 		fewestCards(state)
 		return
 	end
-	state.called = state.called % 13 + 1
+	state.called = if state.upDown then state.lastPlay.rank else state.called % 13 + 1
 	state.turn = nextSeat(state, player)
 	state.phase = "play"
 	state.phaseId += 1
@@ -165,15 +180,17 @@ function Cheat.getLegalMoves(state, seat: number): { any }
 	end
 	if state.phase == "play" and seat == state.turn then
 		local hand = state.hands[seat]
-		local honest = {}
-		for _, id in hand do
-			table.insert(moves, { kind = "play", cards = { id } })
-			if rank(id) == state.called then
-				table.insert(honest, id)
+		for _, claim in Cheat.claims(state) do
+			local honest = {}
+			for _, id in hand do
+				table.insert(moves, { kind = "play", cards = { id }, claim = claim })
+				if rank(id) == claim then
+					table.insert(honest, id)
+				end
 			end
-		end
-		if #honest > 1 then
-			table.insert(moves, { kind = "play", cards = honest })
+			if #honest > 1 then
+				table.insert(moves, { kind = "play", cards = honest, claim = claim })
+			end
 		end
 	elseif state.phase == "doubt" and table.find(doubters(state), seat) then
 		table.insert(moves, { kind = "doubt" })
@@ -199,6 +216,9 @@ function Cheat.validateMove(state, seat: number, move: any): (boolean, string?)
 		if not PlayingCards.holdsAll(state.hands[seat], move.cards) then
 			return false, "Those cards aren't in your hand"
 		end
+		if move.claim ~= nil and not table.find(Cheat.claims(state), move.claim) then
+			return false, "You can't claim that rank now"
+		end
 		return true
 	elseif move.kind == "doubt" or move.kind == "pass" then
 		if state.phase ~= "doubt" then
@@ -221,7 +241,7 @@ function Cheat.applyMove(state, seat: number, move: any)
 			state.pileFrom[#state.pile] = seat
 		end
 		state.plays += 1
-		state.lastPlay = { seat = seat, count = #move.cards, rank = state.called }
+		state.lastPlay = { seat = seat, count = #move.cards, rank = if move.claim ~= nil then move.claim else state.called }
 		state.lastCards = table.clone(move.cards)
 		state.reveal = nil
 		state.passed = {}
@@ -276,6 +296,7 @@ function Cheat.getView(state, seat: number?)
 		handCounts = counts,
 		pileCount = #state.pile,
 		called = state.called,
+		claims = Cheat.claims(state),
 		turn = state.turn,
 		phase = state.phase,
 		lastPlay = GameModule.copy(state.lastPlay),
@@ -445,9 +466,22 @@ function Cheat.chooseBotMove(state, seat: number, rng: Random): any?
 			return nil
 		end
 		local hand = state.hands[seat]
+		-- Up, down or same: claim whichever allowed rank we hold most of.
+		local claim, most = state.called, -1
+		for _, r in Cheat.claims(state) do
+			local n = 0
+			for _, id in hand do
+				if rank(id) == r then
+					n += 1
+				end
+			end
+			if n > most or (n == most and r == state.called) then
+				claim, most = r, n
+			end
+		end
 		local honest, others = {}, {}
 		for _, id in hand do
-			if rank(id) == state.called then
+			if rank(id) == claim then
 				table.insert(honest, id)
 			else
 				table.insert(others, id)
@@ -463,7 +497,7 @@ function Cheat.chooseBotMove(state, seat: number, rng: Random): any?
 			if #cards < Cheat.MAX_CARDS and #others > 0 and smallPile and rng:NextNumber() < sneak then
 				table.insert(cards, chooseBluff(state, others, rng))
 			end
-			return { kind = "play", cards = cards }
+			return { kind = "play", cards = cards, claim = claim }
 		end
 		local first = chooseBluff(state, hand, rng)
 		local cards = { first }

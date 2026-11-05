@@ -104,7 +104,7 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 		if a and a.kind == "snap" then
 			text = `{nameOf(a.seat)} snapped and won {a.count} cards!`
 		elseif a and a.kind == "badSnap" then
-			text = `{nameOf(a.seat)} snapped too soon and gave {nameOf(a.to)} a card`
+			text = if (a.count or 1) > 1 then `{nameOf(a.seat)} snapped too soon and gave {nameOf(a.to)} {a.count} cards` else `{nameOf(a.seat)} snapped too soon and gave {nameOf(a.to)} a card`
 		end
 		status.Text = text
 		-- SNAP! (or a wrong call) pops off the table; the winner gathers the piles.

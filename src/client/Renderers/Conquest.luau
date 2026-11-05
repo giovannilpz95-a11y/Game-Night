@@ -386,7 +386,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			else
 				hint("Tap one of your territories with 2+ armies to attack from it.", actions, 2)
 			end
-			if view.conquestsLeft > 0 and view.round <= 5 then
+			if view.conquestsLeft > 0 and view.round <= 5 and view.earlyLimit ~= false then
 				local n = view.conquestsLeft
 				hint(`You can take {n} more {if n == 1 then "territory" else "territories"} this turn.`, actions, 2)
 			end
@@ -460,6 +460,9 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		else
 			cards, value = Rules.bestSet(view.hand)
 		end
+		if value and view.nextRising then
+			value = view.nextRising -- rising card values: every set is worth the same
+		end
 		if cards and value then
 			local label = if #pickedCards == 3 then `Trade for {value} armies` else `Trade best set for {value}`
 			smallButton(label, cardsSection, 1, function()
@@ -475,7 +478,11 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			hint("Those 3 aren't a set.", cardsSection, 3, Theme.Bad)
 		end
 		local values = Rules.setValues
-		hint(`Sets: 3 Swords {values.sword} · 3 Shields {values.shield} · 3 Crowns {values.crown} · one of each {values.mixed}. Wilds match anything.`, cardsSection, 5)
+		if view.nextRising then
+			hint(`Sets: 3 of a kind or one of each. Rising values: the next trade at the table is worth {view.nextRising}. Wilds match anything.`, cardsSection, 5)
+		else
+			hint(`Sets: 3 Swords {values.sword} · 3 Shields {values.shield} · 3 Crowns {values.crown} · one of each {values.mixed}. Wilds match anything.`, cardsSection, 5)
+		end
 	end
 
 	local function diceRow(parent: Instance, dice: { number }, color: Color3, order: number)

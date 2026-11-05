@@ -1,6 +1,10 @@
 -- Four in a Row: drop discs into a 7x6 grid, first to line up four wins.
 -- grid[column][row], row 1 is the bottom. 0 = empty, else the seat (1 or 2).
--- Move: { column = 1..7 }
+-- Move: { column = 1..7 }  |  { column = 1..7, pop = true }
+-- House rule "popOut" (Pop Out): on your turn you may instead pull one of your own discs
+-- out of the bottom of a column; everything above drops down a row. If a pop lines up
+-- four for both players, the player who popped wins. The full board isn't a draw (you can
+-- still pop); a game with no moves left, or POP_LIMIT moves, is.
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
@@ -15,6 +19,8 @@ local COLS, ROWS = 7, 6
 FourInARow.columns = COLS
 FourInARow.rows = ROWS
 
+FourInARow.POP_LIMIT = 120
+
 local DIRECTIONS = { { 1, 0 }, { 0, 1 }, { 1, 1 }, { 1, -1 } }
 local CENTER_FIRST = { 4, 3, 5, 2, 6, 1, 7 }
 
@@ -28,6 +34,7 @@ export type State = {
 	winningCells: { { number } }?,
 	isDraw: boolean,
 	botLevel: string,
+	popOut: boolean?,
 }
 
 function FourInARow.new(seatCount: number, options: any?, _rng: Random?): State
@@ -46,7 +53,13 @@ function FourInARow.new(seatCount: number, options: any?, _rng: Random?): State
 		winningCells = nil,
 		isDraw = false,
 		botLevel = (options and options.botLevel) or "medium",
+		popOut = options ~= nil and type(options.rules) == "table" and options.rules.popOut == true,
 	}
+end
+
+-- Pop Out: can `seat` pull their disc out of the bottom of column c?
+function FourInARow.canPop(state: any, seat: number, c: number): boolean
+	return state.popOut == true and state.grid[c] ~= nil and state.grid[c][1] == seat
 end
 
 local function isOver(state: State): boolean
@@ -86,6 +99,13 @@ function FourInARow.getLegalMoves(state: State, seat: number): { any }
 			table.insert(moves, { column = c })
 		end
 	end
+	if state.popOut then
+		for c = 1, COLS do
+			if FourInARow.canPop(state, seat, c) then
+				table.insert(moves, { column = c, pop = true })
+			end
+		end
+	end
 	return moves
 end
 
@@ -103,13 +123,57 @@ function FourInARow.validateMove(state: State, seat: number, move: any): (boolea
 	if c ~= math.floor(c) or c < 1 or c > COLS then
 		return false, "Bad column"
 	end
+	if move.pop ~= nil then
+		if move.pop ~= true or not state.popOut then
+			return false, "Bad move"
+		end
+		if not FourInARow.canPop(state, seat, c) then
+			return false, "You can only pop your own disc from the bottom"
+		end
+		return true
+	end
 	if state.heights[c] >= ROWS then
 		return false, "That column is full"
 	end
 	return true
 end
 
+local function popMove(state: State, seat: number, c: number)
+	local col = state.grid[c]
+	for r = 1, ROWS - 1 do
+		col[r] = col[r + 1]
+	end
+	col[ROWS] = 0
+	state.heights[c] -= 1
+	state.moveCount += 1
+	state.lastMove = { column = c, row = 1, pop = true } :: any
+	-- Every disc in the column moved, so check lines through each of them.
+	local lines: { [number]: { { number } } } = {}
+	for r = 1, state.heights[c] do
+		local who = col[r]
+		if not lines[who] then
+			lines[who] = lineThrough(state.grid, c, r, who) :: any
+		end
+	end
+	local winner = if lines[seat] then seat elseif lines[3 - seat] then 3 - seat else nil
+	if winner then
+		state.winner = winner
+		state.winningCells = lines[winner]
+	elseif state.moveCount >= FourInARow.POP_LIMIT then
+		state.isDraw = true
+	else
+		state.turn = 3 - seat
+		if #FourInARow.getLegalMoves(state, state.turn) == 0 then
+			state.isDraw = true
+		end
+	end
+end
+
 function FourInARow.applyMove(state: State, seat: number, move: any)
+	if move.pop == true then
+		popMove(state, seat, move.column)
+		return
+	end
 	local c = move.column
 	local r = state.heights[c] + 1
 	state.heights[c] = r
@@ -120,10 +184,15 @@ function FourInARow.applyMove(state: State, seat: number, move: any)
 	if cells then
 		state.winner = seat
 		state.winningCells = cells
-	elseif state.moveCount >= COLS * ROWS then
+	elseif state.popOut and state.moveCount >= FourInARow.POP_LIMIT then
+		state.isDraw = true
+	elseif not state.popOut and state.moveCount >= COLS * ROWS then
 		state.isDraw = true
 	else
 		state.turn = 3 - seat
+		if state.popOut and #FourInARow.getLegalMoves(state, state.turn) == 0 then
+			state.isDraw = true
+		end
 	end
 end
 
@@ -131,7 +200,7 @@ function FourInARow.getResult(state: State): GameModule.Result?
 	if state.winner then
 		return { winners = { state.winner }, isDraw = false, reason = "Four in a row" }
 	elseif state.isDraw then
-		return { winners = {}, isDraw = true, reason = "The board is full" }
+		return { winners = {}, isDraw = true, reason = if state.popOut then "No way to win" else "The board is full" }
 	end
 	return nil
 end
@@ -251,6 +320,10 @@ function FourInARow.scoreColumns(state: State, seat: number, maxDepth: number, s
 		deadline = os.clock() + seconds,
 		outOfTime = false,
 	}
+	local filled = 0
+	for c = 1, COLS do
+		filled += state.heights[c]
+	end
 	local finished: { [number]: number } = {}
 	for depth = 1, maxDepth do
 		local scores = {}
@@ -263,7 +336,7 @@ function FourInARow.scoreColumns(state: State, seat: number, maxDepth: number, s
 				if lineThrough(s.grid, c, r, seat) then
 					scores[c] = WIN_SCORE + depth
 				else
-					scores[c] = -negamax(s, depth - 1, -math.huge, math.huge, 3 - seat, state.moveCount + 1)
+					scores[c] = -negamax(s, depth - 1, -math.huge, math.huge, 3 - seat, filled + 1)
 				end
 				s.grid[c][r] = 0
 				s.heights[c] = h
@@ -285,6 +358,18 @@ function FourInARow.chooseBotMove(state: State, seat: number, rng: Random): any?
 	end
 	if rng:NextNumber() < level.randomChance then
 		return moves[rng:NextInteger(1, #moves)]
+	end
+	if state.popOut then
+		-- Pop Out: take a pop that wins on the spot. (The search below only drops.)
+		for _, move in moves do
+			if move.pop then
+				local trial = GameModule.copy(state)
+				popMove(trial, seat, move.column)
+				if trial.winner == seat then
+					return move
+				end
+			end
+		end
 	end
 	local scores = FourInARow.scoreColumns(state, seat, level.depth, level.seconds)
 	local bestScore, best = -math.huge, {}
