@@ -3,9 +3,9 @@
 -- Radius) so every window reads the same, and the helpers (title, closeButton, chip)
 -- instead of hand-made copies.
 
-local TweenService = game:GetService("TweenService")
 
 local Audio = require(script.Parent.Parent.Audio)
+local Juice = require(script.Parent.Juice)
 
 local Kit = {}
 
@@ -42,9 +42,7 @@ Kit.Theme = {
 	Radius = { Small = 8, Medium = 10, Large = 14 },
 }
 
-local PRESS_SCALE = 0.95
-local PRESS_INFO = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local POP_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+Kit.Juice = Juice
 
 -- Kit.new("Frame", { Size = ..., Parent = ... }, { children })
 function Kit.new(className: string, props: { [string]: any }?, children: { Instance }?): any
@@ -199,40 +197,24 @@ function Kit.edge(button: GuiObject)
 	end)
 end
 
--- Buttons sink a little while pressed and click, so a tap feels like it landed. The
--- sound is the button's "Sfx" attribute (a shared/Sounds.Effects name), "click" if unset.
--- With a mouse, moving onto a button ticks softly, like a console menu's cursor.
+-- Buttons squash when pressed, spring past full size on release, and lift with a tick
+-- under the mouse or gamepad (client/UI/Juice; the tick is Audio.hover), so a tap feels like it landed. The
+-- sound is the button's "Sfx" attribute (a shared/Sounds.Effects name), "click" if unset,
+-- "none" for silent.
 function Kit.pressable(button: GuiButton)
-	local scale = Kit.new("UIScale", { Name = "PressScale", Parent = button })
 	button.Activated:Connect(function()
 		local sfx = button:GetAttribute("Sfx")
-		Audio.play(if type(sfx) == "string" then sfx else "click")
-	end)
-	local function to(value: number)
-		if scale.Parent then
-			TweenService:Create(scale, PRESS_INFO, { Scale = value }):Play()
-		end
-	end
-	button.InputBegan:Connect(function(input)
-		local kind = input.UserInputType
-		if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
-			to(PRESS_SCALE)
+		if sfx ~= "none" then
+			Audio.play(if type(sfx) == "string" then sfx else "click")
 		end
 	end)
-	button.InputEnded:Connect(function(input)
-		local kind = input.UserInputType
-		if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
-			to(1)
-		end
-	end)
-	button.MouseEnter:Connect(function()
-		Audio.hover(button)
-	end)
-	button.MouseLeave:Connect(function()
-		to(1)
-		Audio.unhover(button)
-	end)
+	Juice.press(button)
 end
+
+-- The "no" for a tap that can't happen: a wobble and a bonk instead of a popup.
+Kit.nope = Juice.nope
+-- A happy bump for something that just changed or got picked.
+Kit.bump = Juice.bump
 
 -- A secondary button: panel colored, light text. Same props as Kit.button.
 function Kit.secondary(text: string, onClick: () -> (), props: { [string]: any }?): TextButton
@@ -306,19 +288,19 @@ function Kit.chip(text: string, onClick: () -> (), props: { [string]: any }?): T
 end
 
 function Kit.setChip(chip: TextButton, selected: boolean)
+	-- Bounce when it becomes the picked one (not on every redraw).
+	local was = chip:GetAttribute("Selected")
+	chip:SetAttribute("Selected", selected)
+	if selected and was == false then
+		Juice.bump(chip, 0.1)
+	end
 	chip.BackgroundColor3 = if selected then Kit.Theme.Accent else Kit.Theme.PanelLight
 	chip.TextColor3 = if selected then Kit.Theme.AccentText else Kit.Theme.Text
 end
 
--- Grows a window in from slightly smaller, so it doesn't just blink on.
+-- Grows a window in from small with a springy overshoot, so it doesn't just blink on.
 function Kit.popIn(object: GuiObject)
-	local scale = object:FindFirstChild("PopScale") :: UIScale?
-	if not scale then
-		scale = Kit.new("UIScale", { Name = "PopScale", Parent = object })
-	end
-	local s = scale :: UIScale
-	s.Scale = 0.92
-	TweenService:Create(s, POP_INFO, { Scale = 1 }):Play()
+	Juice.popIn(object)
 end
 
 -- A centered window over a dimmed screen. Tapping the dim area or the X closes it.
@@ -365,29 +347,41 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 	})
 
 	local modal: any = { overlay = overlay, panel = panel, body = body }
+	local DIM = overlay.BackgroundTransparency
+	-- True while the close animation plays: the window counts as closed already.
+	local closing = false
 	function modal.close()
-		if overlay.Visible then
-			overlay.Visible = false
+		if overlay.Visible and not closing then
+			closing = true
 			if opts.onClose then
 				opts.onClose()
 			end
+			Juice.tween(overlay, Juice.Info.Close, { BackgroundTransparency = 1 })
+			Juice.popOut(panel, function()
+				closing = false
+				overlay.Visible = false
+				overlay.BackgroundTransparency = DIM
+			end)
 		end
 	end
 	function modal.open()
-		if not overlay.Visible then
+		if not overlay.Visible or closing then
+			closing = false
 			overlay.Visible = true
+			overlay.BackgroundTransparency = 1
+			Juice.tween(overlay, Juice.Info.Fade, { BackgroundTransparency = DIM })
 			Kit.popIn(panel)
 		end
 	end
 	function modal.toggle()
-		if overlay.Visible then
+		if modal.isOpen() then
 			modal.close()
 		else
 			modal.open()
 		end
 	end
 	function modal.isOpen(): boolean
-		return overlay.Visible
+		return overlay.Visible and not closing
 	end
 	-- Fit inside the free screen area (below Roblox's top bar).
 	function modal.fit(top: number, bottom: number)
@@ -456,10 +450,17 @@ function Kit.progress(color: Color3?, props: { [string]: any }?): (Frame, (numbe
 	for key, value in props or {} do
 		(bar :: any)[key] = value
 	end
+	-- The fill glides to its new length (snaps the first time, so a window opens filled).
+	local first = true
 	local function set(fraction: number)
 		fraction = math.clamp(fraction, 0, 1)
-		fill.Size = UDim2.fromScale(fraction, 1)
 		fill.Visible = fraction > 0
+		if first or not bar.Parent then
+			first = false
+			fill.Size = UDim2.fromScale(fraction, 1)
+		else
+			Juice.tween(fill, Juice.Info.Fill, { Size = UDim2.fromScale(fraction, 1) })
+		end
 	end
 	return bar, set
 end

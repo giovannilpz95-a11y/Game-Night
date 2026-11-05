@@ -1,5 +1,6 @@
 -- Toast messages, party invite prompts and yes/no prompts ("Let Sam join?").
 
+local Audio = require(script.Parent.Parent.Audio)
 local Kit = require(script.Parent.Kit)
 local Layout = require(script.Parent.Layout)
 local Theme = Kit.Theme
@@ -43,12 +44,16 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 	local function toast(message: string)
 		local current = showing[message]
 		if current and current.frame.Parent then
+			-- Usually a refused retry: a wobble says "still no".
+			Kit.nope(current.frame)
 			current.token += 1
 			local token = current.token
 			task.delay(3, function()
 				if showing[message] == current and current.token == token then
 					showing[message] = nil
-					current.frame:Destroy()
+					Kit.Juice.popOut(current.frame, function()
+						current.frame:Destroy()
+					end)
 				end
 			end)
 			return
@@ -61,12 +66,15 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 			Parent = stack,
 		})
 		Kit.label(message, { AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 51, Parent = frame })
+		Kit.popIn(frame)
 		local entry = { frame = frame, token = 0 }
 		showing[message] = entry
 		task.delay(3, function()
 			if showing[message] == entry and entry.token == 0 then
 				showing[message] = nil
-				frame:Destroy()
+				Kit.Juice.popOut(frame, function()
+					frame:Destroy()
+				end)
 			end
 		end)
 	end
@@ -78,6 +86,8 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 			ZIndex = 50,
 			Parent = stack,
 		})
+		Kit.popIn(frame)
+		Audio.play("pop")
 		Kit.label(`{data.fromName} invited you to their party ({data.size} playing)`, {
 			Size = UDim2.new(1, 0, 0, 44),
 			ZIndex = 51,
@@ -108,6 +118,8 @@ function Popups.create(parent: Instance, sendParty: (any) -> ())
 			Parent = stack,
 		})
 		Kit.label(text, { Size = UDim2.new(1, 0, 0, 44), ZIndex = 51, Parent = frame })
+		Kit.popIn(frame)
+		Audio.play("pop")
 		local answered = false
 		local function close()
 			answered = true

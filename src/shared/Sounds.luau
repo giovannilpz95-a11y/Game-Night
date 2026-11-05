@@ -62,6 +62,10 @@ Sounds.Effects = {
 	turn = builtIn("electronicpingshort.wav", 0.6, { notes = { 0, 5 }, noteGap = 0.09 }), -- "Your turn!": a rising ding-ding
 	callout = builtIn("electronicpingshort.wav", 0.35, { speed = 1.2, notes = { 0, 4, 7 }, noteGap = 0.06 }), -- a big moment pill: ta-da-ding
 	coin = builtIn("electronicpingshort.wav", 0.3, { speed = 1.5, notes = { 0, 5 }, noteGap = 0.06, streak = 0.5, streakCap = 8 }), -- rewards counting up
+	-- UI motion (client/UI/Juice; vault "Nintendo UI Feel")
+	pop = builtIn("switch.wav", 0.3, { speed = 1.35, vary = 0.04, gap = 0.05 }), -- a toast or prompt pops in
+	bonk = asset(9118621947, PSE, "Rock Impacts 2 (SFX)", 0.3, { speed = 1.1, gap = 0.12 }), -- a tap that can't happen (with a wobble)
+	count = builtIn("clickfast.wav", 0.2, { speed = 1.3, gap = 0.04 }), -- a number tallying up in the wallet (pitch rises)
 	-- the table
 	card = asset(9119709616, PSE, "Swish Sweetener 29 (SFX)", 0.55, { speed = 1.25, vary = 0.04, varyVolume = 0.12, streak = 0.35, streakCap = 6 }), -- a card slides onto the pile; dealing climbs
 	cardHover = builtIn("clickfast.wav", 0.14, { speed = 1.35, gap = 0.04 }), -- a card lifts out of your hand (pitched by its place in the fan)

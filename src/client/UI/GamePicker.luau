@@ -123,6 +123,8 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 
 	local party: any = nil
 	local chosen: GameCatalog.Entry? = nil
+	local staggeredFilter: string? = nil
+	local bumpedId: string? = nil
 	local seats = 2
 	local botLevel = Config.DefaultBotLevel
 	local BOT_LEVEL_NAMES = { easy = "Easy bots", medium = "Medium bots", hard = "Hard bots" }
@@ -295,6 +297,11 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			Kit.setChip(chip, key == filter)
 		end
 		Kit.clear(grid)
+		-- Tiles pop in one by one when the list changes (first open, a new filter), not
+		-- on every redraw; a fresh pick bumps just that tile.
+		local restagger = filter ~= staggeredFilter
+		staggeredFilter = filter
+		local picked: GuiObject? = nil
 		for index, entry in GameCatalog.entries do
 			if filter ~= ALL and entry.category ~= filter then
 				continue
@@ -318,6 +325,18 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			})
 			if ready and isLeader then
 				Kit.pressable(card)
+			else
+				-- Coming soon, or not the leader: a wobble says "not now".
+				card.Activated:Connect(function()
+					Kit.nope(card)
+				end)
+			end
+			if selected then
+				picked = card
+				local ring = card:FindFirstChild("Outline")
+				if ring and ring:IsA("UIStroke") then
+					Kit.Juice.breathe(ring, 0.05, 0.55)
+				end
 			end
 			-- Icon badge in the category's color.
 			local icon = Kit.label(GameArt.icon(entry.id), {
@@ -396,6 +415,13 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 				end)
 			end
 		end
+
+		if restagger then
+			Kit.Juice.stagger(grid, 0.03)
+		elseif picked and picked.Name ~= bumpedId then
+			Kit.bump(picked, 0.08)
+		end
+		bumpedId = if picked then picked.Name else nil
 
 		bar.Visible = isLeader
 		-- Non-leaders don't get the bar, so the grid can use its space.

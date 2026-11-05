@@ -69,14 +69,42 @@ function WalletBar.create(parent: Instance)
 	local wallet: any = nil
 	local compact = false
 
+	-- The number each label shows now, so a change counts up (a tally, not a blink).
+	local shownGems: number? = nil
+	local shownCoins: number? = nil
+	local shownCoinKey: string? = nil
+
 	local function render()
 		-- Phones show just the numbers next to the colored dot.
 		local gemsName = if compact then "" else ` {Economy.GemsName}`
-		gemsLabel.Text = if wallet then `{wallet.gems}{gemsName}` else "..."
+		if wallet then
+			local gems = wallet.gems
+			local format = function(n: number): string
+				return `{n}{gemsName}`
+			end
+			if shownGems and shownGems ~= gems then
+				Kit.Juice.countUp(gemsLabel, shownGems, gems, format)
+			else
+				gemsLabel.Text = format(gems)
+			end
+			shownGems = gems
+		else
+			gemsLabel.Text = "..."
+		end
 		if coinKey and wallet then
 			coinFrame.Visible = true
 			local coinName = if compact then "" else ` {Economy.coinName(coinKey)}`
-			coinLabel.Text = `{wallet.coins[coinKey] or 0}{coinName}`
+			local coins = wallet.coins[coinKey] or 0
+			local format = function(n: number): string
+				return `{n}{coinName}`
+			end
+			if shownCoins and shownCoinKey == coinKey and shownCoins ~= coins then
+				Kit.Juice.countUp(coinLabel, shownCoins, coins, format)
+			else
+				coinLabel.Text = format(coins)
+			end
+			shownCoins = coins
+			shownCoinKey = coinKey
 			local coin = Economy.Coins[coinKey]
 			coinDot.BackgroundColor3 = if coin then coin.color else Theme.Accent
 		else
