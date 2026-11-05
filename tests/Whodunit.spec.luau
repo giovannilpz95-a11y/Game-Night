@@ -118,6 +118,24 @@ return function(T)
 		T.eq(notes[7].by, 2)
 	end)
 
+	T.test("everyone sees who couldn't disprove (for the notes grid)", function()
+		local s = setup()
+		s.suspectRoom[1] = 3
+		s.canStay[1] = false
+		play(s, 1, { kind = "move", room = 6 })
+		play(s, 1, { kind = "suggest", suspect = 1, item = 6 }) -- seat 2 has none of them
+		local view = Whodunit.getView(s, 3)
+		T.eq(#view.lacks, 3)
+		local cards = {}
+		for _, pair in view.lacks do
+			T.eq(pair.seat, 2)
+			cards[pair.card] = true
+		end
+		T.ok(cards[S(1)] and cards[I(6)] and cards[R(6)], "all three named cards")
+		T.eq(view.logCount, 1)
+		T.eq(view.handSizes[3], 6)
+	end)
+
 	T.test("right accusation wins, wrong one knocks you out", function()
 		local s = setup()
 		play(s, 1, { kind = "accuse", suspect = 2, item = 1, room = 1 })
