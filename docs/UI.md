@@ -35,6 +35,18 @@ Springy, toy-like motion shared by every UI. The rules (why and timings) are in 
 - `Juice.stagger(container)`: children pop in one by one (game picker on a new filter, shop on a new tab). `Juice.countUp(label, from, to, format)`: tallies a number with rising ticks then bumps it (wallet bar). `Juice.breathe(stroke)`: slow glow loop (picked game tile, gamepad selection ring; still in low-detail mode).
 - Every Juice tween uses `Juice.Info` (Snap, Stretch, Spring, Pop, Bounce, Close, Fill, Fade), so the whole game moves with one rhythm. Juice animates one UIScale per object (`PressScale`/`PopScale`); don't add a second UIScale to a Kit button.
 
+## Top-game polish (`UI/Flair`, `UI/Unlock`)
+What the biggest Roblox games all do, on top of Juice. Research: vault "05 Research/Top Roblox Games UI".
+- **Rewards fly in.** When Gems or the table's Coins go up, `WalletBar` calls `Flair.flyTo(chip, { make, count })`: icons burst out of the middle of the screen, hang a beat and swoop into the chip, which bumps and dings per landing; then the number counts up and `Flair.floatText` floats "+N" under it. Spending only counts down.
+- **"It's yours!"** `Unlock.show(entry)` dims the screen, turns a ray burst behind a big tier-colored badge with a spinning border, pops the name in and drops confetti; tap or wait 5 s. At a table it's a compact banner instead. Main diffs each wallet state (new owned items, passes, level) and queues them; more than two new items at once (a bundle) become one "N new items" moment. The first state after joining is only remembered.
+- `Flair.rays(parent, color, opts)`: slowly turning light burst (unlock, win screen, `HudKit.revealCard`). Children draw over parents, so put rays in the *parent* of the thing they sit behind, with a lower ZIndex.
+- `Flair.rarityBorder(stroke, tier)` / `Flair.spinGradient(target, colors, speed)`: a UIGradient on a UIStroke that keeps turning (Rare slow, Epic faster, Legendary fastest, gold for featured offers). One shared Heartbeat loop turns them all.
+- `Flair.idleShine(object, every)`: a glint every few seconds on the button that matters (Play, best Gem pack, Starter Pack, VIP). `Flair.nudge(badge, every)`: a bump and wiggle while a rail badge is showing.
+- `Flair.banner(tile, text, from, to)`: "MOST POPULAR" / "BEST VALUE" pills on Gem packs (the middle pack and the biggest).
+- `Flair.blur(key, on, window)`: the 3D world blurs while a `Kit.modal`, the shop or an unlock is up; passing the window lifts it if the window gets hidden some other way.
+- `Flair.titleStyle(label, tint)`: chunky heading (white to tint gradient, dark outline). Used on the shop title and unlock headings.
+- Low-detail mode freezes the looping motion (spins, glints, nudges) and skips the blur; one-shot effects still play.
+
 ## Game picker (`UI/GamePicker`)
 Filter chips (All games, then each category) above the grid. Each tile has an icon badge in its category's color, the name, the description and "👤 2-4 · ⏱ 10 min". Icons and category colors are in `shared/GameArt.luau`; a test fails if a catalog game has no icon, so add one with every new game.
 

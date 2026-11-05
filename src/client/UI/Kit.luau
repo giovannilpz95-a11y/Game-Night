@@ -5,6 +5,7 @@
 
 
 local Audio = require(script.Parent.Parent.Audio)
+local Flair = require(script.Parent.Flair)
 local Juice = require(script.Parent.Juice)
 
 local Kit = {}
@@ -347,9 +348,17 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 	})
 
 	local modal: any = { overlay = overlay, panel = panel, body = body }
+	-- The world behind softly blurs while the window is up (client/UI/Flair).
+	local blurKey = "modal:" .. overlay:GetFullName() .. tostring(math.random(1, 1e9))
 	local DIM = overlay.BackgroundTransparency
 	-- True while the close animation plays: the window counts as closed already.
 	local closing = false
+	overlay:GetPropertyChangedSignal("Visible"):Connect(function()
+		Flair.blur(blurKey, overlay.Visible and not closing, overlay)
+	end)
+	overlay.Destroying:Connect(function()
+		Flair.blur(blurKey, false)
+	end)
 	function modal.close()
 		if overlay.Visible and not closing then
 			closing = true
@@ -357,6 +366,7 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 				opts.onClose()
 			end
 			Juice.tween(overlay, Juice.Info.Close, { BackgroundTransparency = 1 })
+			Flair.blur(blurKey, false)
 			Juice.popOut(panel, function()
 				closing = false
 				overlay.Visible = false
@@ -370,6 +380,7 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 			overlay.Visible = true
 			overlay.BackgroundTransparency = 1
 			Juice.tween(overlay, Juice.Info.Fade, { BackgroundTransparency = DIM })
+			Flair.blur(blurKey, true, overlay)
 			Kit.popIn(panel)
 		end
 	end

@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 
 local Audio = require(script.Parent.Parent.Audio)
 local Kit = require(script.Parent.Kit)
+local Flair = require(script.Parent.Flair)
 local Juice = require(script.Parent.Juice)
 local Theme = Kit.Theme
 
@@ -434,6 +435,11 @@ function HudKit.revealCard(parent: Instance, heading: string, title: string, sub
 			card.BackgroundColor3 = Color3.fromRGB(252, 246, 230)
 			TweenService:Create(card, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(170, 240) }):Play()
 			HudKit.shine(card, 48)
+			-- Light turning behind the revealed card (client/UI/Flair).
+			local rays = Flair.rays(parent, color or Color3.fromRGB(255, 214, 120), { size = 420, zIndex = 44, position = card.Position, beams = 12, speed = 16, strength = 0.4 })
+			card.Destroying:Once(function()
+				rays:Destroy()
+			end)
 		end)
 		half:Play()
 	end)

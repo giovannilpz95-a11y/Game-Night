@@ -28,11 +28,14 @@ local RulesPanel = require(script.Parent.UI.RulesPanel)
 local LobbyTour = require(script.Parent.UI.LobbyTour)
 local PartyChat = require(script.Parent.UI.PartyChat)
 local SoundPanel = require(script.Parent.UI.SoundPanel)
+local Flair = require(script.Parent.UI.Flair)
+local Unlock = require(script.Parent.UI.Unlock)
 local Audio = require(script.Parent.Audio)
 local Frame = require(script.Parent.Frame)
 local Perf = require(script.Parent.Perf)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Economy = require(ReplicatedStorage.Shared.Economy)
+local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
 
 local localPlayer = Players.LocalPlayer
 
@@ -64,6 +67,7 @@ local screen = Kit.new("ScreenGui", {
 })
 
 Layout.init(screen)
+Unlock.init(screen)
 Perf.start()
 -- Gamepad selection ring (breathing gold outline) for the springy UI feel.
 Kit.Juice.installSelection(localPlayer:WaitForChild("PlayerGui") :: PlayerGui, Kit.Theme.Accent)
@@ -146,6 +150,7 @@ end)
 -- The shop's title and balance run along its top edge, where toasts would cover them.
 shopPanel.root:GetPropertyChangedSignal("Visible"):Connect(function()
 	popups.setAtBottom(shopPanel.root.Visible)
+	Flair.blur("shop", shopPanel.root.Visible, shopPanel.root)
 end)
 local seasonPanel = SeasonPanel.create(lobby, function(request)
 	economyRequest:FireServer(request)
@@ -337,6 +342,68 @@ end)
 local wasHost: boolean? = nil
 local tips: any = nil -- what help this player has seen (server profile)
 local tourChecked = false
+
+-- What the last wallet state held, so anything new gets its "it's yours!" moment
+-- (client/UI/Unlock): items bought or granted, passes, a level up. The first state is
+-- only remembered.
+local knownOwned: { [string]: any }? = nil
+local knownPasses: { [string]: any } = {}
+local knownLevel: number? = nil
+local function celebrateNew(state: any)
+	local owned = state.owned or {}
+	local passes = state.passes or {}
+	if knownOwned then
+		local compact = matchView ~= nil and matchView.isOpen()
+		local fresh = {}
+		for id, has in owned do
+			if has and not knownOwned[id] and not ShopCatalog.isFree(id) then
+				local item = ShopCatalog.get(id)
+				if item then
+					table.insert(fresh, item)
+				end
+			end
+		end
+		for key, has in passes do
+			local pass = Economy.Passes[key]
+			if has and not knownPasses[key] and pass then
+				Unlock.show({
+					heading = "UNLOCKED",
+					title = pass.name,
+					icon = ShopPanel.PassIcons[key] or "⭐",
+					color = Kit.Theme.Accent,
+					tier = "Legendary",
+					subtitle = pass.perks and pass.perks[1] or nil,
+					compact = compact,
+				})
+			end
+		end
+		if #fresh > 2 then
+			-- A bundle: one moment for the lot, not a queue of them.
+			Unlock.show({ heading = "NEW!", title = `{#fresh} new items`, icon = "🎁", color = Kit.Theme.Accent, subtitle = "Find them in the Shop", compact = compact })
+		else
+			for _, item in fresh do
+				local slotIcons: any = ShopPanel.SlotIcons
+				local icon = slotIcons[item.slot] or (if item.slot == "pose" then "🕺" elseif item.slot == "victory" then "🏆" else "🎁")
+				Unlock.show({
+					heading = "NEW!",
+					title = item.name,
+					icon = icon,
+					color = ShopPanel.TierColors[item.tier] or Kit.Theme.Accent,
+					tier = item.tier,
+					compact = compact,
+				})
+			end
+		end
+		if knownLevel and type(state.level) == "number" and state.level > knownLevel then
+			Unlock.show({ heading = "LEVEL UP!", title = `Level {state.level}`, icon = "⭐", color = Kit.Theme.Accent, subtitle = `+{Economy.levelUpGems(state.level)} {Economy.GemsName}`, compact = compact })
+		end
+	end
+	knownOwned = table.clone(owned)
+	knownPasses = table.clone(passes)
+	if type(state.level) == "number" then
+		knownLevel = state.level
+	end
+end
 Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
 	tips = state.tips
 	soundPanel.load(state.audio)
@@ -352,6 +419,7 @@ Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
 		end
 	end
 	walletBar.setWallet(state)
+	celebrateNew(state)
 	shopPanel.setWallet(state)
 	seasonPanel.setWallet(state)
 	local unclaimed = SeasonPanel.unclaimed(state)

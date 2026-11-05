@@ -22,6 +22,7 @@ local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Kit = require(script.Parent.Kit)
 local Frame = require(script.Parent.Parent.Frame)
 local Audio = require(script.Parent.Parent.Audio)
+local Flair = require(script.Parent.Flair)
 local HudKit = require(script.Parent.HudKit)
 local Layout = require(script.Parent.Layout)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
@@ -1081,6 +1082,31 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			HudKit.shine(resultBand, 53)
 			if outcome == "win" then
 				HudKit.confetti(root, if Layout.get().compact then 40 else 70, 60)
+				-- A burst of gold light turning behind the window (client/UI/Flair).
+				local old = root:FindFirstChild("WinRays")
+				if old then
+					old:Destroy()
+				end
+				task.defer(function()
+					if not resultOverlay.Visible then
+						return
+					end
+					local at = resultBand.AbsolutePosition + resultBand.AbsoluteSize / 2 - root.AbsolutePosition
+					local rays = Flair.rays(root, Theme.Accent, {
+						size = math.clamp(resultOverlay.AbsoluteSize.X * 1.5, 320, 900),
+						zIndex = 49,
+						position = UDim2.fromOffset(at.X, at.Y),
+						beams = 14,
+						speed = 12,
+						strength = 0.35,
+					})
+					rays.Name = "WinRays"
+					local watch: RBXScriptConnection
+					watch = resultOverlay:GetPropertyChangedSignal("Visible"):Connect(function()
+						watch:Disconnect()
+						rays:Destroy()
+					end)
+				end)
 			end
 		end
 
