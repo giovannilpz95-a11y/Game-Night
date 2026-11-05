@@ -127,6 +127,10 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 		botLevel = (options and options.botLevel) or "medium",
 		stacking = rules.stacking ~= false,
 		drawUntilPlayable = rules.drawUntilPlayable == true,
+		-- "Last card!": say it as you go down to one card, or the next player can catch you
+		-- (you draw 2). exposed is the seat that forgot, until the next player moves.
+		lastCall = rules.lastCard ~= false,
+		exposed = nil,
 	}
 end
 
@@ -230,19 +234,30 @@ function ColorClash.getPlayable(state, seat: number): { number }
 	return out
 end
 
+-- The player on turn can catch whoever just went down to one card without calling it.
+function ColorClash.canCatch(state, seat: number): boolean
+	local target = state.exposed
+	return target ~= nil and not state.winner and seat == state.turn and seat ~= target and #state.hands[target] == 1
+end
+
 function ColorClash.getLegalMoves(state, seat: number): { any }
 	local moves = {}
 	if state.winner or seat ~= state.turn then
 		return moves
 	end
+	-- Going down to one card: the legal plays say "Last card!" too.
+	local call = if state.lastCall and #state.hands[seat] == 2 then true else nil
 	for _, id in ColorClash.getPlayable(state, seat) do
 		if isWild(cards[id]) then
 			for color = 1, 4 do
-				table.insert(moves, { kind = "play", card = id, color = color })
+				table.insert(moves, { kind = "play", card = id, color = color, call = call })
 			end
 		else
-			table.insert(moves, { kind = "play", card = id })
+			table.insert(moves, { kind = "play", card = id, call = call })
 		end
+	end
+	if ColorClash.canCatch(state, seat) then
+		table.insert(moves, { kind = "catch" })
 	end
 	if state.drawnCard then
 		table.insert(moves, { kind = "pass" })
@@ -262,7 +277,15 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 	if type(move) ~= "table" then
 		return false, "Bad move"
 	end
-	if move.kind == "draw" then
+	if move.call ~= nil and type(move.call) ~= "boolean" then
+		return false, "Bad move"
+	end
+	if move.kind == "catch" then
+		if not ColorClash.canCatch(state, seat) then
+			return false, "Nobody to catch"
+		end
+		return true
+	elseif move.kind == "draw" then
 		if state.drawnCard then
 			return false, "You already drew. Play that card or pass."
 		end
@@ -304,6 +327,19 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 end
 
 function ColorClash.applyMove(state, seat: number, move: any)
+	if move.kind == "catch" then
+		-- Caught! They draw 2, and it's still the catcher's turn.
+		local target = state.exposed :: number
+		state.exposed = nil
+		for _ = 1, 2 do
+			drawOne(state, target)
+		end
+		state.lastAction = { seat = seat, kind = "catch", target = target }
+		GameModule.addStat(state, seat, "catches")
+		return
+	end
+	-- Any other move lets a forgotten call go.
+	state.exposed = nil
 	if move.kind == "draw" then
 		if state.pendingDraw > 0 then
 			local count = state.pendingDraw
@@ -352,6 +388,15 @@ function ColorClash.applyMove(state, seat: number, move: any)
 	GameModule.addStat(state, seat, "cards")
 	if isWild(card) then
 		GameModule.addStat(state, seat, "wilds")
+	end
+
+	if #hand == 1 and state.lastCall then
+		if move.call == true then
+			state.lastAction.called = true
+		else
+			state.lastAction.forgot = true
+			state.exposed = seat
+		end
 	end
 
 	if #hand == 0 then
@@ -424,6 +469,9 @@ function ColorClash.getView(state, seat: number?)
 		drawnCard = if yourTurn then state.drawnCard else nil,
 		playable = if yourTurn then ColorClash.getPlayable(state, seat :: number) else {},
 		canPass = yourTurn and state.drawnCard ~= nil,
+		lastCall = state.lastCall,
+		exposed = state.exposed,
+		canCatch = seat ~= nil and ColorClash.canCatch(state, seat),
 		winner = state.winner,
 	}
 end
@@ -461,7 +509,21 @@ local function bestColor(state, seat: number, rng: Random): number
 	return best
 end
 
+local CATCH_CHANCE = { easy = 0.4, medium = 0.75, hard = 1 }
+local CALL_CHANCE = { easy = 0.7, medium = 0.9, hard = 1 }
+
 function ColorClash.chooseBotMove(state, seat: number, rng: Random): any?
+	if ColorClash.canCatch(state, seat) and rng:NextNumber() < (CATCH_CHANCE[state.botLevel] or 0.75) then
+		return { kind = "catch" }
+	end
+	local move = ColorClash.chooseBotPlay(state, seat, rng)
+	if move and move.kind == "play" and state.lastCall and #state.hands[seat] == 2 then
+		move.call = rng:NextNumber() < (CALL_CHANCE[state.botLevel] or 0.9)
+	end
+	return move
+end
+
+function ColorClash.chooseBotPlay(state, seat: number, rng: Random): any?
 	local playable = ColorClash.getPlayable(state, seat)
 	local fallback = if state.drawnCard then { kind = "pass" } else { kind = "draw" }
 	if #playable == 0 then

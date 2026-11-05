@@ -116,6 +116,7 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "stacking", name = "Stack draw cards", hint = "Answer a Draw Two or Draw Four with another one.", choices = Toggle, default = 2 },
 			{ key = "drawUntilPlayable", name = "Draw until you can play", hint = "Keep drawing until you get a card that fits.", choices = Toggle, default = 1 },
+			{ key = "lastCard", name = "Call last card", hint = "Say \"Last card!\" as you go down to one, or the next player can catch you: draw 2.", choices = Toggle, default = 2 },
 			{
 				key = "handSize",
 				name = "Starting hand",
