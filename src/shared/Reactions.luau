@@ -230,7 +230,7 @@ local list: { Reaction } = {
 	{ id = "kiss", label = "Kiss", icon = "😘", style = "kiss", pack = "reactions_love" },
 	{ id = "heartbreak", label = "Heartbreak", icon = "💔", style = "shake", pack = "reactions_love" },
 	{ id = "rose", label = "Rose", icon = "🌹", style = "sparkle", pack = "reactions_love" },
-	{ id = "heartHands", label = "Heart hands", icon = "🫶", style = "pulse", pack = "reactions_love" },
+	{ id = "heartHands", label = "Heart hands", icon = "💖", style = "pulse", pack = "reactions_love" },
 	{ id = "loveLetter", label = "Love letter", icon = "💌", style = "pop", pack = "reactions_love" },
 	{ id = "bff", label = "BFF", text = "BFF", color = PINK, style = "text", pack = "reactions_love" },
 
