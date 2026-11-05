@@ -100,13 +100,14 @@ function FiveDice.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 		Models.block(model, "PadBoard", Vector3.new(0.7, 0.04, 0.9), spot * CFrame.new(0, 0.02, 0), Models.WOOD, Enum.Material.Wood)
 		Models.block(model, "PadPaper", Vector3.new(0.6, 0.02, 0.76), spot * CFrame.new(0, 0.05, 0.04), PAPER)
 		Models.block(model, "PadClip", Vector3.new(0.3, 0.05, 0.08), spot * CFrame.new(0, 0.065, -0.38), Models.STEEL, Enum.Material.Metal)
-		totals[seat] = Scene.flatText(model, spot * CFrame.new(0, 0.061, 0.04) * CFrame.Angles(0, math.pi, 0), 0.56, 0.4, "0", {
+		totals[seat] = Scene.flatText(model, spot * CFrame.new(0, 0.066, 0.04) * CFrame.Angles(0, math.pi, 0), 0.56, 0.4, "0", {
 			TextColor3 = Scene.SEAT_COLORS[seat] or Models.INK,
 		})
 	end
 
 	local live = Scene.dynamic(model)
 	local memo = {}
+	model.Parent = parent
 
 	return {
 		model = model,
