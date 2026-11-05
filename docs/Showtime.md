@@ -28,6 +28,17 @@ The real body stays seated (hidden on each screen while its stand-in performs). 
 
 Research: vault `05 Research/Emotes and Celebrations.md` (what sells, animation rules, our original takes on popular dances).
 
+## Effects
+Roblox has no built-in motion blur or camera shake, so `client/Table3D/ShowFx.luau` adds them while a show runs (all local, removed at the end):
+- **Motion blur:** a `BlurEffect` whose size follows how fast the camera turns and travels. Whip pans between players blur and holds stay sharp. It rises fast and settles slower.
+- **Depth of field:** focused on the stand-in in the shot, so the room behind softens. It is skipped if the scene already has an enabled depth of field in Lighting, since only one applies.
+- **Color grade and vignette:** a little more saturation and contrast, a warm tint, and dark screen edges.
+- **Hits:** each move's beats report to `Stage.onHit`. A strong beat from whoever is in the shot punches the field of view in and shakes the camera briefly. The biggest hits (Hero Landing's catch, the biggest bursts) also flash the screen white.
+
+`client/Table3D/Stage.luau` adds the body effects: a spotlight above the stand-in, ribbon trails off the hands and feet, and a glowing ring with a dust puff where it lands.
+
+Low-detail mode (`client/Perf`) keeps the grade, vignette, hits, ring and dust, and drops the blur, depth of field, trails and spotlight. The numbers (blur per speed, hit strength, how long a hit lasts) are in `client/Table3D/FxMath.luau` and are tested.
+
 ## Poses and celebrations for sale
 Hub shop items, slot `pose` or `victory`, on the shop's **🕺 Poses & wins** tab. Free ones (`free = true` in `ShopCatalog`) belong to everyone; the first free one is what you get with nothing equipped. Buying one equips it straight away. Bots pick at random from the whole list, so players see the paid ones in action.
 
@@ -71,6 +82,8 @@ Every paid one also sells for Universal Coins at 10 per Gem. VIP's Gem discount 
 | `client/Table3D/Puppet.luau` | A posable client-only copy of a body |
 | `client/Table3D/Stage.luau` | Hops the copy onto the table, plays the move with sounds and particle bursts, hops back |
 | `client/Table3D/Avatars.luau` | `Avatars.bodyAt`: the body at a table seat |
+| `client/Table3D/ShowFx.luau` | Camera effects: motion blur, depth of field, grade, vignette, hit punch, shake and flash |
+| `client/Table3D/FxMath.luau` | The effect numbers (tested) |
 | `client/Table3D/Showtime.luau` | Places the stand-ins, the camera tour, cinema bars, title, name cards, Skip |
 | `client/Table3D/Controller.luau` | `setCinematic`: the table camera stands aside (and stops hiding your own avatar) while Showtime runs |
 | `client/UI/MatchView.luau` | `setCinematic`: hides the HUD, holds the result card and rewards |
@@ -82,4 +95,4 @@ Every paid one also sells for Universal Coins at 10 per Gem. VIP's Gem discount 
 3. Add its keyframes to `poses` or `dances` in `client/Table3D/Moves.luau` (a pose's first cue is its strike and must land early in the shot). The tests check all three stay in sync and that the keys are well formed.
 
 ## Needs a Studio check
-The keyframes were written without seeing them. In a Play test, check each move in the shop preview first (quickest), then at a table on a player and on a bot: the stand-in hop and where it lands on different tables, arm twists (Flex, Lean Back, Sprinkler), the camera framing at 2, 4 and 8 seats, and the phone layout of the name card, Skip button and preview.
+The keyframes were written without seeing them. In a Play test, check each move in the shop preview first (quickest), then at a table on a player and on a bot: the stand-in hop and where it lands on different tables, arm twists (Flex, Lean Back, Sprinkler), the camera framing at 2, 4 and 8 seats, and the phone layout of the name card, Skip button and preview. For the effects, check how strong the motion blur is on the pans (`FxMath.BlurPerRadian`), whether the depth of field blurs the stand-in at long distances, and the spotlight brightness at the lobby tables.

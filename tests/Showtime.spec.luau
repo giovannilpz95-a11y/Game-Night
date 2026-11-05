@@ -9,6 +9,7 @@ local Shop = require(Core.Shop)
 local Table3D = game:GetService("StarterPlayer").StarterPlayerScripts.Client.Table3D
 local Moves = require(Table3D.Moves)
 local Dance = require(Table3D.Dance)
+local FxMath = require(Table3D.FxMath)
 
 return function(T)
 	T.test("every pose and celebration is a hub shop item in its slot", function()
@@ -182,5 +183,36 @@ return function(T)
 		T.eq(data.equipped.hub.pose, "pose_thumbs", "separate slots")
 		data.coins[Economy.UniversalCoin.key] = 5000
 		T.ok(Shop.buy(data, "pose_bow", "universal", false))
+	end)
+
+	T.test("camera effects: blur follows speed, hits fade out", function()
+		T.eq(FxMath.blurFor(0, 0), 0, "a still camera is sharp")
+		T.ok(FxMath.blurFor(0.1, 0.5) < FxMath.BlurFloor, "a slow push stays sharp")
+		T.ok(FxMath.blurFor(3, 0) > FxMath.BlurFloor, "a whip pan blurs")
+		T.eq(FxMath.blurFor(100, 100), FxMath.MaxBlur, "capped")
+		local up = FxMath.chase(0, 10, 1 / 60)
+		local down = 10 - FxMath.chase(10, 0, 1 / 60)
+		T.ok(up > 0 and up < 10 and down > 0, "eases")
+		T.ok(up > down, "rises faster than it settles")
+		T.eq(FxMath.cuePower({ sound = "caught" }), 1)
+		T.ok(FxMath.cuePower({ burst = 8 }) < FxMath.FlashAt, "small bursts don't flash")
+		T.eq(FxMath.cuePower({ burst = 400 }), 1)
+		T.eq(FxMath.cuePower({ sound = "pop" }), 0)
+		T.eq(FxMath.kickLeft(1, 0), 1)
+		T.ok(FxMath.kickLeft(1, 0.2) < 1 and FxMath.kickLeft(1, 0.2) > 0)
+		T.eq(FxMath.kickLeft(1, FxMath.KickSeconds), 0)
+		-- Every move's biggest beat moves the camera, and only a few flash.
+		local flashes = 0
+		for _, list in { Showtime.Poses, Showtime.Dances } do
+			for _, info in list do
+				local move = Moves.get(info.id)
+				for _, cue in (move and move.cues) or {} do
+					if FxMath.cuePower(cue) >= FxMath.FlashAt then
+						flashes += 1
+					end
+				end
+			end
+		end
+		T.ok(flashes >= 1 and flashes <= 6, `{flashes} flashes`)
 	end)
 end
