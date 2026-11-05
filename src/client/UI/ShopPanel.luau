@@ -9,6 +9,12 @@ local Economy = require(ReplicatedStorage.Shared.Economy)
 local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
 local Reactions = require(ReplicatedStorage.Shared.Reactions)
 local Showtime = require(ReplicatedStorage.Shared.Showtime)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Moves = require(script.Parent.Parent.Table3D.Moves)
+local Dance = require(script.Parent.Parent.Table3D.Dance)
+local Puppet = require(script.Parent.Parent.Table3D.Puppet)
+local Audio = require(script.Parent.Parent.Audio)
 local ReactionFx = require(script.Parent.ReactionFx)
 local Kit = require(script.Parent.Kit)
 local CoinConvertPanel = require(script.Parent.CoinConvertPanel)
@@ -495,13 +501,97 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 	-- Showtime: the pose you strike when the intro camera reaches you, and your celebration
 	-- when you win (shared/Showtime). Free ones just equip; the rest cost Gems or Universal
 	-- Coins. With nothing equipped you get the first free one.
+	-- The move playing on your own avatar at the top of the tab (kept across redraws).
+	local previewId: string? = nil
+	local setPreview: ((string) -> ())? = nil
+
+	-- A little stage with a copy of your avatar doing the picked move, sounds included.
+	local function previewStage(order: number)
+		local c = card(order, 240)
+		local viewport = Kit.new("ViewportFrame", {
+			BackgroundColor3 = Color3.fromRGB(24, 20, 40),
+			BorderSizePixel = 0,
+			Size = UDim2.new(0.5, -6, 1, 0),
+			Ambient = Color3.fromRGB(150, 140, 180),
+			LightColor = Color3.fromRGB(255, 244, 225),
+			LightDirection = Vector3.new(-0.4, -1, -0.6),
+			Parent = c,
+		}, { Kit.corner(12) })
+		local nameLabel = Kit.label("", { Font = Theme.FontTitle, TextSize = 24, Position = UDim2.new(0.5, 8, 0, 4), Size = UDim2.new(0.5, -8, 0, 30), TextTruncate = Enum.TextTruncate.AtEnd, Parent = c })
+		local blurbLabel = Kit.label("", { TextSize = 14, TextColor3 = Theme.SubText, Position = UDim2.new(0.5, 8, 0, 36), Size = UDim2.new(0.5, -8, 0, 40), TextYAlignment = Enum.TextYAlignment.Top, Parent = c })
+		local kindLabel = Kit.label("", { Font = Theme.FontBold, TextSize = 13, TextColor3 = Theme.Accent, Position = UDim2.new(0.5, 8, 0, 80), Size = UDim2.new(0.5, -8, 0, 18), Parent = c })
+		Kit.label("Tap ▶ on any move to try it on your avatar.", { TextSize = 13, TextColor3 = Theme.SubText, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0.5, 8, 1, -4), Size = UDim2.new(0.5, -8, 0, 36), TextYAlignment = Enum.TextYAlignment.Bottom, Parent = c })
+
+		local world = Instance.new("WorldModel")
+		world.Parent = viewport
+		local cam = Instance.new("Camera")
+		cam.FieldOfView = 38
+		cam.CFrame = CFrame.lookAt(Vector3.new(2.2, 3.6, 11), Vector3.new(0, 2.6, 0))
+		cam.Parent = viewport
+		viewport.CurrentCamera = cam
+		local floor = Instance.new("Part")
+		floor.Shape = Enum.PartType.Cylinder
+		floor.Anchored = true
+		floor.Size = Vector3.new(0.4, 7, 7)
+		floor.CFrame = CFrame.new(0, -0.2, 0) * CFrame.Angles(0, 0, math.rad(90))
+		floor.Color = Color3.fromRGB(120, 92, 190)
+		floor.Material = Enum.Material.SmoothPlastic
+		floor.Parent = world
+
+		local character = Players.LocalPlayer.Character
+		local puppet = character and Puppet.new(character, world)
+		if not puppet then
+			Kit.label("Your avatar is still loading...", { TextSize = 14, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = viewport })
+		else
+			puppet:place(CFrame.lookAt(Vector3.zero, Vector3.new(0, 0, 1)))
+		end
+		local move: Dance.Move? = nil
+		local started = os.clock()
+		local last = 0
+		local function show(id: string)
+			previewId = id
+			local info = Showtime.get(id)
+			move = Moves.get(id)
+			started = os.clock()
+			last = 0
+			nameLabel.Text = if info then `{info.icon} {info.name}` else ""
+			blurbLabel.Text = if info then info.blurb else ""
+			kindLabel.Text = if Showtime.kind(id) == "pose" then "🎬 Intro pose" else "🏆 Win celebration"
+		end
+		setPreview = show
+		local connection = RunService.RenderStepped:Connect(function()
+			if not (puppet and move and viewport.Parent and root.Visible) then
+				return
+			end
+			-- Poses replay every few seconds so you see the strike; celebrations loop.
+			local period = if move.loop and Showtime.kind(previewId) == "victory" then math.huge else move.length + 1.6
+			local t = (os.clock() - started) % period
+			if t < last then
+				last = 0
+			end
+			puppet:pose(move, t, 1)
+			for _, cue in Dance.cuesBetween(move, last, t) do
+				if cue.sound then
+					Audio.play(cue.sound, { volume = 0.6 })
+				end
+			end
+			last = t
+		end)
+		c.Destroying:Once(function()
+			connection:Disconnect()
+			setPreview = nil
+		end)
+		show(previewId or Showtime.Dances[3].id)
+	end
+
 	local function renderShowtime()
 		Kit.list(8).Parent = content
 		local vip = wallet.vip == true
 		local equipped = (wallet.equipped and wallet.equipped.hub) or {}
 		local ownedSet = wallet.owned or {}
-		line("Strike a pose when the camera comes to you at the start of every table game, and celebrate when you win. Bots show off the rest.", 1, Theme.SubText)
-		local order = 1
+		line("Hop up on the table and strike a pose when the camera comes to you at the start of every table game, and dance when you win. Bots show off the rest.", 1, Theme.SubText)
+		previewStage(2)
+		local order = 2
 		for _, group in { { kind = "pose", label = "🎬 Intro poses", list = Showtime.Poses }, { kind = "victory", label = "🏆 Win celebrations", list = Showtime.Dances } } do
 			order += 1
 			section(group.label, order)
@@ -528,6 +618,22 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 					Parent = c,
 				})
 				Kit.corner(12).Parent = badge
+				-- ▶ plays it on your avatar in the preview above.
+				Kit.button("▶", function()
+					if setPreview then
+						setPreview(move.id)
+					end
+				end, {
+					BackgroundColor3 = Theme.Accent,
+					TextColor3 = Theme.AccentText,
+					TextSize = 14,
+					Position = UDim2.fromOffset(52, 8),
+					Size = UDim2.fromOffset(34, 30),
+					Parent = c,
+				})
+				if move.hot then
+					Kit.tag("🔥 TRENDING", Color3.fromRGB(255, 120, 40), { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, if isOn then 44 else 22), Parent = c })
+				end
 				Kit.tag(if item.free then "FREE" else string.upper(item.tier), if item.free then Theme.Good else tier, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = c })
 				if isOn then
 					Kit.tag("EQUIPPED", Theme.Good, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 22), Parent = c })

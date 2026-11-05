@@ -1,11 +1,12 @@
 -- Showtime on this screen (shared/Showtime, server/Services/ShowtimeService).
 --
 -- Intro: before the first turn, the camera opens on the whole table with the game's name,
--- then glides to each player in seat order. They strike their pose and their name card
--- slides in. Victory: when a game ends with winners, the camera circles the winners while
--- they do their celebration (with particles), then the result card shows.
+-- then glides to each player in seat order. They hop up onto the table, strike their pose
+-- and their name card slides in. Victory: when a game ends with winners, they hop onto
+-- the middle of the table and do their celebration while the camera circles them, then
+-- the result card shows.
 --
--- Every client near the table sees the avatars move (Avatars.perform). Only the players
+-- Every client near the table sees the moves (Table3D/Stage). Only the players
 -- in the match get the camera tour, the cinema bars and the cards. Skip ends it on this
 -- screen; skipping the intro also asks the server to start (once every player skipped).
 -- While it runs, the table camera stands aside (Controller.setCinematic) and MatchView
@@ -23,6 +24,8 @@ local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Shared = require(ReplicatedStorage.Shared.Showtime)
 local Avatars = require(script.Parent.Avatars)
+local Stage = require(script.Parent.Stage)
+local Moves = require(script.Parent.Moves)
 local Controller = require(script.Parent.Controller)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
@@ -35,7 +38,7 @@ local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 local GLIDE = 5.5 -- how fast the camera pans to the next shot (higher = snappier)
-local SHOT_FOV = 42
+local SHOT_FOV = 48
 local WIDE_FOV = 55
 local BAR = 0.085 -- cinema bar height, share of the screen
 
@@ -55,6 +58,9 @@ type Run = {
 }
 
 local current: Run? = nil
+-- The stand-ins on the table for the latest intro / victory, by cast index (for framing).
+local staged: { matchId: string?, kind: string?, handles: { [number]: Stage.Handle } } = { handles = {} }
+local MAX_DISTANCE = 140 -- studs from the camera; further tables don't put on a show
 local listeners: { (boolean, string?) -> () } = {}
 local remote: RemoteEvent? = nil
 
@@ -229,48 +235,6 @@ local function dropCard(card: Frame?)
 	end)
 end
 
----------------------------------------------------------------- particles
-
--- Confetti, stars, hearts... around a winner's head for the celebration. Local only.
-local function sparkle(body: Model?, fx: string?, seconds: number)
-	local head = body and body:FindFirstChild("Head")
-	local colors = fx and Shared.Fx[fx]
-	if not (head and head:IsA("BasePart") and colors) then
-		return
-	end
-	local keys = {}
-	for i, rgb in colors do
-		table.insert(keys, ColorSequenceKeypoint.new((i - 1) / math.max(1, #colors - 1), Color3.fromRGB(rgb[1], rgb[2], rgb[3])))
-	end
-	if #keys == 1 then
-		table.insert(keys, ColorSequenceKeypoint.new(1, keys[1].Value))
-	end
-	local attachment = Instance.new("Attachment")
-	attachment.Name = "GameNightShowtimeFx"
-	attachment.Position = Vector3.new(0, 1.2, 0)
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Color = ColorSequence.new(keys)
-	emitter.Rate = 28
-	emitter.Lifetime = NumberRange.new(1.1, 1.8)
-	emitter.Speed = NumberRange.new(6, 10)
-	emitter.SpreadAngle = Vector2.new(55, 55)
-	emitter.Acceleration = Vector3.new(0, -14, 0)
-	emitter.Drag = 1.5
-	emitter.Rotation = NumberRange.new(0, 360)
-	emitter.RotSpeed = NumberRange.new(-180, 180)
-	emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 0) })
-	emitter.LightEmission = 0.4
-	emitter.Parent = attachment
-	attachment.Parent = head
-	emitter:Emit(30)
-	task.delay(math.max(0.5, seconds - 1.2), function()
-		emitter.Enabled = false
-		task.delay(2, function()
-			attachment:Destroy()
-		end)
-	end)
-end
-
 ---------------------------------------------------------------- the camera
 
 -- Where the camera wants to be now. Intro: a slow turn around the table during the lead,
@@ -300,22 +264,30 @@ local function target(run: Run, t: number): (CFrame, number, number?)
 		return CFrame.lookAt(eye, run.anchor), WIDE_FOV, nil
 	end
 	local member = cast[index]
+	local handle = staged.matchId == payload.matchId and staged.kind == run.kind and staged.handles[index] or nil
+	local root = handle and handle.root()
+	if root then
+		-- Frame the stand-in on the table from the front: whole body, a slow push and arc.
+		local facing = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+		facing = if facing.Magnitude > 0.1 then facing.Unit else Vector3.new(0, 0, -1)
+		local side = facing:Cross(up)
+		local focus = root.Position + up * 0.4
+		local distance, swing
+		if run.kind == "intro" then
+			distance = 9 - math.min(into, 2) * 0.7
+			swing = 1.4 - into * 0.6
+		else
+			distance = 10 - math.min(into, 4) * 0.35
+			swing = math.sin(into * 0.6) * 3
+		end
+		local eye = focus + facing * distance + up * 1.6 + side * swing
+		return CFrame.lookAt(eye, focus), SHOT_FOV, index
+	end
 	local head = headOf(run, member) or run.anchor + up * 3
 	local toTable = (run.anchor - head) * Vector3.new(1, 0, 1)
 	toTable = if toTable.Magnitude > 0.1 then toTable.Unit else Vector3.new(0, 0, -1)
-	local side = toTable:Cross(up)
-	local distance, lift, swing
-	if run.kind == "intro" then
-		distance = 6.4 - math.min(into, 2) * 0.55
-		lift = 0.7
-		swing = 0.9 - into * 0.35
-	else
-		distance = 5.8 - math.min(into, 3) * 0.3
-		lift = 0.35
-		swing = math.sin(into * 0.7) * 1.8
-	end
-	local eye = head + toTable * distance + up * lift + side * swing
-	return CFrame.lookAt(eye, head - up * (if run.kind == "intro" then 0.5 else 0.8)), SHOT_FOV, index
+	local eye = head + toTable * 6 + up * 0.6
+	return CFrame.lookAt(eye, head - up * 0.5), SHOT_FOV, index
 end
 
 local function finish(skipped: boolean)
@@ -439,20 +411,69 @@ local function begin(payload: any)
 	RunService:BindToRenderStep("GameNightShowtime", Enum.RenderPriority.Camera.Value + 2, step)
 end
 
--- Avatars act it out on every screen near the table.
+local function colorsOf(move: any): ColorSequence?
+	local colors = move and move.fx and Shared.Fx[move.fx]
+	if not colors then
+		return nil
+	end
+	local keys = {}
+	for i, rgb in colors do
+		table.insert(keys, ColorSequenceKeypoint.new((i - 1) / math.max(1, #colors - 1), Color3.fromRGB(rgb[1], rgb[2], rgb[3])))
+	end
+	if #keys == 1 then
+		table.insert(keys, ColorSequenceKeypoint.new(1, keys[1].Value))
+	end
+	return ColorSequence.new(keys)
+end
+
+-- The stand-ins hop onto the table on every screen near it.
 local function perform(payload: any)
+	local model = findTable(payload.table)
+	if not model then
+		return
+	end
+	local anchor = anchorOf(model)
+	if (camera.CFrame.Position - anchor).Magnitude > MAX_DISTANCE and not table.find(payload.players or {}, localPlayer.UserId) then
+		return
+	end
 	local cast = payload.cast
+	local handles: { [number]: Stage.Handle } = {}
+	staged = { matchId = payload.matchId, kind = payload.kind, handles = handles }
+	local function show(index: number, member: any, feet: CFrame, seconds: number, ambient: boolean)
+		local body = Avatars.bodyAt(payload.table, member)
+		local move = Moves.get(member.move)
+		if not body or not move then
+			return
+		end
+		local info = Shared.get(member.move)
+		handles[index] = Stage.perform(body, feet, move, seconds, colorsOf(info), ambient) :: any
+	end
 	if payload.kind == "intro" then
+		Stage.stopAll()
+		local shot = payload.shot or Shared.shotSeconds(#cast)
 		for index, member in cast do
-			local at = math.max(0, Shared.shotStart(index, #cast) - 0.3)
-			task.delay(at, Avatars.perform, payload.table, member, member.move)
+			local seat = model:FindFirstChild(`Seat{member.seat}`, true)
+			if not (seat and seat:IsA("BasePart")) then
+				continue
+			end
+			-- On the table just in front of their seat, facing the middle.
+			local toSeat = (seat.Position - anchor) * Vector3.new(1, 0, 1)
+			local d = toSeat.Magnitude
+			local dir = if d > 0.1 then toSeat.Unit else Vector3.new(0, 0, 1)
+			local spot = anchor + dir * math.max(1.2, math.min(d - 2.6, d * 0.6))
+			local feet = CFrame.lookAt(spot, spot - dir)
+			local at = math.max(0, Shared.shotStart(index, #cast) - 0.45)
+			task.delay(at, show, index, member, feet, shot + Shared.PoseLinger + 0.45, false)
 		end
 	else
-		task.delay(0.4, function()
-			for _, member in cast do
-				Avatars.perform(payload.table, member, member.move)
-				local move = Shared.get(member.move)
-				sparkle(Avatars.bodyAt(payload.table, member), move and move.fx, payload.seconds - 0.4)
+		-- In the middle of the table (side by side if several won), facing this screen.
+		task.delay(0.35, function()
+			local toCam = (camera.CFrame.Position - anchor) * Vector3.new(1, 0, 1)
+			local face = if toCam.Magnitude > 0.1 then toCam.Unit else Vector3.new(0, 0, 1)
+			local side = face:Cross(Vector3.new(0, 1, 0))
+			for index, member in cast do
+				local spot = anchor + side * ((index - (#cast + 1) / 2) * 2.4)
+				show(index, member, CFrame.lookAt(spot, spot + face), payload.seconds - 0.35, true)
 			end
 		end)
 	end
@@ -491,6 +512,7 @@ end
 -- Stops it on this screen (you left the match).
 function Showtime.stop()
 	finish(false)
+	Stage.stopAll()
 end
 
 local started = false
