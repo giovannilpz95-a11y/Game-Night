@@ -68,6 +68,17 @@ local function totalTiles(s): number
 end
 
 return function(T)
+	T.test("unseen tiles: the full set minus the board and your rack", function()
+		local rows = { "cAt", "..." }
+		local left = WordTiles.unseen("quick", rows, { "a", "?", "z" })
+		local full = WordTiles.boards.quick.bag
+		T.eq(left.c, full.c - 1)
+		T.eq(left.t, full.t - 1)
+		T.eq(left.a, full.a - 1, "the A on the board is a blank, so only the rack's A counts")
+		T.eq(left["?"], math.max(0, full["?"] - 2), "one blank on the board, one on the rack")
+		T.eq(left.z, full.z - 1)
+	end)
+
 	T.test("word trie finds words and only words", function()
 		T.ok(SMALL:has("cat") and SMALL:has("CATS") and SMALL:has("qi"), "words")
 		T.ok(not SMALL:has("ca t") and not SMALL:has("catz") and not SMALL:has("c") and not SMALL:has(""), "non-words")
