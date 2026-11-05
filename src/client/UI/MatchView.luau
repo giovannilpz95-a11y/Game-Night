@@ -417,7 +417,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		TweenService:Create(banner, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 			Position = UDim2.new(0.5, 0, 0, bannerY),
 		}):Play()
-		TweenService:Create(bannerScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		-- Lands with a springy jiggle (client/UI/Juice), like a sticker slapped on.
+		TweenService:Create(bannerScale, Kit.Juice.Info.Bounce, { Scale = 1 }):Play()
 		task.delay(0.25, function()
 			if bannerToken == token then
 				HudKit.shine(banner, 32)

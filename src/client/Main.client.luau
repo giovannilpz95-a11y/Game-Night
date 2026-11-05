@@ -64,6 +64,8 @@ local screen = Kit.new("ScreenGui", {
 
 Layout.init(screen)
 Perf.start()
+-- Gamepad selection ring (breathing gold outline) for the springy UI feel.
+Kit.Juice.installSelection(localPlayer:WaitForChild("PlayerGui") :: PlayerGui, Kit.Theme.Accent)
 require(script.Parent.Table3D.FaceViewer).start()
 require(script.Parent.Table3D.Spinner).start()
 require(script.Parent.Table3D.Avatars).start()

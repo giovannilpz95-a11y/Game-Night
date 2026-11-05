@@ -172,6 +172,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 
 	local wallet: any = nil
 	local tab = "wallet"
+	local staggeredTab: string? = nil -- the tab whose tiles last popped in
 	local converter = CoinConvertPanel.create(parent, sendEconomy)
 
 	local tabs = {
@@ -462,16 +463,22 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			else
 				local buttons = {}
 				if item.coins and shop ~= "hub" then
-					table.insert(buttons, { text = commas(item.coins), icon = shop, currency = "coins", color = Economy.Coins[shop] and Economy.Coins[shop].color or Theme.Accent })
+					table.insert(buttons, { text = commas(item.coins), icon = shop, currency = "coins", color = Economy.Coins[shop] and Economy.Coins[shop].color or Theme.Accent, afford = (wallet.coins[shop] or 0) >= item.coins })
 				end
 				local gems = gemPrice(item, vip)
 				if gems then
-					table.insert(buttons, { text = commas(gems), icon = "gem", currency = "gems", color = Theme.Gem })
+					table.insert(buttons, { text = commas(gems), icon = "gem", currency = "gems", color = Theme.Gem, afford = wallet.gems >= gems })
 				end
 				-- Side by side when there are two, so the tile stays short.
 				for i, b in buttons do
 					local half = #buttons == 2
-					priceButton(c, b.text, b.icon, b.color, function()
+					local button: TextButton
+					button = priceButton(c, b.text, b.icon, b.color, function()
+						if not b.afford then
+							-- Still ask the server (it says what's missing), but the wobble
+							-- answers right away.
+							Kit.nope(button)
+						end
 						sendEconomy({ action = "buy", itemId = item.id, currency = b.currency })
 					end, {
 						AnchorPoint = Vector2.new(0, 1),
@@ -756,6 +763,11 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			end
 			renderItems(tab)
 		end
+		-- A new tab's tiles pop in one by one; wallet updates just redraw.
+		if tab ~= staggeredTab then
+			staggeredTab = tab
+			Kit.Juice.stagger(content, 0.025, 18)
+		end
 	end
 	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		-- Tabs switch between column and row at NARROW; redraw so tiles re-flow.
@@ -778,6 +790,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			local wasOpen = root.Visible
 			root.Visible = true
 			if not wasOpen then
+				staggeredTab = nil
 				Kit.popIn(root)
 			end
 			place()

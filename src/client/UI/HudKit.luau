@@ -6,8 +6,9 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
-local Kit = require(script.Parent.Kit)
 local Audio = require(script.Parent.Parent.Audio)
+local Kit = require(script.Parent.Kit)
+local Juice = require(script.Parent.Juice)
 local Theme = Kit.Theme
 
 local HudKit = {}
@@ -365,7 +366,10 @@ function HudKit.callout(parent: Instance, text: string, color: Color3?, y: numbe
 		ZIndex = 41,
 		Parent = pill,
 	}, { Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }) })
-	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	-- Lands with a springy wobble and a pop, Mario Party style (client/UI/Juice).
+	TweenService:Create(scale, Juice.Info.Bounce, { Scale = 1 }):Play()
+	pill.Rotation = -4
+	TweenService:Create(pill, Juice.Info.Spring, { Rotation = 0 }):Play()
 	HudKit.shine(pill, 42)
 	Audio.play("callout")
 	task.delay(1.6, function()
@@ -414,7 +418,7 @@ function HudKit.revealCard(parent: Instance, heading: string, title: string, sub
 		Kit.label(subtitle, { TextSize = 14, TextColor3 = Color3.fromRGB(110, 96, 80), TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 8, 1, -40), Size = UDim2.new(1, -16, 0, 28), ZIndex = 47, Parent = face })
 	end
 	-- Pop in face down, then squash to nothing on X and come back face up.
-	TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	TweenService:Create(scale, Juice.Info.Pop, { Scale = 1 }):Play()
 	task.delay(0.45, function()
 		if not card.Parent then
 			return
@@ -540,7 +544,7 @@ function HudKit.slideIn(object: GuiObject, delay: number)
 	end
 	task.delay(delay, function()
 		if s.Parent then
-			TweenService:Create(s, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+			TweenService:Create(s, Juice.Info.Pop, { Scale = 1 }):Play()
 		end
 	end)
 end

@@ -26,6 +26,15 @@ Shared look for every window. Use these instead of hand-made copies:
 - `Kit.panel` and `Kit.modal` windows have a thin outline (`Kit.stroke`) and pop in when opened (`Kit.popIn`).
 - `Kit.clear` keeps Kit's own decorations on the container (the `Outline` stroke and press/pop scales).
 
+## Motion and feel (`UI/Juice`)
+Springy, toy-like motion shared by every UI. The rules (why and timings) are in the vault note "05 Research/Nintendo UI Feel".
+- Every `Kit.button`/`Kit.pressable` squashes to 0.9 on press, shoots to 1.07 on release and springs back; with a mouse or gamepad it lifts to 1.05 and ticks (`Audio.hover`), and buttons up to 140 px also wiggle. Attribute `NoWiggle` keeps one still, `Sfx = "none"` silences it.
+- `Kit.nope(object)`: the "no" for a tap that can't happen (a wobble and a bonk, no popup). Used on locked game tiles, unaffordable shop prices and repeated server refusals (toasts).
+- `Kit.bump(object)`: happy bump for something just picked or changed. `Kit.setChip` bumps a chip when it becomes selected.
+- Windows (`Kit.modal`, `Kit.popIn`) grow in from 0.7 with an overshoot, the dim fades in, and closing shrinks out in 0.13 s. `modal.isOpen()` is false as soon as closing starts.
+- `Juice.stagger(container)`: children pop in one by one (game picker on a new filter, shop on a new tab). `Juice.countUp(label, from, to, format)`: tallies a number with rising ticks then bumps it (wallet bar). `Juice.breathe(stroke)`: slow glow loop (picked game tile, gamepad selection ring; still in low-detail mode).
+- Every Juice tween uses `Juice.Info` (Snap, Stretch, Spring, Pop, Bounce, Close, Fill, Fade), so the whole game moves with one rhythm. Juice animates one UIScale per object (`PressScale`/`PopScale`); don't add a second UIScale to a Kit button.
+
 ## Game picker (`UI/GamePicker`)
 Filter chips (All games, then each category) above the grid. Each tile has an icon badge in its category's color, the name, the description and "👤 2-4 · ⏱ 10 min". Icons and category colors are in `shared/GameArt.luau`; a test fails if a catalog game has no icon, so add one with every new game.
 
