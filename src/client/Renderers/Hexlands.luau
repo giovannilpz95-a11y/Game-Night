@@ -12,6 +12,8 @@ local Rules = require(ReplicatedStorage.Shared.Games.Hexlands)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
+local Flair = require(script.Parent.Parent.UI.Flair)
+local Juice = require(script.Parent.Parent.UI.Juice)
 local Theme = Kit.Theme
 
 local Hexlands = {}
@@ -78,12 +80,16 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 	local banditHex: number? = nil -- picked a hex that has several people to rob
 	local picker: any = nil -- { card = "harvest" | "hoard", picks = { res } }
 	local discard: { [string]: number } = {}
-	local offer = { to = nil :: number?, give = {} :: { [string]: number }, get = {} :: { [string]: number } }
+	-- to = 0 offers it to everyone (the default, like the online versions).
+	local offer = { to = 0 :: number, give = {} :: { [string]: number }, get = {} :: { [string]: number } }
+	local counter: any = nil -- { id, give, get } from your side while writing a counter-offer
+	local lastGainKey = ""
 	local bankGive: string? = nil
 	local lastDice = ""
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local rerender: () -> () = function() end
+	local renderTrade: (view: any, me: number?) -> ()
 
 	local function nameOf(seat: number?): string
 		if seat == nil then
@@ -427,6 +433,15 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	}, { Kit.corner(14), Kit.padding(10), Kit.list(8) })
 	HudKit.sidePanel(side)
+	-- Where your resource cards fly to after a roll (the side panel is rebuilt each update,
+	-- so this sits over it and stays put).
+	local handTarget = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.79, 4, 0, 90),
+		Size = UDim2.fromOffset(40, 40),
+		Parent = root,
+	})
 
 	local order = 0
 	local function nextOrder(): number
@@ -555,14 +570,127 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		elseif phase == "bandit" then
 			return if mine then "Tap a hex to move the Bandit" else `{turnName} is moving the Bandit`
 		elseif phase == "trade" then
-			if me and view.trade.to == me then
-				return `{nameOf(view.trade.from)} offers you a trade`
+			local t = view.trade
+			if me and t.from == me then
+				return "Your trade offer: pick who to trade with"
+			elseif me and (t.answers[me] or -1) == 0 then
+				return `{nameOf(t.from)} offers you a trade`
 			end
-			return `{nameOf(view.trade.from)} offered {nameOf(view.trade.to)} a trade`
+			return if t.to == 0 then `{nameOf(t.from)} offered everyone a trade` else `{nameOf(t.from)} offered {nameOf(t.to)} a trade`
 		elseif phase == "roads" then
 			return if mine then `Road Crew: place {view.freeRoads} free road{if view.freeRoads == 1 then "" else "s"}` else `{turnName} is building roads`
 		end
 		return if mine then "Build, trade, then end your turn" else `{turnName}'s turn`
+	end
+
+	-- A trade in progress -------------------------------------------------------------
+	-- Everyone asked gets a chip: thinking, in, no, or a counter-offer. The offerer taps
+	-- Trade on the one they want; the people asked answer Accept / Decline / Counter.
+	local ANSWER = {
+		[0] = { "thinking...", Theme.SubText },
+		[1] = { "✓ In", Theme.Good },
+		[2] = { "✗ No", Theme.Bad },
+		[3] = { "↔ Counter", Theme.Accent },
+	}
+
+	function renderTrade(view: any, me: number?)
+		local t = view.trade
+		local you = view.you
+		local mineOffer = me ~= nil and t.from == me
+		if mineOffer then
+			note(`<b>You give →</b> {cardsText(t.give)}\n<b>← You get</b> {cardsText(t.get)}`, Theme.Text)
+		else
+			note(`<b>{nameOf(t.from)} gives →</b> {cardsText(t.give)}\n<b>← wants</b> {cardsText(t.get)}`, Theme.Text)
+		end
+		local countersBy = {}
+		for _, c in t.counters do
+			countersBy[c.seat] = c
+		end
+		for seat = 1, #t.answers do
+			local answer = t.answers[seat]
+			if answer >= 0 then
+				local line = Kit.new("Frame", {
+					BackgroundColor3 = Theme.PanelLight,
+					BorderSizePixel = 0,
+					Size = UDim2.new(1, 0, 0, 34),
+					LayoutOrder = nextOrder(),
+					Parent = side,
+				}, { Kit.corner(8), Kit.padding(4) })
+				Kit.new("Frame", { BackgroundColor3 = Theme.Seat[seat] or Theme.Text, BorderSizePixel = 0, Size = UDim2.new(0, 6, 1, 0), Parent = line }, { Kit.corner(3) })
+				local c = countersBy[seat]
+				local says = ANSWER[answer] or ANSWER[0]
+				local text = says[1]
+				if c then
+					-- Counter terms, read from the offerer's side.
+					text = if mineOffer then `↔ you give {cardsText(c.give)}, get {cardsText(c.get)}` else `↔ asks {cardsText(c.give)} for {cardsText(c.get)}`
+				end
+				Kit.label(`<b>{nameOf(seat)}</b>  <font color="#{says[2]:ToHex()}">{text}</font>`, {
+					TextSize = 13,
+					RichText = true,
+					TextWrapped = false,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					Position = UDim2.fromOffset(12, 0),
+					Size = UDim2.new(if mineOffer then 0.72 else 1, -12, 1, 0),
+					Parent = line,
+				})
+				if mineOffer and (answer == 1 or answer == 3) then
+					local give = if c then c.give else t.give
+					local ok = you ~= nil and canAfford(you.hand, give)
+					local b = button(line, "Trade", function()
+						sendMove({ kind = "confirm", with = seat })
+					end, 0.28, ok, Theme.Good)
+					b.AnchorPoint = Vector2.new(1, 0)
+					b.Position = UDim2.fromScale(1, 0)
+					Flair.nudge(b, 3)
+				end
+			end
+		end
+		if mineOffer then
+			local r = row(36)
+			button(r, "Call it off", function()
+				sendMove({ kind = "cancel" })
+			end, 1, true, Theme.PanelLight)
+			return
+		end
+		if not (me and (t.answers[me] or -1) == 0 and you) then
+			return
+		end
+		-- Your answer: big, well apart, like the online versions after players mis-tapped.
+		if counter and counter.id == t.id then
+			note("<b>Your counter-offer</b>")
+			note("<b>You give →</b>")
+			counterRows(counter.give, function(res)
+				return you.hand[res]
+			end)
+			note("<b>← You get</b>")
+			counterRows(counter.get, function(_)
+				return 9
+			end)
+			local r = row(40)
+			local ready = total(counter.give) > 0 and total(counter.get) > 0
+			button(r, "Send counter", function()
+				-- Written from the offerer's side, like the offer.
+				sendMove({ kind = "counter", give = clean(counter.get), get = clean(counter.give) })
+				counter = nil
+			end, 0.6, ready, Theme.Good)
+			button(r, "Back", function()
+				counter = nil
+				rerender()
+			end, 0.4, true, Theme.PanelLight)
+			return
+		end
+		local r = row(44)
+		r:FindFirstChildOfClass("UIListLayout").Padding = UDim.new(0, 14)
+		button(r, "Accept", function()
+			sendMove({ kind = "accept" })
+		end, 0.34, canAfford(you.hand, t.get), Theme.Good)
+		button(r, "Counter", function()
+			counter = { id = t.id, give = table.clone(t.get), get = table.clone(t.give) }
+			rerender()
+		end, 0.32, true, Theme.Accent)
+		button(r, "Decline", function()
+			sendMove({ kind = "reject" })
+		end, 0.34, true, Theme.Bad)
 	end
 
 	-- Sections ----------------------------------------------------------------------
@@ -608,16 +736,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			end, 1, total(discard) == need)
 		end
 
-		if phase == "trade" and me and view.trade.to == me and you then
-			local t = view.trade
-			note(`You get: <b>{cardsText(t.give)}</b>\nYou give: <b>{cardsText(t.get)}</b>`, Theme.Text)
-			local r = row(36)
-			button(r, "Accept", function()
-				sendMove({ kind = "accept" })
-			end, 0.5, canAfford(you.hand, t.get), Theme.Good)
-			button(r, "No thanks", function()
-				sendMove({ kind = "reject" })
-			end, 0.5, true, Theme.Bad)
+		if phase == "trade" and you then
+			renderTrade(view, me)
 		end
 
 		if phase == "roads" and mine then
@@ -671,36 +791,37 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				end)
 			end
 
-			-- Player trades.
+			-- Player trades: "you give" and "you get", then everyone or one player.
 			if view.tradesLeft > 0 then
 				heading(`Offer a trade ({view.tradesLeft} left)`)
-				note("You give:")
+				note("<b>You give →</b>")
 				counterRows(offer.give, function(res)
 					return you.hand[res]
 				end)
-				note("You get:")
+				note("<b>← You get</b>")
 				counterRows(offer.get, function(_)
 					return 9
 				end)
 				local who = row(34)
-				local others = {}
+				local others = { 0 }
 				for seat in view.players do
 					if seat ~= me then
 						table.insert(others, seat)
 					end
 				end
 				for _, seat in others do
-					button(who, `{if offer.to == seat then "✓ " else ""}{nameOf(seat)}`, function()
+					local label = if seat == 0 then "Everyone" else nameOf(seat)
+					button(who, `{if offer.to == seat then "✓ " else ""}{label}`, function()
 						offer.to = seat
 						rerender()
-					end, 1 / #others, true, Theme.Seat[seat])
+					end, 1 / #others, true, if seat == 0 then Theme.Accent else Theme.Seat[seat])
 				end
-				local ready = offer.to ~= nil and total(offer.give) > 0 and total(offer.get) > 0
+				local ready = total(offer.give) > 0 and total(offer.get) > 0
 				if not ready then
-					note(if offer.to == nil then "Pick a player, and cards on both sides, to send an offer." else "Add cards on both sides to send an offer.")
+					note("Add cards on both sides to send an offer.")
 				end
-				local sendRow = row(34)
-				button(sendRow, "Send offer", function()
+				local sendRow = row(38)
+				button(sendRow, if offer.to == 0 then "Offer to everyone" else `Offer to {nameOf(offer.to)}`, function()
 					sendMove({ kind = "offer", to = offer.to, give = clean(offer.give), get = clean(offer.get) })
 					offer.give, offer.get = {}, {}
 				end, 1, ready)
@@ -819,13 +940,27 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			if view.biggestGuard == seat then
 				table.insert(badges, "🛡 Biggest Guard")
 			end
-			Kit.label(`<b>{nameOf(seat)}</b>  {p.points} pts{if seat == me and view.you and view.you.secret > 0 then ` (+{view.you.secret} secret)` else ""}  ·  {p.cards} cards  ·  {p.actionCards} action`, {
+			-- Cards in hand turn red over the hand limit (a 7 would cost them half).
+			local over = p.cards > (view.handLimit or 7)
+			Kit.label(`<b>{nameOf(seat)}</b>  ·  <font color="#{if over then "ff7a7a" else "c8c4dc"}">{p.cards} cards{if over then " !" else ""}</font>  ·  {p.actionCards} action`, {
 				TextSize = 14,
 				RichText = true,
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				Position = UDim2.fromOffset(32, 0),
-				Size = UDim2.new(1, -32, 0, 16),
+				Size = UDim2.new(1, -96, 0, 16),
+				Parent = line,
+			})
+			-- Points as a big number with the goal, like the online player cards.
+			Kit.label(`{p.points}{if seat == me and view.you and view.you.secret > 0 then `+{view.you.secret}` else ""}<font size="12">/{view.target}★</font>`, {
+				Font = Theme.FontBold,
+				TextSize = 22,
+				RichText = true,
+				TextColor3 = if p.points >= view.target - 2 then Theme.Accent else Theme.Text,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.fromScale(1, 0.5),
+				Size = UDim2.fromOffset(70, 28),
 				Parent = line,
 			})
 			Kit.label(`Road {p.roadLength} · Guards {p.guards}  {table.concat(badges, "  ")}`, {
@@ -834,7 +969,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				Position = UDim2.fromOffset(32, 16),
-				Size = UDim2.new(1, -32, 0, 14),
+				Size = UDim2.new(1, -96, 0, 14),
 				Parent = line,
 			})
 		end
@@ -911,6 +1046,9 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		if view.phase ~= "discard" then
 			discard = {}
 		end
+		if counter and not (view.trade and view.trade.id == counter.id) then
+			counter = nil
+		end
 
 		-- Hexes.
 		for h, hv in hexViews do
@@ -918,7 +1056,10 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			local color = landColor(tile.land)
 			local pickable = view.phase == "bandit" and mine and table.find(view.options.hexes, h) ~= nil
 			for _, part in hv.parts do
-				part.BackgroundColor3 = if banditHex == h then color:Lerp(Color3.new(1, 1, 1), 0.5) else color
+				-- The Bandit's hex goes dark: it pays nobody while he's there.
+				part.BackgroundColor3 = if banditHex == h then color:Lerp(Color3.new(1, 1, 1), 0.5)
+					elseif view.bandit == h then color:Lerp(Color3.fromRGB(20, 18, 26), 0.55)
+					else color
 			end
 			hv.icon.Text = landIcon(tile.land)
 			hv.token.Visible = tile.number > 0
@@ -1003,6 +1144,28 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 					end
 					if #parts > 0 then
 						HudKit.callout(root, table.concat(parts, "  "), Color3.fromRGB(150, 220, 120), 0.3)
+					end
+					-- The cards fly off the hexes that paid into your hand.
+					local gainKey = `{gain.turn}|{gain.roll}|{snapshot.moveNumber}`
+					if gainKey ~= lastGainKey then
+						lastGainKey = gainKey
+						for _, h in gain.hexes or {} do
+							local tile = view.tiles[h]
+							local hv = hexViews[h]
+							local n = tile and mine[tile.land]
+							if hv and n and n > 0 then
+								local icon = info[tile.land].icon
+								Flair.flyTo(handTarget, {
+									count = n,
+									from = hv.token.AbsolutePosition + hv.token.AbsoluteSize / 2,
+									make = function()
+										local card = Kit.label(icon, { TextSize = 24, TextXAlignment = Enum.TextXAlignment.Center, BackgroundColor3 = info[tile.land].color, BackgroundTransparency = 0, Size = UDim2.fromOffset(30, 40) })
+										Kit.corner(6).Parent = card
+										return card
+									end,
+								})
+							end
+						end
 					end
 				end
 			end
