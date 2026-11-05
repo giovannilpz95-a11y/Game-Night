@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local Speed = {}
@@ -16,6 +17,8 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local selected: number? = nil
 	local shownTops = { 0, 0 }
+	local arrivals = CardFx.arrivals()
+	local wasStuck = false
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 
@@ -124,6 +127,11 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		PlayingCard.renderHand(theirHand, backs, nil)
 		theirLabel.Text = `{theirName}: {view.handCounts[them] + view.drawCounts[them]} cards left`
 
+		-- Nobody can play: new cards flip onto the middle piles.
+		if view.stuck and not wasStuck then
+			CardFx.pop("FLIP!", Theme.Accent)
+		end
+		wasStuck = view.stuck == true
 		if view.stuck then
 			status.Text = "No moves! Flipping new cards..."
 		elseif snapshot.result then
@@ -162,7 +170,7 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 			local piles = playable[tostring(id)]
 			table.insert(cards, { id = id, raised = piles ~= nil, dim = piles == nil, glow = id == selected, enabled = piles ~= nil })
 		end
-		PlayingCard.renderHand(hand, cards, function(id: number)
+		local faces = PlayingCard.renderHand(hand, cards, function(id: number)
 			local piles = playable[tostring(id)]
 			if not piles then
 				return
@@ -175,6 +183,9 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 				render()
 			end
 		end)
+		-- Refills come off your own draw pile, in front of you.
+		local pilePoint = CardFx.seatPoint(snapshot, me, 0.6)
+		arrivals.update(faces, (pilePoint and CardFx.worldOnScreen(pilePoint)) or CardFx.guiOnScreen(myLabel))
 	end
 
 	-- Redraw when the hand changes size, so the cards are measured against the new frame.

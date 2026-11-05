@@ -11,6 +11,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Economy = require(ReplicatedStorage.Shared.Economy)
+local Season = require(ReplicatedStorage.Shared.Season)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Profile = require(script.Parent.Parent.Core.Profile)
 local Shop = require(script.Parent.Parent.Core.Shop)
@@ -54,6 +55,12 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 		data.grants.starter = true
 	elseif kind == "reactions" then
 		Shop.grant(data, product.items)
+	elseif kind == "season" then
+		-- Premium for the season it's processed in. If they already had it (bought with
+		-- Gems in another server a moment ago), the Robux still count: refund as Gems.
+		if not EconomyService.grantSeasonPremium(data) then
+			Profile.addGems(data, product.gems)
+		end
 	else
 		warn(`[GameNight] receipt for unknown product {info.ProductId}`)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
@@ -64,10 +71,11 @@ local function processReceipt(info: any): Enum.ProductPurchaseDecision
 		-- Kept in memory with the receipt recorded, so a retry won't grant it twice.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
-	AnalyticsService.robuxPurchase(player, product.key, data, product.gems)
+	AnalyticsService.robuxPurchase(player, product.key, data, if kind == "season" then nil else product.gems)
 	notify(player, if kind == "starter"
 		then "Starter Pack unlocked! Thanks for supporting Game Night."
 		elseif kind == "reactions" then "Every reaction pack is on your 😀 wheel. Thanks!"
+		elseif kind == "season" then "Premium pass unlocked! Claim your rewards in 🎟️ Pass. Thanks!"
 		else `+{product.gems} Gems. Thanks!`)
 	EconomyService.push(player)
 	return Enum.ProductPurchaseDecision.PurchaseGranted
@@ -108,6 +116,16 @@ function PurchaseService.handleRequest(player: Player, request: any)
 		end
 		AnalyticsService.robuxPrompt(player, bundle.key)
 		MarketplaceService:PromptProductPurchase(player, bundle.productId)
+	elseif request.action == "buySeasonPass" then
+		if Season.Premium.productId == 0 then
+			return notify(player, "The premium pass isn't set up yet. You can get it with Gems.")
+		end
+		local data = DataService.get(player)
+		if data and data.season.premium and data.season.id == Season.number(os.time()) then
+			return notify(player, "You already have the premium pass")
+		end
+		AnalyticsService.robuxPrompt(player, Season.Premium.key)
+		MarketplaceService:PromptProductPurchase(player, Season.Premium.productId)
 	elseif request.action == "buyPass" then
 		local pass = if type(request.key) == "string" then Economy.Passes[request.key] else nil
 		if not pass then

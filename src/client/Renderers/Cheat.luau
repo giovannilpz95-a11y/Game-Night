@@ -9,6 +9,7 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local Cheat = {}
@@ -17,6 +18,8 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local selected: { number } = {}
 	local ui = CardTable.layout(container)
+	local arrivals = CardFx.arrivals()
+	local reveals = CardFx.watch()
 
 	local render: () -> ()
 
@@ -120,10 +123,26 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 			local isCalled = PlayingCards.rank(id) == view.called
 			table.insert(cards, { id = id, raised = table.find(selected, id) ~= nil, glow = myTurn and isCalled, enabled = myTurn })
 		end
-		PlayingCard.renderHand(ui.hand, cards, function(id: number)
+		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
 			CardTable.toggle(selected, id, 4)
 			render()
 		end)
+		-- Picking up the pile (or a new deal): the cards fly in from the middle.
+		arrivals.update(faces, CardFx.middleOnScreen() or CardFx.guiOnScreen(pile))
+		-- The doubt is settled: LIAR! or TRUTH! pops off the table, and whoever lost takes
+		-- the pile.
+		local r = view.reveal
+		local key = if view.phase == "reveal" and r then `{r.seat}|{r.doubter}|{r.count}|{view.pileCount}|{#(view.hand or {})}` else nil
+		if reveals(key or "none") and r and key then
+			if r.honest then
+				CardFx.pop("TRUTH!", Theme.Good, ui.root)
+			else
+				CardFx.pop("LIAR!", Theme.Bad, ui.root)
+			end
+			if r.loser ~= me then
+				CardFx.dealTo(snapshot, r.loser, r.count, CardFx.middlePoint())
+			end
+		end
 	end
 
 	ui.refresh = function()

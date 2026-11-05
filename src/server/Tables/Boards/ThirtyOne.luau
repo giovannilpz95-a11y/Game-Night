@@ -26,7 +26,7 @@ function ThirtyOne.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 		if view.lastAction and view.lastAction.kind == "knock" then
 			Cards.speech(folder, boardCF, layout, view.lastAction.seat, "Knock knock!", Color3.fromRGB(255, 226, 160))
 		end
-		Scene.pile(folder, Cards.center(boardCF, -0.5), view.stockCount or 0, false)
+		Scene.pile(folder, Cards.center(boardCF, -0.5), view.stockCount or 0, false, true)
 		-- The discard pile: messy, each card turned toward whoever threw it away.
 		local action = view.lastAction
 		if history.seen(Cards.actionKey(action, view.round)) then

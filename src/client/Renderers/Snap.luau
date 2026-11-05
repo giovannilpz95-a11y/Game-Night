@@ -10,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local SnapRenderer = {}
@@ -17,6 +18,7 @@ local SnapRenderer = {}
 function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local ui = CardTable.layout(container)
+	local snaps = CardFx.watch()
 
 	local piles = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = ui.felt })
 	local status = CardTable.feltText(ui.felt, "", 0.02, 16)
@@ -105,6 +107,17 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 			text = `{nameOf(a.seat)} snapped too soon and gave {nameOf(a.to)} a card`
 		end
 		status.Text = text
+		-- SNAP! (or a wrong call) pops off the table; the winner gathers the piles.
+		if snaps(CardFx.key(a, view.pause)) and a then
+			if a.kind == "snap" then
+				CardFx.pop("SNAP!", Theme.Bad)
+				if a.seat ~= me then
+					CardFx.dealTo(snapshot, a.seat, math.min(a.count or 1, 6), CardFx.middlePoint())
+				end
+			elseif a.kind == "badSnap" then
+				CardFx.pop("OOPS!", Color3.fromRGB(150, 160, 255))
+			end
+		end
 
 		if view.flips ~= lastFlips then
 			lastFlips = view.flips

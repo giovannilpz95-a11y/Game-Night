@@ -10,6 +10,7 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local SlapStack = {}
@@ -19,6 +20,7 @@ local FACE = { [1] = "Ace", [11] = "Jack", [12] = "Queen", [13] = "King" }
 function SlapStack.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local ui = CardTable.layout(container)
+	local slaps = CardFx.watch()
 
 	local slots = {}
 	for i = 1, 3 do
@@ -97,6 +99,17 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 			text = `{nameOf(a.seat)} took {a.count} cards`
 		end
 		status.Text = text
+		-- SLAP! (or a burned card) pops off the table; the winner takes the pile.
+		if slaps(CardFx.key(a, view.centerCount)) and a then
+			if a.kind == "slap" then
+				CardFx.pop("SLAP!", Theme.Bad)
+			elseif a.kind == "badSlap" then
+				CardFx.pop("TOO SOON!", Color3.fromRGB(150, 160, 255))
+			end
+			if (a.kind == "slap" or a.kind == "collect") and a.seat ~= snapshot.yourSeat then
+				CardFx.dealTo(snapshot, a.seat, math.min(a.count or 1, 6), CardFx.middlePoint())
+			end
+		end
 
 		-- A little bump on the slap button every flip, to keep eyes on it.
 		if view.flips ~= lastFlips then
