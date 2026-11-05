@@ -10,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local Rules = require(ReplicatedStorage.Shared.Games.ColorClash)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
+local Fx = require(script.Parent.ColorClashFx)
 local Theme = Kit.Theme
 
 local ColorClash = {}
@@ -109,8 +110,92 @@ local function cardVisual(id: number?): Frame
 	return face
 end
 
+-- The four-color wheel filling `parent`: four quarters (each a button that pushes out a
+-- little on hover) around a dark hub. `z` is the lowest ZIndex it uses.
+local QUARTERS = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } } -- the corner each color fills
+local WHEEL_GAP = 0.012 -- of the wheel's size, between the quarters
+local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ())
+	local quick = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	for i, color in COLORS do
+		local qx, qy = QUARTERS[i][1], QUARTERS[i][2]
+		local outX, outY = qx * 2 - 1, qy * 2 - 1 -- away from the middle
+		local rest = UDim2.fromScale(qx * 0.5 + outX * WHEEL_GAP, qy * 0.5 + outY * WHEEL_GAP)
+		local out = UDim2.fromScale(qx * 0.5 + outX * WHEEL_GAP * 4, qy * 0.5 + outY * WHEEL_GAP * 4)
+		-- A square that clips a full circle to the one quarter in its corner.
+		local quarter = Kit.new("TextButton", {
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundTransparency = 1,
+			ClipsDescendants = true,
+			Position = rest,
+			Size = UDim2.fromScale(0.5, 0.5),
+			ZIndex = z,
+			Parent = parent,
+		})
+		Kit.new("Frame", {
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(-qx, -qy), -- the circle's middle on the inner corner
+			Size = UDim2.fromScale(2, 2),
+			ZIndex = z,
+			Parent = quarter,
+		}, {
+			Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			Kit.new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200)) }),
+		})
+		Kit.label(Rules.colorNames[i], {
+			Font = Theme.FontBold,
+			TextScaled = true,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0.4,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(if qx == 0 then 0.42 else 0.58, if qy == 0 then 0.42 else 0.58),
+			Size = UDim2.fromScale(0.6, 0.2),
+			ZIndex = z + 1,
+			Parent = quarter,
+		})
+		quarter.MouseEnter:Connect(function()
+			TweenService:Create(quarter, quick, { Position = out }):Play()
+		end)
+		quarter.MouseLeave:Connect(function()
+			TweenService:Create(quarter, quick, { Position = rest }):Play()
+		end)
+		quarter.Activated:Connect(function()
+			onPick(i)
+		end)
+	end
+	Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromRGB(28, 24, 40),
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.22, 0.22),
+		ZIndex = z + 2,
+		Parent = parent,
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3 }),
+	})
+	Kit.label("★", {
+		Font = Theme.FontBold,
+		TextScaled = true,
+		TextColor3 = Theme.Accent,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.12, 0.12),
+		ZIndex = z + 3,
+		Parent = parent,
+	})
+end
+
+-- The mark that pops up off the table for each action card (and the 7-0 swaps).
+local POP_MARKS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "★", wild4 = "+4" }
+
 function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
+	local docked = false
 	local shownTop: number? = nil
 	local topVisual: GuiObject? = nil
 
@@ -286,11 +371,14 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		overlay.Visible = true
 	end
 	local pop = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-	local quick = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-	-- Wild color picker: a round wheel of the four colors that bursts out of the middle
-	-- of the table, each quarter its own button. Tap outside it to put the wild back.
+	-- Wild color picker: a round wheel of the four colors, each quarter its own button.
+	-- In Table view it rises out of the middle of the table, tilted toward you
+	-- (ColorClashFx.wheel), with a Back button under it; in the 2D view it bursts out of
+	-- the middle of the screen, and tapping outside it puts the wild back.
 	local pendingWild: number? = nil
+	local pendingSeven: number? = nil
+	local closeWheel3D: (() -> ())? = nil
 	local pickerShade = Kit.new("TextButton", {
 		Text = "",
 		AutoButtonColor = false,
@@ -313,109 +401,81 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		Parent = overlay,
 	}, { Kit.new("UISizeConstraint", { MinSize = Vector2.new(220, 220), MaxSize = Vector2.new(420, 420) }) })
 	local pickerScale = Kit.new("UIScale", { Scale = 1, Parent = picker })
-	local GAP = 0.012 -- of the wheel's size, between the quarters
-	-- Quarter i: which corner of the wheel it fills (x, y as 0 or 1).
-	local QUARTERS = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } }
-	local quarterRest: { [GuiObject]: UDim2 } = {}
-	local quarterOut: { [GuiObject]: UDim2 } = {}
+	local backButton = Kit.button("Back", function() end, {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.6),
+		Size = UDim2.fromOffset(130, 40),
+		BackgroundColor3 = Theme.PanelLight,
+		TextColor3 = Theme.Text,
+		Visible = false,
+		ZIndex = 53,
+		Parent = overlay,
+	})
+
 	local function closePicker()
 		pendingWild = nil
 		picker.Visible = false
 		pickerShade.Visible = false
+		backButton.Visible = false
+		if closeWheel3D then
+			closeWheel3D()
+			closeWheel3D = nil
+		end
 	end
-	for i, color in COLORS do
-		local qx, qy = QUARTERS[i][1], QUARTERS[i][2]
-		local outX, outY = qx * 2 - 1, qy * 2 - 1 -- away from the middle
-		local rest = UDim2.fromScale(qx * 0.5 + outX * GAP, qy * 0.5 + outY * GAP)
-		-- A square that clips a full circle to the one quarter in its corner.
-		local quarter = Kit.new("TextButton", {
-			Text = "",
-			AutoButtonColor = false,
-			BackgroundTransparency = 1,
-			ClipsDescendants = true,
-			Position = rest,
-			Size = UDim2.fromScale(0.5, 0.5),
-			ZIndex = 53,
-			Parent = picker,
-		})
-		quarterRest[quarter] = rest
-		quarterOut[quarter] = UDim2.fromScale(qx * 0.5 + outX * GAP * 4, qy * 0.5 + outY * GAP * 4)
-		Kit.new("Frame", {
-			BackgroundColor3 = color,
-			BorderSizePixel = 0,
-			-- The circle's middle sits on the quarter's inner corner.
-			Position = UDim2.fromScale(-qx, -qy),
-			Size = UDim2.fromScale(2, 2),
-			ZIndex = 53,
-			Parent = quarter,
-		}, {
-			Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
-			Kit.new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200)) }),
-		})
-		Kit.label(Rules.colorNames[i], {
-			Font = Theme.FontBold,
-			TextScaled = true,
-			TextColor3 = Color3.new(1, 1, 1),
-			TextStrokeTransparency = 0.4,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			-- Toward the outside of the quarter, where it's widest.
-			Position = UDim2.fromScale(if qx == 0 then 0.42 else 0.58, if qy == 0 then 0.42 else 0.58),
-			Size = UDim2.fromScale(0.6, 0.2),
-			ZIndex = 54,
-			Parent = quarter,
-		})
-		quarter.MouseEnter:Connect(function()
-			TweenService:Create(quarter, quick, { Position = quarterOut[quarter] }):Play()
-		end)
-		quarter.MouseLeave:Connect(function()
-			TweenService:Create(quarter, quick, { Position = quarterRest[quarter] }):Play()
-		end)
-		quarter.Activated:Connect(function()
-			if pendingWild then
-				sendMove({ kind = "play", card = pendingWild, color = i })
-			end
-			closePicker()
-		end)
+	local function pick(color: number)
+		if pendingWild then
+			sendMove({ kind = "play", card = pendingWild, color = color })
+		end
+		closePicker()
 	end
-	-- A dark hub in the middle, like the pile under the wheel.
-	Kit.new("Frame", {
-		BackgroundColor3 = Color3.fromRGB(28, 24, 40),
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.22, 0.22),
-		ZIndex = 55,
-		Parent = picker,
-	}, {
-		Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
-		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3 }),
-	})
-	Kit.label("★", {
-		Font = Theme.FontBold,
-		TextScaled = true,
-		TextColor3 = Theme.Accent,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.12, 0.12),
-		ZIndex = 56,
-		Parent = picker,
-	})
+	buildWheel(picker, 53, pick)
 	pickerShade.Activated:Connect(closePicker)
+	backButton.Activated:Connect(closePicker)
 	local function openPicker(id: number)
+		closePicker()
 		pendingWild = id
 		showOverlay()
+		if docked then
+			closeWheel3D = Fx.wheel(function(frame: Frame)
+				buildWheel(frame, 1, pick)
+			end)
+		end
+		if closeWheel3D then
+			backButton.Visible = true
+			return
+		end
 		pickerShade.Visible = true
 		picker.Visible = true
 		picker.Rotation = -40
 		pickerScale.Scale = 0.15
-		for quarter, rest in quarterRest do
-			quarter.Position = rest
-		end
 		TweenService:Create(pickerScale, pop, { Scale = 1 }):Play()
 		TweenService:Create(picker, pop, { Rotation = 0 }):Play()
 	end
+
+	-- 7-0 rule: playing a 7 asks who to swap hands with (a row of players in the middle).
+	local swapPanel = Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromRGB(30, 26, 46),
+		BackgroundTransparency = 0.15,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.36),
+		Size = UDim2.fromOffset(520, 130),
+		Visible = false,
+		ZIndex = 52,
+		Parent = overlay,
+	}, { Kit.corner(16), Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.3 }) })
+	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(9999, 9999), Parent = swapPanel })
+	Kit.label("Swap hands with...", { Font = Theme.FontBold, TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 26), ZIndex = 53, Parent = swapPanel })
+	local swapRow = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 42), Size = UDim2.new(1, -20, 0, 44), ZIndex = 53, Parent = swapPanel })
+	local swapList = Kit.list(8, true)
+	swapList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	swapList.Parent = swapRow
+	local function closeSwap()
+		pendingSeven = nil
+		swapPanel.Visible = false
+	end
+	Kit.button("Back", closeSwap, { BackgroundTransparency = 1, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 1, -32), Size = UDim2.new(1, 0, 0, 28), ZIndex = 53, Parent = swapPanel })
+	local openSwap: (id: number) -> ()
 
 	-- The card you just drew, when it can be played: held up in the middle with Play on
 	-- one side and Keep on the other.
@@ -468,20 +528,26 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
 		return button
 	end
-	local function playDrawn()
-		local id = drawnShown
-		if not id then
-			return
-		end
+	-- Plays a card from your hand: Wilds ask for a color first, and with the 7-0 rule a 7
+	-- asks who to swap hands with.
+	local function playCard(id: number)
 		local card = Rules.cards[id]
 		if card.kind == "wild" or card.kind == "wild4" then
 			openPicker(id)
+		elseif snapshot.view.sevenZero and card.kind == "number" and card.value == 7 then
+			openSwap(id)
 		else
 			sendMove({ kind = "play", card = id })
 		end
 	end
+	local function playDrawn()
+		if drawnShown then
+			playCard(drawnShown)
+		end
+	end
 	bandButton("Play it", Color3.fromRGB(70, 170, 100), 0.3, playDrawn)
-	bandButton("Keep it", Color3.fromRGB(70, 110, 200), 0.7, function()
+	-- Force play (house rule): the card has to be played, so no Keep.
+	local keepButton = bandButton("Keep it", Color3.fromRGB(70, 110, 200), 0.7, function()
 		sendMove({ kind = "pass" })
 	end)
 	local function showDrawn(id: number?)
@@ -511,6 +577,29 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		return if s then s.name else "?"
 	end
 
+	function openSwap(id: number)
+		closeSwap()
+		pendingSeven = id
+		Kit.clear(swapRow)
+		local view = snapshot.view
+		local count = 0
+		for seat = 1, #(view.handCounts or {}) do
+			if seat ~= snapshot.yourSeat then
+				count += 1
+				local n = view.handCounts[seat]
+				Kit.button(`{nameOf(seat)} ({n})`, function()
+					if pendingSeven then
+						sendMove({ kind = "play", card = pendingSeven, target = seat })
+					end
+					closeSwap()
+				end, { Size = UDim2.new(0, 150, 1, 0), TextSize = 15, LayoutOrder = seat, ZIndex = 54, Parent = swapRow })
+			end
+		end
+		swapPanel.Size = UDim2.fromOffset(math.max(320, count * 158 + 20), 130)
+		showOverlay()
+		swapPanel.Visible = true
+	end
+
 	local function describe(action: any): string
 		if not action then
 			return ""
@@ -529,6 +618,126 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			return `{who} passed`
 		end
 		return ""
+	end
+
+	-- Effects for what just happened (each change of lastAction, not the first look):
+	-- action cards pop their mark up off the table, and drawn cards fly off the pile,
+	-- into your hand (2D, card by card, flipping face up as they land) or to the other
+	-- player's seat (3D card backs).
+	local lastKey: string? = nil
+	local knownHand: { [number]: boolean } = {}
+	local function actionKey(view: any): string
+		local a = view.lastAction
+		if not a then
+			return ""
+		end
+		local total = 0
+		for _, n in view.handCounts or {} do
+			total += n
+		end
+		return `{a.seat}:{a.kind}:{a.card or 0}:{a.count or 0}:{view.deckCount}:{total}`
+	end
+	-- Center of a GUI object, in the overlay's own pixels.
+	local function centerIn(object: GuiObject): Vector2
+		return object.AbsolutePosition + object.AbsoluteSize / 2 - overlay.AbsolutePosition
+	end
+	local function flyIn(id: number, target: GuiObject, wait: number, from: Vector2)
+		target.Visible = false
+		task.delay(wait, function()
+			if not target.Parent then
+				return
+			end
+			showOverlay()
+			local size = target.AbsoluteSize
+			local flyer = Kit.new("Frame", {
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromOffset(from.X, from.Y),
+				Size = UDim2.fromOffset(size.X * 0.45, size.Y * 0.45),
+				Rotation = -25,
+				ZIndex = 60,
+				Parent = overlay,
+			})
+			cardVisual(nil).Parent = flyer
+			local to = centerIn(target)
+			local travel = TweenService:Create(flyer, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = UDim2.fromOffset(to.X, to.Y),
+				Size = UDim2.fromOffset(size.X, size.Y),
+				Rotation = target.Rotation,
+			})
+			travel.Completed:Once(function()
+				-- Flip face up as it slots in.
+				local shut = TweenService:Create(flyer, TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, size.Y) })
+				shut.Completed:Once(function()
+					Kit.clear(flyer)
+					cardVisual(id).Parent = flyer
+					local open = TweenService:Create(flyer, TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(size.X, size.Y) })
+					open.Completed:Once(function()
+						flyer:Destroy()
+						if target.Parent then
+							target.Visible = true
+						end
+					end)
+					open:Play()
+				end)
+				shut:Play()
+			end)
+			travel:Play()
+		end)
+	end
+	local function playEffects(view: any, slots: { [number]: { slot: Frame, face: GuiObject } })
+		local key = actionKey(view)
+		local first = lastKey == nil
+		local changed = key ~= lastKey
+		lastKey = key
+		local before = knownHand
+		knownHand = {}
+		for _, id in view.hand or {} do
+			knownHand[id] = true
+		end
+		if first or not changed then
+			return
+		end
+		local a = view.lastAction
+		if a.kind == "play" then
+			local card = Rules.cards[a.card]
+			local color = COLORS[a.color or (card and card.color) or 0] or Theme.Accent
+			if a.target then
+				Fx.pop("⇆", color)
+			elseif a.rotated then
+				Fx.pop("⟳", color)
+			elseif card and POP_MARKS[card.kind] then
+				Fx.pop(POP_MARKS[card.kind], color)
+			end
+		elseif a.kind == "draw" and (a.count or 0) > 0 then
+			if a.seat == snapshot.yourSeat then
+				-- From the pile on the table (Table view) or on the felt (2D).
+				local from = if docked then Fx.pileOnScreen() else nil
+				if not from and drawSlot.AbsoluteSize.X > 0 and felt.Visible then
+					from = centerIn(drawSlot)
+				elseif from then
+					from -= overlay.AbsolutePosition
+				end
+				if not from then
+					return
+				end
+				local wait = 0
+				for _, id in view.hand or {} do
+					if not before[id] then
+						local target: GuiObject? = if id == drawnShown then drawnSlot elseif slots[id] then slots[id].face else nil
+						if target then
+							flyIn(id, target, wait, from)
+							wait += 0.14
+						end
+					end
+				end
+			elseif snapshot.table and snapshot.table.seats then
+				local tableSeat = snapshot.table.seats[a.seat]
+				if tableSeat then
+					Fx.dealTo(tableSeat, a.count)
+				end
+			end
+		end
 	end
 
 	local function render()
@@ -560,11 +769,14 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		drawAction.Visible = myTurn and not view.canPass
 		drawAction.Text = if view.pendingDraw > 0 then `Take {view.pendingDraw} cards` else "Draw a card"
 		-- After drawing a card you can play, it's shown in the middle with Play / Keep.
-		local drawnPlayable = myTurn and view.canPass and view.drawnCard ~= nil
+		-- (The server only keeps a drawn card when it fits.) Force play hides Keep.
+		local drawnPlayable = myTurn and view.drawnCard ~= nil
 		showDrawn(if drawnPlayable then view.drawnCard else nil)
+		keepButton.Visible = view.canPass == true
 		passAction.Visible = myTurn and view.canPass and not drawnPlayable
 		if not myTurn then
 			closePicker()
+			closeSwap()
 		end
 
 		-- Hand.
@@ -574,8 +786,16 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		for _, id in view.playable or {} do
 			playable[id] = true
 		end
-		local count = #(view.hand or {})
-		for index, id in view.hand or {} do
+		-- The card on the Play / Keep prompt is that card: it isn't also in the fan.
+		local held = {}
+		for _, id in view.hand or {} do
+			if not (drawnPlayable and id == view.drawnCard) then
+				table.insert(held, id)
+			end
+		end
+		local slots: { [number]: { slot: Frame, face: GuiObject } } = {}
+		local count = #held
+		for index, id in held do
 			local canPlay = myTurn and playable[id] == true
 			-- Held like real cards: fanned out, the outer cards turned and a little lower.
 			local offset = index - (count + 1) / 2
@@ -590,6 +810,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			})
 			local face = cardVisual(id)
 			face.Parent = slot
+			slots[id] = { slot = slot, face = face }
 			local drop = (offset * spread / 28) ^ 2 * 0.5 -- the fan's curve, in card heights
 			local rest = UDim2.fromScale(0, drop + (if canPlay then -0.08 else 0))
 			face.Position = rest
@@ -631,15 +852,11 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				if not canPlay then
 					return
 				end
-				local card = Rules.cards[id]
-				if card.kind == "wild" or card.kind == "wild4" then
-					openPicker(id)
-				else
-					sendMove({ kind = "play", card = id })
-				end
+				playCard(id)
 			end)
 		end
 		squeezeHand()
+		playEffects(view, slots)
 	end
 
 	return {
@@ -654,7 +871,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		-- Docked, it's laid out like cards held in front of you at the table (the dock
 		-- behind it is see-through): a big fan along the bottom edge, running a little off
 		-- the screen, and the Draw / Pass buttons in the bottom-right corner.
-		setDocked = function(docked: boolean)
+		setDocked = function(value: boolean)
+			docked = value
 			felt.Visible = not docked
 			if docked then
 				pendingLabel.Parent = root
