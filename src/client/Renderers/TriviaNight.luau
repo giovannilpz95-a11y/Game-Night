@@ -121,8 +121,9 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		Kit.new("UIStroke", { Name = "Ring", Color = Color3.new(1, 1, 1), Thickness = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
 		button.Activated:Connect(function()
 			local view = snapshot and snapshot.view
-			if view and view.phase == "question" and view.yourAnswer == nil and table.find(snapshot.activeSeats, snapshot.yourSeat) then
-				sendMove({ kind = "answer", choice = i })
+			local voting = view and view.phase == "pick"
+			if view and (view.phase == "question" or voting) and view.yourAnswer == nil and view.answers and view.answers[i] and table.find(snapshot.activeSeats, snapshot.yourSeat) then
+				sendMove({ kind = if voting then "pick" else "answer", choice = i })
 				-- Show the pick right away; the server confirms with the next snapshot.
 				for j, b in buttons do
 					b.BackgroundTransparency = if j == i then 0 else 0.6
@@ -155,6 +156,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 	end)
 
 	local lastPhaseKey = ""
+	local wasPick = false
 
 	local function render()
 		local view = snapshot.view
@@ -162,11 +164,16 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		if phaseKey ~= lastPhaseKey then
 			lastPhaseKey = phaseKey
 			timerStart = workspace:GetServerTimeNow()
-			if view.phase == "question" then
+			if view.phase == "question" or view.phase == "pick" then
 				-- Pop the new question in.
 				question.TextTransparency = 1
 				TweenService:Create(question, TweenInfo.new(0.25), { TextTransparency = 0 }):Play()
 			end
+			-- A vote just picked the category: say so.
+			if view.phase == "question" and wasPick and view.pickedCategory then
+				HudKit.callout(container:FindFirstAncestorWhichIsA("ScreenGui") or root, `🎯 {string.upper(view.pickedCategory)}!`, Theme.Accent)
+			end
+			wasPick = view.phase == "pick"
 		end
 
 		counter.Text = if view.phase == "done" then "" else `Question {view.number} of {view.total}`
@@ -183,12 +190,13 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		grid.Visible = true
-		track.Visible = view.phase == "question"
+		track.Visible = view.phase == "question" or view.phase == "pick"
 		question.Text = view.question or ""
 
 		local reveal = view.phase == "reveal"
 		for i, button in buttons do
 			answerLabels[i].Text = view.answers and view.answers[i] or ""
+			button.Visible = view.answers ~= nil and view.answers[i] ~= nil
 			local ring = button:FindFirstChild("Ring") :: UIStroke
 			local isCorrect = reveal and view.correct == i
 			local isMine = view.yourAnswer == i
@@ -205,6 +213,15 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 				ring.Thickness = 0
 			end
 			pointsLabels[i].Text = ""
+			if view.phase == "pick" then
+				local votes = 0
+				for _, choice in view.votesBySeat or {} do
+					if choice == i then
+						votes += 1
+					end
+				end
+				pointsLabels[i].Text = if votes > 0 then `🗳 {votes}` else ""
+			end
 			if reveal then
 				-- How many picked each answer (the classic quiz-show reveal), plus your points.
 				local picked = 0
@@ -233,6 +250,8 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 			if snapshot.yourSeat and view.yourAnswer == nil then
 				footer.Text ..= "  (you ran out of time)"
 			end
+		elseif view.phase == "pick" then
+			footer.Text = `{view.answeredCount} of {#snapshot.seats} voted`
 		else
 			footer.Text = `{view.answeredCount} of {#snapshot.seats} answered`
 		end

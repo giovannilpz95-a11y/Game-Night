@@ -11,12 +11,17 @@ return function(T)
 		TriviaNight.applyMove(s, seat, move)
 	end
 
+	-- Most tests look at questions: the category vote is off for them.
+	local function newGame(seats: number, rng: any)
+		return TriviaNight.new(seats, { rules = { categoryVote = false } }, rng)
+	end
+
 	local function wrongChoice(s): number
 		return if s.correct == 1 then 2 else 1
 	end
 
 	T.test("the answer stays secret until the reveal", function()
-		local s = TriviaNight.new(3, nil, T.Random.new(1))
+		local s = newGame(3, T.Random.new(1))
 		local view = TriviaNight.getView(s, 1)
 		T.eq(view.correct, nil)
 		T.eq(#view.answers, 4)
@@ -28,7 +33,7 @@ return function(T)
 	end)
 
 	T.test("faster correct answers score more; wrong scores nothing", function()
-		local s = TriviaNight.new(3, nil, T.Random.new(2))
+		local s = newGame(3, T.Random.new(2))
 		apply(s, 2, { kind = "answer", choice = s.correct })
 		apply(s, 3, { kind = "answer", choice = s.correct })
 		apply(s, 1, { kind = "answer", choice = wrongChoice(s) })
@@ -39,7 +44,7 @@ return function(T)
 	end)
 
 	T.test("streaks add a bonus", function()
-		local s = TriviaNight.new(1, nil, T.Random.new(3))
+		local s = newGame(1, T.Random.new(3))
 		apply(s, 1, { kind = "answer", choice = s.correct })
 		TriviaNight.onTimeout(s) -- next question
 		apply(s, 1, { kind = "answer", choice = s.correct })
@@ -47,7 +52,7 @@ return function(T)
 	end)
 
 	T.test("one answer per question, and junk is rejected", function()
-		local s = TriviaNight.new(2, nil, T.Random.new(4))
+		local s = newGame(2, T.Random.new(4))
 		apply(s, 1, { kind = "answer", choice = 2 })
 		T.eq((TriviaNight.validateMove(s, 1, { kind = "answer", choice = 3 })), false)
 		T.eq((TriviaNight.validateMove(s, 2, { kind = "answer", choice = 5 })), false)
@@ -91,6 +96,41 @@ return function(T)
 			count += 1
 		end
 		T.eq(count, 10, "ten different questions")
+	end)
+
+	T.test("category vote: everyone picks, the winner sets the next 3 questions", function()
+		local s = TriviaNight.new(3, nil, T.Random.new(9))
+		T.eq(s.phase, "pick")
+		T.eq(#s.offer, 4)
+		local view = TriviaNight.getView(s, 1)
+		T.eq(#view.answers, 4, "the four categories on the answer buttons")
+		T.eq((TriviaNight.validateMove(s, 1, { kind = "answer", choice = 1 })), false)
+		T.eq((TriviaNight.validateMove(s, 1, { kind = "pick", choice = 5 })), false)
+		apply(s, 1, { kind = "pick", choice = 2 })
+		apply(s, 2, { kind = "pick", choice = 2 })
+		T.eq(TriviaNight.getView(s, 3).votesBySeat[1], 2, "votes are public")
+		local winner = s.offer[2]
+		apply(s, 3, { kind = "pick", choice = 1 })
+		T.eq(s.phase, "question", "everyone voted")
+		for slot = 1, 3 do
+			T.eq(Questions[s.questions[slot]].c, winner)
+		end
+		T.eq(TriviaNight.getView(s, 1).category, winner)
+		-- Questions stay distinct.
+		local seen = {}
+		for _, q in s.questions do
+			T.ok(not seen[q], "a question twice")
+			seen[q] = true
+		end
+		-- Questions 4, 7 and 10 open with a vote.
+		for _ = 1, 3 do
+			TriviaNight.onTimeout(s)
+			TriviaNight.onTimeout(s)
+		end
+		T.eq(s.phase, "pick")
+		T.eq(s.index, 4)
+		TriviaNight.onTimeout(s) -- nobody voted: a random one of them
+		T.eq(s.phase, "question")
 	end)
 
 	T.test("question bank is well formed", function()

@@ -196,6 +196,7 @@ local entries: { Entry } = {
 				choices = { { label = "10 s", value = 10 }, { label = "15 s", value = 15 }, { label = "25 s", value = 25 } },
 				default = 2,
 			},
+			{ key = "categoryVote", name = "Category vote", hint = "Before every 3 questions, everyone votes on the category.", choices = Toggle, default = 2 },
 		},
 		custom = "quiz",
 	},

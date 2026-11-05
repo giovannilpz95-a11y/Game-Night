@@ -3,6 +3,10 @@
 -- Flow (timed phases, see getTimer):
 --   question  QUESTION_SECONDS to answer. Ends early once every seat has answered.
 --   reveal    the right answer, who got it and the points, for REVEAL_SECONDS.
+--   pick      (the categoryVote rule, on by default) before every ROUND questions,
+--             everyone votes for one of up to four categories; the next ROUND questions
+--             come from the winner (ties: a random one of them). PICK_SECONDS, or until
+--             everyone has voted. Skipped when the deck has only one category.
 -- After QUESTIONS questions the highest score wins (ties share the win).
 --
 -- Scoring: the first correct answer earns 1000, each later one 100 less (never under
@@ -11,12 +15,13 @@
 --
 -- The correct answer is never in a view until the reveal.
 --
--- House rules (options.rules): questions = 5..20, answerSeconds = 10 | 15 | 25.
+-- House rules (options.rules): questions = 5..20, answerSeconds = 10 | 15 | 25,
+-- categoryVote = true | false.
 -- options.customQuestions: a Party Host's quiz deck (already filtered by the server),
 -- { { c = category, q = question, a = { right, wrong, wrong, wrong } } }. Used instead of
 -- our bank when set.
 --
--- Move: { kind = "answer", choice = 1..4 }
+-- Moves: { kind = "answer", choice = 1..4 }   { kind = "pick", choice = 1..#offer }
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local Questions = require(script.Parent.Data.TriviaQuestions)
@@ -32,6 +37,8 @@ local QUESTION_SECONDS = 15
 local REVEAL_SECONDS = 5
 local STREAK_BONUS = 100
 local MAX_STREAK_BONUS = 300
+local PICK_SECONDS = 8
+local ROUND = 3 -- questions per category vote
 
 TriviaNight.questionCount = QUESTIONS
 
@@ -75,19 +82,37 @@ function TriviaNight.new(seatCount: number, options: any?, rng: Random?)
 		streaks = table.create(seatCount, 0),
 		lastPoints = {},
 		finished = false,
+		categoryVote = rules.categoryVote ~= false,
+		offer = nil, -- the categories up for the vote
+		votes = {}, -- [seat] = position in offer
+		pickedCategory = nil, -- the category the last vote chose
 	}
 	TriviaNight._nextQuestion(state)
 	return state
 end
 
-function TriviaNight._nextQuestion(state)
-	state.index += 1
-	state.timerId += 1
-	if state.index > #state.questions then
-		state.phase = "done"
-		state.finished = true
-		return
+local function categoryOf(q: any): string
+	return if type(q.c) == "string" and q.c ~= "" then q.c else "Mixed"
+end
+
+-- Categories that still have questions nobody has seen this game, in bank order.
+local function openCategories(state): { string }
+	local used = {}
+	for i = 1, state.index - 1 do
+		used[state.questions[i]] = true
 	end
+	local out, seen = {}, {}
+	for i, q in state.bank do
+		local c = categoryOf(q)
+		if not used[i] and not seen[c] then
+			seen[c] = true
+			table.insert(out, c)
+		end
+	end
+	return out
+end
+
+local function startQuestion(state)
 	state.phase = "question"
 	local order = { 1, 2, 3, 4 }
 	for i = 4, 2, -1 do
@@ -100,6 +125,82 @@ function TriviaNight._nextQuestion(state)
 	state.answeredCount = 0
 	state.correctCount = 0
 	state.lastPoints = {}
+end
+
+-- The vote is in: the next ROUND questions come from `category` (as many as it has left).
+local function useCategory(state, category: string)
+	state.pickedCategory = category
+	local used = {}
+	for i = 1, state.index - 1 do
+		used[state.questions[i]] = true
+	end
+	local fresh = {}
+	for i, q in state.bank do
+		if not used[i] and categoryOf(q) == category then
+			table.insert(fresh, i)
+		end
+	end
+	for slot = state.index, math.min(#state.questions, state.index + ROUND - 1) do
+		if #fresh == 0 then
+			break
+		end
+		local pick = table.remove(fresh, state.rng:NextInteger(1, #fresh)) :: number
+		-- Swap it in, keeping every question in the game distinct.
+		local at = table.find(state.questions, pick)
+		if at and at > slot then
+			state.questions[at] = state.questions[slot]
+		elseif at then
+			continue
+		end
+		state.questions[slot] = pick
+	end
+end
+
+local function resolvePick(state)
+	local tally = {}
+	for _, choice in state.votes do
+		tally[choice] = (tally[choice] or 0) + 1
+	end
+	local best, top = 0, {}
+	for choice = 1, #state.offer do
+		local n = tally[choice] or 0
+		if n > best then
+			best, top = n, { choice }
+		elseif n == best then
+			table.insert(top, choice)
+		end
+	end
+	local choice = top[state.rng:NextInteger(1, #top)]
+	useCategory(state, state.offer[choice])
+	state.offer = nil
+	state.votes = {}
+	state.timerId += 1
+	startQuestion(state)
+end
+
+function TriviaNight._nextQuestion(state)
+	state.index += 1
+	state.timerId += 1
+	if state.index > #state.questions then
+		state.phase = "done"
+		state.finished = true
+		return
+	end
+	if state.categoryVote and (state.index - 1) % ROUND == 0 then
+		local open = openCategories(state)
+		if #open >= 2 then
+			-- Up to four of them, at random.
+			local offer = {}
+			while #offer < 4 and #open > 0 do
+				table.insert(offer, table.remove(open, state.rng:NextInteger(1, #open)))
+			end
+			state.phase = "pick"
+			state.offer = offer
+			state.votes = {}
+			return
+		end
+	end
+	startQuestion(state)
 end
 
 local function currentQuestion(state)
@@ -118,6 +219,15 @@ local function reveal(state)
 end
 
 function TriviaNight.getActiveSeats(state): { number }
+	if state.phase == "pick" then
+		local seats = {}
+		for seat = 1, state.seatCount do
+			if state.votes[seat] == nil then
+				table.insert(seats, seat)
+			end
+		end
+		return seats
+	end
 	if state.phase ~= "question" then
 		return {}
 	end
@@ -131,6 +241,15 @@ function TriviaNight.getActiveSeats(state): { number }
 end
 
 function TriviaNight.getLegalMoves(state, seat: number): { any }
+	if state.phase == "pick" then
+		local moves = {}
+		if state.votes[seat] == nil then
+			for choice = 1, #state.offer do
+				table.insert(moves, { kind = "pick", choice = choice })
+			end
+		end
+		return moves
+	end
 	if state.phase ~= "question" or state.answers[seat] ~= nil then
 		return {}
 	end
@@ -143,6 +262,19 @@ function TriviaNight.getLegalMoves(state, seat: number): { any }
 end
 
 function TriviaNight.validateMove(state, seat: number, move: any): (boolean, string?)
+	if state.phase == "pick" then
+		if type(move) ~= "table" or move.kind ~= "pick" then
+			return false, "Vote for a category"
+		end
+		if state.votes[seat] ~= nil then
+			return false, "You already voted"
+		end
+		local choice = move.choice
+		if type(choice) ~= "number" or choice % 1 ~= 0 or choice < 1 or choice > #state.offer then
+			return false, "Pick a category"
+		end
+		return true
+	end
 	if state.phase ~= "question" then
 		return false, "Wait for the next question"
 	end
@@ -160,6 +292,20 @@ function TriviaNight.validateMove(state, seat: number, move: any): (boolean, str
 end
 
 function TriviaNight.applyMove(state, seat: number, move: any)
+	if state.phase == "pick" then
+		state.votes[seat] = move.choice
+		local all = true
+		for s = 1, state.seatCount do
+			if state.votes[s] == nil then
+				all = false
+				break
+			end
+		end
+		if all then
+			resolvePick(state)
+		end
+		return
+	end
 	state.answers[seat] = move.choice
 	state.answeredCount += 1
 	if move.choice == state.correct then
@@ -180,6 +326,8 @@ end
 function TriviaNight.getTimer(state): { id: number, seconds: number }?
 	if state.phase == "question" then
 		return { id = state.timerId, seconds = state.answerSeconds }
+	elseif state.phase == "pick" then
+		return { id = state.timerId, seconds = PICK_SECONDS }
 	elseif state.phase == "reveal" then
 		return { id = state.timerId, seconds = REVEAL_SECONDS }
 	end
@@ -187,7 +335,9 @@ function TriviaNight.getTimer(state): { id: number, seconds: number }?
 end
 
 function TriviaNight.onTimeout(state)
-	if state.phase == "question" then
+	if state.phase == "pick" then
+		resolvePick(state)
+	elseif state.phase == "question" then
 		reveal(state)
 	elseif state.phase == "reveal" then
 		TriviaNight._nextQuestion(state)
@@ -219,7 +369,9 @@ function TriviaNight.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, state.seatCount do
 		local tag = ""
-		if state.phase == "question" and state.answers[seat] ~= nil then
+		if state.phase == "pick" and state.votes[seat] ~= nil then
+			tag = "  ✓ voted"
+		elseif state.phase == "question" and state.answers[seat] ~= nil then
 			tag = "  ✓ answered"
 		elseif state.phase == "reveal" then
 			tag = if state.answers[seat] == state.correct then `  +{state.lastPoints[seat] or 0}` else "  +0"
@@ -252,8 +404,27 @@ function TriviaNight.getView(state, seat: number?)
 		view.status = "Final scores"
 		return view
 	end
+	if state.phase == "pick" then
+		-- The vote reuses the four answer buttons: one category each. Votes are public.
+		view.category = "Category vote"
+		view.question = `Vote for the next {math.min(ROUND, view.total - view.number + 1)} questions!`
+		view.answers = table.clone(state.offer)
+		view.yourAnswer = if seat then state.votes[seat] else nil
+		view.votesBySeat = table.clone(state.votes)
+		local voted = {}
+		for s = 1, state.seatCount do
+			if state.votes[s] ~= nil then
+				table.insert(voted, s)
+			end
+		end
+		view.answeredSeats = voted
+		view.answeredCount = #voted
+		view.status = "Pick a category"
+		return view
+	end
 	local q = currentQuestion(state)
 	view.category = q.c
+	view.pickedCategory = state.pickedCategory
 	view.question = q.q
 	local answers = {}
 	for position, original in state.order do
@@ -282,11 +453,20 @@ end
 
 -- Bots answer after a few seconds, right as often as their level allows.
 function TriviaNight.getBotDelay(state, _seat: number, rng: Random): number
+	if state.phase == "pick" then
+		return rng:NextNumber(1.5, 5)
+	end
 	local fastest = if state.botLevel == "hard" then 2 elseif state.botLevel == "medium" then 3 else 4
 	return rng:NextNumber(fastest, 11)
 end
 
 function TriviaNight.chooseBotMove(state, seat: number, rng: Random): any?
+	if state.phase == "pick" then
+		if state.votes[seat] ~= nil then
+			return nil
+		end
+		return { kind = "pick", choice = rng:NextInteger(1, #state.offer) }
+	end
 	if state.phase ~= "question" or state.answers[seat] ~= nil then
 		return nil
 	end
