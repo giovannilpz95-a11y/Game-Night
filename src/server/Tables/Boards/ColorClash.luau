@@ -165,6 +165,16 @@ function ColorClash.create(boardCF: CFrame, parent: Instance, layout: Scene.Layo
 			Cards.speech(folder, boardCF, layout, action.seat, "Last card!", Color3.fromRGB(255, 225, 150))
 		elseif action and action.kind == "catch" then
 			Cards.speech(folder, boardCF, layout, action.seat, "Caught you! Draw 2", Color3.fromRGB(255, 200, 200))
+		elseif action and action.swap then
+			Cards.speech(folder, boardCF, layout, action.seat, "Swap!", Color3.fromRGB(190, 230, 255))
+		elseif action and action.rotate then
+			Cards.speech(folder, boardCF, layout, action.seat, "Pass them along!", Color3.fromRGB(190, 230, 255))
+		end
+		-- The hit lands over whoever it hit.
+		if action and action.victim then
+			local card = Rules.cards[action.card]
+			local hit = if card and card.kind == "draw2" then "+2!" elseif card and card.kind == "wild4" then "+4!" else "Skipped!"
+			Cards.speech(folder, boardCF, layout, action.victim, hit, Color3.fromRGB(255, 170, 170))
 		end
 	end)
 end

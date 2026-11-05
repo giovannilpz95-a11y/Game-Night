@@ -117,8 +117,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	-- "Last card!": armed with the button before playing your second-to-last card.
 	local armed = false
 	local canCall = false
-	local function sendPlay(id: number, color: number?)
-		sendMove({ kind = "play", card = id, color = color, call = if canCall then armed else nil })
+	local function sendPlay(id: number, color: number?, target: number?)
+		sendMove({ kind = "play", card = id, color = color, target = target, call = if canCall then armed else nil })
 		armed = false
 	end
 
@@ -235,6 +235,11 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local catchStroke = Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = catchAction })
 	HudKit.pulse(catchStroke)
 	local shownAction: string? = nil
+	-- Call-outs float over the middle of the whole screen (in Table view this board is
+	-- only the strip along the bottom).
+	local function say(text: string, color: Color3?, y: number?)
+		HudKit.callout(container:FindFirstAncestorWhichIsA("ScreenGui") or root, text, color, y)
+	end
 	drawButton.Activated:Connect(function()
 		if drawAction.Visible then
 			sendMove({ kind = "draw" })
@@ -493,17 +498,83 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
 		return button
 	end
+	-- 7-0: pick who to swap hands with. A row of seat buttons in the middle of the table.
+	local pendingSeven: number? = nil
+	local swapShade = Kit.new("TextButton", {
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.55,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		ZIndex = 51,
+		Parent = overlay,
+	})
+	local swapPanel = Kit.new("Frame", {
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromOffset(300, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Visible = false,
+		ZIndex = 52,
+		Parent = overlay,
+	}, {
+		Kit.corner(16),
+		Kit.new("UIStroke", { Color = COLORS[1], Thickness = 3 }),
+		Kit.new("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 12), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }),
+	})
+	Kit.list(8).Parent = swapPanel
+	local function closeSwap()
+		pendingSeven = nil
+		swapPanel.Visible = false
+		swapShade.Visible = false
+	end
+	swapShade.Activated:Connect(closeSwap)
+	local function openSwap(id: number)
+		pendingSeven = id
+		for _, child in swapPanel:GetChildren() do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+		Kit.label("Swap hands with…", { TextSize = 20, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 0, ZIndex = 53, Parent = swapPanel })
+		for seat, count in snapshot.view.handCounts or {} do
+			if seat ~= snapshot.yourSeat then
+				local info = snapshot.seats[seat]
+				local name = if info then info.name else `Seat {seat}`
+				Kit.button(`{name}  ·  {count} {if count == 1 then "card" else "cards"}`, function()
+					if pendingSeven then
+						sendPlay(pendingSeven, nil, seat)
+					end
+					closeSwap()
+				end, { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = seat, ZIndex = 53, Parent = swapPanel })
+			end
+		end
+		showOverlay()
+		swapShade.Visible = true
+		swapPanel.Visible = true
+	end
+	-- Plays a card from your hand: wilds ask for a color, a 7 in 7-0 asks who to swap with.
+	local function playCard(id: number)
+		local card = Rules.cards[id]
+		if card.kind == "wild" or card.kind == "wild4" then
+			openPicker(id)
+		elseif snapshot.view.sevenZero and card.kind == "number" and card.value == 7 then
+			openSwap(id)
+		else
+			sendPlay(id)
+		end
+	end
+
 	local function playDrawn()
 		local id = drawnShown
 		if not id then
 			return
 		end
-		local card = Rules.cards[id]
-		if card.kind == "wild" or card.kind == "wild4" then
-			openPicker(id)
-		else
-			sendPlay(id)
-		end
+		playCard(id)
 	end
 	bandButton("Play it", Color3.fromRGB(70, 170, 100), 0.3, playDrawn)
 	bandButton("Keep it", Color3.fromRGB(70, 110, 200), 0.7, function()
@@ -547,6 +618,11 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				elseif card.kind == "wild" then `a Wild ({Rules.colorNames[action.color]})`
 				elseif card.kind == "wild4" then `a Wild +4 ({Rules.colorNames[action.color]})`
 				else `a {Rules.colorNames[card.color]} {({ skip = "Skip", reverse = "Reverse", draw2 = "+2" })[card.kind]}`
+			if action.swap then
+				return `{who} played {what} and swapped hands with {nameOf(action.swap)}`
+			elseif action.rotate then
+				return `{who} played {what}: every hand moves along`
+			end
 			return `{who} played {what}`
 		elseif action.kind == "draw" then
 			return if action.count == 1 then `{who} drew a card` else `{who} drew {action.count} cards`
@@ -592,9 +668,18 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			local key = `{action.kind}|{action.seat}|{action.card}|{action.target}|{total}`
 			if shownAction ~= nil and key ~= shownAction then
 				if action.kind == "catch" then
-					HudKit.callout(root, if action.target == snapshot.yourSeat then "CAUGHT! You draw 2" else `CAUGHT! {nameOf(action.target)} draws 2`, Theme.Bad)
-				elseif action.called then
-					HudKit.callout(root, if action.seat == snapshot.yourSeat then "LAST CARD!" else `{nameOf(action.seat)}: LAST CARD!`, Color3.fromRGB(255, 200, 70))
+					say(if action.target == snapshot.yourSeat then "CAUGHT! You draw 2" else `CAUGHT! {nameOf(action.target)} draws 2`, Theme.Bad)
+				elseif action.kind == "play" and action.victim then
+					-- The hit: what the card did, over who it hit.
+					local card = Rules.cards[action.card]
+					local hit = if card.kind == "skip" or card.kind == "reverse" then "SKIPPED!" elseif card.kind == "draw2" then "+2!" else "+4!"
+					local you = action.victim == snapshot.yourSeat
+					say(if you then `{hit}  That's you` else `{hit}  {nameOf(action.victim)}`, if card.kind == "wild4" then Color3.fromRGB(190, 120, 255) else Theme.Bad)
+				elseif action.swap or action.rotate then
+					say(if action.rotate then "Hands move along!" else `SWAP! {nameOf(action.seat)} ⇄ {nameOf(action.swap)}`, Color3.fromRGB(120, 210, 255))
+				end
+				if action.called then
+					say(if action.seat == snapshot.yourSeat then "LAST CARD!" else `{nameOf(action.seat)}: LAST CARD!`, Color3.fromRGB(255, 200, 70), 0.3)
 				end
 			end
 			shownAction = key
@@ -619,6 +704,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		passAction.Visible = myTurn and view.canPass and not drawnPlayable
 		if not myTurn then
 			closePicker()
+			closeSwap()
 		end
 
 		-- Hand.
@@ -685,12 +771,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				if not canPlay then
 					return
 				end
-				local card = Rules.cards[id]
-				if card.kind == "wild" or card.kind == "wild4" then
-					openPicker(id)
-				else
-					sendPlay(id)
-				end
+				playCard(id)
 			end)
 		end
 		squeezeHand()

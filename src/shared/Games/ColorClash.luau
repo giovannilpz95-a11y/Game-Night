@@ -130,6 +130,9 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 		-- "Last card!": say it as you go down to one card, or the next player can catch you
 		-- (you draw 2). exposed is the seat that forgot, until the next player moves.
 		lastCall = rules.lastCard ~= false,
+		-- 7-0 (off by default): a 7 swaps hands with a player you pick, a 0 passes every
+		-- hand along the way play goes.
+		sevenZero = rules.sevenZero == true,
 		exposed = nil,
 	}
 end
@@ -234,6 +237,12 @@ function ColorClash.getPlayable(state, seat: number): { number }
 	return out
 end
 
+-- 7-0: a 7 needs someone to swap hands with.
+function ColorClash.needsTarget(state, id: number): boolean
+	local card = cards[id]
+	return state.sevenZero == true and card ~= nil and card.kind == "number" and card.value == 7
+end
+
 -- The player on turn can catch whoever just went down to one card without calling it.
 function ColorClash.canCatch(state, seat: number): boolean
 	local target = state.exposed
@@ -251,6 +260,12 @@ function ColorClash.getLegalMoves(state, seat: number): { any }
 		if isWild(cards[id]) then
 			for color = 1, 4 do
 				table.insert(moves, { kind = "play", card = id, color = color, call = call })
+			end
+		elseif ColorClash.needsTarget(state, id) then
+			for target = 1, state.seatCount do
+				if target ~= seat then
+					table.insert(moves, { kind = "play", card = id, target = target, call = call })
+				end
 			end
 		else
 			table.insert(moves, { kind = "play", card = id, call = call })
@@ -319,6 +334,12 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 			local color = move.color
 			if type(color) ~= "number" or color % 1 ~= 0 or color < 1 or color > 4 then
 				return false, "Pick a color"
+			end
+		end
+		if ColorClash.needsTarget(state, id) then
+			local target = move.target
+			if type(target) ~= "number" or target % 1 ~= 0 or target < 1 or target > state.seatCount or target == seat then
+				return false, "Pick someone to swap hands with"
 			end
 		end
 		return true
@@ -406,6 +427,28 @@ function ColorClash.applyMove(state, seat: number, move: any)
 		return
 	end
 
+	-- 7-0 swaps (after the win check: going out on a 7 or 0 just wins).
+	if ColorClash.needsTarget(state, id) then
+		local target = move.target :: number
+		state.hands[seat], state.hands[target] = state.hands[target], state.hands[seat]
+		state.lastAction.swap = target
+	elseif state.sevenZero and card.kind == "number" and card.value == 0 then
+		local old = table.clone(state.hands)
+		for s = 1, state.seatCount do
+			state.hands[nextSeat(state, s, 1)] = old[s]
+		end
+		state.lastAction.rotate = state.direction
+	end
+	if state.lastAction.swap or state.lastAction.rotate then
+		-- Whoever forgot to call may not be the one holding a single card any more.
+		state.exposed = nil
+		state.lastAction.forgot = nil
+	end
+
+	-- Who it hits: the skipped player, or whoever must stack or take the cards.
+	if card.kind == "skip" or card.kind == "draw2" or card.kind == "wild4" or (card.kind == "reverse" and state.seatCount == 2) then
+		state.lastAction.victim = nextSeat(state, seat, 1)
+	end
 	if card.kind == "skip" then
 		endTurn(state, 2)
 	elseif card.kind == "reverse" then
@@ -470,6 +513,7 @@ function ColorClash.getView(state, seat: number?)
 		playable = if yourTurn then ColorClash.getPlayable(state, seat :: number) else {},
 		canPass = yourTurn and state.drawnCard ~= nil,
 		lastCall = state.lastCall,
+		sevenZero = state.sevenZero,
 		exposed = state.exposed,
 		canCatch = seat ~= nil and ColorClash.canCatch(state, seat),
 		winner = state.winner,
@@ -534,6 +578,19 @@ function ColorClash.chooseBotPlay(state, seat: number, rng: Random): any?
 		if isWild(cards[id]) then
 			local color = if state.botLevel == "easy" then rng:NextInteger(1, 4) else bestColor(state, seat, rng)
 			return { kind = "play", card = id, color = color }
+		end
+		if ColorClash.needsTarget(state, id) then
+			-- Swap with whoever holds the fewest cards (easy: anyone).
+			local target, fewest = nil, math.huge
+			for other = 1, state.seatCount do
+				if other ~= seat then
+					local n = #state.hands[other] + (if state.botLevel == "easy" then rng:NextInteger(0, 20) else rng:NextNumber())
+					if n < fewest then
+						target, fewest = other, n
+					end
+				end
+			end
+			return { kind = "play", card = id, target = target }
 		end
 		return { kind = "play", card = id }
 	end
