@@ -46,8 +46,11 @@ local function controls(): any
 	if cachedControls then
 		return cachedControls
 	end
+	-- Never wait here: freeze() runs every few frames, and a yield let a late freeze land
+	-- after exit(), leaving you unable to walk. Some places have no PlayerModule at all.
 	local ok, result = pcall(function()
-		local module = Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule", 2)
+		local scripts = Players.LocalPlayer:FindFirstChild("PlayerScripts")
+		local module = scripts and scripts:FindFirstChild("PlayerModule")
 		return module and (require(module :: any) :: any):GetControls()
 	end)
 	cachedControls = if ok then result else nil
@@ -365,7 +368,25 @@ function DressingCamera.new()
 		savedType = camera.CameraType
 		savedFov = camera.FieldOfView
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		returnTo = if root then root.CFrame else nil
+		-- Still in a seat (a table after a game, a couch): get up first, or the avatar
+		-- stands on the stage in its sitting pose. Don't go back to the seat afterwards.
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local seated = humanoid ~= nil and (humanoid.SeatPart ~= nil or humanoid.Sit)
+		if seated then
+			-- Jump out and wait for the seat to let go: moving while still welded drags
+			-- the seat along to the stage, and it then sits everyone who stands there.
+			local h = humanoid :: Humanoid
+			h.Sit = false
+			h:ChangeState(Enum.HumanoidStateType.Jumping)
+			local deadline = os.clock() + 1
+			while h.SeatPart ~= nil and os.clock() < deadline do
+				task.wait()
+			end
+			if not active then
+				return -- closed again while getting up
+			end
+		end
+		returnTo = if root and not seated then root.CFrame else nil
 		freeze()
 		pcall(function()
 			ContextActionService:BindActionAtPriority(FREEZE_ACTION, sinkInput, false, Enum.ContextActionPriority.High.Value + 100, table.unpack(FROZEN_KEYS))
@@ -397,7 +418,13 @@ function DressingCamera.new()
 		if character and root and returnTo and base then
 			local seated = humanoid ~= nil and (humanoid.SeatPart ~= nil or humanoid.Sit)
 			local away = (root.Position - (base :: CFrame).Position).Magnitude
-			if AvatarFraming.shouldReturn(away, seated) then
+			-- After a game you can be standing on top of a table stool: landing back on it
+			-- would sit you down, so stay on the stage instead.
+			local params = RaycastParams.new()
+			params.FilterDescendantsInstances = { character }
+			local below = workspace:Raycast((returnTo :: CFrame).Position, Vector3.new(0, -8, 0), params)
+			local onSeat = below ~= nil and below.Instance:IsA("Seat")
+			if AvatarFraming.shouldReturn(away, seated) and not onSeat then
 				root.AssemblyLinearVelocity = Vector3.zero
 				character:PivotTo(returnTo :: CFrame)
 			end
