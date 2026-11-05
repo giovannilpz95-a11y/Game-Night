@@ -174,7 +174,8 @@ function Economy.coinName(coinKey: string): string
 end
 
 -- Finds what a Robux purchase was for: ("gems", pack), ("starter", pack),
--- ("reactions", bundle) or nil.
+-- ("reactions", bundle), ("season", premium pass) or nil. The premium Game Night Pass is
+-- set up in shared/Season (Season.Premium.productId).
 function Economy.productById(productId: number): (string?, any)
 	if productId == 0 then
 		return nil, nil
@@ -189,6 +190,10 @@ function Economy.productById(productId: number): (string?, any)
 	end
 	if Economy.ReactionBundle.productId == productId then
 		return "reactions", Economy.ReactionBundle
+	end
+	local Season = require(script.Parent.Season)
+	if Season.Premium.productId == productId then
+		return "season", Season.Premium
 	end
 	return nil, nil
 end

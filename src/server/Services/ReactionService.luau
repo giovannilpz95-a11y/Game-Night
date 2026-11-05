@@ -14,6 +14,7 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local Reactions = require(ReplicatedStorage.Shared.Reactions)
 local RateLimiter = require(script.Parent.Parent.Core.RateLimiter)
 local DataService = require(script.Parent.DataService)
+local EconomyService = require(script.Parent.EconomyService)
 
 local ReactionService = {}
 
@@ -47,6 +48,7 @@ local function onRequest(player: Player, request: any)
 		userId = player.UserId,
 		table = if tableInfo then tableInfo.id else nil,
 	})
+	EconomyService.reactionSent(player) -- "send reactions" quests
 end
 
 -- matchServiceRef must have matchSeatOf(player) -> (matchId?, seat?, tableInfo?).

@@ -331,8 +331,11 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				Size = UDim2.new(1, -110, 0, 20),
 				Parent = row,
 			})
-			Kit.label(`+{Economy.ChallengeGems}`, { Font = Theme.FontBold, TextSize = 14, TextColor3 = Theme.Gem, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, 0), Size = UDim2.fromOffset(80, 20), Parent = row })
-			Kit.gemIcon(16, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Parent = row })
+			local questGems = challenge.gems or 0
+			Kit.label(if questGems > 0 then `+{questGems}` else `+{challenge.stars or 0} ⭐`, { Font = Theme.FontBold, TextSize = 14, TextColor3 = if questGems > 0 then Theme.Gem else Color3.fromRGB(255, 220, 90), TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, if questGems > 0 then -22 else 0, 0, 0), Size = UDim2.fromOffset(80, 20), Parent = row })
+			if questGems > 0 then
+				Kit.gemIcon(16, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Parent = row })
+			end
 			local _, setDone = Kit.progress(if done then Theme.Good else Theme.Accent, { Position = UDim2.new(0, 0, 0, 26), Size = UDim2.new(1, -60, 0, 8), Parent = row })
 			setDone(if done then 1 elseif challenge.target and challenge.target > 0 then challenge.progress / challenge.target else 0)
 			Kit.label(if done then "Done" else `{challenge.progress}/{challenge.target}`, { TextSize = 12, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 21), Size = UDim2.fromOffset(54, 16), Parent = row })
@@ -438,7 +441,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		}).Parent = content
 		local vip = wallet.vip == true
 		local equipped = wallet.equipped and wallet.equipped[shop] or {}
-		for index, item in ShopCatalog.forShop(shop) do
+		for index, item in ShopCatalog.forShopOwned(shop, wallet.owned) do
 			if item.slot == "reactions" or item.slot == "pose" or item.slot == "victory" then
 				continue -- on the Reactions or Poses & wins tab
 			end
@@ -649,6 +652,8 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 							sendEconomy({ action = "equip", itemId = item.id })
 						end, { BackgroundColor3 = if explicit then Theme.Panel else Theme.Good, TextColor3 = if explicit then Theme.Text else Theme.AccentText, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 32), Parent = c })
 					end
+				elseif item.season then
+					Kit.label(`🎟️ Season {item.season} pass reward`, { Font = Theme.FontBold, TextSize = 13, TextColor3 = TIER_COLORS.Legendary, TextXAlignment = Enum.TextXAlignment.Center, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -6), Size = UDim2.new(1, 0, 0, 20), Parent = c })
 				else
 					local buttons = {}
 					local gems = gemPrice(item, vip)
@@ -872,6 +877,8 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				local _, buttons = packCard(10 + index, `{pack.icon} {pack.name}`, sub, pack.reactions, TIER_COLORS[item.tier])
 				if ownedSet[item.id] then
 					Kit.label("On your wheel", { TextColor3 = Theme.Good, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = buttons })
+				elseif item.season then
+					Kit.label(`🎟️ Season {item.season} pass`, { TextColor3 = TIER_COLORS.Legendary, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Right, Parent = buttons })
 				else
 					if item.coins and coinShop then
 						local coinColor = Economy.Coins[item.shop] and Economy.Coins[item.shop].color or Theme.Accent

@@ -11,6 +11,8 @@
 --   earnedOnly true = Coins only, no Gem price (prestige items that prove you play)
 --   notForSale true = only granted (Starter Pack, rank rewards), never bought
 --   free       true = everyone owns it from the start (default Showtime poses and celebrations)
+--   season     the Game Night Pass season that gives it (shared/Season). Always notForSale:
+--              only the pass grants it, and the shop shows "Season N pass" instead of a price.
 --
 -- Showtime (shared/Showtime): slot "pose" is what you strike when the intro camera reaches
 -- you at the start of a game, slot "victory" is your celebration when you win. Both are
@@ -31,6 +33,7 @@ export type Item = {
 	earnedOnly: boolean?,
 	notForSale: boolean?,
 	free: boolean?,
+	season: number?, -- Game Night Pass reward from this season (shared/Season), never sold
 }
 
 local items: { Item } = {
@@ -97,6 +100,19 @@ local items: { Item } = {
 	{ id = "win_fire", name = "On Fire", shop = "hub", slot = "victory", tier = "Epic", gems = 300, universal = 3000 },
 	{ id = "win_money", name = "Make It Rain", shop = "hub", slot = "victory", tier = "Legendary", gems = 450, universal = 4500 },
 	{ id = "win_champion", name = "Champion", shop = "hub", slot = "victory", tier = "Legendary", gems = 500, universal = 5000 },
+
+	-- Game Night Pass, Season 1 "Opening Night" (shared/Season). Only the pass gives these.
+	{ id = "season1_title_opening", name = "Title: Opening Night", shop = "hub", slot = "title", tier = "Common", notForSale = true, season = 1 },
+	{ id = "season1_trail_confetti", name = "Confetti Trail", shop = "hub", slot = "trail", tier = "Rare", notForSale = true, season = 1 },
+	{ id = "season1_title_star", name = "Title: Season Star", shop = "hub", slot = "title", tier = "Epic", notForSale = true, season = 1 },
+	{ id = "season1_chair_velvet", name = "Velvet Theater Seat", shop = "hub", slot = "chair", tier = "Epic", notForSale = true, season = 1 },
+	{ id = "season1_title_headliner", name = "Title: Headliner", shop = "hub", slot = "title", tier = "Rare", notForSale = true, season = 1 },
+	{ id = "season1_nameplate_marquee", name = "Marquee Nameplate", shop = "hub", slot = "nameplate", tier = "Epic", notForSale = true, season = 1 },
+	{ id = "season1_table_theater", name = "Grand Theater Table", shop = "hub", slot = "theme", tier = "Legendary", notForSale = true, season = 1 },
+	{ id = "pose_spotlight", name = "Spotlight", shop = "hub", slot = "pose", tier = "Rare", notForSale = true, season = 1 },
+	{ id = "pose_redcarpet", name = "Red Carpet", shop = "hub", slot = "pose", tier = "Epic", notForSale = true, season = 1 },
+	{ id = "win_showstopper", name = "Showstopper", shop = "hub", slot = "victory", tier = "Legendary", notForSale = true, season = 1 },
+	{ id = "reactions_premiere", name = "Premiere Night", shop = "hub", slot = "reactions", tier = "Epic", notForSale = true, season = 1 },
 
 	-- Chess shop
 	{ id = "chess_walnut_board", name = "Walnut Board", shop = "chess", slot = "board", tier = "Common", coins = 400 },
@@ -207,6 +223,18 @@ end
 function ShopCatalog.isFree(id: any): boolean
 	local item = if type(id) == "string" then byId[id] else nil
 	return item ~= nil and item.free == true
+end
+
+-- Items a player can see in a shop tab: everything for sale, plus the not-for-sale ones
+-- they own (Starter Pack and season pass rewards), so they can equip them.
+function ShopCatalog.forShopOwned(shop: string, owned: { [string]: any }?): { Item }
+	local out = {}
+	for _, item in items do
+		if item.shop == shop and (not item.notForSale or (owned ~= nil and owned[item.id])) then
+			table.insert(out, item)
+		end
+	end
+	return out
 end
 
 function ShopCatalog.forShop(shop: string): { Item }

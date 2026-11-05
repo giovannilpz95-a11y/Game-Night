@@ -21,7 +21,9 @@ return function(T)
 					T.eq(item.shop, "hub", move.id)
 					T.eq(item.slot, Showtime.Slots[kind], move.id)
 					T.eq(item.name, move.name, move.id)
-					if not item.free then
+					if item.season then
+						T.ok(item.notForSale == true, `{move.id} is a pass reward, never sold`)
+					elseif not item.free then
 						T.ok(item.gems ~= nil, `{move.id} needs a Gem price`)
 						T.eq(item.universal, (item.gems :: number) * Economy.CoinsPerGem, move.id)
 					end

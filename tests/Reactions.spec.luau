@@ -39,8 +39,12 @@ return function(T)
 			local item = ShopCatalog.get(pack.id)
 			T.ok(item, `{pack.id} isn't in ShopCatalog`)
 			T.eq(item.slot, "reactions")
-			T.ok(not item.notForSale, `{pack.id} must be buyable`)
-			T.ok(item.gems ~= nil or item.coins ~= nil, `{pack.id} needs a price`)
+			if item.season then
+				T.ok(item.notForSale == true, `{pack.id} is a pass reward, never sold`)
+			else
+				T.ok(not item.notForSale, `{pack.id} must be buyable`)
+				T.ok(item.gems ~= nil or item.coins ~= nil, `{pack.id} needs a price`)
+			end
 			T.ok(#pack.reactions >= 1 and #pack.reactions <= Reactions.PerPage, `{pack.id} has {#pack.reactions} reactions`)
 			seen[pack.id] = true
 		end
@@ -93,7 +97,8 @@ return function(T)
 	T.test("the Robux bundle has every Gem pack and grants only what's missing", function()
 		local hubPacks = {}
 		for _, pack in Reactions.packs do
-			if ShopCatalog.get(pack.id).shop == "hub" then
+			local item = ShopCatalog.get(pack.id)
+			if item.shop == "hub" and not item.notForSale then
 				hubPacks[pack.id] = true
 			end
 		end
@@ -124,7 +129,9 @@ return function(T)
 	T.test("every pack's Universal Coin price follows its Gem or Coin price", function()
 		for _, pack in Reactions.packs do
 			local item = ShopCatalog.get(pack.id)
-			if item.shop == "hub" then
+			if item.notForSale then
+				continue -- pass rewards have no price
+			elseif item.shop == "hub" then
 				T.eq(item.universal, item.gems * Economy.CoinsPerGem, pack.id)
 			else
 				T.eq(item.universal, item.coins, pack.id)

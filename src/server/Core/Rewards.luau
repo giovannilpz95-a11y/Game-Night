@@ -11,6 +11,7 @@ local Profile = require(script.Parent.Profile)
 local Daily = require(script.Parent.Daily)
 local Stats = require(script.Parent.Stats)
 local Weekly = require(script.Parent.Weekly)
+local SeasonPass = require(script.Parent.SeasonPass)
 
 local Rewards = {}
 
@@ -30,6 +31,7 @@ export type MatchContext = {
 	extra: { [string]: any }?, -- the game's own stats for this seat (StatsCatalog)
 	score: number?, -- this seat's final score, for games with getScores
 	now: number?, -- os.time(); stats and the weekly board use it
+	category: string?, -- the game's GameCatalog category, for "Finish 3 card games" quests
 }
 
 export type Payout = {
@@ -41,6 +43,9 @@ export type Payout = {
 	challenges: { string }, -- texts of challenges completed
 	notes: { string }, -- why something was reduced ("Daily bot reward limit reached")
 	weeklyPoints: number, -- added to this week's leaderboards (Core/Weekly)
+	stars: number, -- Game Night Pass Stars (shared/Season), quests included
+	tiers: { number }, -- pass tiers reached
+	weeklyQuests: { string }, -- texts of weekly quests completed
 }
 
 local function round(x: number): number
@@ -72,6 +77,9 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 		challenges = {},
 		notes = {},
 		weeklyPoints = 0,
+		stars = 0,
+		tiers = {},
+		weeklyQuests = {},
 	}
 	local now = ctx.now or os.time()
 	local daily = data.daily
@@ -152,17 +160,44 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 		Profile.addCoins(data, ctx.coinKey, payout.coins)
 	end
 
-	-- Gems: first win of the day, then challenges
+	-- Gems: first win of the day, then quests (daily ones pay Gems, all of them Stars)
 	local gems = 0
 	if ctx.won and not daily.firstWin then
 		daily.firstWin = true
 		gems += round(Economy.FirstWinGems * playMultiplier)
 	end
-	for _, challenge in Daily.recordMatch(data, ctx.gameId, ctx.won) do
-		gems += round(Economy.ChallengeGems * playMultiplier)
-		table.insert(payout.challenges, challenge.text)
-	end
 	Profile.addGems(data, gems)
+	local event = {
+		kind = "match" :: "match",
+		gameId = ctx.gameId,
+		category = ctx.category,
+		won = ctx.won,
+		minutes = paidMinutes,
+		vsHumans = not vsBots,
+	}
+	local dailyDone = Daily.recordMatch(data, event)
+	local weeklyDone = SeasonPass.recordWeekly(data, now, event)
+	for _, quest in dailyDone do
+		table.insert(payout.challenges, quest.text)
+	end
+	for _, quest in weeklyDone do
+		table.insert(payout.weeklyQuests, quest.text)
+	end
+	local quests = table.clone(dailyDone)
+	table.move(weeklyDone, 1, #weeklyDone, #quests + 1, quests)
+	local questPay = SeasonPass.payQuests(data, now, quests, playMultiplier)
+	gems += questPay.gems
+
+	-- Game Night Pass Stars: from the match (only when it paid Coins, so the anti-farm
+	-- limits hold) and from the quests above.
+	local matchStars = if coinsAllowed then SeasonPass.matchStars(paidMinutes, ctx.won, vsBots, ctx.vip) else 0
+	local addedStars, tiers = SeasonPass.addStars(data, now, matchStars)
+	payout.stars = addedStars + questPay.stars
+	payout.tiers = tiers
+	for _, tier in questPay.tiers do
+		table.insert(payout.tiers, tier)
+	end
+	table.sort(payout.tiers)
 
 	-- XP from time played; level-ups pay Gems too
 	payout.xp = math.max(1, round(Economy.XpPerMinute * paidMinutes))
@@ -186,7 +221,17 @@ function Rewards.describe(payout: Payout): { string }
 		table.insert(lines, `Level up! You're level {level}`)
 	end
 	for _, text in payout.challenges do
-		table.insert(lines, `Challenge done: {text}`)
+		table.insert(lines, `Quest done: {text}`)
+	end
+	for _, text in payout.weeklyQuests do
+		table.insert(lines, `Weekly quest done: {text}`)
+	end
+	if payout.stars > 0 then
+		table.insert(lines, `+{payout.stars} ⭐ Pass Stars`)
+	end
+	if #payout.tiers > 0 then
+		local top = payout.tiers[#payout.tiers]
+		table.insert(lines, `Pass tier {top} reached! Claim it in 🎟️ Pass`)
 	end
 	if payout.weeklyPoints > 0 then
 		table.insert(lines, `+{payout.weeklyPoints} weekly leaderboard points`)

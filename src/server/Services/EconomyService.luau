@@ -20,6 +20,8 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
 local Profile = require(script.Parent.Parent.Core.Profile)
 local Daily = require(script.Parent.Parent.Core.Daily)
+local SeasonPass = require(script.Parent.Parent.Core.SeasonPass)
+local Season = require(ReplicatedStorage.Shared.Season)
 local Rewards = require(script.Parent.Parent.Core.Rewards)
 local Shop = require(script.Parent.Parent.Core.Shop)
 local Looks = require(script.Parent.Parent.Core.Looks)
@@ -48,7 +50,7 @@ local function readyGames(): { Daily.GameInfo }
 	local games = {}
 	for _, entry in GameCatalog.entries do
 		if entry.status == "ready" then
-			table.insert(games, { id = entry.id, name = entry.name })
+			table.insert(games, { id = entry.id, name = entry.name, category = entry.category })
 		end
 	end
 	return games
@@ -90,6 +92,8 @@ function EconomyService.push(player: Player)
 		login = EconomyService.loginState(data),
 		firstWinDone = data.daily.firstWin,
 		challenges = data.daily.challenges,
+		season = SeasonPass.view(data, os.time()),
+		seasonProductReady = Season.Premium.productId ~= 0,
 		starterAvailable = starter,
 		starterEndsAt = starterEndsAt,
 		lookSlots = Looks.slotCount(data, vip),
@@ -132,10 +136,19 @@ function EconomyService.loginState(data: Profile.Data): any
 	}
 end
 
--- New day: fresh challenges and counters, and the login reward.
+-- New day: fresh quests and counters, the Game Night Pass (new week or season), and the
+-- login reward.
 local function checkDay(player: Player, data: Profile.Data)
 	local day = today()
-	Daily.roll(data, day, readyGames(), Random.new())
+	local games = readyGames()
+	local rng = Random.new()
+	Daily.roll(data, day, games, rng)
+	local seasonBefore = AnalyticsService.snapshot(data)
+	local ended = SeasonPass.roll(data, os.time(), games, rng)
+	if #ended > 0 then
+		sendReward(player, "Last season's unclaimed rewards", ended)
+		AnalyticsService.logChange(player, data, seasonBefore, "Gameplay", "SeasonPass")
+	end
 	local before = AnalyticsService.snapshot(data)
 	local reward = Daily.login(data, day, isVip(player))
 	if reward then
@@ -227,6 +240,7 @@ function EconomyService.recordMatch(
 		extra = result.stats,
 		score = result.score,
 		now = os.time(),
+		category = entry.category,
 	})
 	sendReward(player, "Rewards", Rewards.describe(payout))
 	AnalyticsService.matchPayout(player, data, payout)
@@ -427,6 +441,133 @@ function handlers.audio(player: Player, request: any)
 	end
 end
 
+-- Game Night Pass (Core/SeasonPass) ------------------------------------------------
+
+-- { track = "free" | "premium", tier } or { all = true }
+function handlers.seasonClaim(player: Player, request: any)
+	local data = DataService.get(player)
+	if not data then
+		return
+	end
+	local before = AnalyticsService.snapshot(data)
+	local lines
+	if request.all == true then
+		lines = SeasonPass.claimAll(data, os.time())
+		if #lines == 0 then
+			return notify(player, "Nothing to claim yet. Play to earn ⭐ Stars!")
+		end
+	else
+		local ok, line = SeasonPass.claim(data, os.time(), request.track, request.tier)
+		if not ok then
+			return notify(player, line)
+		end
+		lines = { line }
+	end
+	sendReward(player, "Game Night Pass", lines)
+	AnalyticsService.logChange(player, data, before, "Gameplay", "SeasonPass")
+	EconomyService.push(player)
+end
+
+function handlers.seasonPremium(player: Player, _request: any)
+	local data = DataService.get(player)
+	if not data then
+		return
+	end
+	local before = AnalyticsService.snapshot(data)
+	local ok, err = SeasonPass.buyPremium(data, os.time(), readyGames(), Random.new())
+	if not ok then
+		return notify(player, err :: string)
+	end
+	AnalyticsService.logChange(player, data, before, "Shop", "SeasonPremium")
+	notify(player, "Premium pass unlocked! Claim your rewards in 🎟️ Pass.")
+	EconomyService.push(player)
+end
+
+-- { count }: skip tiers with Gems.
+function handlers.seasonTiers(player: Player, request: any)
+	local data = DataService.get(player)
+	if not data then
+		return
+	end
+	local before = AnalyticsService.snapshot(data)
+	local ok, err = SeasonPass.buyTiers(data, os.time(), request.count)
+	if not ok then
+		return notify(player, err :: string)
+	end
+	AnalyticsService.logChange(player, data, before, "Shop", "SeasonTiers")
+	notify(player, `Skipped to tier {SeasonPass.tier(data)}!`)
+	EconomyService.push(player)
+end
+
+-- { questId }: swap one daily quest (once a day).
+function handlers.questReroll(player: Player, request: any)
+	local data = DataService.get(player)
+	if not data then
+		return
+	end
+	local ok, err = SeasonPass.reroll(data, today(), request.questId, readyGames(), Random.new())
+	if not ok then
+		return notify(player, err :: string)
+	end
+	EconomyService.push(player)
+end
+
+-- Studio only: +5 tiers' worth of Stars and a premium toggle, to test the pass.
+function handlers.studioSeason(player: Player, request: any)
+	if not RunService:IsStudio() then
+		return
+	end
+	local data = DataService.get(player)
+	if not data then
+		return
+	end
+	SeasonPass.roll(data, os.time(), readyGames(), Random.new())
+	if request.premium == true then
+		if not SeasonPass.setPremium(data, os.time(), readyGames(), Random.new()) then
+			data.season.premium = false
+		end
+		notify(player, `Studio test: premium pass {if data.season.premium then "on" else "off"}`)
+	else
+		SeasonPass.addStars(data, os.time(), 5 * Season.TierStars)
+		notify(player, "Studio test: +5 tiers of Stars")
+	end
+	EconomyService.push(player)
+end
+
+-- Premium bought with Robux (PurchaseService, inside ProcessReceipt).
+function EconomyService.grantSeasonPremium(data: Profile.Data): boolean
+	return SeasonPass.setPremium(data, os.time(), readyGames(), Random.new())
+end
+
+-- A reaction sent at a table counts toward "react" quests (ReactionService). At most one
+-- every few seconds counts, so spamming the wheel doesn't finish them.
+local lastReactionCount: { [number]: number } = {}
+function EconomyService.reactionSent(player: Player)
+	local data = DataService.get(player)
+	local now = os.clock()
+	if not data or now - (lastReactionCount[player.UserId] or -math.huge) < 5 then
+		return
+	end
+	lastReactionCount[player.UserId] = now
+	local before = AnalyticsService.snapshot(data)
+	local result = SeasonPass.recordReaction(data, os.time())
+	if #result.completed > 0 then
+		local lines = {}
+		for _, text in result.completed do
+			table.insert(lines, `Quest done: {text}`)
+		end
+		if result.gems > 0 then
+			table.insert(lines, `+{result.gems} {Economy.GemsName}`)
+		end
+		if result.stars > 0 then
+			table.insert(lines, `+{result.stars} ⭐ Pass Stars`)
+		end
+		sendReward(player, "Quest", lines)
+		AnalyticsService.logChange(player, data, before, "Gameplay", "Quest")
+		EconomyService.push(player)
+	end
+end
+
 function EconomyService.handleRequest(player: Player, request: any)
 	if type(request) ~= "table" or type(request.action) ~= "string" then
 		return
@@ -453,6 +594,7 @@ function EconomyService.init()
 
 	Players.PlayerRemoving:Connect(function(player)
 		passes[player.UserId] = nil
+		lastReactionCount[player.UserId] = nil
 	end)
 
 	-- Catch the day changing while people are playing.

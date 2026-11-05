@@ -339,6 +339,48 @@ do
 	}
 end
 
+-- Game Night Pass, Season 1 (shared/Season): Spotlight (free track) and Red Carpet (premium).
+do
+	local shade = { RS = { 120, 30, 20 }, RE = { 110, 0, 0 }, N = { 22, 15, 0 }, W = { 6, 0, 0 } }
+	local point = { RS = { 15, 0, 160 }, RE = { 5, 0, 0 }, N = { 28, 0, 6 }, W = { 8, 0, 4 } }
+	poses.pose_spotlight = {
+		length = 1.8,
+		loop = { 1.0, 1.8 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.2, "out", crouch(10), shade, HIPS_L),
+			K(0.55, "io", shade, HIPS_L, { N = { 25, -20, 0 } }),
+			K(0.75, "io", shade, HIPS_L, { N = { 25, 25, 0 } }),
+			K(1.0, "back", point, HIPS_L, WIDE, root(0, 0, 0, 0, 0.1)),
+			K(1.4, "io", point, HIPS_L, WIDE, { N = { 32, 0, 10 } }),
+			K(1.8, "io", point, HIPS_L, WIDE, root(0, 0, 0, 0, 0.1)),
+		},
+		cues = { { t = 1.0, sound = "callout", burst = 18 } },
+	}
+end
+
+do
+	local strut = { RH = { 14, 0, 0 }, RK = { -12, 0, 0 }, LH = { -10, 0, 0 }, W = { 4, 20, 0 }, N = { 6, -30, 0 } }
+	local wave = { RS = { 20, 0, 135 }, RE = { 30, 0, 0 } }
+	local kiss = { RS = { 110, -20, 10 }, RE = { 130, 0, 0 }, N = { 10, -15, 0 } }
+	local blow = { RS = { 95, 0, 60 }, RE = { 10, 0, 0 }, N = { 12, -25, 0 } }
+	poses.pose_redcarpet = {
+		length = 2.0,
+		loop = { 0.8, 2.0 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.2, "out", strut, HIPS_L, root(0, 20, 0)),
+			K(0.4, "io", strut, HIPS_L, wave, root(0, 20, 0, 0, 0.05)),
+			K(0.6, "io", strut, HIPS_L, wave, { RW = { 0, 0, 30 } }, root(0, 20, 0)),
+			K(0.8, "back", strut, HIPS_L, kiss, root(0, 20, 0)),
+			K(1.0, "out", strut, HIPS_L, blow, root(0, 20, 0, 0, 0.05)),
+			K(1.5, "io", strut, HIPS_L, wave, { RW = { 0, 0, -30 } }, root(0, 20, 0)),
+			K(2.0, "io", strut, HIPS_L, kiss, root(0, 20, 0)),
+		},
+		cues = { { t = 0.4, sound = "pop" }, { t = 1.0, sound = "callout", burst = 16 } },
+	}
+end
+
 ---------------------------------------------------------------- celebrations
 
 local dances: { [string]: Move } = {}
@@ -695,6 +737,44 @@ do
 			K(1.0, "lin", slideR, root(0, 0, 0, 0, -0.08, -0.25)),
 		},
 		cues = { { t = 0, burst = 4 } },
+	}
+end
+
+-- Showstopper (Game Night Pass, Season 1 premium tier 30): a kick line, then jazz hands
+-- and a bow to the crowd.
+do
+	local arms = { RS = { 0, 0, 100 }, LS = { 0, 0, -100 }, RE = { 10, 0, 0 }, LE = { 10, 0, 0 }, N = { 10, 0, 0 } }
+	local kickR = { RH = { 95, 0, 0 }, RK = { -5, 0, 0 }, LK = { -15, 0, 0 }, LH = { 8, 0, 0 }, W = { -6, 0, 0 } }
+	local jazz = { RS = { 20, 0, 130 }, LS = { 20, 0, -130 }, RE = { 20, 0, 0 }, LE = { 20, 0, 0 }, N = { 15, 0, 0 } }
+	local bow = { W = { -40, 0, 0 }, N = { -20, 0, 0 }, RS = { 60, 0, 40 }, LS = { 60, 0, -40 }, RE = { 30, 0, 0 }, LE = { 30, 0, 0 } }
+	dances.win_showstopper = {
+		length = 4.0,
+		loop = { 0, 4.0 },
+		keys = {
+			K(0, "io", arms, crouch(8)),
+			K(0.25, "out", arms, kickR),
+			K(0.5, "io", arms, crouch(8)),
+			K(0.75, "out", arms, M(kickR)),
+			K(1.0, "io", arms, crouch(8)),
+			K(1.25, "out", arms, kickR),
+			K(1.5, "io", arms, crouch(8)),
+			K(1.75, "out", arms, M(kickR)),
+			K(2.0, "io", jazz, crouch(14), root(0, 0, 0, 0, 0, 0)),
+			K(2.25, "io", jazz, WIDE, { RW = { 0, 0, 35 }, LW = { 0, 0, 35 } }, root(0, 0, 0, 0, 0.1)),
+			K(2.5, "io", jazz, WIDE, { RW = { 0, 0, -35 }, LW = { 0, 0, -35 } }, root(0, 0, 0, 0, 0.1)),
+			K(2.75, "io", jazz, WIDE, { RW = { 0, 0, 35 }, LW = { 0, 0, 35 } }, root(0, 0, 0, 0, 0.1)),
+			K(3.25, "io", bow),
+			K(3.7, "io", bow, { W = { -44, 0, 0 } }),
+			K(4.0, "io", arms, crouch(8)),
+		},
+		cues = {
+			{ t = 0.25, sound = "pop" },
+			{ t = 0.75, sound = "pop" },
+			{ t = 1.25, sound = "pop" },
+			{ t = 1.75, sound = "pop" },
+			{ t = 2.25, sound = "callout", burst = 20 },
+			{ t = 3.25, burst = 12 },
+		},
 	}
 end
 
