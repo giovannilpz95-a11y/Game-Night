@@ -18,7 +18,7 @@ The Studio output prints `[GameNight] lobby room: N parts, M small ones without 
 **Streaming** (for `Workspace.StreamingEnabled = true`):
 
 - `Room.Shell` (floor, walls, ceiling, beams, door) is a `Persistent` model, so a phone streaming a small radius never sees past the walls.
-- The Dressing Room corner is `Persistent`: the Looks button opens it from anywhere.
+- The Dressing Room corner is `Persistent`: the Avatar button opens it from anywhere.
 - Each code-built table is `Atomic`: stools, seats, board anchor, bots and pieces arrive together.
 - Client code that looks for tables (`Table3D/Controller`, `Avatars`, `SketchGuess`) already waits for or skips tables that haven't streamed in. `client/Perf` watches `DescendantAdded` / `DescendantRemoving`, so it follows streaming too.
 
@@ -55,4 +55,4 @@ Do each with the Device emulator set to a phone (Test > Device, e.g. iPhone 8 or
 3. **Memory**: Developer Console (F9) > Memory, client side. Note `PlaceMemory`, `Instances` and `GraphicsTexture` in the lobby and during a card game. Under 1.5 GB total is safe for phones; under 1 GB is comfortable for old ones.
 4. **Network**: Developer Console > Network (or Shift+F3). Note Data Received per second while idle in the lobby, and the spike when someone moves in a card game at a full table.
 5. **Script cost**: Developer Console > Scripts (client). `Main`, `Avatars`, `FaceViewer` and `Perf` should each be under 1% activity while idle in the lobby.
-6. **Streaming on**: set Workspace > StreamingEnabled = true (leave StreamingMinRadius 64 and TargetRadius 1024), then check: walls are always there, the Looks button still finds the Dressing Room from the far end, sitting at a table shows the 3D board, and walking to the other end doesn't leave holes.
+6. **Streaming on**: set Workspace > StreamingEnabled = true (leave StreamingMinRadius 64 and TargetRadius 1024), then check: walls are always there, the Avatar button still finds the Dressing Room from the far end, sitting at a table shows the 3D board, and walking to the other end doesn't leave holes.

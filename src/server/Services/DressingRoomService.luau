@@ -20,6 +20,8 @@ local Looks = require(script.Parent.Parent.Core.Looks)
 local RateLimiter = require(script.Parent.Parent.Core.RateLimiter)
 local DataService = require(script.Parent.DataService)
 local EconomyService = require(script.Parent.EconomyService)
+local TrendingService = require(script.Parent.TrendingService)
+local Trending = require(ReplicatedStorage.Shared.Trending)
 
 local DressingRoomService = {}
 
@@ -33,6 +35,7 @@ export type AssetInfo = {
 }
 
 local stateRemote: RemoteEvent
+local trendingRemote: RemoteEvent
 local notifyRemote: RemoteEvent
 
 local assetCache: { [number]: AssetInfo | false } = {} -- false = looked up, not wearable
@@ -44,6 +47,7 @@ local changed: { [Player]: boolean } = {} -- we've dressed them at least once th
 
 -- GetProductInfo has a server-wide budget, so each player gets a small share of it.
 local lookupLimiter = RateLimiter.new(12, 10)
+local trendingLimiter = RateLimiter.new(4, 10)
 
 local accessoryEnums: { [string]: Enum.AccessoryType } = {}
 for _, item in Enum.AccessoryType:GetEnumItems() do
@@ -340,7 +344,11 @@ function handlers.tryOn(player: Player, request: any)
 		return notify(player, "That kind of item comes to the Dressing Room soon")
 	end
 	editLook(player, function(look)
-		return Looks.add(look, { id = info.id, t = info.t })
+		local ok, err = Looks.add(look, { id = info.id, t = info.t })
+		if ok then
+			TrendingService.record(player, info.id, info.t, "tryOn", info.name)
+		end
+		return ok, err
 	end)
 end
 
@@ -358,6 +366,14 @@ function handlers.setBase(player: Player, request: any)
 		look.base = request.base
 		return true
 	end)
+end
+
+-- The Trending tab: what Game Night players wear the most (shared/Trending).
+function handlers.trending(player: Player, _request: any)
+	if not trendingLimiter:allow(player.UserId) then
+		return
+	end
+	trendingRemote:FireClient(player, { items = Trending.toClient(TrendingService.list()) })
 end
 
 function handlers.reset(player: Player, _request: any)
@@ -494,6 +510,9 @@ local function recordPurchase(player: Player, assetId: number)
 		data.catalog.purchases += 1
 		data.catalog.robux += info.price or 0
 	end
+	if info then
+		TrendingService.record(player, assetId, info.t, "buy", info.name)
+	end
 end
 
 local function onPurchaseFinished(player: Player, assetId: number, purchased: boolean)
@@ -530,8 +549,38 @@ local function onBulkPurchaseFinished(player: Player, _status: any, _results: an
 	DressingRoomService.push(player)
 end
 
+-- What a player has on when they join (their own avatar and their Game Night look) counts
+-- toward Trending, so the tab has something to show from the first day.
+local CLOTHING_TYPES = { Shirt = 11, Pants = 12, GraphicTShirt = 2 }
+local function countWorn(player: Player)
+	local base = getBase(player)
+	if not base or not player.Parent then
+		return
+	end
+	for _, acc in base.parts.accessories do
+		local t = DressingRoom.TypeByAccessory[acc.accessory]
+		if t then
+			TrendingService.record(player, acc.id, t, "avatar")
+		end
+	end
+	for key, id in base.parts.clothing do
+		local t = CLOTHING_TYPES[key]
+		if t then
+			TrendingService.record(player, id, t, "avatar")
+		end
+	end
+	local look = currentLook(player)
+	if look then
+		for _, item in look.items do
+			TrendingService.record(player, item.id, item.t, "avatar")
+		end
+	end
+end
+
 function DressingRoomService.init()
 	stateRemote = Net.event(Net.Names.DressingRoomState)
+	trendingRemote = Net.event(Net.Names.DressingRoomTrending)
+	TrendingService.init()
 	notifyRemote = Net.event(Net.Names.Notify)
 
 	MarketplaceService.PromptPurchaseFinished:Connect(onPurchaseFinished)
@@ -558,6 +607,7 @@ function DressingRoomService.init()
 			requestApply(player)
 		end
 		DressingRoomService.push(player)
+		task.spawn(countWorn, player)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)

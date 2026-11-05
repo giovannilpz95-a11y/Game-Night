@@ -219,7 +219,7 @@ local hud = LobbyHud.create(lobby, {
 		closeWindows()
 		seasonPanel.open()
 	end,
-	looks = function()
+	avatar = function()
 		closeWindows()
 		dressingRoom.open()
 	end,
@@ -271,7 +271,7 @@ function startTour()
 			text = "Every game pays its own Coins when you play. Gems work everywhere.",
 		},
 		railStep("Shop", "Shop", "Spend Coins on pieces, card backs and more for that game."),
-		railStep("Looks", "Looks", "Try on outfits and save your look in the Dressing Room."),
+		railStep("Avatar", "Avatar", "Try on outfits and save your look in the Dressing Room."),
 		railStep("Host", "Party Host", "House rules and your own word lists and quiz decks."),
 		railStep("Help", "Help", "Forgot how a game works? Every game's rules are here. In a match, tap ? at the top."),
 	}, function()
@@ -304,6 +304,7 @@ end
 renderHud()
 
 Net.event(Net.Names.DressingRoomState).OnClientEvent:Connect(dressingRoom.setState)
+Net.event(Net.Names.DressingRoomTrending).OnClientEvent:Connect(dressingRoom.setTrending)
 
 -- Walking up to the Dressing Room corner's stage or mirror, or the snack bar, offers to
 -- open it.

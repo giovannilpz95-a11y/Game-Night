@@ -53,7 +53,7 @@ Filter chips (All games, then each category) above the grid. Each tile has an ic
 ## Lobby (`UI/LobbyHud`)
 The lobby frame is see-through: the 3D room is the lobby. On top of it:
 - one big **Play** button at the bottom center. It opens the game picker window. Non-leaders see "Games" and a hint that the leader picks.
-- a **side rail** of round buttons on the left: Party (with a member count badge), Tables, Stats (see [[Progression]]), Shop, Looks (Dressing Room), Host, and Voice (only when voice servers are on).
+- a **side rail** of round buttons on the left: Party (with a member count badge), Tables, Stats (see [[Progression]]), Shop, Avatar (Dressing Room), Host, and Voice (only when voice servers are on).
 - a round **?** (Help) right of Play.
 - the **wallet** at the right end of the top bar (lobby and matches).
 
@@ -84,7 +84,7 @@ Rules text lives in `shared/GameRules.luau`, one entry per catalog id (see [[Add
 - **How-to-play card**: shown when you sit down for a new match: the goal, 2-4 numbered lines, Full rules and Got it. "Don't show this card for this game" is saved in the profile (`tips.hideCard`). Each player's first turn of a match gets `Config.FirstTurnGrace` extra seconds, so reading it doesn't cost a turn.
 - **Rules page**: the ? in the match header, the ? on each game in the picker, and Help in the lobby. It's a lightly dimmed window, so the match carries on behind it. The game's house rules are listed from `GameCatalog`.
 - **Help** (the ? by Play): every game's rules and "Replay the lobby tour".
-- **Lobby tour**: coach marks on Play, Party, Tables, the wallet, Shop, Looks, Host and Help, with Next / Skip. It runs once per player: finishing or skipping sends `{ action = "tips", tip = "lobbyTour" }` on `EconomyRequest`, checked by `server/Core/Tips`. Steps whose button is hidden are skipped.
+- **Lobby tour**: coach marks on Play, Party, Tables, the wallet, Shop, Avatar, Host and Help, with Next / Skip. It runs once per player: finishing or skipping sends `{ action = "tips", tip = "lobbyTour" }` on `EconomyRequest`, checked by `server/Core/Tips`. Steps whose button is hidden are skipped.
 
 ## Rematch
 The end screen's Rematch sends `{ action = "rematch" }`. `MatchService` remembers the last start of each party (game, table size, bot level, house rule picks and custom deck slot, all already checked) for 30 minutes. The leader's Rematch starts it again through `startMatch`, which checks everything again. Anyone else's Rematch sends the leader a toast asking for one.

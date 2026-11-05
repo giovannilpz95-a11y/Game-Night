@@ -2,29 +2,60 @@
 -- corner: you stand on the photo stage (a FittingSpot in server/Lobby/Props), your
 -- controls pause, and the real camera frames your real avatar in the part of the screen
 -- the catalog panel leaves free. No preview copy, so every change shows right away.
+-- You can't walk or jump while dressing, and closing the window puts you back where you
+-- were when you opened it.
 --
--- Zoom with the + / - buttons, the mouse wheel or a pinch; drag to turn around the avatar.
+-- Zoom with the + / - buttons, the mouse wheel or a pinch; drag to spin the avatar like a
+-- turntable (the camera stays put, and other players see you turn).
 -- With no Dressing Room in the place (Config.Lobby.buildRoom = false), it frames you
 -- where you stand. Math lives in shared/AvatarFraming (tested).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local AvatarFraming = require(ReplicatedStorage.Shared.AvatarFraming)
 
 local DressingCamera = {}
 
 local BIND_NAME = "GameNightDressingCamera"
+local FREEZE_ACTION = "GameNightDressingFreeze"
+local FROZEN_KEYS = {
+	Enum.PlayerActions.CharacterForward,
+	Enum.PlayerActions.CharacterBackward,
+	Enum.PlayerActions.CharacterLeft,
+	Enum.PlayerActions.CharacterRight,
+	Enum.PlayerActions.CharacterJump,
+	Enum.KeyCode.W,
+	Enum.KeyCode.A,
+	Enum.KeyCode.S,
+	Enum.KeyCode.D,
+	Enum.KeyCode.Space,
+	Enum.KeyCode.Up,
+	Enum.KeyCode.Down,
+	Enum.KeyCode.Left,
+	Enum.KeyCode.Right,
+	Enum.KeyCode.Thumbstick1,
+}
 
 type Rect = AvatarFraming.Rect
 
+local cachedControls: any = nil
 local function controls(): any
+	if cachedControls then
+		return cachedControls
+	end
 	local ok, result = pcall(function()
 		local module = Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule", 2)
 		return module and (require(module :: any) :: any):GetControls()
 	end)
-	return if ok then result else nil
+	cachedControls = if ok then result else nil
+	return cachedControls
+end
+
+local function sinkInput()
+	return Enum.ContextActionResult.Sink
 end
 
 -- A free fitting spot in the Dressing Room corner, or nil if the place has none.
@@ -64,7 +95,11 @@ function DressingCamera.new()
 	local active = false
 	local stage: Rect = { x = 0, y = 0, w = 400, h = 600 }
 	local zoom = 1
-	local yaw, pitch = 0, 0.06
+	local pitch = 0.06
+	local spinTarget, spinShown = 0, 0 -- how far the avatar is turned from facing the camera
+	local returnTo: CFrame? = nil -- where you stood when you opened the Dressing Room
+	-- Walking is off while dressing: these are the humanoid's own values to give back.
+	local frozen: { humanoid: Humanoid, walk: number, jumpPower: number, jumpHeight: number, autoRotate: boolean }? = nil
 	local base: CFrame? = nil -- where the avatar stands, facing the camera's start position
 	local boxCenter, boxSize = Vector3.zero, Vector3.new(4, 6, 2)
 	local headY = 0
@@ -118,6 +153,73 @@ function DressingCamera.new()
 			character.DescendantAdded:Connect(queueMeasure),
 			character.DescendantRemoving:Connect(queueMeasure),
 		}
+	end
+
+	-- Walking and jumping stay off the whole time, even if something else turns the
+	-- controls back on (a respawn, another script): `step` checks again a few times a second.
+	local function freeze()
+		local c = controls()
+		if c then
+			pcall(function()
+				c:Disable()
+			end)
+		end
+		local character = Players.LocalPlayer.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not humanoid then
+			return
+		end
+		if not frozen or frozen.humanoid ~= humanoid then
+			frozen = {
+				humanoid = humanoid,
+				walk = humanoid.WalkSpeed,
+				jumpPower = humanoid.JumpPower,
+				jumpHeight = humanoid.JumpHeight,
+				autoRotate = humanoid.AutoRotate,
+			}
+		end
+		if humanoid.WalkSpeed ~= 0 then
+			humanoid.WalkSpeed = 0
+		end
+		if humanoid.JumpPower ~= 0 then
+			humanoid.JumpPower = 0
+		end
+		if humanoid.JumpHeight ~= 0 then
+			humanoid.JumpHeight = 0
+		end
+		humanoid.AutoRotate = false
+		humanoid:Move(Vector3.zero)
+	end
+
+	local function unfreeze()
+		local f = frozen
+		frozen = nil
+		if f and f.humanoid.Parent then
+			f.humanoid.WalkSpeed = f.walk
+			f.humanoid.JumpPower = f.jumpPower
+			f.humanoid.JumpHeight = f.jumpHeight
+			f.humanoid.AutoRotate = f.autoRotate
+		end
+		local c = controls()
+		if c then
+			pcall(function()
+				c:Enable()
+			end)
+		end
+	end
+
+	-- Turns the avatar to `spinShown` on its spot. The root part belongs to this client,
+	-- so the turn replicates and everyone sees you spin.
+	local function applySpin()
+		local character = Players.LocalPlayer.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not root or not base then
+			return
+		end
+		local want = (base :: CFrame).Rotation * CFrame.Angles(0, spinShown, 0)
+		if root.CFrame.LookVector:Dot(want.LookVector) < 0.99999 then
+			root.CFrame = CFrame.new(root.Position) * want
+		end
 	end
 
 	local function standOnStage(character: Model)
@@ -199,10 +301,13 @@ function DressingCamera.new()
 		local fit = AvatarFraming.fitDistance(boxSize.Y, boxSize.X, boxSize.Z, AvatarFraming.FOV, aspect, fracW, fracH)
 		local distance = fit * zoom
 		local bias = AvatarFraming.headBias(zoom)
-		local focus = Vector3.new(boxCenter.X, boxCenter.Y + (headY - boxCenter.Y) * bias, boxCenter.Z)
-		-- Start in front of the avatar (the way it faces), then orbit by yaw and pitch.
-		local dir = CFrame.Angles(0, yaw, 0):VectorToWorldSpace(base.LookVector)
-		dir = dir * math.cos(pitch) + Vector3.yAxis * math.sin(pitch)
+		-- The avatar spins on its root, so aim at the root (the box shifts as it turns).
+		local character = Players.LocalPlayer.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local axis = if root then root.Position else boxCenter
+		local focus = Vector3.new(axis.X, boxCenter.Y + (headY - boxCenter.Y) * bias, axis.Z)
+		-- The camera stays in front of the spot; dragging turns the avatar, not the camera.
+		local dir = base.LookVector * math.cos(pitch) + Vector3.yAxis * math.sin(pitch)
 		local eye = focus + dir * distance
 		local view = CFrame.lookAt(eye, focus)
 		-- Slide the camera sideways so the avatar sits in the middle of the free stage area.
@@ -220,6 +325,8 @@ function DressingCamera.new()
 			camera.CameraType = Enum.CameraType.Scriptable
 		end
 		camera.FieldOfView = AvatarFraming.FOV
+		spinShown = AvatarFraming.easeYaw(spinShown, spinTarget, dt)
+		applySpin()
 		local target = goal(camera)
 		if not target then
 			return
@@ -232,6 +339,7 @@ function DressingCamera.new()
 		if hideClock > 0.3 then
 			hideClock = 0
 			hideNeighbors()
+			freeze()
 		end
 	end
 
@@ -250,17 +358,18 @@ function DressingCamera.new()
 			return
 		end
 		active = true
-		zoom, yaw, pitch = 1, 0, 0.06
+		zoom, pitch = 1, 0.06
+		spinTarget, spinShown = 0, 0
 		local camera = workspace.CurrentCamera
 		smoothed = camera.CFrame -- glide from where the camera was
 		savedType = camera.CameraType
 		savedFov = camera.FieldOfView
-		local c = controls()
-		if c then
-			pcall(function()
-				c:Disable()
-			end)
-		end
+		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		returnTo = if root then root.CFrame else nil
+		freeze()
+		pcall(function()
+			ContextActionService:BindActionAtPriority(FREEZE_ACTION, sinkInput, false, Enum.ContextActionPriority.High.Value + 100, table.unpack(FROZEN_KEYS))
+		end)
 		standOnStage(character)
 		watchCharacter(character)
 		RunService:BindToRenderStep(BIND_NAME, Enum.RenderPriority.Camera.Value + 2, step)
@@ -276,12 +385,24 @@ function DressingCamera.new()
 		end)
 		stopWatching()
 		showNeighbors()
-		local c = controls()
-		if c then
-			pcall(function()
-				c:Enable()
-			end)
+		pcall(function()
+			ContextActionService:UnbindAction(FREEZE_ACTION)
+		end)
+		unfreeze()
+		-- Back to where you were when you opened the Dressing Room, unless something else
+		-- (a table seat) already moved you.
+		local character = Players.LocalPlayer.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if character and root and returnTo and base then
+			local seated = humanoid ~= nil and (humanoid.SeatPart ~= nil or humanoid.Sit)
+			local away = (root.Position - (base :: CFrame).Position).Magnitude
+			if AvatarFraming.shouldReturn(away, seated) then
+				root.AssemblyLinearVelocity = Vector3.zero
+				character:PivotTo(returnTo :: CFrame)
+			end
 		end
+		returnTo = nil
 		local camera = workspace.CurrentCamera
 		-- Only hand the camera back if nothing else (the table view) took it meanwhile.
 		local ours = lastSet ~= nil and camera.CameraType == Enum.CameraType.Scriptable and (camera.CFrame.Position - (lastSet :: CFrame).Position).Magnitude < 0.5
@@ -310,14 +431,14 @@ function DressingCamera.new()
 	end
 
 	function self.fit()
-		zoom, yaw, pitch = 1, 0, 0.06
+		zoom, pitch = 1, 0.06
+		spinTarget = 0
 		measure()
 	end
 
-	-- Drag: pixels moved on screen.
-	function self.turn(dx: number, dy: number)
-		yaw = (yaw - dx * 0.012) % (math.pi * 2)
-		pitch = AvatarFraming.clampPitch(pitch + dy * 0.006)
+	-- Drag: pixels moved on screen. Sideways spins the avatar; the camera doesn't move.
+	function self.turn(dx: number, _dy: number)
+		spinTarget = AvatarFraming.spin(spinTarget, dx)
 	end
 
 	Players.LocalPlayer.CharacterAdded:Connect(function(character)
@@ -327,6 +448,7 @@ function DressingCamera.new()
 					character:WaitForChild("HumanoidRootPart", 5)
 					standOnStage(character)
 					watchCharacter(character)
+					freeze()
 				end
 			end)
 		end
