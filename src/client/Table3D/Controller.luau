@@ -684,6 +684,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			setActive(false)
 			return
 		end
+		if active and snapshot.result and board and not board.Parent then
+			-- Game over and the table already cleared: stay put under the results.
+			return
+		end
 		if tryAttach() then
 			setActive(true)
 			showSign(false)
@@ -718,9 +722,13 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			refresh()
 		end
 		if active and board and not board.Parent then
-			-- The server cleared the table (match over and the hold ran out).
-			setActive(false)
+			-- The server cleared the table (match over and the hold ran out). While the
+			-- results are up, keep looking at the table rather than dropping back to the
+			-- 2D board under them; leaving the results ends Table view.
 			dropHandler()
+			if not (snapshot and snapshot.result and tableModel and tableModel.Parent) then
+				setActive(false)
+			end
 		end
 	end)
 
