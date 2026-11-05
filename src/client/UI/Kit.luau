@@ -505,6 +505,19 @@ function Kit.tag(text: string, color: Color3, props: { [string]: any }?): TextLa
 	return tag
 end
 
+-- True inside a game picker preview (client/UI/GamePreview): boards drawn there must
+-- keep everything inside the tile, take no input and make no sound.
+function Kit.inPreview(object: Instance?): boolean
+	local at = object
+	while at do
+		if at:GetAttribute("GamePreview") then
+			return true
+		end
+		at = at.Parent
+	end
+	return false
+end
+
 function Kit.clear(container: Instance)
 	for _, child in container:GetChildren() do
 		if

@@ -114,9 +114,10 @@ export type PlayOptions = {
 -- Works out one play of `name`: nil when it's too soon after the last one, otherwise the
 -- pitch of each note to play (a streak climbs, `notes` makes a little run).
 -- `key` keeps gaps and streaks apart per place (each table around you has its own).
+local quiet = 0 -- > 0 while Audio.quietly runs (a game preview drawing itself)
 local function plan(name: string, key: string, options: PlayOptions?): { number }?
 	local def = Sounds.Effects[name]
-	if not def or levels.effects <= 0 then
+	if not def or levels.effects <= 0 or quiet > 0 then
 		return nil
 	end
 	local now = os.clock()
@@ -197,6 +198,17 @@ function Audio.playAt(name: string, position: Vector3, options: PlayOptions?)
 		end)
 		playOnce(s)
 	end)
+end
+
+-- Runs fn with every effect muted: the game picker's bot previews draw with the real
+-- boards, which would otherwise click and chime for moves nobody made.
+function Audio.quietly(fn: () -> ())
+	quiet += 1
+	local ok, err = pcall(fn)
+	quiet -= 1
+	if not ok then
+		error(err, 2)
+	end
 end
 
 -- Mouse over a button: a faint high tick, like a console menu's cursor. Mouse only (a
