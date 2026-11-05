@@ -68,11 +68,37 @@ return function(T)
 		end
 	end)
 
-	T.test("a big board makes the eye sit further back rather than cut it off", function()
+	T.test("a big board moves the eye up and back rather than cut it off", function()
 		local board = box(7, 7, 0, 0.6)
 		local view = SeatView.solve(board, heads(4, 9), 10.8, 8.5, ASPECT, FULL)
 		T.ok(view.fits ~= "none", `fits {view.fits}`)
 		inside(view, board, FULL, "board")
+	end)
+
+	-- Studio check of the first version: at a 4-seat table Property Party's board (8 studs,
+	-- nearly the whole tabletop) was cut off on the left, under the seat list.
+	T.test("Property Party at a 4-seat table: whole board clear of the side panel and seat list", function()
+		local reach = 6.1
+		local free = { left = -1 + 2 * 0.18, right = 1 - 2 * 0.4, bottom = -1, top = 0.88 }
+		local board = box(4.5, 4.5, 0, 0.8)
+		local others = heads(4, reach)
+		local view = SeatView.solve(board, others, reach * 1.2, 4 + reach * 0.5, ASPECT, free)
+		T.eq(view.fits, "all")
+		inside(view, board, free, "board")
+		inside(view, others, free, "heads")
+		T.ok(view.back <= reach * 1.2 * 2 + 1e-6, `back {view.back}`)
+	end)
+
+	T.test("of the spots that fit, the one nearest your chair wins", function()
+		local reach = 6.1
+		local free = { left = -1 + 2 * 0.18, right = 1 - 2 * 0.4, bottom = -1, top = 0.88 }
+		local board = box(4.5, 4.5, 0, 0.8)
+		local view = SeatView.solve(board, heads(4, reach), reach * 1.2, 4 + reach * 0.5, ASPECT, free)
+		local far = SeatView.solve(board, heads(4, reach), reach * 1.2 * 1.5, (4 + reach * 0.5) * 1.5, ASPECT, free)
+		local function dist(v)
+			return math.sqrt((v.back - reach * 1.2) ^ 2 + (v.height - (4 + reach * 0.5)) ^ 2)
+		end
+		T.ok(dist(view) <= dist(far) + 1e-6, "no further than needed")
 	end)
 
 	T.test("a bottom strip (Word Tiles' rack) keeps the board above it", function()

@@ -692,6 +692,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			seatsPanel.Size = UDim2.fromOffset(seatsW, available)
 		end
 		local boardX = left + seatsW + 8
+		-- The seat list down the left, as a share of the screen: seated board cameras keep
+		-- the board clear of it.
+		local seatsShare = if seatsPanel.Visible then (left + seatsW + 8) / info.width else 0
 		local boardW, boardH = math.max(100, info.width - boardX - right), math.max(100, available)
 		board.Size = UDim2.fromOffset(boardW, boardH)
 		if board.Parent == dock then
@@ -716,7 +719,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				dockLip.Position = UDim2.fromOffset(0, 0)
 				dockLip.Size = UDim2.new(0, 3, 1, 0)
 				dockLip.Fade.Rotation = 90
-				table3D.setInsets((w + right) / info.width, 0)
+				table3D.setInsets((w + right) / info.width, 0, seatsShare)
 			else
 				local h = if spec.size > 1 then spec.size else math.floor(boardH * spec.size)
 				-- Held hands float over the table: no tray, no glowing edge.
@@ -741,11 +744,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				dockLip.Position = UDim2.fromOffset(0, 0)
 				dockLip.Size = UDim2.new(1, 0, 0, 3)
 				dockLip.Fade.Rotation = 0
-				table3D.setInsets(0, (h + bottom) / info.height)
+				table3D.setInsets(0, (h + bottom) / info.height, seatsShare)
 			end
 		else
 			board.Position = UDim2.fromOffset(boardX, top)
-			table3D.setInsets(0, 0)
+			table3D.setInsets(0, 0, seatsShare)
 		end
 
 		-- Over the middle of the board, clear of the opponents' row along its top.
