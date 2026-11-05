@@ -19,6 +19,7 @@ local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 
 local Kit = require(script.Parent.Parent.UI.Kit)
+local Focus = require(script.Parent.Focus)
 
 local Controller = {}
 
@@ -397,6 +398,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		if not value then
 			fadeSelf(false)
 			showSign(true)
+			Focus.set(nil)
 		end
 		if value then
 			savedCameraType = camera.CameraType
@@ -483,6 +485,17 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local least = toMiddle - bottomEdge + margin
 			local pitch = (most + least) / 2
 			home = CFrame.lookAt(eye, eye + flat) * CFrame.Angles(-pitch, 0, 0)
+			local model = tableModel :: Model
+			Focus.set({
+				table = model,
+				board = model:FindFirstChild("GameBoard") :: Model?,
+				middle = anchor,
+				toYou = -flat,
+				seatOf = function(tableSeat: number): BasePart?
+					local part = model:FindFirstChild(`Seat{tableSeat}`, true)
+					return if part and part:IsA("BasePart") then part else nil
+				end,
+			})
 			firstPerson = true
 			if not shown then
 				shown = camera.CFrame

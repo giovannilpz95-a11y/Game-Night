@@ -116,6 +116,9 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "stacking", name = "Stack draw cards", hint = "Answer a Draw Two or Draw Four with another one.", choices = Toggle, default = 2 },
 			{ key = "drawUntilPlayable", name = "Draw until you can play", hint = "Keep drawing until you get a card that fits.", choices = Toggle, default = 1 },
+			{ key = "chainAnything", name = "Chain anything", hint = "Any draw card answers any draw card: a +2 can answer a +4.", choices = Toggle, default = 1 },
+			{ key = "forcePlay", name = "Force play", hint = "If the card you draw fits, you have to play it.", choices = Toggle, default = 1 },
+			{ key = "sevenZero", name = "7-0", hint = "A 7 swaps hands with a player you pick. A 0 passes every hand along.", choices = Toggle, default = 1 },
 			{
 				key = "handSize",
 				name = "Starting hand",

@@ -68,6 +68,59 @@ return function(T)
 		T.eq(recent[3].seat, 2)
 	end)
 
+	T.test("chain anything: a Draw Two answers a Draw Four", function()
+		local s = setup(3, { { wild4, coral5 }, { coralDraw2, teal3 }, { honey7 } }, coral5)
+		s.discard = { honey5 }
+		s.color = 2
+		play(s, 1, { kind = "play", card = wild4, color = 1 })
+		T.eq(ColorClash.validateMove(s, 2, { kind = "play", card = coralDraw2 }), false)
+		s.chainAnything = true
+		play(s, 2, { kind = "play", card = coralDraw2 })
+		T.eq(s.pendingDraw, 6)
+	end)
+
+	T.test("force play: a drawn card that fits can't be kept", function()
+		local s = setup(2, { { teal3 }, { honey7 } }, coral5)
+		s.forcePlay = true
+		s.deck = { coralSkip }
+		play(s, 1, { kind = "draw" })
+		T.eq(s.drawnCard, coralSkip)
+		T.eq(ColorClash.validateMove(s, 1, { kind = "pass" }), false)
+		T.eq(ColorClash.getView(s, 1).canPass, false)
+		local moves = ColorClash.getLegalMoves(s, 1)
+		T.eq(#moves, 1)
+		T.eq(moves[1].card, coralSkip)
+	end)
+
+	T.test("7-0: a 7 swaps hands with the chosen player, a 0 passes hands along", function()
+		local coral7 = find(function(c) return c.color == 1 and c.value == 7 end)
+		local coral0 = find(function(c) return c.color == 1 and c.value == 0 end)
+		local s = setup(3, { { coral7, coral0, teal3 }, { honey5 }, { honey7, coralSkip } }, coral5)
+		s.sevenZero = true
+		T.eq(ColorClash.validateMove(s, 1, { kind = "play", card = coral7 }), false)
+		T.eq(ColorClash.validateMove(s, 1, { kind = "play", card = coral7, target = 1 }), false)
+		play(s, 1, { kind = "play", card = coral7, target = 3 })
+		T.eq(#s.hands[1], 2) -- seat 3's two cards
+		T.ok(table.find(s.hands[1], honey7) ~= nil)
+		T.ok(table.find(s.hands[3], coral0) ~= nil)
+		for _, move in ColorClash.getLegalMoves(s, 2) do
+			T.ok(move.kind ~= "play" or move.target == nil or move.target ~= 2)
+		end
+		-- Seat 3 now holds the 0: everyone's hand moves one seat along.
+		s.turn = 3
+		local before = { table.clone(s.hands[1]), table.clone(s.hands[2]) }
+		play(s, 3, { kind = "play", card = coral0 })
+		T.eq(table.concat(s.hands[2], ","), table.concat(before[1], ","))
+		T.eq(table.concat(s.hands[3], ","), table.concat(before[2], ","))
+		-- A bot picks a target on its own.
+		local b = setup(3, { { coral7, teal3 }, { honey5 }, { honey7, coralSkip } }, coral5)
+		b.sevenZero = true
+		local move = ColorClash.chooseBotMove(b, 1, T.Random.new(2))
+		if move.card == coral7 then
+			T.eq(move.target, 2)
+		end
+	end)
+
 	T.test("deck has 108 cards and everyone gets 7", function()
 		T.eq(ColorClash.deckSize, 108)
 		local s = ColorClash.new(4, nil, T.Random.new(3))

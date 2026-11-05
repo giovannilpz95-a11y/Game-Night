@@ -11,12 +11,16 @@
 -- player who can't (or won't) stack draws the whole pile of penalties and is skipped.
 -- House rules (options.rules): stacking = false (a draw card can't be answered, the next
 -- player just takes it), drawUntilPlayable = true (keep drawing until a card fits),
--- handSize = 5 | 7 | 10.
+-- handSize = 5 | 7 | 10, chainAnything = true (any draw card answers any draw card, so a
+-- Draw Two can answer a Draw Four), forcePlay = true (a drawn card that fits must be
+-- played), sevenZero = true (a 7 swaps hands with a player you pick; a 0 passes every hand
+-- on the way play is going).
 -- First to empty their hand wins. If the game drags past TURN_LIMIT turns, the fewest
 -- cards wins.
 --
 -- Moves:
 --   { kind = "play", card = id, color = 1..4 }  (color only for Wild cards)
+--   { kind = "play", card = id, target = seat }  (7-0 rule: who a 7 swaps hands with)
 --   { kind = "draw" }
 --   { kind = "pass" }                            (only after drawing a playable card)
 
@@ -127,6 +131,9 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 		botLevel = (options and options.botLevel) or "medium",
 		stacking = rules.stacking ~= false,
 		drawUntilPlayable = rules.drawUntilPlayable == true,
+		chainAnything = rules.chainAnything == true,
+		forcePlay = rules.forcePlay == true,
+		sevenZero = rules.sevenZero == true,
 	}
 end
 
@@ -154,7 +161,7 @@ local function canPlay(state, id: number): boolean
 		if not state.stacking then
 			return false
 		end
-		return card.kind == "wild4" or (card.kind == "draw2" and top.kind == "draw2")
+		return card.kind == "wild4" or (card.kind == "draw2" and (top.kind == "draw2" or state.chainAnything == true))
 	end
 	if isWild(card) then
 		return true
@@ -204,6 +211,12 @@ local function endTurn(state, steps: number)
 	end
 end
 
+-- 7-0 rule: does playing this card swap hands with someone you pick?
+local function swapsHands(state, id: number): boolean
+	local card = cards[id]
+	return state.sevenZero == true and card.kind == "number" and card.value == 7
+end
+
 function ColorClash.getActiveSeats(state): { number }
 	if state.winner then
 		return {}
@@ -240,12 +253,20 @@ function ColorClash.getLegalMoves(state, seat: number): { any }
 			for color = 1, 4 do
 				table.insert(moves, { kind = "play", card = id, color = color })
 			end
+		elseif swapsHands(state, id) then
+			for target = 1, state.seatCount do
+				if target ~= seat then
+					table.insert(moves, { kind = "play", card = id, target = target })
+				end
+			end
 		else
 			table.insert(moves, { kind = "play", card = id })
 		end
 	end
 	if state.drawnCard then
-		table.insert(moves, { kind = "pass" })
+		if not state.forcePlay then
+			table.insert(moves, { kind = "pass" })
+		end
 	else
 		table.insert(moves, { kind = "draw" })
 	end
@@ -270,6 +291,9 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 	elseif move.kind == "pass" then
 		if not state.drawnCard then
 			return false, "Draw a card first"
+		end
+		if state.forcePlay then
+			return false, "You have to play the card you drew"
 		end
 		return true
 	elseif move.kind == "play" then
@@ -296,6 +320,12 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 			local color = move.color
 			if type(color) ~= "number" or color % 1 ~= 0 or color < 1 or color > 4 then
 				return false, "Pick a color"
+			end
+		end
+		if swapsHands(state, id) then
+			local target = move.target
+			if type(target) ~= "number" or target % 1 ~= 0 or target < 1 or target > state.seatCount or target == seat then
+				return false, "Pick who to swap hands with"
 			end
 		end
 		return true
@@ -361,6 +391,22 @@ function ColorClash.applyMove(state, seat: number, move: any)
 		return
 	end
 
+	if state.sevenZero and card.kind == "number" then
+		if card.value == 7 then
+			local target = move.target :: number
+			state.hands[seat], state.hands[target] = state.hands[target], state.hands[seat]
+			state.lastAction.target = target
+		elseif card.value == 0 then
+			-- Every hand moves one seat along the way play is going.
+			local moved = {}
+			for from = 1, state.seatCount do
+				moved[nextSeat(state, from, 1)] = state.hands[from]
+			end
+			state.hands = moved
+			state.lastAction.rotated = true
+		end
+	end
+
 	if card.kind == "skip" then
 		endTurn(state, 2)
 	elseif card.kind == "reverse" then
@@ -423,7 +469,9 @@ function ColorClash.getView(state, seat: number?)
 		lastAction = GameModule.copy(state.lastAction),
 		drawnCard = if yourTurn then state.drawnCard else nil,
 		playable = if yourTurn then ColorClash.getPlayable(state, seat :: number) else {},
-		canPass = yourTurn and state.drawnCard ~= nil,
+		canPass = yourTurn and state.drawnCard ~= nil and not state.forcePlay,
+		forcePlay = state.forcePlay == true,
+		sevenZero = state.sevenZero == true,
 		winner = state.winner,
 	}
 end
@@ -472,6 +520,19 @@ function ColorClash.chooseBotMove(state, seat: number, rng: Random): any?
 		if isWild(cards[id]) then
 			local color = if state.botLevel == "easy" then rng:NextInteger(1, 4) else bestColor(state, seat, rng)
 			return { kind = "play", card = id, color = color }
+		end
+		if swapsHands(state, id) then
+			-- Swap with whoever holds the fewest cards (easy bots pick anyone).
+			local best, bestCount = nil, math.huge
+			for other = 1, state.seatCount do
+				if other ~= seat then
+					local n = #state.hands[other] + (if state.botLevel == "easy" then rng:NextNumber() * 20 else rng:NextNumber() * 0.5)
+					if n < bestCount then
+						best, bestCount = other, n
+					end
+				end
+			end
+			return { kind = "play", card = id, target = best }
 		end
 		return { kind = "play", card = id }
 	end
