@@ -60,6 +60,7 @@ return function(T)
 		T.eq(#moves[1].path, 1)
 		Checkers.applyMove(s, 1, moves[1])
 		T.eq(s.board[1][4], 3, "crowned")
+		T.eq(Checkers.getView(s, 2).lastMove.crowned, true, "the table shows the crowning")
 	end)
 
 	T.test("kings move backward", function()

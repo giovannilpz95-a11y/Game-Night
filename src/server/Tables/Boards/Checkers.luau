@@ -6,6 +6,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local TableLayout = require(ReplicatedStorage.Shared.TableLayout)
 local Pieces = require(script.Parent.Parent.Pieces)
 local Square = require(script.Parent.Square)
+local Scene = require(script.Parent.Parent.Scene)
 
 local Checkers = {}
 
@@ -80,6 +81,43 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 		end
 	end
 
+	-- The crowning moment: a crown and sparkles over a man that just became a king.
+	local crownFolder = Instance.new("Folder")
+	crownFolder.Name = "Crowning"
+	crownFolder.Parent = board.model
+	local crownKey = ""
+	local function drawCrown(lastMove: any)
+		local landed = lastMove and lastMove.crowned and lastMove.path[#lastMove.path]
+		local key = if landed then `{lastMove.from[1]},{lastMove.from[2]}>{landed[1]},{landed[2]}` else ""
+		if key == crownKey then
+			return
+		end
+		crownKey = key
+		crownFolder:ClearAllChildren()
+		if not landed then
+			return
+		end
+		local spot = board.surface(landed[1], landed[2]) * CFrame.new(0, board.cellSize * 1.1, 0)
+		local label = Scene.floatText(crownFolder, spot, 4, 1.2, "👑 Crowned!", { TextColor3 = Color3.fromRGB(255, 215, 90), TextStrokeColor3 = Color3.fromRGB(60, 40, 10), TextStrokeTransparency = 0.2 })
+		local holder = label:FindFirstAncestorWhichIsA("BasePart")
+		if holder then
+			local sparkles = Instance.new("ParticleEmitter")
+			sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			sparkles.Color = ColorSequence.new(Color3.fromRGB(255, 225, 120))
+			sparkles.LightEmission = 1
+			sparkles.Size = NumberSequence.new(0.25, 0)
+			sparkles.Lifetime = NumberRange.new(0.6, 1.1)
+			sparkles.Speed = NumberRange.new(1, 2.5)
+			sparkles.SpreadAngle = Vector2.new(180, 180)
+			sparkles.Rate = 30
+			sparkles.Parent = holder
+			-- A short burst, then just the crown.
+			task.delay(1.5, function()
+				sparkles.Enabled = false
+			end)
+		end
+	end
+
 	return {
 		model = board.model,
 		update = function(view: any)
@@ -116,6 +154,7 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 			end
 			Square.tint(board, 8, tints)
 			drawTaken(view.board)
+			drawCrown(view.lastMove)
 		end,
 		destroy = function()
 			board.model:Destroy()
