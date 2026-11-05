@@ -30,9 +30,11 @@ Speed.STUCK_PAUSE = 1.5 -- seconds both players see "no moves" before the flip
 
 local rank = PlayingCards.rank
 
-local function fits(card: number, top: number): boolean
+-- One rank up or down. House rules: wrap (Ace and King connect, default on) and
+-- sameRank (a card of the same rank also fits).
+local function fits(state, card: number, top: number): boolean
 	local d = math.abs(rank(card) - rank(top))
-	return d == 1 or d == 12
+	return d == 1 or (d == 12 and state.wrap ~= false) or (d == 0 and state.sameRank == true)
 end
 Speed.fits = fits
 
@@ -47,8 +49,11 @@ function Speed.new(seatCount: number, options: any?, rng: Random?)
 		end
 		return out
 	end
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local state = {
 		rng = random,
+		wrap = rules.wrap ~= false,
+		sameRank = rules.sameRank == true,
 		hands = { take(HAND_SIZE), take(HAND_SIZE) },
 		draws = { take(DRAW_SIZE), take(DRAW_SIZE) },
 		sides = { take(SIDE_SIZE), take(SIDE_SIZE) },
@@ -72,7 +77,7 @@ end
 
 local function canPlayAny(state, seat: number): boolean
 	for _, card in state.hands[seat] do
-		if fits(card, top(state, 1)) or fits(card, top(state, 2)) then
+		if fits(state, card, top(state, 1)) or fits(state, card, top(state, 2)) then
 			return true
 		end
 	end
@@ -144,7 +149,7 @@ function Speed.getLegalMoves(state, seat: number): { any }
 	end
 	for _, card in state.hands[seat] do
 		for pile = 1, 2 do
-			if fits(card, top(state, pile)) then
+			if fits(state, card, top(state, pile)) then
 				table.insert(moves, { kind = "play", card = card, pile = pile })
 			end
 		end
@@ -171,7 +176,7 @@ function Speed.validateMove(state, seat: number, move: any): (boolean, string?)
 	if not table.find(state.hands[seat], move.card) then
 		return false, "That card isn't in your hand"
 	end
-	if not fits(move.card, top(state, move.pile)) then
+	if not fits(state, move.card, top(state, move.pile)) then
 		return false, "Too slow! That doesn't fit anymore"
 	end
 	return true
@@ -227,7 +232,7 @@ function Speed.getView(state, seat: number?)
 		for _, card in hand do
 			local piles = {}
 			for pile = 1, 2 do
-				if fits(card, top(state, pile)) then
+				if fits(state, card, top(state, pile)) then
 					table.insert(piles, pile)
 				end
 			end
@@ -280,7 +285,7 @@ function Speed.chooseBotMove(state, seat: number, rng: Random): any?
 	for _, move in moves do
 		local score = rng:NextNumber() * 0.5
 		for _, other in state.hands[seat] do
-			if other ~= move.card and fits(other, move.card) then
+			if other ~= move.card and fits(state, other, move.card) then
 				score += 1
 			end
 		end

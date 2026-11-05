@@ -1,6 +1,7 @@
 -- Tap any column of the 3D Four in a Row frame to drop a disc there. On your turn the
 -- open columns get a marker on top; the column under the mouse gets a see-through disc
--- of your color instead, hovering over its slot, ready to drop.
+-- of your color instead, hovering over its slot, ready to drop. With Pop Out, a column
+-- whose bottom disc is yours asks "Drop" or "Pop out" (or pops, when it's full).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -28,6 +29,50 @@ function FourInARow.create(ctx: any)
 			bob:Disconnect()
 			bob = nil
 		end
+	end
+
+	-- Pop Out: a column that could take a drop or a pop asks which (like the chess
+	-- promotion picker).
+	local picker: Frame? = nil
+	local function closePicker()
+		if picker then
+			picker:Destroy()
+			picker = nil
+		end
+	end
+	local function openPicker(c: number)
+		closePicker()
+		local frame = Instance.new("Frame")
+		frame.Size = UDim2.fromOffset(220, 64)
+		frame.AnchorPoint = Vector2.new(0.5, 1)
+		frame.Position = UDim2.new(0.5, 0, 1, -90)
+		frame.BackgroundColor3 = Color3.fromRGB(54, 49, 84)
+		Instance.new("UICorner").Parent = frame
+		local layout = Instance.new("UIListLayout")
+		layout.FillDirection = Enum.FillDirection.Horizontal
+		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		layout.VerticalAlignment = Enum.VerticalAlignment.Center
+		layout.Padding = UDim.new(0, 8)
+		layout.Parent = frame
+		for _, option in { { "Drop", false }, { "Pop out", true } } do
+			local button = Instance.new("TextButton")
+			button.Size = UDim2.fromOffset(96, 46)
+			button.Text = option[1]
+			button.Font = Enum.Font.GothamBold
+			button.TextSize = 18
+			button.TextColor3 = Color3.fromRGB(40, 36, 44)
+			button.BackgroundColor3 = if option[2] then MARK else Color3.fromRGB(240, 222, 190)
+			Instance.new("UICorner").Parent = button
+			button.Parent = frame
+			button.Activated:Connect(function()
+				closePicker()
+				if myTurn() then
+					ctx.sendMove(if option[2] then { column = c, pop = true } else { column = c })
+				end
+			end)
+		end
+		frame.Parent = ctx.gui
+		picker = frame
 	end
 
 	-- Returns true when the ghost disc is showing over a column.
@@ -88,11 +133,22 @@ function FourInARow.create(ctx: any)
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
+			if not myTurn() then
+				closePicker()
+			end
 			render()
 		end,
 		click = function(column: BasePart)
 			local c = column:GetAttribute("Col")
-			if c and myTurn() and open(c) then
+			if not (c and myTurn()) then
+				return
+			end
+			local canPop = Rules.canPop(snapshot.view, snapshot.yourSeat, c)
+			if open(c) and canPop then
+				openPicker(c)
+			elseif canPop then
+				ctx.sendMove({ column = c, pop = true })
+			elseif open(c) then
 				hovered = nil
 				render()
 				ctx.sendMove({ column = c })
@@ -102,7 +158,10 @@ function FourInARow.create(ctx: any)
 			hovered = column and column:GetAttribute("Col") :: number?
 			return render()
 		end,
-		destroy = stopBob,
+		destroy = function()
+			stopBob()
+			closePicker()
+		end,
 	}
 end
 

@@ -132,7 +132,20 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 		elseif myTurn then
 			ui.prompt.Text = if view.challenge then "Flip! You need a face card or an Ace" else "Your flip!"
 		else
-			ui.prompt.Text = if view.sandwich then "Slap doubles (7-7) and sandwiches (7-4-7)!" else "Slap doubles (7-7)!"
+			local kinds = { "doubles (7-7)" }
+			if view.sandwich then
+				table.insert(kinds, "sandwiches (7-4-7)")
+			end
+			if view.topBottom then
+				table.insert(kinds, "top = bottom")
+			end
+			if view.marriage then
+				table.insert(kinds, "K-Q")
+			end
+			if view.tens then
+				table.insert(kinds, "tens (6-4)")
+			end
+			ui.prompt.Text = if #kinds <= 2 then `Slap {table.concat(kinds, " and ")}!` else `Slap {table.concat(kinds, ", ")}!`
 		end
 
 		-- Your face-down pile: one card back with the count on it (tap it to flip).

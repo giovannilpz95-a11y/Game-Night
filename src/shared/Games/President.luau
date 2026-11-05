@@ -13,6 +13,9 @@
 -- leads the next round; the holder of the 3 of Clubs leads the first.
 -- Points each round: (players - place). After the last round the most points wins.
 --
+-- House rules (options.rules): swaps (default on: the card swap between rounds),
+-- twoClears (playing 2s clears the pile and you lead again).
+--
 -- Moves: { kind = "play", cards = { id, ... } }  |  { kind = "pass" }
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -55,7 +58,7 @@ local function deal(state)
 	state.pile = nil
 	state.lastAction = nil
 	state.exchange = {}
-	if state.round == 1 or #state.order == 0 then
+	if state.round == 1 or #state.order == 0 or state.swaps == false then
 		local three = PlayingCards.make(3, 4)
 		for seat = 1, state.seatCount do
 			if table.find(state.hands[seat], three) then
@@ -121,6 +124,8 @@ function President.new(seatCount: number, options: any?, rng: Random?)
 		lastAction = nil,
 		moves = 0,
 		over = false,
+		swaps = rules.swaps ~= false,
+		twoClears = rules.twoClears == true,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	deal(state)
@@ -303,6 +308,23 @@ function President.applyMove(state, seat: number, move: any)
 	if not hasCards(state, seat) then
 		table.insert(state.finished, seat)
 		state.lastAction.out = #state.finished
+	end
+	if state.twoClears and rank(move.cards[1]) == 2 then
+		-- House rule: 2s clear the pile. The same player leads again (or the next one in,
+		-- if that was their last card).
+		local stillIn = 0
+		for s = 1, state.seatCount do
+			if hasCards(state, s) then
+				stillIn += 1
+			end
+		end
+		if stillIn > 1 then
+			state.pile = nil
+			state.passed = {}
+			state.turn = if hasCards(state, seat) then seat else nextWithCards(state, seat) :: number
+			state.lastAction.cleared = true
+			return
+		end
 	end
 	advance(state, seat)
 end

@@ -34,6 +34,7 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 		local myTurn = active and view.phase == "play"
 		local canDoubt = active and view.phase == "doubt"
 		local plural = PlayingCards.rankPlural[view.called]
+		local claims = view.claims or { view.called }
 		if not myTurn then
 			selected = {}
 		end
@@ -71,7 +72,7 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 			end
 			CardTable.cardRow(ui.content, cards, { Position = UDim2.fromScale(0.42, 0.34), Size = UDim2.fromScale(0.54, 0.6) })
 		else
-			CardTable.feltText(ui.content, `Now playing: {plural}`, 0.06, 22).TextColor3 = Theme.Accent
+			CardTable.feltText(ui.content, if #claims > 1 then `Now playing: {PlayingCards.rankPlural[claims[1]]}, {plural} or {PlayingCards.rankPlural[claims[3]]}` else `Now playing: {plural}`, 0.06, 22).TextColor3 = Theme.Accent
 			if claim then
 				local n = claim.count
 				CardTable.feltText(ui.content, `{nameOf(claim.seat)} played {n} {if n == 1 then "card" else "cards"} as {PlayingCards.rankPlural[claim.rank]}`, 0.26, 16)
@@ -82,7 +83,22 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		local buttons = {}
-		if myTurn then
+		if myTurn and #claims > 1 then
+			-- Up, down or same: one button per rank you may claim.
+			local n = #selected
+			for _, r in claims do
+				table.insert(buttons, {
+					text = if n == 0 then PlayingCards.rankPlural[r] else `{n} as {PlayingCards.rankPlural[r]}`,
+					enabled = n > 0,
+					onClick = function()
+						if #selected > 0 then
+							sendMove({ kind = "play", cards = selected, claim = r })
+							selected = {}
+						end
+					end,
+				})
+			end
+		elseif myTurn then
 			local n = #selected
 			table.insert(buttons, {
 				text = if n == 0 then `Pick cards to play as {plural}` else `Play {n} as {plural}`,
@@ -108,10 +124,12 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = "Watching"
 		elseif snapshot.result then
 			ui.prompt.Text = ""
+		elseif myTurn and #claims > 1 then
+			ui.prompt.Text = `Your turn: play 1-4 cards as {PlayingCards.rankPlural[claims[1]]}, {plural} or {PlayingCards.rankPlural[claims[3]]}`
 		elseif myTurn then
 			ui.prompt.Text = `Your turn: play 1-4 cards as {plural}. Bluff if you have to!`
 		elseif canDoubt then
-			ui.prompt.Text = `Did {nameOf(claim and claim.seat)} really play {claim and claim.count or 0} {plural}?`
+			ui.prompt.Text = `Did {nameOf(claim and claim.seat)} really play {claim and claim.count or 0} {PlayingCards.rankPlural[claim and claim.rank or view.called]}?`
 		elseif view.phase == "play" then
 			ui.prompt.Text = `{nameOf(view.turn)} is playing {plural}...`
 		else
@@ -120,7 +138,7 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 
 		local cards = {}
 		for _, id in view.hand or {} do
-			local isCalled = PlayingCards.rank(id) == view.called
+			local isCalled = table.find(claims, PlayingCards.rank(id)) ~= nil
 			table.insert(cards, { id = id, raised = table.find(selected, id) ~= nil, glow = myTurn and isCalled, enabled = myTurn })
 		end
 		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)

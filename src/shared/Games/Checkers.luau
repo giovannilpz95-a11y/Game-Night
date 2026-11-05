@@ -13,6 +13,9 @@
 -- is a draw.
 -- House rule "forcedCaptures" = false: jumping is allowed but not required (a jump that
 -- is started still has to be finished).
+-- House rule "flyingKings": kings slide any distance along a diagonal and can jump a
+-- piece from far away, landing on any empty square beyond it (international draughts).
+-- House rule "backCaptures": men may jump backward too (they still step forward only).
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
@@ -74,47 +77,80 @@ function Checkers.new(seatCount: number, options: any?, _rng: Random?)
 		reason = nil,
 		botLevel = (options and options.botLevel) or "medium",
 		optionalCaptures = options ~= nil and options.rules ~= nil and options.rules.forcedCaptures == false,
+		flyingKings = options ~= nil and options.rules ~= nil and options.rules.flyingKings == true,
+		backCaptures = options ~= nil and options.rules ~= nil and options.rules.backCaptures == true,
 	}
 end
+
+type Opts = { optional: boolean?, flying: boolean?, backward: boolean? }
+
+local function optsOf(state): Opts
+	return { optional = state.optionalCaptures, flying = state.flyingKings, backward = state.backCaptures }
+end
+
+local ALL_DIRECTIONS = { { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 } }
 
 local function directions(v: number): { { number } }
 	local f = forward(owner(v))
 	if isKing(v) then
-		return { { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 } }
+		return ALL_DIRECTIONS
 	end
 	return { { f, -1 }, { f, 1 } }
 end
 
+-- Directions a piece may capture in (men capture backward with "backCaptures").
+local function captureDirections(v: number, opts: Opts?): { { number } }
+	if opts and opts.backward then
+		return ALL_DIRECTIONS
+	end
+	return directions(v)
+end
+
 -- All jump sequences for the piece at (r, c). `board` is modified during the search
 -- and restored before returning.
-local function jumpsFrom(board, r: number, c: number, v: number, path: { Square }, out: { Move }, origin: Square)
+local function jumpsFrom(board, r: number, c: number, v: number, path: { Square }, out: { Move }, origin: Square, opts: Opts?)
 	local found = false
 	local seat = owner(v)
-	for _, d in directions(v) do
+	local flying = opts ~= nil and opts.flying == true and isKing(v)
+	for _, d in captureDirections(v, opts) do
+		-- Find the piece to jump: next door, or (flying king) the first piece along the line.
 		local mr, mc = r + d[1], c + d[2]
-		local lr, lc = r + 2 * d[1], c + 2 * d[2]
-		if onBoard(lr, lc) and board[lr][lc] == 0 then
-			local middle = board[mr][mc]
-			if middle ~= 0 and owner(middle) ~= seat then
-				found = true
-				local newPath = table.clone(path)
-				table.insert(newPath, { lr, lc })
-				-- Remove the captured piece while searching so it can't be jumped twice.
-				board[mr][mc] = 0
-				board[r][c] = 0
-				local crowned = not isKing(v) and lr == crownRow(seat)
-				if crowned then
-					table.insert(out, { from = origin, path = newPath })
-				else
-					board[lr][lc] = v
-					if not jumpsFrom(board, lr, lc, v, newPath, out, origin) then
-						table.insert(out, { from = origin, path = newPath })
-					end
-					board[lr][lc] = 0
-				end
-				board[r][c] = v
-				board[mr][mc] = middle
+		if flying then
+			while onBoard(mr, mc) and board[mr][mc] == 0 do
+				mr, mc = mr + d[1], mc + d[2]
 			end
+		end
+		if not onBoard(mr, mc) then
+			continue
+		end
+		local middle = board[mr][mc]
+		if middle == 0 or owner(middle) == seat then
+			continue
+		end
+		local lr, lc = mr + d[1], mc + d[2]
+		while onBoard(lr, lc) and board[lr][lc] == 0 do
+			found = true
+			local newPath = table.clone(path)
+			table.insert(newPath, { lr, lc })
+			-- Remove the captured piece while searching so it can't be jumped twice.
+			board[mr][mc] = 0
+			board[r][c] = 0
+			local crowned = not isKing(v) and lr == crownRow(seat)
+			if crowned then
+				table.insert(out, { from = origin, path = newPath })
+			else
+				board[lr][lc] = v
+				if not jumpsFrom(board, lr, lc, v, newPath, out, origin, opts) then
+					table.insert(out, { from = origin, path = newPath })
+				end
+				board[lr][lc] = 0
+			end
+			board[r][c] = v
+			board[mr][mc] = middle
+			if not flying then
+				break -- a plain jump lands right behind the piece
+			end
+			lr, lc = lr + d[1], lc + d[2]
 		end
 	end
 	return found
@@ -122,13 +158,14 @@ end
 
 -- Returns the legal moves and whether a jump is required. With optional captures the
 -- jumps and steps come back together and nothing is required.
-local function generate(board, seat: number, optional: boolean?): ({ Move }, boolean)
+local function generate(board, seat: number, opts: Opts?): ({ Move }, boolean)
+	local optional = opts ~= nil and opts.optional == true
 	local jumps: { Move } = {}
 	for r = 1, SIZE do
 		for c = 1, SIZE do
 			local v = board[r][c]
 			if v ~= 0 and owner(v) == seat then
-				jumpsFrom(board, r, c, v, {}, jumps, { r, c })
+				jumpsFrom(board, r, c, v, {}, jumps, { r, c }, opts)
 			end
 		end
 	end
@@ -140,10 +177,15 @@ local function generate(board, seat: number, optional: boolean?): ({ Move }, boo
 		for c = 1, SIZE do
 			local v = board[r][c]
 			if v ~= 0 and owner(v) == seat then
+				local slide = opts ~= nil and opts.flying == true and isKing(v)
 				for _, d in directions(v) do
 					local nr, nc = r + d[1], c + d[2]
-					if onBoard(nr, nc) and board[nr][nc] == 0 then
+					while onBoard(nr, nc) and board[nr][nc] == 0 do
 						table.insert(steps, { from = { r, c }, path = { { nr, nc } } })
+						if not slide then
+							break
+						end
+						nr, nc = nr + d[1], nc + d[2]
 					end
 				end
 			end
@@ -159,9 +201,15 @@ local function apply(board, move: Move): boolean
 	local capture = false
 	board[r][c] = 0
 	for _, sq in move.path do
-		if math.abs(sq[1] - r) == 2 then
-			board[(sq[1] + r) // 2][(sq[2] + c) // 2] = 0
-			capture = true
+		-- Clear any piece passed over on the way (a flying king's jump can be long).
+		local dr, dc = if sq[1] > r then 1 else -1, if sq[2] > c then 1 else -1
+		local pr, pc = r + dr, c + dc
+		while pr ~= sq[1] and onBoard(pr, pc) do
+			if board[pr][pc] ~= 0 then
+				board[pr][pc] = 0
+				capture = true
+			end
+			pr, pc = pr + dr, pc + dc
 		end
 		r, c = sq[1], sq[2]
 	end
@@ -184,7 +232,7 @@ function Checkers.getLegalMoves(state, seat: number): { any }
 	if isOver(state) or seat ~= state.turn then
 		return {}
 	end
-	return (generate(state.board, seat, state.optionalCaptures))
+	return (generate(state.board, seat, optsOf(state)))
 end
 
 local function sameMove(a: Move, b: any): boolean
@@ -210,7 +258,7 @@ function Checkers.validateMove(state, seat: number, move: any): (boolean, string
 	if seat ~= state.turn then
 		return false, "It's not your turn"
 	end
-	local moves, mustJump = generate(state.board, seat, state.optionalCaptures)
+	local moves, mustJump = generate(state.board, seat, optsOf(state))
 	for _, legal in moves do
 		if sameMove(legal, move) then
 			return true
@@ -239,7 +287,7 @@ function Checkers.applyMove(state, seat: number, move: any)
 	end
 
 	local nextSeat = 3 - seat
-	local replies = generate(state.board, nextSeat, state.optionalCaptures)
+	local replies = generate(state.board, nextSeat, optsOf(state))
 	if #replies == 0 then
 		state.winner = seat
 		state.reason = "No moves left"
@@ -263,7 +311,7 @@ end
 function Checkers.getView(state, seat: number?): any
 	local view = GameModule.copy(state)
 	if seat and not isOver(state) and seat == state.turn then
-		local moves, mustJump = generate(state.board, seat, state.optionalCaptures)
+		local moves, mustJump = generate(state.board, seat, optsOf(state))
 		view.legalMoves = moves
 		view.mustJump = mustJump
 	end
@@ -309,7 +357,7 @@ end
 
 local WIN = 100000
 
-type Search = { nodes: number, deadline: number, outOfTime: boolean, optional: boolean }
+type Search = { nodes: number, deadline: number, outOfTime: boolean, opts: Opts }
 
 local function negamax(s: Search, board, seat: number, depth: number, alpha: number, beta: number, ply: number): number
 	s.nodes += 1
@@ -319,7 +367,7 @@ local function negamax(s: Search, board, seat: number, depth: number, alpha: num
 	if s.outOfTime then
 		return 0
 	end
-	local moves, mustJump = generate(board, seat, s.optional)
+	local moves, mustJump = generate(board, seat, s.opts)
 	if #moves == 0 then
 		return -WIN + ply
 	end
@@ -353,14 +401,14 @@ local LEVELS = {
 
 function Checkers.chooseBotMove(state, seat: number, rng: Random): any?
 	local level = LEVELS[state.botLevel] or LEVELS.medium
-	local moves = generate(state.board, seat, state.optionalCaptures)
+	local moves = generate(state.board, seat, optsOf(state))
 	if #moves == 0 then
 		return nil
 	end
 	if #moves == 1 then
 		return moves[1]
 	end
-	local s: Search = { nodes = 0, deadline = os.clock() + level.seconds, outOfTime = false, optional = state.optionalCaptures }
+	local s: Search = { nodes = 0, deadline = os.clock() + level.seconds, outOfTime = false, opts = optsOf(state) }
 	local scores: { number }? = nil
 	for depth = 1, level.depth do
 		local current = {}

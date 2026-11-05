@@ -149,11 +149,11 @@ end
 
 T.Random = Random
 
-function __runSpecs()
+function __runSpecs(only: string?)
 	local specs = rawget(dataModel, "__children").Tests
 	local total, failed = 0, 0
 	for name, specNode in rawget(specs, "__children") do
-		if string.sub(name, -5) == ".spec" then
+		if string.sub(name, -5) == ".spec" and (only == nil or name == only) then
 			table.clear(tests)
 			local register = require(specNode)
 			register(T)

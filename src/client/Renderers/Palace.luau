@@ -204,6 +204,9 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		elseif myTurn then
 			local top = view.pileTop[#view.pileTop]
 			local need = if top and PlayingCards.rank(top) ~= 2 then `{PlayingCards.rankShort[PlayingCards.rank(top)]} or higher (or a 2 or 10)` else "anything"
+			if top and view.sevenLower and PlayingCards.rank(top) == 7 then
+				need = "7 or lower (or a 2 or 10)"
+			end
 			ui.prompt.Text = if source == "down" then "Flip one of your face-down cards!" elseif next(view.playable) == nil then "Nothing plays. Pick up the pile." else `Your turn: play {need}`
 		else
 			ui.prompt.Text = `{nameOf(view.turn)}'s turn`
@@ -224,7 +227,7 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		if me and view.phase == "play" and not myTurn and not snapshot.result then
 			local pileTop = view.pileTop or {}
 			CardFx.offTurn(cards, function(id: number): boolean
-				return Rules.canPlay({ pile = pileTop }, id)
+				return Rules.canPlay({ pile = pileTop, sevenLower = view.sevenLower }, id)
 			end)
 		end
 		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)

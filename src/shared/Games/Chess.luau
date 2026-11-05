@@ -1,6 +1,10 @@
 -- Chess, full FIDE rules: castling, en passant, promotion, check, checkmate, stalemate,
 -- threefold repetition, the 50-move rule and insufficient material.
 -- House rule "kingOfTheHill": a king that reaches d4, e4, d5 or e5 also wins.
+-- House rule "threeCheck": giving check a third time also wins.
+-- House rule "shuffle" (Shuffle Chess, a cousin of Chess960): the back-row pieces start in
+-- a random order (the same for both sides, bishops on opposite colors, the king between
+-- the rooks) and there is no castling.
 --
 -- Squares are 0..63: a1 = 0, h1 = 7, a8 = 56, h8 = 63 (file = sq % 8, rank = sq // 8).
 -- Pieces are numbers: 1 pawn, 2 knight, 3 bishop, 4 rook, 5 queen, 6 king.
@@ -555,9 +559,39 @@ local function seatToSide(seat: number): number
 	return if seat == 1 then 1 else -1
 end
 
-function Chess.new(seatCount: number, options: any?, _rng: Random?)
+-- A random back row for Shuffle Chess: bishops on opposite colors, king between rooks.
+function Chess.shuffledFen(rng: Random): string
+	local row = table.create(8, "")
+	local function free(): { number }
+		local out = {}
+		for i = 1, 8 do
+			if row[i] == "" then
+				table.insert(out, i)
+			end
+		end
+		return out
+	end
+	row[rng:NextInteger(0, 3) * 2 + 1] = "b" -- a dark square (a, c, e, g)
+	row[rng:NextInteger(0, 3) * 2 + 2] = "b" -- a light square (b, d, f, h)
+	for _, piece in { "q", "n", "n" } do
+		local open = free()
+		row[open[rng:NextInteger(1, #open)]] = piece
+	end
+	-- Three squares left: rook, king, rook in that order.
+	local open = free()
+	row[open[1]], row[open[2]], row[open[3]] = "r", "k", "r"
+	local black = table.concat(row)
+	return `{black}/pppppppp/8/8/8/8/PPPPPPPP/{string.upper(black)} w - - 0 1`
+end
+
+function Chess.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount == 2, "Chess needs exactly 2 seats")
-	local pos = Chess.fromFen((options and options.fen) or START_FEN)
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	local fen = (options and options.fen) or START_FEN
+	if rules.shuffle == true and not (options and options.fen) then
+		fen = Chess.shuffledFen(rng or Random.new())
+	end
+	local pos = Chess.fromFen(fen)
 	local state = {
 		pos = pos,
 		history = {} :: { [string]: number },
@@ -568,7 +602,9 @@ function Chess.new(seatCount: number, options: any?, _rng: Random?)
 		isDraw = false,
 		reason = nil :: string?,
 		botLevel = (options and options.botLevel) or "medium",
-		kingOfTheHill = options ~= nil and options.rules ~= nil and options.rules.kingOfTheHill == true,
+		kingOfTheHill = rules.kingOfTheHill == true,
+		threeCheck = rules.threeCheck == true,
+		checks = { 0, 0 }, -- checks each seat has given (three-check)
 	}
 	state.history[positionKey(pos)] = 1
 	return state
@@ -653,9 +689,16 @@ function Chess.applyMove(state, seat: number, move: any)
 	state.history[key] = (state.history[key] or 0) + 1
 
 	-- pos.side has flipped, so the side that just moved is -pos.side.
+	local check = Chess.inCheck(pos)
+	if check and state.checks then
+		state.checks[seat] += 1
+	end
 	if state.kingOfTheHill and HILL[pos.kings[-pos.side]] then
 		state.winner = seat
 		state.reason = "King of the hill"
+	elseif state.threeCheck and state.checks[seat] >= 3 then
+		state.winner = seat
+		state.reason = "Three checks"
 	elseif #legalMoves(pos) == 0 then
 		if Chess.inCheck(pos) then
 			state.winner = seat
@@ -700,6 +743,7 @@ function Chess.getView(state, seat: number?): any
 		moveList = table.clone(state.moveList),
 		captured = GameModule.copy(state.captured),
 		fen = Chess.toFen(pos),
+		checks = if state.threeCheck then table.clone(state.checks) else nil,
 	}
 	if seat and not isOver(state) and seatToSide(seat) == pos.side then
 		view.legalMoves = Chess.getLegalMoves(state, seat)

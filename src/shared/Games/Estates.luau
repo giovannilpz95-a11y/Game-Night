@@ -361,9 +361,12 @@ end
 function Estates.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 8, "Property Party needs 2-8 seats")
 	local random = rng or Random.new()
+	local opts = if options and type(options.rules) == "table" then options.rules else {}
+	-- House rule "startCash": 1000 / 1500 / 2000.
+	local startCash = if type(opts.startCash) == "number" and opts.startCash >= 500 and opts.startCash <= 5000 then math.floor(opts.startCash) else Estates.START_CASH
 	local players = {}
 	for seat = 1, seatCount do
-		players[seat] = { cash = Estates.START_CASH, pos = 1, inJail = false, jailTries = 0, bankrupt = false, cards = {} }
+		players[seat] = { cash = startCash, pos = 1, inJail = false, jailTries = 0, bankrupt = false, cards = {} }
 	end
 	local decks = {}
 	for key, deck in Estates.decks do
@@ -434,6 +437,7 @@ function Estates.new(seatCount: number, options: any?, rng: Random?)
 		jackpot = rules.jackpot == true,
 		doubleStart = rules.doubleStart == true,
 		auctions = rules.auctions ~= false,
+		jailRent = rules.jailRent ~= false, -- house rule: off means owners in Jail collect no rent
 		pot = 0, -- jackpot rule: cash waiting on Rest Stop
 		clock = 0, -- bumped whenever a phase clock (the auction countdown) restarts
 		phase = "turn", -- turn | buy | auction | debt | trade | over
@@ -727,6 +731,8 @@ function resolveSpace(state, seat: number, special: string?)
 			local rent = Estates.rentFor(state, pos, diceTotal, special)
 			if state.mortgaged[pos] then
 				log(state, seat, `landed on {space.name} (mortgaged, no rent)`)
+			elseif state.jailRent == false and state.players[owner].inJail then
+				log(state, seat, `landed on {space.name} (the owner is in Jail, no rent)`)
 			elseif rent > 0 then
 				charge(state, seat, rent, owner, `rent for {space.name}`, `paid {money(rent)} rent for {space.name}`)
 			end

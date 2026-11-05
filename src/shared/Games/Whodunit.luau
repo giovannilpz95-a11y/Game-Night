@@ -25,6 +25,10 @@
 --               { kind = "accuse", suspect = 1..6, item = 1..6, room = 1..9 }
 --               Right: you win. Wrong: you're out, but you still show cards for others.
 -- If everyone is out, nobody wins. After TURN_LIMIT turns the case goes cold (a draw).
+--
+-- House rules (options.rules): anyRoom (walk to any room, not just the next one: quicker,
+-- like most app versions), openShow (a card shown to answer a suggestion is shown to
+-- everyone: an easier, faster family game).
 
 local GameModule = require(script.Parent.Parent.GameModule)
 
@@ -184,6 +188,8 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 		over = false,
 		reason = nil,
 		lastAction = nil,
+		anyRoom = options ~= nil and type(options.rules) == "table" and options.rules.anyRoom == true,
+		openShow = options ~= nil and type(options.rules) == "table" and options.rules.openShow == true,
 	}
 end
 
@@ -211,6 +217,14 @@ end
 local function legalRooms(state, seat: number): { number }
 	local here = roomOf(state, seat)
 	local out = table.clone(neighbours[here])
+	if state.anyRoom then
+		out = {}
+		for room = 1, ROOMS do
+			if room ~= here then
+				table.insert(out, room)
+			end
+		end
+	end
 	if state.canStay[seat] then
 		table.insert(out, 1, here)
 	end
@@ -452,8 +466,8 @@ end
 
 -- What one seat may see. The case file, other hands and cards shown between other
 -- players stay hidden until the game ends.
-local function entryView(entry, seat: number?, over: boolean)
-	local privy = over or (seat ~= nil and (seat == entry.seat or seat == entry.shower))
+local function entryView(entry, seat: number?, over: boolean, open: boolean?)
+	local privy = over or open == true or (seat ~= nil and (seat == entry.seat or seat == entry.shower))
 	return {
 		seat = entry.seat,
 		suspect = entry.suspect,
@@ -470,7 +484,7 @@ function Whodunit.getView(state, seat: number?)
 	local mySeat = if seat and state.hands[seat] then seat else nil
 	local log = {}
 	for i = math.max(1, #state.log - LOG_IN_VIEW + 1), #state.log do
-		table.insert(log, entryView(state.log[i], mySeat, over))
+		table.insert(log, entryView(state.log[i], mySeat, over, state.openShow))
 	end
 	-- Auto notepad: your own cards and every card shown to you (a list, not a sparse map,
 	-- so it survives the remote).
@@ -480,7 +494,7 @@ function Whodunit.getView(state, seat: number?)
 			table.insert(notes, { card = id, by = mySeat })
 		end
 		for _, entry in state.log do
-			if entry.seat == mySeat and entry.card then
+			if (entry.seat == mySeat or state.openShow) and entry.card then
 				table.insert(notes, { card = entry.card, by = entry.shower })
 			end
 		end
@@ -502,7 +516,7 @@ function Whodunit.getView(state, seat: number?)
 		hand = if mySeat then table.clone(state.hands[mySeat]) else nil,
 		notes = notes,
 		log = log,
-		suggestion = if state.suggestion then entryView(state.suggestion, mySeat, over) else nil,
+		suggestion = if state.suggestion then entryView(state.suggestion, mySeat, over, state.openShow) else nil,
 		accusations = accusations,
 		legalRooms = if myTurn and state.phase == "move" then legalRooms(state, mySeat :: number) else {},
 		canStay = myTurn and state.phase == "move" and state.canStay[mySeat :: number] == true,
@@ -583,7 +597,7 @@ function Whodunit.deduce(state, seat: number, level: string?)
 		end
 	end
 	for _, entry in state.log do
-		if entry.seat == seat and entry.card then
+		if (entry.seat == seat or state.openShow) and entry.card then
 			assign(entry.card, entry.shower)
 		end
 	end
