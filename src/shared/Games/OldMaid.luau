@@ -10,7 +10,13 @@
 --
 -- The giver's hand is shuffled after every draw, so where the Old Maid sits is never known.
 --
+-- While someone draws from you, you can play with them like at a real table (out of
+-- turn, see getInterruptSeats): shuffle your hand in front of them, or lift one card up
+-- out of the fan as bait (or a bluff). A few times per draw.
+--
 -- Moves: { kind = "draw", index = 1..#target hand }  (your turn)
+--        { kind = "shuffle" }                         (the player being drawn from)
+--        { kind = "lift", index = 0..#your hand }     (0 drops it back)
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local PlayingCards = require(script.Parent.Parent.Cards.PlayingCards)
@@ -24,6 +30,7 @@ OldMaid.maxSeats = 6
 OldMaid.DRAW_LIMIT = 600 -- safety cap; the Old Maid's holder loses when it's hit
 OldMaid.OLD_MAID = PlayingCards.make(12, 1) -- Queen of Spades
 OldMaid.REMOVED = PlayingCards.make(12, 4) -- Queen of Clubs
+local GIVER_MOVES = 4 -- shuffles and lifts per draw
 
 local rank = PlayingCards.rank
 
@@ -128,6 +135,9 @@ function OldMaid.new(seatCount: number, options: any?, rng: Random?)
 		over = false,
 		loser = nil,
 		byColor = rules.pairs == "color",
+		lifted = nil, -- the position the player being drawn from lifted out of the fan
+		shuffles = 0, -- how many times a giver has shuffled in front of the drawer
+		giverMoves = 0, -- shuffles and lifts during this draw
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	for seat = 1, seatCount do
@@ -146,8 +156,24 @@ function OldMaid.getActiveSeats(state): { number }
 	return { state.turn }
 end
 
+-- The player being drawn from may shuffle or lift a card while the drawer thinks.
+local function canTease(state, seat: number): boolean
+	return not state.over and seat == state.target and seat ~= state.turn and #state.hands[seat] > 1 and state.giverMoves < GIVER_MOVES
+end
+
+function OldMaid.getInterruptSeats(state): { number }
+	return if canTease(state, state.target) then { state.target } else {}
+end
+
 function OldMaid.getLegalMoves(state, seat: number): { any }
 	local moves = {}
+	if canTease(state, seat) then
+		table.insert(moves, { kind = "shuffle" })
+		for i = 0, #state.hands[seat] do
+			table.insert(moves, { kind = "lift", index = i })
+		end
+		return moves
+	end
 	if state.over or seat ~= state.turn then
 		return moves
 	end
@@ -160,6 +186,18 @@ end
 function OldMaid.validateMove(state, seat: number, move: any): (boolean, string?)
 	if state.over then
 		return false, "The game is over"
+	end
+	if type(move) == "table" and (move.kind == "shuffle" or move.kind == "lift") then
+		if not canTease(state, seat) then
+			return false, "Not now"
+		end
+		if move.kind == "lift" then
+			local index = move.index
+			if type(index) ~= "number" or index ~= index or index % 1 ~= 0 or index < 0 or index > #state.hands[seat] then
+				return false, "Pick one of your cards"
+			end
+		end
+		return true
 	end
 	if type(move) ~= "table" or move.kind ~= "draw" then
 		return false, "Bad move"
@@ -175,6 +213,19 @@ function OldMaid.validateMove(state, seat: number, move: any): (boolean, string?
 end
 
 function OldMaid.applyMove(state, seat: number, move: any)
+	if move.kind == "shuffle" then
+		PlayingCards.shuffle(state.hands[seat], state.rng)
+		state.lifted = nil
+		state.shuffles += 1
+		state.giverMoves += 1
+		return
+	elseif move.kind == "lift" then
+		state.lifted = if move.index > 0 then move.index else nil
+		state.giverMoves += 1
+		return
+	end
+	state.lifted = nil
+	state.giverMoves = 0
 	local from = state.target
 	local card = table.remove(state.hands[from], move.index) :: number
 	local hand = state.hands[seat]
@@ -237,6 +288,11 @@ function OldMaid.getView(state, seat: number?)
 		oldMaid = OldMaid.OLD_MAID,
 		byColor = state.byColor,
 		over = state.over,
+		lifted = state.lifted,
+		shuffles = state.shuffles,
+		-- Being drawn from: your hand in the order the drawer sees it (to lift a card).
+		offering = if seat ~= nil and seat == state.target and not state.over then table.clone(state.hands[seat]) else nil,
+		canTease = seat ~= nil and canTease(state, seat),
 	}
 end
 
@@ -276,8 +332,30 @@ function OldMaid.getBotDelay(state, _seat: number, rng: Random): number
 end
 
 function OldMaid.chooseBotMove(state, seat: number, rng: Random): any?
+	if canTease(state, seat) then
+		-- Once per draw at most: holding the Old Maid, shuffle her away or lift a decoy.
+		if state.giverMoves > 0 or not table.find(state.hands[seat], OldMaid.OLD_MAID) or rng:NextNumber() > 0.6 then
+			return nil
+		end
+		if state.botLevel == "hard" and rng:NextNumber() < 0.5 then
+			for i, id in state.hands[seat] do
+				if id ~= OldMaid.OLD_MAID then
+					return { kind = "lift", index = i }
+				end
+			end
+		end
+		return { kind = "shuffle" }
+	end
 	if state.over or seat ~= state.turn then
 		return nil
+	end
+	-- A lifted card is tempting: easy bots go for it, hard ones smell a trap.
+	local lifted = state.lifted
+	if lifted and lifted <= #state.hands[state.target] then
+		local bite = if state.botLevel == "easy" then 0.7 elseif state.botLevel == "hard" then 0.25 else 0.45
+		if rng:NextNumber() < bite then
+			return { kind = "draw", index = lifted }
+		end
 	end
 	return { kind = "draw", index = rng:NextInteger(1, #state.hands[state.target]) }
 end

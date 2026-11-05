@@ -96,4 +96,25 @@ return function(T)
 			end
 		end
 	end)
+	T.test("the player being drawn from can shuffle or lift a card, a few times per draw", function()
+		local s = OldMaid.new(3, nil, T.Random.new(4))
+		local drawer, giver = s.turn, s.target
+		T.eq(OldMaid.getInterruptSeats(s)[1], giver)
+		T.eq((OldMaid.validateMove(s, drawer, { kind = "shuffle" })), false, "only the one being drawn from")
+		T.eq((OldMaid.validateMove(s, giver, { kind = "lift", index = 99 })), false)
+		OldMaid.applyMove(s, giver, { kind = "lift", index = 2 })
+		T.eq(OldMaid.getView(s, drawer).lifted, 2)
+		T.ok(OldMaid.getView(s, giver).offering ~= nil, "the giver sees their order")
+		T.eq(OldMaid.getView(s, drawer).offering, nil, "nobody else does")
+		local before = #s.hands[giver]
+		OldMaid.applyMove(s, giver, { kind = "shuffle" })
+		T.eq(s.lifted, nil)
+		T.eq(#s.hands[giver], before)
+		T.eq(OldMaid.getView(s, drawer).shuffles, 1)
+		OldMaid.applyMove(s, giver, { kind = "shuffle" })
+		OldMaid.applyMove(s, giver, { kind = "shuffle" })
+		T.eq((OldMaid.validateMove(s, giver, { kind = "shuffle" })), false, "enough for one draw")
+		OldMaid.applyMove(s, drawer, { kind = "draw", index = 1 })
+		T.eq(s.giverMoves, 0, "a new draw, a new chance")
+	end)
 end

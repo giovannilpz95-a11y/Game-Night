@@ -21,6 +21,7 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 	local ui = CardTable.layout(container)
 	local arrivals = CardFx.arrivals()
 	local draws = CardFx.watch()
+	local shownShuffles: number? = nil
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -76,7 +77,17 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 				table.insert(backs, false)
 			end
 			CardTable.cardRow(row, backs, { Size = UDim2.fromScale(1, 1) })
+			if view.lifted and target ~= me then
+				CardTable.feltText(ui.content, `☝ {nameOf(target)} lifted a card…`, 0.76, 14).TextColor3 = Theme.Accent
+			end
 		end
+
+		-- Someone shuffled their hand in front of the drawer.
+		if shownShuffles ~= nil and (view.shuffles or 0) > shownShuffles and not view.over then
+			local who = if target == me then "You shuffle" else `{nameOf(target)} shuffles`
+			CardFx.pop(`🔀 {who}!`, Theme.Accent, ui.root)
+		end
+		shownShuffles = view.shuffles or 0
 
 		-- What just happened (the card itself only for the two players involved).
 		local a = view.lastAction
@@ -99,7 +110,12 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 		end
 		CardTable.feltText(ui.content, text, 0.84, 14)
 
-		CardTable.buttons(ui.buttons, {})
+		-- Being drawn from: shuffle in front of them (and tap a card below to lift it).
+		CardTable.buttons(ui.buttons, if view.canTease then {
+			{ text = "🔀 Shuffle", color = Theme.PanelLight, onClick = function()
+				sendMove({ kind = "shuffle" })
+			end },
+		} else {})
 
 		local holding = false
 		for _, id in view.hand or {} do
@@ -115,7 +131,9 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 		elseif myCount == 0 then
 			ui.prompt.Text = "You're safe! Watch who ends up with the Old Maid"
 		elseif myTurn then
-			ui.prompt.Text = `Your turn: tap one of {nameOf(target)}'s cards below`
+			ui.prompt.Text = if view.lifted then `Your turn: {nameOf(target)} lifted a card. Bait or bluff?` else `Your turn: tap one of {nameOf(target)}'s cards below`
+		elseif view.canTease then
+			ui.prompt.Text = `{nameOf(view.turn)} is picking from you: shuffle, or tap a card to lift it as bait`
 		else
 			ui.prompt.Text = `{nameOf(view.turn)}'s turn` .. (if holding then " · you have the Old Maid, keep a straight face!" else "")
 		end
@@ -134,7 +152,7 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 			-- The target's cards, face down, where your hand usually is: tap one to take it.
 			local backs = {}
 			for i = 1, view.handCounts[target] or 0 do
-				table.insert(backs, { id = nil, key = i, glow = true, enabled = true })
+				table.insert(backs, { id = nil, key = i, glow = true, enabled = true, raised = view.lifted == i })
 			end
 			PlayingCard.renderHand(ui.hand, backs, function(index: number)
 				sendMove({ kind = "draw", index = index })
@@ -142,10 +160,23 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		local cards = {}
-		for _, id in view.hand or {} do
-			table.insert(cards, { id = id, raised = id == view.oldMaid })
+		if view.offering and view.canTease then
+			-- In the order they see it: tap a card to lift it out of the fan (tap again to
+			-- drop it back).
+			for i, id in view.offering do
+				table.insert(cards, { id = id, enabled = true, raised = view.lifted == i })
+			end
+		else
+			for _, id in view.hand or {} do
+				table.insert(cards, { id = id, raised = id == view.oldMaid })
+			end
 		end
-		local faces = PlayingCard.renderHand(ui.hand, cards, nil)
+		local faces = PlayingCard.renderHand(ui.hand, cards, if view.canTease then function(id: number)
+			local index = table.find(view.offering or {}, id)
+			if index then
+				sendMove({ kind = "lift", index = if view.lifted == index then 0 else index })
+			end
+		end else nil)
 		-- The card you took flies in from that player's hand (the deal from the middle).
 		local from = if seen and seen.seat == me then CardFx.seatOnScreen(snapshot, seen.from) else nil
 		arrivals.update(faces, from or CardFx.middleOnScreen() or CardFx.guiOnScreen(ui.felt))
