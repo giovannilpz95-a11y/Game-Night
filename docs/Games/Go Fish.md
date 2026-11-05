@@ -9,5 +9,6 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Hidden info: only your own hand. The card you fished is shown only to you (`drawnCard`).
 - Public memory: `state.asked[seat][rank]` records ranks each seat has asked for (cleared when they give them away or book them), like a sharp human remembering.
 - Table: `src/client/Renderers/GoFish.luau`. Tap a card to pick its rank, then tap an opponent (with one opponent the ask is sent at once).
+- 3D table: the asker's question ("Got any 7s?") and the answer ("Go fish!") float as speech bubbles over the two players.
 - Bot: easy asks at random. Medium asks for the rank it holds most. Hard also asks whoever is known to hold that rank (they asked for it); medium remembers that half the time.
 - Tests: `tests/GoFish.spec.luau`.

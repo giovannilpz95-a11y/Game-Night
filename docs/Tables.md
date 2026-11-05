@@ -26,6 +26,7 @@ When a match starts, the party is moved to a free table in the room and everyone
 | `server/Tables/Pieces.luau` | Clones piece models from `ReplicatedStorage.Assets`, scales a whole set by one factor, places them on cells. |
 | `server/Tables/Boards/<module>.luau` | One board or scene per game, built from the **spectator** view so nothing hidden (hands, the secret word, answers) is in the world. |
 | `server/Tables/Scene.luau` | Building blocks for scenes: flat text, cards, piles, hands in holders in front of seats, the party screen. Use `Scene.flatText` for text lying on the table: a Top face SurfaceGui is turned 90 degrees from its part. |
+| `server/Tables/Boards/_Cards.luau` | Card-scene shell plus `pileHistory`/`messyPile` (sloppy piles with each card facing who played it) and `speech` (a speech bubble over a seat, e.g. "Go fish!"). |
 | `server/Tables/Models.luau` | Small models built from parts in code, so they ship with the scripts: pawns, Property Party tokens, dice, houses, hotels, soldiers, flags. Game-only scenery (Hexlands land dioramas, Whodunit furniture, hats and items) lives in that game's board file. |
 | `client/Table3D/Controller.luau` | Camera from your seat, taps on the board turned into cell clicks, your own highlights. |
 | `client/Table3D/<module>.luau` | Per-game input (select a piece, pick a target), same logic as the 2D renderer. |

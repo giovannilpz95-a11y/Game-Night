@@ -76,7 +76,7 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 		takenFolder:ClearAllChildren()
 		local worth = { 0, 0 }
 		local step = board.cellSize * 0.5
-		local small = factor * 0.62
+		local small = factor * 0.85
 		for seat = 1, 2 do
 			local list = table.clone((captured and captured[seat]) or {})
 			table.sort(list)
@@ -91,7 +91,7 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 				local surface = boardCF * CFrame.new(x + side * col * step, 0, z)
 				local white = seat == 2 -- seat 1 takes Black's pieces
 				local template = Pieces.find("Chess", `{NAMES[kind]}_{if white then "White" else "Black"}`)
-				local piece = if template then Pieces.stand(template, small, surface) else fallbackPiece(kind, white, surface, board.cellSize * 0.62)
+				local piece = if template then Pieces.stand(template, small, surface) else fallbackPiece(kind, white, surface, board.cellSize * 0.85)
 				piece.Parent = takenFolder
 			end
 		end

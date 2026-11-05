@@ -72,3 +72,8 @@ The end screen's Rematch sends `{ action = "rematch" }`. `MatchService` remember
 - Keep tap targets at least 44 px.
 - Main action buttons belong near the bottom of the board area.
 - A side panel should shrink or narrow on small boards instead of using a fixed width.
+
+## Game moments (shared helpers)
+- `HudKit.callout(parent, text, color?, y?)`: a pill that pops, shines and fades for a big moment ("Hearts are broken!", "GIN!", "ALL 7 TILES!", your Hexlands roll payout).
+- `HudKit.revealCard(parent, heading, title, subtitle?)`: a secret card that flips face up mid-screen (Whodunit).
+- `UI/FlowArrow.luau`: an on-screen arrow whose chevrons keep flowing one way (Hearts passing); `set(direction, text)` with "left", "right", "up", "down", "hold" or nil.

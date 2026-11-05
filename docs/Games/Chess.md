@@ -4,6 +4,7 @@ Back to [[Home]].
 
 - Rules: `src/shared/Games/Chess.luau`. All FIDE rules: castling, en passant, promotion (defaults to queen), checkmate, stalemate, threefold repetition, 50-move rule, insufficient material.
 - Board: `src/client/Renderers/Chess.luau`. Tap a piece, then a highlighted square. Includes a promotion picker, last-move and check highlights, captured pieces, and a move list in standard notation.
+- Table: taken pieces stand beside the 3D board on the taker's right, with the material lead ("+3") over the row. The 2D view shows taken pieces as symbols plus the lead.
 - Tests: `tests/Chess.spec.luau`. Perft counts from 5 standard positions catch move-generation bugs.
 - Squares are 0..63 (a1 = 0). Pieces are numbers, positive for White (seat 1) and negative for Black (seat 2). Over the network a move is `{ from = "e2", to = "e4", promotion = "q"? }`.
 - Bot: negamax with alpha-beta, quiescence on captures, MVV-LVA ordering, iterative deepening, and material plus piece-square evaluation.

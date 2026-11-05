@@ -8,5 +8,6 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Showdown (`reveal` phase, 5 s): lowest hand loses a life, a knocker who is lowest loses two. Exactly 31 (also when dealt) is a Blitz: instant showdown, everyone else loses a life. A round that runs 60 turns with no knock is shown down.
 - House rule `lives`: 2 / 3 / 4. Last player with lives wins; if everyone left goes out together, they share the win.
 - Table: `src/client/Renderers/ThirtyOne.luau`. Tap the stock or discard pile, Knock button, tap a card to throw away. The prompt shows your hand value.
+- 3D table: the middle pile is a messy stack with every card turned toward the player who played it (`Cards.messyPile`). Calls like "SLAP!", "SNAP!" and "Knock knock!" show as speech bubbles.
 - Bot: knocks at 28 / 26 / 25 (easy / medium / hard; hard is more careful on its last life). Takes the discard when it improves the hand; throws the card that keeps the best value.
 - Tests: `tests/ThirtyOne.spec.luau`.
