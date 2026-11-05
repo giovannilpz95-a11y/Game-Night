@@ -13,6 +13,7 @@
 -- Move (over the network): { from = "e2", to = "e4", promotion = "q" | "r" | "b" | "n" | nil }
 
 local GameModule = require(script.Parent.Parent.GameModule)
+local Offers = require(script.Parent.Parent.Offers)
 local BotThink = require(script.Parent.Parent.BotThink)
 
 local Chess = {}
@@ -607,6 +608,7 @@ function Chess.new(seatCount: number, options: any?, rng: Random?)
 		checks = { 0, 0 }, -- checks each seat has given (three-check)
 	}
 	state.history[positionKey(pos)] = 1
+	Offers.init(state)
 	return state
 end
 
@@ -619,7 +621,31 @@ local function sideToSeat(side: number): number
 end
 
 function Chess.getActiveSeats(state): { number }
-	return if isOver(state) then {} else { sideToSeat(state.pos.side) }
+	if isOver(state) then
+		return {}
+	end
+	return { Offers.answerer(state) or sideToSeat(state.pos.side) }
+end
+
+local function turnSeat(state): number?
+	return if isOver(state) then nil else sideToSeat(state.pos.side)
+end
+
+-- Puts the game back to before its last move (takebacks).
+local function undoOne(state)
+	local entry = table.remove(state.undo)
+	if not entry then
+		return
+	end
+	local key = positionKey(state.pos)
+	state.history[key] = math.max(0, (state.history[key] or 1) - 1)
+	state.pos = Chess.fromFen(entry.fen)
+	state.lastMove = entry.lastMove
+	state.checks = entry.checks
+	table.remove(state.moveList)
+	if entry.capturedBy then
+		table.remove(state.captured[entry.capturedBy])
+	end
 end
 
 local function toWire(m: Move): any
@@ -631,12 +657,52 @@ local function toWire(m: Move): any
 end
 
 function Chess.getLegalMoves(state, seat: number): { any }
+	if state.offer and not isOver(state) then
+		if seat ~= Offers.answerer(state) then
+			return {}
+		end
+		return { { type = "answer", accept = true }, { type = "answer", accept = false } }
+	end
 	if isOver(state) or seatToSide(seat) ~= state.pos.side then
 		return {}
 	end
 	local out = {}
 	for _, m in legalMoves(state.pos) do
 		table.insert(out, toWire(m))
+	end
+	return out
+end
+
+-- Moves a seat could queue as a premove while the other side thinks (Lichess style): any
+-- move its pieces could make if it were its turn, including onto squares its own pieces
+-- hold now (the opponent may capture there first). Checked against the real legal moves
+-- when the turn comes. One entry per from/to; promotions queue as a queen.
+function Chess.premoves(fen: string, seat: number): { any }
+	local pos = Chess.fromFen(fen)
+	local side = seatToSide(seat)
+	pos.side = side
+	pos.ep = -1
+	local out, seen = {}, {}
+	for from = 0, 63 do
+		local v = pos.board[from]
+		if v ~= 0 and (v > 0) == (side > 0) then
+			local trial = table.clone(pos)
+			trial.board = table.clone(pos.board)
+			for sq = 0, 63 do
+				local w = trial.board[sq]
+				if sq ~= from and w ~= 0 and (w > 0) == (side > 0) and math.abs(w) ~= KING and math.abs(w) ~= ROOK then
+					-- (kings and rooks stay, so castling can still be queued)
+					trial.board[sq] = -side * PAWN
+				end
+			end
+			for _, m in pseudoMoves(trial) do
+				local key = m.from * 64 + m.to
+				if m.from == from and not seen[key] then
+					seen[key] = true
+					table.insert(out, { from = Chess.squareName(m.from), to = Chess.squareName(m.to) })
+				end
+			end
+		end
 	end
 	return out
 end
@@ -666,6 +732,12 @@ function Chess.validateMove(state, seat: number, move: any): (boolean, string?)
 	if isOver(state) then
 		return false, "The game is over"
 	end
+	if Offers.isMove(move) then
+		return Offers.validate(state, seat, move, turnSeat(state))
+	end
+	if state.offer then
+		return false, "Waiting for an answer"
+	end
 	if seatToSide(seat) ~= state.pos.side then
 		return false, "It's not your turn"
 	end
@@ -676,8 +748,23 @@ function Chess.validateMove(state, seat: number, move: any): (boolean, string?)
 end
 
 function Chess.applyMove(state, seat: number, move: any)
+	if Offers.isMove(move) then
+		if Offers.apply(state, seat, move, undoOne) == "draw" then
+			state.isDraw = true
+			state.reason = "Draw agreed"
+		end
+		return
+	end
 	local pos = state.pos
 	local m = findMove(state, move) :: Move
+	table.insert(state.undo, {
+		fen = Chess.toFen(pos),
+		lastMove = state.lastMove,
+		checks = table.clone(state.checks),
+		capturedBy = if m.captured ~= 0 then seat else nil,
+		from = Chess.squareName(m.from),
+		to = Chess.squareName(m.to),
+	})
 	table.insert(state.moveList, sanFor(pos, m, legalMoves(pos)))
 	if m.captured ~= 0 then
 		table.insert(state.captured[seat], math.abs(m.captured))
@@ -744,10 +831,21 @@ function Chess.getView(state, seat: number?): any
 		captured = GameModule.copy(state.captured),
 		fen = Chess.toFen(pos),
 		checks = if state.threeCheck then table.clone(state.checks) else nil,
+		-- Every earlier position, for stepping back through the move list:
+		-- past[i] is the board after move i (and that move's squares).
+		past = {},
 	}
-	if seat and not isOver(state) and seatToSide(seat) == pos.side then
+	for i, entry in state.undo do
+		local after = state.undo[i + 1]
+		table.insert(view.past, { fen = if after then after.fen else view.fen, from = entry.from, to = entry.to })
+	end
+	view.startFen = if state.undo[1] then state.undo[1].fen else view.fen
+	if seat and not isOver(state) and not state.offer and seatToSide(seat) == pos.side then
 		view.legalMoves = Chess.getLegalMoves(state, seat)
 	end
+	Offers.addToView(view, state, seat, turnSeat(state), function(s)
+		return if s == 1 then "White" else "Black"
+	end)
 	return view
 end
 
@@ -995,6 +1093,15 @@ function Chess.rankMoves(pos: Pos, maxDepth: number, seconds: number, exact: boo
 end
 
 function Chess.chooseBotMove(state, seat: number, rng: Random): any?
+	if state.offer and not isOver(state) then
+		if seat ~= Offers.answerer(state) then
+			return nil
+		end
+		-- Bots are good sports about takebacks. They take a draw when they aren't
+		-- winning: the asker is on move, so a positive score means the asker is ahead.
+		local accept = state.offer.kind == "takeback" or evaluate(state.pos) > -60
+		return { type = "answer", accept = accept }
+	end
 	if isOver(state) or seatToSide(seat) ~= state.pos.side then
 		return nil
 	end
