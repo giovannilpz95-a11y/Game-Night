@@ -9,6 +9,7 @@ local GuiService = game:GetService("GuiService")
 
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Kit)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local PlayingCard = {}
@@ -214,6 +215,11 @@ function PlayingCard.hover(container: GuiObject): Hover
 		current = entry
 		if entry then
 			entry.lift()
+			-- A soft tick pitched by the card's place: sweeping the hand plays a scale.
+			local index = table.find(entries, entry)
+			if index then
+				Audio.hoverAt(index, #entries)
+			end
 		end
 	end
 	local function update(position: Vector2)

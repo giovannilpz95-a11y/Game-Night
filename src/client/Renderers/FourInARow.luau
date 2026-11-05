@@ -8,6 +8,7 @@ local Rules = require(ReplicatedStorage.Shared.Games.FourInARow)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local FourInARow = {}
@@ -111,6 +112,7 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 		button.MouseEnter:Connect(function()
 			hoverColumn = c
 			refreshGhost()
+			Audio.hoverAt(c, COLS) -- each column a note, left to right
 		end)
 		button.MouseLeave:Connect(function()
 			if hoverColumn == c then

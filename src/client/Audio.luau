@@ -5,6 +5,8 @@
 -- * Audio.play(name) for interface sounds; Audio.action(kind, point, mine) for the
 --   avatars' gestures at a table: flat for your own table, positional (fading with
 --   distance) for the tables around you.
+-- * The feel (shared/AudioFeel): quick repeats climb a scale, each sound has a minimum
+--   gap, some play as little runs of notes, and the big stings dip the music.
 -- * Music is a shuffled playlist that crossfades between tracks, with a quiet room
 --   ambience under it in the lobby. At a table it drops to Sounds.MatchMusicShare.
 
@@ -13,17 +15,22 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 
+local UserInputService = game:GetService("UserInputService")
+
+local AudioFeel = require(ReplicatedStorage.Shared.AudioFeel)
 local Sounds = require(ReplicatedStorage.Shared.Sounds)
 
 local Audio = {}
 
 local FADE = TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 local CROSSFADE = TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+local DUCK = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local NEAR, FAR = 12, 80 -- studs: other tables are full volume within NEAR, silent past FAR
 
 local rng = Random.new()
 local levels = { music = Sounds.DefaultLevels.music, effects = Sounds.DefaultLevels.effects }
 local inMatch = false
+local duckUntil = 0
 local started = false
 
 local folder: Folder
@@ -58,7 +65,14 @@ local function setup()
 	end
 end
 
-local function copyOf(name: string): Sound?
+local feel = {
+	streaks = AudioFeel.newStreaks(),
+	gate = {} :: AudioFeel.Gate,
+}
+
+-- One copy of an effect, `semitones` up (or down) from its own pitch, with its random
+-- variation already rolled.
+local function copyOf(name: string, semitones: number?, volume: number?): Sound?
 	setup()
 	local template = templates[name]
 	if not template then
@@ -66,9 +80,16 @@ local function copyOf(name: string): Sound?
 	end
 	local def = Sounds.Effects[name]
 	local s = template:Clone()
+	local speed = (def.speed or 1) * AudioFeel.speedFor(semitones or 0)
 	if def.vary then
-		s.PlaybackSpeed = (def.speed or 1) * (1 + rng:NextNumber(-def.vary, def.vary))
+		speed *= 1 + rng:NextNumber(-def.vary, def.vary)
 	end
+	s.PlaybackSpeed = speed
+	local v = def.volume * (volume or 1)
+	if def.varyVolume then
+		v *= 1 + rng:NextNumber(-def.varyVolume, def.varyVolume)
+	end
+	s.Volume = math.clamp(v, 0, 1)
 	return s
 end
 
@@ -85,39 +106,135 @@ local function playOnce(s: Sound)
 	end)
 end
 
--- Plays an effect from shared/Sounds.Effects by name, for this player only.
-function Audio.play(name: string)
-	if levels.effects <= 0 then
-		return
+export type PlayOptions = {
+	pitch: number?, -- semitones up from the sound's pitch (on top of its own streak)
+	volume: number?, -- share of its normal volume
+}
+
+-- Works out one play of `name`: nil when it's too soon after the last one, otherwise the
+-- pitch of each note to play (a streak climbs, `notes` makes a little run).
+-- `key` keeps gaps and streaks apart per place (each table around you has its own).
+local function plan(name: string, key: string, options: PlayOptions?): { number }?
+	local def = Sounds.Effects[name]
+	if not def or levels.effects <= 0 then
+		return nil
 	end
-	local s = copyOf(name)
-	if s then
-		s.Parent = folder
-		playOnce(s)
+	local now = os.clock()
+	if not AudioFeel.allow(feel.gate, key, now, def.gap or 0.03) then
+		return nil
+	end
+	local base = (options and options.pitch) or 0
+	if def.streak then
+		base += AudioFeel.streak(feel.streaks, key, now, def.streak, def.streakCap or 6)
+	end
+	local pitches = {}
+	for _, offset in def.notes or { 0 } do
+		table.insert(pitches, base + offset)
+	end
+	return pitches
+end
+
+local function duckFor(name: string)
+	local def = Sounds.Effects[name]
+	if def and def.duck then
+		Audio.duck(def.duck)
 	end
 end
 
--- Plays an effect at a spot in the room: louder the closer the camera is.
-function Audio.playAt(name: string, position: Vector3)
-	if levels.effects <= 0 then
+-- Spreads a run of notes over time, calling `play(semitones)` for each.
+local function run(name: string, pitches: { number }, play: (number) -> ())
+	local step = Sounds.Effects[name].noteGap or 0.08
+	for i, pitch in pitches do
+		if i == 1 then
+			play(pitch)
+		else
+			task.delay(step * (i - 1), play, pitch)
+		end
+	end
+end
+
+-- Plays an effect from shared/Sounds.Effects by name, for this player only.
+function Audio.play(name: string, options: PlayOptions?)
+	local pitches = plan(name, name, options)
+	if not pitches then
 		return
 	end
-	local s = copyOf(name)
-	if not s then
-		return
-	end
-	local attachment = Instance.new("Attachment")
-	attachment.Name = "Sfx"
-	attachment.WorldPosition = position
-	attachment.Parent = workspace.Terrain
-	s.RollOffMode = Enum.RollOffMode.InverseTapered
-	s.RollOffMinDistance = NEAR
-	s.RollOffMaxDistance = FAR
-	s.Parent = attachment
-	s.Destroying:Once(function()
-		attachment:Destroy()
+	duckFor(name)
+	local volume = options and options.volume
+	run(name, pitches, function(pitch)
+		local s = copyOf(name, pitch, volume)
+		if s then
+			s.Parent = folder
+			playOnce(s)
+		end
 	end)
-	playOnce(s)
+end
+
+-- Plays an effect at a spot in the room: louder the closer the camera is.
+function Audio.playAt(name: string, position: Vector3, options: PlayOptions?)
+	-- Rounded to 8 studs: one key per table.
+	local key = `{name}@{math.floor(position.X / 8)},{math.floor(position.Z / 8)}`
+	local pitches = plan(name, key, options)
+	if not pitches then
+		return
+	end
+	local volume = options and options.volume
+	run(name, pitches, function(pitch)
+		local s = copyOf(name, pitch, volume)
+		if not s then
+			return
+		end
+		local attachment = Instance.new("Attachment")
+		attachment.Name = "Sfx"
+		attachment.WorldPosition = position
+		attachment.Parent = workspace.Terrain
+		s.RollOffMode = Enum.RollOffMode.InverseTapered
+		s.RollOffMinDistance = NEAR
+		s.RollOffMaxDistance = FAR
+		s.Parent = attachment
+		s.Destroying:Once(function()
+			attachment:Destroy()
+		end)
+		playOnce(s)
+	end)
+end
+
+-- Mouse over a button: a faint high tick, like a console menu's cursor. Mouse only (a
+-- tap already clicks), and never twice in a row for the same button.
+local lastHovered: Instance? = nil
+function Audio.hover(button: Instance)
+	if button == lastHovered then
+		return
+	end
+	lastHovered = button
+	local kind = UserInputService:GetLastInputType()
+	if kind == Enum.UserInputType.MouseMovement or kind == Enum.UserInputType.MouseButton1 then
+		Audio.play("hover")
+	end
+end
+function Audio.unhover(button: Instance)
+	if lastHovered == button then
+		lastHovered = nil
+	end
+end
+
+-- Item `index` of `count` under the cursor (a card in your hand, a board column): a
+-- soft tick pitched by its place, low on the left to high on the right, so sweeping
+-- across your hand plays a little scale.
+function Audio.hoverAt(index: number, count: number, sound: string?)
+	Audio.play(sound or "cardHover", { pitch = AudioFeel.position(index, count) })
+end
+
+-- The last seconds of your turn: each tick higher than the one before.
+function Audio.countdown(secondsLeft: number)
+	Audio.play("tick", { pitch = AudioFeel.countdown(secondsLeft) })
+end
+
+-- Rewards arriving: `count` coin dings, each a step higher, like counting them out.
+function Audio.coins(count: number)
+	for i = 1, math.clamp(math.floor(count), 1, 8) do
+		task.delay((i - 1) * 0.11, Audio.play, "coin")
+	end
 end
 
 -- An avatar's gesture at a table started (TableActions kind). `mine`: at your table, so
@@ -189,6 +306,9 @@ end
 local function applyMusic()
 	setup()
 	local share = if inMatch then Sounds.MatchMusicShare else 1
+	if os.clock() < duckUntil then
+		share *= Sounds.DuckShare
+	end
 	TweenService:Create(musicGroup, FADE, { Volume = levels.music * share }):Play()
 	if not started then
 		return
@@ -273,6 +393,23 @@ function Audio.start()
 		pcall(function()
 			ContentProvider:PreloadAsync(list)
 		end)
+	end)
+end
+
+-- Dips the music for `seconds` (a sting is playing), then lets it swell back.
+function Audio.duck(seconds: number)
+	setup()
+	local untilTime = os.clock() + seconds
+	if untilTime <= duckUntil then
+		return
+	end
+	duckUntil = untilTime
+	local share = (if inMatch then Sounds.MatchMusicShare else 1) * Sounds.DuckShare
+	TweenService:Create(musicGroup, DUCK, { Volume = levels.music * share }):Play()
+	task.delay(seconds, function()
+		if os.clock() >= duckUntil then
+			applyMusic()
+		end
 	end)
 end
 

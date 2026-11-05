@@ -201,6 +201,7 @@ end
 
 -- Buttons sink a little while pressed and click, so a tap feels like it landed. The
 -- sound is the button's "Sfx" attribute (a shared/Sounds.Effects name), "click" if unset.
+-- With a mouse, moving onto a button ticks softly, like a console menu's cursor.
 function Kit.pressable(button: GuiButton)
 	local scale = Kit.new("UIScale", { Name = "PressScale", Parent = button })
 	button.Activated:Connect(function()
@@ -224,8 +225,12 @@ function Kit.pressable(button: GuiButton)
 			to(1)
 		end
 	end)
+	button.MouseEnter:Connect(function()
+		Audio.hover(button)
+	end)
 	button.MouseLeave:Connect(function()
 		to(1)
+		Audio.unhover(button)
 	end)
 end
 

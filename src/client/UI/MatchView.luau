@@ -819,7 +819,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			-- Tick for the last five seconds of your own turn.
 			if isMyTurn() and whole <= 5 and whole >= 1 and whole ~= lastTick then
 				lastTick = whole
-				Audio.play("tick")
+				Audio.countdown(whole)
 			end
 		else
 			timerTrack.Visible = false
@@ -1265,6 +1265,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				return false
 			end
 			rewardLabel.Text = table.concat(lines, "\n")
+			Audio.coins(#lines + 2)
 			return true
 		end,
 		relayout = function()
