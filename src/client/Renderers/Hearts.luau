@@ -8,6 +8,8 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local FlowArrow = require(script.Parent.Parent.UI.FlowArrow)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local Hearts = {}
@@ -17,6 +19,11 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 	local selected: { number } = {}
 	local ui = CardTable.layout(container)
 	local render: () -> ()
+	-- Which way your 3 cards go, flowing toward the player who gets them.
+	local passArrow = FlowArrow.new(ui.root)
+	local wasBroken: boolean? = nil
+	local moonRound: any = nil
+	local STEP = { left = 1, right = -1, across = 2 }
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -74,9 +81,34 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 
+		-- The pass arrow points where that player really is: in Table view the next seat
+		-- round the table is on your right, in the 2D view its chip is on the left.
+		local step = STEP[view.pass or ""]
+		if view.phase == "pass" and me and step then
+			local to = (me - 1 + step) % 4 + 1
+			local held = ui.buttons:GetAttribute("Held") == true
+			local dir = if step == 2 then "up" elseif (step == 1) == held then "right" else "left"
+			local done = view.passed[tostring(me)]
+			passArrow.set(dir, if done then `Passed to {nameOf(to)}` else `Pass 3 to {nameOf(to)}`)
+			passArrow.frame.Position = if held then UDim2.new(0.5, 0, 0.555, -26) else UDim2.new(0.5, 0, 0.19 + 0.42 * 0.82, 0)
+		elseif view.phase == "pass" and me and view.pass == "none" then
+			passArrow.set("hold", "No passing this round")
+		else
+			passArrow.set(nil)
+		end
+		-- The moment hearts break gets its own call-out, like the classic game's.
+		if wasBroken == false and view.heartsBroken and view.phase == "play" then
+			HudKit.callout(ui.root, "♥ Hearts are broken!", Color3.fromRGB(235, 87, 110))
+		end
+		wasBroken = view.heartsBroken == true
+		if view.moon and view.phase == "round" and moonRound ~= view.round then
+			moonRound = view.round
+			HudKit.callout(ui.root, `🌙 {nameOf(view.moon)} shot the moon!`, Color3.fromRGB(150, 130, 255))
+		end
+
 		local buttons = {}
 		if passing then
-			table.insert(buttons, { text = `Pass {#selected}/3 {view.pass}`, enabled = #selected == 3, onClick = function()
+			table.insert(buttons, { text = `Pass {#selected}/3`, enabled = #selected == 3, onClick = function()
 				sendMove({ kind = "pass", cards = selected })
 				selected = {}
 			end })

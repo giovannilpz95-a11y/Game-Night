@@ -9,5 +9,6 @@ Back to [[Home]] · shared deck: [[Card games]] · shared trick helpers: `src/sh
 - End: a team reaches the target (house rule 200 / 300 / 500, default 300) with a higher score than the other, a team falls to -200, or 15 rounds pass. Winners are both seats of the team.
 - Phases: `bid`, `play`, `trick` (1.4 s), `round` (6 s summary).
 - Table: `src/client/Renderers/Spades.luau`. Bid with - / Bid N / +. Partner chip is outlined green.
+- 3D table: won tricks stack crosswise in front of each seat with a "tricks / bid" tag (green when made, orange when over).
 - Bot: bids from a trick estimate (`Spades.estimate`: Aces, guarded Kings, high and long spades, short side suits). Hard may bid Nil with a weak hand. Plays low when partner is winning, wins as cheaply as possible otherwise, ducks when it bid Nil.
 - Tests: `tests/Spades.spec.luau`.

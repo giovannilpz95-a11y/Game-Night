@@ -10,6 +10,12 @@ local Snap = {}
 
 function Snap.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
+		local said = view.lastAction
+		if said and said.kind == "snap" then
+			Cards.speech(folder, boardCF, layout, said.seat, "SNAP!", Color3.fromRGB(255, 226, 140))
+		elseif said and said.kind == "badSnap" then
+			Cards.speech(folder, boardCF, layout, said.seat, "Oops!", Color3.fromRGB(255, 190, 190))
+		end
 		for seat, count in view.downCounts or {} do
 			Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 0.9, -0.55), count, true)
 			local top = (view.tops or {})[tostring(seat)]

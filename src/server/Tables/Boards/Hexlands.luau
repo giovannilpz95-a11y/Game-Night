@@ -191,6 +191,25 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 					local center = Rules.hexes[view.bandit]
 					bandit(dynamic, at(boardCF, center.x + 0.38, center.y, TOP_Y))
 				end
+				-- The roll that just paid: a glowing halo under the number on every hex that
+				-- paid, with what it paid floating over it.
+				local gain = view.lastGain
+				local dice = view.dice
+				if gain and dice and #dice == 2 and gain.roll == dice[1] + dice[2] and gain.roll ~= 7 then
+					for _, h in gain.hexes or {} do
+						local center = Rules.hexes[h]
+						if center then
+							local ring = Models.cyl(dynamic, "PaidRing", S * 0.72, 0.02, at(boardCF, center.x, center.y, TOP_Y + 0.002), Color3.fromRGB(255, 230, 120), Enum.Material.Neon)
+							ring.Transparency = 0.25
+							local land = view.tiles and view.tiles[h] and view.tiles[h].land
+							local info = land and Rules.resourceInfo[land]
+							local label = info and `{info.icon} {info.name}`
+							if label then
+								Scene.floatText(dynamic, at(boardCF, center.x, center.y, TOP_Y + 0.9), 1.6, 0.42, `+{label}`, { TextColor3 = Color3.fromRGB(255, 236, 150), TextStrokeColor3 = Color3.fromRGB(30, 24, 20), TextStrokeTransparency = 0.1 })
+							end
+						end
+					end
+				end
 				for i, value in view.dice or {} do
 					Models.die(dynamic, boardCF * CFrame.new(4.4 + (i - 1.5) * 0.6, 0, 3.4) * CFrame.Angles(0, math.rad(i * 23), 0), value, 0.45)
 				end

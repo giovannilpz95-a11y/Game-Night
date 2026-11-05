@@ -44,6 +44,8 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	local lastMatchId: string? = nil
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local revealed: any = nil -- the suggestion whose shown card already flipped up
+	local revealedKeys: { [string]: boolean } = {}
 
 	-- Mansion map -----------------------------------------------------------------
 	local map = Kit.new("Frame", {
@@ -611,6 +613,17 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 
 		if view.phase == "after" and entry then
 			local asker = nameOf(entry.seat)
+			-- The card slid across to you, turned face up in the middle of the screen.
+			if entry.card and entry.seat == me then
+				local key = `{entry.suspect}|{entry.item}|{entry.room}|{entry.shower}|{entry.card}|{snapshot.moveNumber}`
+				if revealed ~= entry and not revealedKeys[key] then
+					revealedKeys[key] = true
+					local card = Rules.cards[entry.card]
+					local kind = if card.category == "item" then "Item" elseif card.category == "room" then "Room" else "Suspect"
+					HudKit.revealCard(root, `{nameOf(entry.shower)} showed you`, cardName(entry.card), `{kind} · not in the case file`)
+				end
+				revealed = entry
+			end
 			text(actions, `{asker} suggested {suggestionText(entry)}.`, 4, { TextSize = 15 })
 			if entry.shower == nil then
 				text(actions, "Nobody could disprove it!", 5, { Font = Theme.FontBold, TextSize = 17, TextColor3 = Theme.Accent })

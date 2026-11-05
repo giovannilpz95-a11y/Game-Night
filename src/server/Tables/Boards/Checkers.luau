@@ -40,6 +40,46 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 	local shown: { [number]: Instance } = {}
 	local shownValue: { [number]: number } = {}
 
+	-- Jumped pieces sit in rows beside the board on the jumper's right, so you can see the
+	-- score at a glance (12 each to start).
+	local takenFolder = Instance.new("Folder")
+	takenFolder.Name = "Taken"
+	takenFolder.Parent = board.model
+	local takenKey = ""
+	local function drawTaken(grid: any)
+		local left = { 0, 0 } -- dark, light still on the board
+		for r = 1, 8 do
+			for c = 1, 8 do
+				local v = grid[r][c]
+				if v == 1 or v == 3 then
+					left[1] += 1
+				elseif v == 2 or v == 4 then
+					left[2] += 1
+				end
+			end
+		end
+		local key = `{left[1]}/{left[2]}`
+		if key == takenKey then
+			return
+		end
+		takenKey = key
+		takenFolder:ClearAllChildren()
+		local step = board.cellSize * 0.62
+		for seat = 1, 2 do
+			-- Seat 1 (Dark) sits on +Z facing -Z: their right is +X. They took Light men.
+			local side = if seat == 1 then 1 else -1
+			local victim = if seat == 1 then 2 else 1
+			for i = 1, math.max(0, 12 - left[victim]) do
+				local col = (i - 1) // 6
+				local row = (i - 1) % 6
+				local surface = boardCF * CFrame.new(side * (size / 2 + 0.7 + col * step), 0, side * (size / 2 - 0.35 - row * step))
+				local template = Pieces.find("Checkers", NAMES[victim])
+				local piece = if template then Pieces.stand(template, factor * 0.8, surface) else fallbackPiece(victim, surface, board.cellSize * 0.8)
+				piece.Parent = takenFolder
+			end
+		end
+	end
+
 	return {
 		model = board.model,
 		update = function(view: any)
@@ -75,6 +115,7 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 				end
 			end
 			Square.tint(board, 8, tints)
+			drawTaken(view.board)
 		end,
 		destroy = function()
 			board.model:Destroy()

@@ -340,6 +340,109 @@ function HudKit.dots(label: TextLabel, base: string)
 	end)
 end
 
+-- A big moment called out over the game for a second or two ("Hearts are broken!",
+-- "BINGO! +50", "Gin!"): a pill that pops in, shines and fades away. `color` tints it.
+function HudKit.callout(parent: Instance, text: string, color: Color3?, y: number?)
+	local pill = Kit.new("Frame", {
+		Name = "Callout",
+		BackgroundColor3 = color or Kit.Theme.Accent,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, y or 0.4),
+		Size = UDim2.fromOffset(math.clamp(#text * 17 + 60, 180, 520), 58),
+		ZIndex = 40,
+		Parent = parent,
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0, 14) }), Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.3 }) })
+	local scale = Kit.new("UIScale", { Scale = 0.4, Parent = pill })
+	local label = Kit.new("TextLabel", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Text = text,
+		TextScaled = true,
+		Font = Kit.Theme.FontBold,
+		TextColor3 = Kit.Theme.AccentText,
+		ZIndex = 41,
+		Parent = pill,
+	}, { Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }) })
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	HudKit.shine(pill, 42)
+	task.delay(1.6, function()
+		if not pill.Parent then
+			return
+		end
+		local info = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		TweenService:Create(pill, info, { BackgroundTransparency = 1, Position = UDim2.fromScale(0.5, (y or 0.4) - 0.05) }):Play()
+		TweenService:Create(label, info, { TextTransparency = 1 }):Play()
+		local stroke = pill:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			TweenService:Create(stroke, info, { Transparency = 1 }):Play()
+		end
+		task.delay(0.45, function()
+			pill:Destroy()
+		end)
+	end)
+end
+
+-- A secret card shown just to you, flipped over in the middle of the screen like it's
+-- slid across the table face down and turned up (Whodunit's "showed you" moment).
+-- Tap it or wait a few seconds and it tucks away.
+function HudKit.revealCard(parent: Instance, heading: string, title: string, subtitle: string?, color: Color3?)
+	local old = parent:FindFirstChild("RevealCard")
+	if old then
+		old:Destroy()
+	end
+	local card = Kit.new("TextButton", {
+		Name = "RevealCard",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Color3.fromRGB(70, 48, 96),
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromOffset(170, 240),
+		ZIndex = 45,
+		Parent = parent,
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0, 14) }), Kit.new("UIStroke", { Color = Color3.fromRGB(255, 214, 120), Thickness = 3 }) })
+	local scale = Kit.new("UIScale", { Scale = 0.6, Parent = card })
+	local back = Kit.label("?", { TextSize = 72, Font = Kit.Theme.FontBold, TextColor3 = Color3.fromRGB(255, 214, 120), TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 46, Parent = card })
+	local face = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 46, Parent = card })
+	Kit.label(heading, { TextSize = 13, TextColor3 = Color3.fromRGB(110, 96, 80), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true, Position = UDim2.new(0, 8, 0, 10), Size = UDim2.new(1, -16, 0, 34), ZIndex = 47, Parent = face })
+	Kit.label(title, { TextSize = 26, Font = Kit.Theme.FontBold, TextColor3 = color or Color3.fromRGB(40, 30, 24), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true, Position = UDim2.new(0, 8, 0.3, 0), Size = UDim2.new(1, -16, 0.4, 0), ZIndex = 47, Parent = face })
+	if subtitle then
+		Kit.label(subtitle, { TextSize = 14, TextColor3 = Color3.fromRGB(110, 96, 80), TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 8, 1, -40), Size = UDim2.new(1, -16, 0, 28), ZIndex = 47, Parent = face })
+	end
+	-- Pop in face down, then squash to nothing on X and come back face up.
+	TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	task.delay(0.45, function()
+		if not card.Parent then
+			return
+		end
+		local half = TweenService:Create(card, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 240) })
+		half.Completed:Once(function()
+			if not card.Parent then
+				return
+			end
+			back.Visible = false
+			face.Visible = true
+			card.BackgroundColor3 = Color3.fromRGB(252, 246, 230)
+			TweenService:Create(card, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(170, 240) }):Play()
+			HudKit.shine(card, 48)
+		end)
+		half:Play()
+	end)
+	local function tuck()
+		if card.Parent then
+			local t = TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0 })
+			t.Completed:Once(function()
+				card:Destroy()
+			end)
+			t:Play()
+		end
+	end
+	card.Activated:Connect(tuck)
+	task.delay(4.5, tuck)
+end
+
 -- A light band that sweeps across once (banners, the win title).
 function HudKit.shine(object: GuiObject, z: number?)
 	local band = Kit.new("Frame", {

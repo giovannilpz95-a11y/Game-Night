@@ -85,6 +85,46 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 					Models.cyl(dynamic, "CountRing", 0.46, 0.015, plate, color)
 					Scene.floatText(dynamic, plate * CFrame.new(0, 0.22, 0), 0.42, 0.34, tostring(armies), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
 				end
+				-- The last attack, while its attacker is still on turn: a red arrow from the
+				-- attacking land to the target, the dice each side rolled next to their land,
+				-- and the losses floating over each (the battle screen of the big versions).
+				local battle = view.lastBattle
+				local fromT = battle and Rules.territories[battle.from]
+				local toT = battle and Rules.territories[battle.to]
+				if battle and fromT and toT and view.turn == battle.attacker and (view.phase == "attack" or view.phase == "occupy") then
+					local RED = Color3.fromRGB(230, 60, 60)
+					local pa = pos(boardCF, fromT, TOP_Y + 0.55).Position
+					local pb = pos(boardCF, toT, TOP_Y + 0.55).Position
+					local length = (pb - pa).Magnitude
+					local mid = (pa + pb) / 2 + boardCF.UpVector * math.min(0.6, length * 0.15)
+					-- Two straight legs make a little arc over the water.
+					for _, leg in { { pa, mid }, { mid, pb } } do
+						local a, b = leg[1], leg[2]
+						local legLength = (b - a).Magnitude
+						local cut = if b == pb then 0.32 else 0
+						local cf = CFrame.lookAt(a, b) * CFrame.new(0, 0, -(legLength - cut) / 2)
+						local shaft = Models.block(dynamic, "AttackArrow", Vector3.new(0.12, 0.06, legLength - cut), cf, RED, Enum.Material.Neon)
+						shaft.Transparency = 0.1
+					end
+					local head = CFrame.lookAt(pb, pb + (pb - mid).Unit) * CFrame.new(0, 0, 0.18)
+					local h1 = Models.block(dynamic, "AttackArrowHead", Vector3.new(0.08, 0.06, 0.36), head * CFrame.Angles(0, math.rad(35), 0) * CFrame.new(0, 0, 0.1), RED, Enum.Material.Neon)
+					local h2 = Models.block(dynamic, "AttackArrowHead", Vector3.new(0.08, 0.06, 0.36), head * CFrame.Angles(0, math.rad(-35), 0) * CFrame.new(0, 0, 0.1), RED, Enum.Material.Neon)
+					h1.Transparency, h2.Transparency = 0.1, 0.1
+					local function dice(t: any, values: { number }, color: Color3, pips: Color3)
+						for k, value in values do
+							Models.die(dynamic, pos(boardCF, t, TOP_Y) * CFrame.new(-0.55 + (k - 1) * 0.3, 0, -0.5) * CFrame.Angles(0, math.rad(k * 19), 0), value, 0.24, color, pips)
+						end
+					end
+					dice(fromT, battle.attackDice or {}, RED, Color3.new(1, 1, 1))
+					dice(toT, battle.defendDice or {}, Color3.fromRGB(245, 245, 245), Color3.fromRGB(30, 30, 40))
+					local function loss(t: any, n: number)
+						if n > 0 then
+							Scene.floatText(dynamic, pos(boardCF, t, TOP_Y + 1.05), 0.7, 0.36, `-{n}`, { TextColor3 = Color3.fromRGB(255, 120, 110), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.1 })
+						end
+					end
+					loss(fromT, battle.attackerLost or 0)
+					loss(toT, battle.defenderLost or 0)
+				end
 			end)
 		end,
 		destroy = function()

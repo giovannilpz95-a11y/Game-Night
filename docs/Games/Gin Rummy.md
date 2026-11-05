@@ -8,6 +8,7 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Melds: `src/shared/Cards/Melds.luau`. `Melds.best` searches every set/run split with a memoized bitmask search (11 cards is instant). `Melds.defend` tries melding first and laying off each single card first, keeping the least deadwood.
 - House rules: `target` 50 (default) / 100 / 150; `knock` 10 (default) / 7 / Gin only.
 - Table: `src/client/Renderers/GinRummy.luau`. Hand sorted melds first with a green bar under meld cards; deadwood in the prompt. Knock button, then tap the card to knock with. Showdown lays both hands out (deadwood dimmed).
+- Gin, Undercut and Knock each get a call-out; the 3D discard pile is messy with each card facing whoever threw it.
 - Scene: `src/server/Tables/Boards/GinRummy.luau`: hands, stock, discard pile; both hands face up during the showdown.
 - Bot: takes the discard only when it makes or grows a meld and lowers deadwood; throws the card leaving least deadwood, highest first. Easy sometimes throws a random deadwood card and knocks at once. Medium knocks at 6 or less (any legal knock late). Hard knocks at 3 or less early, avoids feeding ranks the opponent picked up.
 - Stats: gins, undercuts (`addStat` in the showdown), best score.

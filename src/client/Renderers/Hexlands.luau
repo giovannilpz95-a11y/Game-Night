@@ -839,6 +839,52 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- How often each total has come up, as bars (the "dice stats" of the big online
+	-- versions), with the odds-expected count as a faint line so streaks stand out.
+	local function renderDiceStats(view: any)
+		local counts = view.rollCounts
+		if not counts then
+			return
+		end
+		local rolls, most = 0, 1
+		for t = 2, 12 do
+			rolls += counts[t] or 0
+			most = math.max(most, counts[t] or 0)
+		end
+		if rolls == 0 then
+			return
+		end
+		heading(`Dice stats · {rolls} rolls`)
+		local chart = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 74), LayoutOrder = nextOrder(), Parent = side })
+		local last = view.dice and (view.dice[1] + view.dice[2])
+		for t = 2, 12 do
+			local x = (t - 2) / 11
+			local n = counts[t] or 0
+			local expected = rolls * (6 - math.abs(7 - t)) / 36
+			local scale = math.max(most, expected)
+			local barH = n / scale
+			local col = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(x, 1, 0, 0), Size = UDim2.new(1 / 11, -2, 1, 0), Parent = chart })
+			Kit.new("Frame", {
+				BackgroundColor3 = if t == last then Theme.Accent elseif t == 6 or t == 8 then Color3.fromRGB(220, 90, 80) else Theme.PanelLight,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 0, 1, -16),
+				Size = UDim2.new(1, 0, barH, -16 * barH),
+				Parent = col,
+			}, { Kit.new("UICorner", { CornerRadius = UDim.new(0, 3) }) })
+			Kit.new("Frame", {
+				BackgroundColor3 = Theme.Text,
+				BackgroundTransparency = 0.6,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 0, 1 - expected / scale, -16 * (1 - expected / scale)),
+				Size = UDim2.new(1, 0, 0, 2),
+				Parent = col,
+			})
+			Kit.label(tostring(t), { TextSize = 11, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, -14), Size = UDim2.new(1, 0, 0, 14), Parent = col })
+		end
+	end
+
 	local function renderLog(view: any)
 		heading("News")
 		for i = #view.log, 1, -1 do
@@ -942,6 +988,23 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 		local key = if d then `{d[1]},{d[2]},{snapshot.moveNumber}` else ""
 		if d and key ~= lastDice and view.log[#view.log] and string.find(view.log[#view.log].text, "rolled", 1, true) then
+			-- What the roll paid you, called out (the resource cards flying in).
+			local gain = view.lastGain
+			if me and gain and gain.roll == d[1] + d[2] and gain.roll ~= 7 then
+				local mine = (gain.gains or {})[tostring(me)]
+				if mine then
+					local parts = {}
+					for _, r in Rules.resources do
+						local n = mine[r.key]
+						if n and n > 0 then
+							table.insert(parts, `+{n} {r.icon}`)
+						end
+					end
+					if #parts > 0 then
+						HudKit.callout(root, table.concat(parts, "  "), Color3.fromRGB(150, 220, 120), 0.3)
+					end
+				end
+			end
 			for i = 1, 2 do
 				dice[i].frame.Rotation = if i == 1 then -25 else 25
 				TweenService:Create(dice[i].frame, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Rotation = 0 }):Play()
@@ -972,6 +1035,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		renderCards(view, me)
 		renderActions(view, me)
 		renderPlayers(view, me)
+		renderDiceStats(view)
 		renderLog(view)
 	end
 	rerender = function()

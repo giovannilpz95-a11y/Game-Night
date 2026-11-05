@@ -6,6 +6,7 @@ An island-settling trading game (the roll-for-resources, build-and-trade family)
 
 - Rules: `src/shared/Games/Hexlands.luau`. 2-4 seats, first to `TARGET_POINTS` (8) on their own turn wins; after `MAX_ROUNDS` (40/27/20 rounds for 2/3/4 seats, about the same number of turns each) the most points wins.
 - Board: `src/client/Renderers/Hexlands.luau`. Hexes are drawn as three rotated frames; roads, camps and towns are frames at edge and corner positions taken from the rules module, so the board and the rules always agree. Build buttons pick a mode, then legal spots glow (from `view.options`).
+- Rolls: `lastGain` (what the last roll paid each seat, and which hexes) and `rollCounts` (totals 2-12) are public in the view. The 3D board puts a halo under each paying number with what it paid; your screen calls out your own gain and the side panel has Dice stats bars with the expected count as a line.
 - Tests: `tests/Hexlands.spec.luau` (geometry, fair maps, setup order, production, 7s and discards, the Bandit, building, bank/harbor rates, trades, action cards, Longest Road, winning, hidden info, bot-vs-bot games for every level and seat count).
 - Geometry: 19 pointy-top hexes in axial coordinates, radius 2. `vertices` (54) and `edges` (72) are built once at load with adjacency (`hexes`, `edges`, `near`). Harbors use 9 coast edges spaced evenly so none share a corner.
 - Map: shuffled lands and numbers, re-shuffled until no 6 or 8 touch. The Bandit starts on the Dunes.

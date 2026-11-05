@@ -9,6 +9,7 @@ local Cards = require(script.Parent._Cards)
 local GinRummy = {}
 
 function GinRummy.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
+	local history = Cards.pileHistory()
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
 		local showdown = view.showdown
 		for seat, count in view.handCounts or {} do
@@ -31,10 +32,19 @@ function GinRummy.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 			end
 		end
 		Scene.pile(folder, Cards.center(boardCF, -0.6), view.stockCount or 0, true)
-		if view.discardTop then
-			local top = Scene.pile(folder, Cards.center(boardCF, 0.6), math.max(0, (view.discardCount or 1) - 1), false)
-			Scene.card(folder, top, Scene.playingFront(PlayingCards, view.discardTop))
+		-- The discard pile: messy, each card turned toward whoever threw it away.
+		local action = view.lastAction
+		local count = if view.discardTop then math.max(1, view.discardCount or 1) else 0
+		if history.seen(Cards.actionKey(action, view.round)) and action.kind == "discard" and count > #history.items then
+			history.add(action.seat, { action.card })
 		end
+		history.fit(count)
+		if view.discardTop then
+			history.setTop({ view.discardTop })
+		end
+		Cards.messyPile(folder, boardCF, layout, Cards.center(boardCF, 0.6), history.items, function(id)
+			return Scene.playingFront(PlayingCards, id)
+		end)
 	end, Color3.fromRGB(40, 70, 110))
 end
 

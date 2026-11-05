@@ -39,6 +39,16 @@ function GoFish.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			local a = i / 3 * math.pi * 2 + 0.6
 			fish(folder, Cards.center(boardCF, math.cos(a) * 2.05, math.sin(a) * 2.05) * CFrame.Angles(0, -a, 0), FISH[i])
 		end
+		-- The ask and the answer, said out loud.
+		local ask = view.lastAction
+		if ask and ask.target and ask.rank then
+			Cards.speech(folder, boardCF, layout, ask.seat, `Got any {Cards.rankSaid(ask.rank)}?`)
+			if (ask.got or 0) > 0 then
+				Cards.speech(folder, boardCF, layout, ask.target, if ask.got == 1 then "Here you go." else `Here's {ask.got}.`)
+			else
+				Cards.speech(folder, boardCF, layout, ask.target, "Go fish!", Color3.fromRGB(170, 220, 255))
+			end
+		end
 		for i = 1, math.min(view.pondCount or 0, 52) do
 			Scene.card(folder, Cards.center(boardCF, 0) * spots[i], nil)
 		end

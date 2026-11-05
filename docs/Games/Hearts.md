@@ -8,5 +8,6 @@ Back to [[Home]] · shared deck: [[Card games]] · shared trick helpers: `src/sh
 - Phases: `pass` (everyone), `play`, `trick` (1.4 s to see the finished trick), `round` (5 s summary). The game clock runs only in `trick` and `round`; the turn timer handles `pass` and `play`.
 - House rule `target`: 50 (default) or 100. Lowest score wins when someone reaches it; ties are a draw.
 - Table: `src/client/Renderers/Hearts.luau`. Each trick card sits in front of whoever played it (`CardTable.trick`). Tap 3 cards and Pass; then tap a glowing card.
+- Passing: a flowing arrow (`UI/FlowArrow.luau`) points at the player who gets your 3 cards and names them; in Table view the next seat is on your right. "Hearts are broken" and shooting the moon get call-outs. Won tricks stack in front of each seat on the 3D table.
 - Bot: passes the Queen and high spades (unless it holds many spades), then high hearts and high cards. Ducks under the winning card, dumps the Queen under a higher spade, wins big only when last with no points, and dumps the Queen or high hearts when void. Easy plays at random.
 - Tests: `tests/Hearts.spec.luau`.
