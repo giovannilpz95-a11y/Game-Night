@@ -65,7 +65,12 @@ local FIRST_PERSON = {
 	President = true, SlapStack = true, Hearts = true, Spades = true, ThirtyOne = true,
 	Palace = true, OldMaid = true, Snap = true, GinRummy = true, OhHell = true,
 }
-local EYE_ABOVE_TABLE = 4.2 -- studs above the tabletop for the first-person camera
+-- First-person camera (card games): how high over the tabletop and how far back from the
+-- middle, in studs plus a share of the distance from the middle to your seat.
+local EYE_ABOVE_TABLE = 4
+local EYE_RISE = 0.5
+local EYE_BACK = 1.2
+local HEAD_ABOVE_TABLE = 2.6 -- the top of a seated player's head
 local FIRST_PERSON_FOV = 68
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
 
@@ -452,21 +457,32 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			back, up = back * scale, up * scale
 		end
 		if FIRST_PERSON[snapshot.gameId] and seat and seat:IsA("BasePart") then
-			-- From your place at the table, up high and looking down across it (like leaning
-			-- over the table): the whole tabletop with the piles, every other player and some
-			-- room above their heads. Measured from the tabletop, not the chair: stools
-			-- are low and eyes at seat height ended up level with the rail. Then tilt down
-			-- until that sits in the middle of the screen left above the docked hand.
+			-- From your place at the table, up high over your own seat and looking down
+			-- across it: the middle of the table (the piles) and every other player with
+			-- some room above their heads, all in the part of the screen the docked hand
+			-- leaves free. Measured from the tabletop, not the chair (stools are low). The
+			-- pitch is picked so the middle sits above the hand and the far heads stay under
+			-- the top bar; when both can't fit, it splits the difference.
 			local reach = toSeat.Magnitude
-			local eye = anchor + toSeat.Unit * (reach * 0.92) + Vector3.new(0, EYE_ABOVE_TABLE, 0)
-			local look = anchor - toSeat.Unit * (reach * 0.22) + Vector3.new(0, 0.9, 0)
-			local cf = CFrame.lookAt(eye, look)
+			local flat = -toSeat.Unit -- from your seat toward the middle
+			local back = reach * EYE_BACK
+			local height = EYE_ABOVE_TABLE + reach * EYE_RISE
+			local eye = anchor - flat * back + Vector3.new(0, height, 0)
 			camera.FieldOfView = FIRST_PERSON_FOV
 			local viewport = camera.ViewportSize
-			local halfV = math.rad(FIRST_PERSON_FOV / 2)
+			local t = math.tan(math.rad(FIRST_PERSON_FOV / 2))
 			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
-			local tilt = math.atan(math.max(insetBottom - topBar, 0) * math.tan(halfV))
-			home = cf * CFrame.Angles(-tilt, 0, 0)
+			-- Angles from the camera's center line up to the top of the free area and down
+			-- to its bottom (the top of the docked hand).
+			local topEdge = math.atan((1 - 2 * topBar) * t)
+			local bottomEdge = math.atan((1 - 2 * insetBottom) * t)
+			local margin = math.rad(4)
+			local toMiddle = math.atan(height / back) -- how far below level the piles are
+			local toHeads = math.atan((height - HEAD_ABOVE_TABLE) / (back + reach))
+			local most = toHeads + topEdge - margin
+			local least = toMiddle - bottomEdge + margin
+			local pitch = (most + least) / 2
+			home = CFrame.lookAt(eye, eye + flat) * CFrame.Angles(-pitch, 0, 0)
 			firstPerson = true
 			if not shown then
 				shown = camera.CFrame

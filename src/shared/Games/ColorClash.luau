@@ -113,6 +113,7 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 		rng = random,
 		deck = deck,
 		discard = { first },
+		discardBy = { 0 }, -- who played each discard card (0: the starting card)
 		hands = hands,
 		turn = 1,
 		direction = 1,
@@ -127,6 +128,18 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 		stacking = rules.stacking ~= false,
 		drawUntilPlayable = rules.drawUntilPlayable == true,
 	}
+end
+
+-- The last few cards on the discard pile, oldest first, with who played them (seat 0 for
+-- the starting card), so the table can draw a messy pile turned toward each player.
+local RECENT = 6
+local function recentPlays(state): { { card: number, seat: number } }
+	local out = {}
+	local by = state.discardBy or {}
+	for i = math.max(1, #state.discard - RECENT + 1), #state.discard do
+		table.insert(out, { card = state.discard[i], seat = by[i] or 0 })
+	end
+	return out
 end
 
 local function topCard(state): Card
@@ -159,9 +172,12 @@ ColorClash.canPlay = canPlay
 local function drawOne(state, seat: number): number?
 	if #state.deck == 0 then
 		-- Shuffle the discard pile (all but the top card) back in.
+		local by = state.discardBy or {}
+		local topBy = by[#state.discard] or 0
 		local top = table.remove(state.discard) :: number
 		state.deck = state.discard
 		state.discard = { top }
+		state.discardBy = { topBy }
 		shuffle(state.deck, state.rng)
 	end
 	local id = table.remove(state.deck)
@@ -328,6 +344,8 @@ function ColorClash.applyMove(state, seat: number, move: any)
 	local hand = state.hands[seat]
 	table.remove(hand, table.find(hand, id) :: number)
 	table.insert(state.discard, id)
+	state.discardBy = state.discardBy or {}
+	state.discardBy[#state.discard] = seat
 	local card = cards[id]
 	state.color = if isWild(card) then move.color else card.color
 	state.lastAction = { seat = seat, kind = "play", card = id, color = state.color }
@@ -397,6 +415,7 @@ function ColorClash.getView(state, seat: number?)
 		hand = hand,
 		handCounts = counts,
 		topCard = state.discard[#state.discard],
+		recent = recentPlays(state),
 		color = state.color,
 		direction = state.direction,
 		pendingDraw = state.pendingDraw,
