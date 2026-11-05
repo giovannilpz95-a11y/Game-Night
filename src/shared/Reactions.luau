@@ -204,6 +204,16 @@ local list: { Reaction } = {
 	{ id = "oscar", label = "Award", icon = "🏆", style = "confetti", pack = "reactions_premiere" },
 	{ id = "bravo", label = "Bravo!", text = "Bravo!", color = GOLD, style = "shout", pack = "reactions_premiere" },
 
+	-- Snowed In (Game Night Pass, Season 2 premium reward; never sold)
+	{ id = "snowDay", label = "Snow day", icon = "🌨️", style = "snow", pack = "reactions_snowedin" },
+	{ id = "mittens", label = "Mittens", icon = "🧤", style = "wobble", pack = "reactions_snowedin" },
+	{ id = "sled", label = "Sled", icon = "🛷", style = "bounce", pack = "reactions_snowedin" },
+	{ id = "skate", label = "Skate", icon = "⛸️", style = "spin", pack = "reactions_snowedin" },
+	{ id = "penguin", label = "Penguin", icon = "🐧", style = "look", pack = "reactions_snowedin" },
+	{ id = "cookie", label = "Cookie", icon = "🍪", style = "pop", pack = "reactions_snowedin" },
+	{ id = "fireside", label = "Fireside", icon = "🪵", style = "fire", pack = "reactions_snowedin" },
+	{ id = "brrr", label = "Brrr!", text = "Brrr!", color = BLUE, style = "shout", pack = "reactions_snowedin" },
+
 	-- Spooky Pack (seasonal: October)
 	{ id = "pumpkin", label = "Pumpkin", icon = "🎃", style = "fire", pack = "reactions_spooky" },
 	{ id = "ghost", label = "Boo!", icon = "👻", style = "float", pack = "reactions_spooky" },
@@ -259,6 +269,7 @@ local packs: { Pack } = {
 	{ id = "reactions_pieces", name = "Game Pieces", icon = "♟️", reactions = {} },
 	{ id = "reactions_chess", name = "Chess Club", icon = "🤴", reactions = {} },
 	{ id = "reactions_premiere", name = "Premiere Night", icon = "🍿", reactions = {} },
+	{ id = "reactions_snowedin", name = "Snowed In", icon = "🌨️", reactions = {} },
 	{ id = "reactions_spooky", name = "Spooky Pack", icon = "🎃", reactions = {}, months = { 10 }, season = "🎃 Halloween" },
 	{ id = "reactions_winter", name = "Winter Pack", icon = "⛄", reactions = {}, months = { 12, 1 }, season = "❄️ Winter" },
 	{ id = "reactions_love", name = "Sweethearts", icon = "💘", reactions = {}, months = { 2 }, season = "💘 Valentine's" },

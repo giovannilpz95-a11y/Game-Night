@@ -46,12 +46,25 @@ Season.TierSkipGems = 75
 Season.OwnedRefund = { Common = 100, Rare = 200, Epic = 300, Legendary = 500 }
 
 export type Reward = { gems: number?, universal: number?, item: string? }
+-- A themed weekly quest a track adds (server/Core/Quests.makeWeekly). `theme` is which of
+-- the five weekly slots it can fill: 1 play a lot, 2 win, 3 people or reactions,
+-- 4 variety or a category, 5 time played. Each week at least one quest is a themed one.
+export type QuestSpec = {
+	theme: number,
+	id: string,
+	kind: string, -- "play" | "win" | "minutes" | "variety" | "react"
+	target: number,
+	text: string,
+	category: string?, -- skipped in weeks when no ready game has this category
+	humans: boolean?,
+}
 export type Track = {
 	name: string,
 	icon: string,
 	blurb: string,
 	free: { [number]: Reward },
 	premium: { [number]: Reward },
+	weekly: { QuestSpec }?,
 }
 
 local function gems(n: number): Reward
@@ -119,6 +132,73 @@ Season.Tracks = {
 			[28] = uni(500),
 			[29] = gems(30),
 			[30] = item("win_showstopper"),
+		},
+	},
+	{
+		-- Season 2: Mon 30 Nov 2026 to Mon 28 Dec 2026. A blizzard keeps everyone in the
+		-- cabin for game night: snowball fights, cocoa by the fire, skating on the lake.
+		name = "Snowed In",
+		icon = "❄️",
+		blurb = "A blizzard outside, cocoa and games by the fire inside.",
+		free = {
+			[1] = uni(100),
+			[3] = gems(10),
+			[5] = item("season2_title_snowedin"),
+			[7] = uni(150),
+			[9] = gems(10),
+			[10] = item("pose_snowball"),
+			[12] = uni(200),
+			[14] = gems(15),
+			[16] = item("season2_trail_snowfall"),
+			[18] = uni(250),
+			[20] = gems(15),
+			[22] = item("season2_cards_frost"),
+			[24] = gems(20),
+			[26] = uni(300),
+			[28] = gems(20),
+			[30] = item("season2_title_blizzard"),
+		},
+		premium = {
+			[1] = item("season2_chair_rocker"),
+			[2] = gems(15),
+			[3] = uni(200),
+			[4] = gems(15),
+			[5] = item("season2_title_cocoa"),
+			[6] = uni(250),
+			[7] = gems(20),
+			[8] = uni(250),
+			[9] = gems(20),
+			[10] = item("pose_warmhands"),
+			[11] = uni(300),
+			[12] = gems(20),
+			[13] = uni(300),
+			[14] = gems(20),
+			[15] = item("reactions_snowedin"),
+			[16] = uni(300),
+			[17] = gems(25),
+			[18] = item("season2_cards_aurora"),
+			[19] = gems(25),
+			[20] = item("season2_nameplate_icicle"),
+			[21] = uni(350),
+			[22] = gems(25),
+			[23] = uni(400),
+			[24] = gems(25),
+			[25] = item("season2_table_lodge"),
+			[26] = uni(400),
+			[27] = gems(30),
+			[28] = uni(500),
+			[29] = gems(30),
+			[30] = item("win_iceskate"),
+		},
+		weekly = {
+			{ theme = 1, id = "s2_play15", kind = "play", target = 15, text = "❄️ Snowed in: finish 15 games" },
+			{ theme = 2, id = "s2_wincards4", kind = "win", target = 4, text = "❄️ Win 4 card games by the fire", category = "Cards" },
+			{ theme = 2, id = "s2_winpeople3", kind = "win", target = 3, text = "❄️ Snowball fight: win 3 games with other people", humans = true },
+			{ theme = 3, id = "s2_people6", kind = "play", target = 6, text = "❄️ Cabin crowd: finish 6 games with other people", humans = true },
+			{ theme = 3, id = "s2_react25", kind = "react", target = 25, text = "❄️ Warm up the table: send 25 reactions" },
+			{ theme = 4, id = "s2_variety5", kind = "variety", target = 5, text = "❄️ Cabin fever: play 5 different games" },
+			{ theme = 4, id = "s2_board3", kind = "play", target = 3, text = "❄️ Board game blizzard: finish 3 board games", category = "Board" },
+			{ theme = 5, id = "s2_minutes75", kind = "minutes", target = 75, text = "❄️ Long winter night: play for 75 minutes" },
 		},
 	},
 } :: { Track }

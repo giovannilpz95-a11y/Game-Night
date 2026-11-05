@@ -30,6 +30,7 @@ Showtime.Fx = {
 	gold = { { 255, 200, 64 }, { 255, 236, 160 } },
 	disco = { { 160, 90, 255 }, { 60, 220, 255 }, { 255, 80, 200 } },
 	bubbles = { { 150, 220, 255 }, { 220, 250, 255 } },
+	frost = { { 235, 245, 255 }, { 170, 215, 255 }, { 255, 255, 255 } },
 }
 
 -- Order matters: the shop lists them in this order, and the first free one is the default.
@@ -45,6 +46,8 @@ Showtime.Poses = {
 	-- Game Night Pass rewards (shared/Season); the shop shows which pass gives them.
 	{ id = "pose_spotlight", name = "Spotlight", icon = "🔦", blurb = "Squint into the lights, then point up", fx = "stars" },
 	{ id = "pose_redcarpet", name = "Red Carpet", icon = "📸", blurb = "Strut, wave, blow a kiss to the cameras", fx = "gold" },
+	{ id = "pose_snowball", name = "Snowball Fight", icon = "☃️", blurb = "Scoop, pack, wind up and let it fly", fx = "frost" },
+	{ id = "pose_warmhands", name = "Warm Hands", icon = "🧤", blurb = "Shiver, then blow on your hands", fx = "frost" },
 	{ id = "pose_peace", name = "Peace Out", icon = "✌️", blurb = "Peace sign and a head tilt", fx = "stars" },
 	{ id = "pose_superstar", name = "Superstar", icon = "🌟", blurb = "Crouch, then point to the sky", fx = "stars" },
 	{ id = "pose_cool", name = "Too Cool", icon = "😎", blurb = "Arms crossed, leaning back", fx = "disco" },
@@ -78,6 +81,7 @@ Showtime.Dances = {
 	{ id = "win_money", name = "Make It Rain", icon = "💸", blurb = "Flicking bills to the crowd", fx = "gold" },
 	{ id = "win_champion", name = "Champion", icon = "🏆", blurb = "Trophy up, flex, spin", fx = "gold" },
 	{ id = "win_showstopper", name = "Showstopper", icon = "🎭", blurb = "Kick line, jazz hands, take a bow", fx = "gold" },
+	{ id = "win_iceskate", name = "Ice Skater", icon = "⛸️", blurb = "Glide, glide, double spin, arabesque", fx = "frost" },
 } :: { Move }
 
 local byId: { [string]: Move } = {}

@@ -151,8 +151,10 @@ function Quests.pickSmall(games: { GameInfo }, rng: Random, taken: { [string]: b
 end
 
 -- The week's quests (Season.WeeklyQuests of them): one of each theme so a week always
--- mixes playing a lot, winning, people, variety and time.
-function Quests.makeWeekly(games: { GameInfo }, rng: Random): { Profile.Challenge }
+-- mixes playing a lot, winning, people, variety and time. `seasonal` is the season
+-- track's themed quests (Season.Track.weekly): they join their theme's options, and one
+-- theme each week is always a themed quest.
+function Quests.makeWeekly(games: { GameInfo }, rng: Random, seasonal: { Season.QuestSpec }?): { Profile.Challenge }
 	local themes: { { Profile.Challenge } } = {
 		{ make("w_play15", "play", 15, "Finish 15 games") },
 		{
@@ -171,8 +173,30 @@ function Quests.makeWeekly(games: { GameInfo }, rng: Random): { Profile.Challeng
 		local category = pick(cats, rng)
 		table.insert(themes[4], make(`w_cat_{category}`, "play", 5, `Finish 5 {Quests.CategoryWords[category]}`, { category = category }))
 	end
+	local themed: { [number]: { Profile.Challenge } } = {}
+	local themedSlots = {}
+	for _, spec in seasonal or {} do
+		if not themes[spec.theme] or (spec.category and not table.find(cats, spec.category)) then
+			continue
+		end
+		if not themed[spec.theme] then
+			themed[spec.theme] = {}
+			table.insert(themedSlots, spec.theme)
+		end
+		table.insert(themed[spec.theme], make(spec.id, spec.kind, spec.target, spec.text, { category = spec.category, humans = spec.humans }))
+	end
+	table.sort(themedSlots)
+	local forced = if #themedSlots > 0 then pick(themedSlots, rng) else nil
 	local out = {}
-	for _, options in themes do
+	for index, options in themes do
+		if themed[index] then
+			if index == forced then
+				options = themed[index]
+			else
+				options = table.clone(options)
+				table.move(themed[index], 1, #themed[index], #options + 1, options)
+			end
+		end
 		local quest = pick(options, rng)
 		quest.stars = Season.WeeklyQuestStars
 		table.insert(out, quest)
