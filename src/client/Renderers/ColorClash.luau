@@ -388,7 +388,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	})
 	local function showOverlay()
-		local screen = container:FindFirstAncestorWhichIsA("ScreenGui")
+		-- A game picker preview keeps it in the tile.
+		local screen = if Kit.inPreview(container) then nil else container:FindFirstAncestorWhichIsA("ScreenGui")
 		overlay.Parent = screen or root
 		overlay.Visible = true
 	end

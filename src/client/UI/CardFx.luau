@@ -250,7 +250,7 @@ end
 -- docks only the bottom of a game's board, so its own frames would clip them).
 local function overlayFor(anchor: Instance): Frame?
 	local screen = anchor:FindFirstAncestorWhichIsA("ScreenGui")
-	if not screen then
+	if not screen or Kit.inPreview(anchor) then
 		return nil
 	end
 	local overlay = screen:FindFirstChild("CardFxOverlay")
@@ -442,7 +442,7 @@ function CardFx.drawnPrompt(anchor: Instance): (id: number?, buttons: { DrawnBut
 			return true
 		end
 		local screen = anchor:FindFirstAncestorWhichIsA("ScreenGui")
-		if not screen then
+		if not screen or Kit.inPreview(anchor) then
 			return false
 		end
 		band = Kit.new("Frame", {

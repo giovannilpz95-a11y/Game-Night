@@ -223,6 +223,9 @@ function PlayingCard.hover(container: GuiObject): Hover
 		end
 	end
 	local function update(position: Vector2)
+		if Kit.inPreview(container) then
+			return -- a game picker preview: nobody's hand to lift
+		end
 		local gui = container:FindFirstAncestorWhichIsA("ScreenGui")
 		if gui and not gui.IgnoreGuiInset then
 			position -= GuiService:GetGuiInset()
