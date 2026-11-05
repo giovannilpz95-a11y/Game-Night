@@ -52,6 +52,7 @@ local DOCK: { [string]: { side: string, size: number, held: boolean? } } = {
 	-- held: no tray behind the strip, so the hand reads as cards held up in front of you.
 	ColorClash = { side = "bottom", size = 0.45, held = true },
 	TriviaNight = { side = "bottom", size = 0.26 }, -- answers only (the screen shows the question)
+	FiveDice = { side = "right", size = 0.42 }, -- your dice, Roll and the score card
 	Werewolf = { side = "bottom", size = 0.44 }, -- the village row and what to do now (the screen shows the phase)
 	Spoons = { side = "bottom", size = 0.41, held = true },
 	War = { side = "bottom", size = 0.2 },
