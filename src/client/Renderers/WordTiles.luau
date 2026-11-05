@@ -7,11 +7,14 @@
 -- the words. Premium squares use our own layout and colors.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.WordTiles)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
+local Juice = require(script.Parent.Parent.UI.Juice)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local WordTiles = {}
@@ -94,12 +97,25 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	local side = Kit.panel({ Position = UDim2.new(0.66, 8, 0, 0), Size = UDim2.new(0.34, -8, 1, -96), Parent = root })
 	local sideList = Kit.list(8)
 	sideList.Parent = side
-	local bagLabel = Kit.label("", { Font = Theme.FontTitle, TextSize = 19, LayoutOrder = 1, Parent = side })
+	-- Score bar: every player's score, whose turn it is lit (like the word apps' top bar).
+	local scoreBar = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 0, Parent = side })
+	local scoreList = Kit.list(4, true)
+	scoreList.Parent = scoreBar
+	-- The bag: tap it to see which tiles you haven't seen yet.
+	local bagLabel = Kit.button("", function() end, {
+		Font = Theme.FontTitle,
+		TextSize = 17,
+		BackgroundColor3 = Theme.PanelLight,
+		TextColor3 = Theme.Text,
+		Size = UDim2.new(1, 0, 0, 30),
+		LayoutOrder = 1,
+		Parent = side,
+	})
 	local previewLabel = Kit.label("", { TextSize = 16, Size = UDim2.new(1, 0, 0, 64), TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2, Parent = side })
 	HudKit.heading("Recent plays", { size = 15, LayoutOrder = 3, Parent = side })
 	local logLabel = Kit.label("", {
 		TextSize = 14,
-		Size = UDim2.new(1, 0, 1, -158),
+		Size = UDim2.new(1, 0, 1, -200),
 		TextYAlignment = Enum.TextYAlignment.Top,
 		LayoutOrder = 4,
 		Parent = side,
@@ -132,6 +148,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	grid2.Parent = buttons
 
 	local render: () -> ()
+	local placeTile: (id: number, row: number, col: number) -> ()
 
 	local function myTurn(): boolean
 		return snapshot ~= nil and table.find(snapshot.activeSeats, snapshot.yourSeat) ~= nil
@@ -240,6 +257,45 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		picker.Visible = false
 	end, { BackgroundTransparency = 1, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 24), ZIndex = 21, Parent = picker })
 
+	-- Unseen tiles pop-up (from the bag button).
+	local unseenBox = Kit.panel({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.45),
+		Size = UDim2.new(0, 360, 0, 250),
+		BackgroundColor3 = Theme.PanelLight,
+		Visible = false,
+		ZIndex = 20,
+		Parent = root,
+	})
+	local unseenText = Kit.label("", { RichText = true, TextSize = 16, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Size = UDim2.new(1, 0, 1, -30), ZIndex = 21, Parent = unseenBox })
+	Kit.button("Close", function()
+		unseenBox.Visible = false
+	end, { BackgroundTransparency = 1, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 24), ZIndex = 21, Parent = unseenBox })
+	local function showUnseen()
+		if not snapshot then
+			return
+		end
+		local view = snapshot.view
+		local left = Rules.unseen(view.board, view.rows, view.rack)
+		local parts, total = {}, 0
+		for i = 1, 26 do
+			local letter = string.char(96 + i)
+			local n = left[letter] or 0
+			total += n
+			if n > 0 then
+				table.insert(parts, `<b>{string.upper(letter)}</b>×{n}`)
+			end
+		end
+		if (left["?"] or 0) > 0 then
+			total += left["?"]
+			table.insert(parts, `<b>blank</b>×{left["?"]}`)
+		end
+		unseenText.Text = `<font size="18"><b>Unseen tiles: {total}</b></font>\nIn the bag ({view.bagCount}) or on other racks.\n\n{table.concat(parts, "   ")}`
+		unseenBox.Visible = not unseenBox.Visible
+		Juice.popIn(unseenBox)
+	end
+	bagLabel.Activated:Connect(showUnseen)
+
 	local function pendingAt(row: number, col: number): number?
 		for id, p in placed do
 			if p.row == row and p.col == col then
@@ -275,6 +331,14 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		if not id then
 			return
 		end
+		placeTile(id, row, col)
+	end
+
+	-- Puts rack tile `id` on a square (blanks ask which letter first).
+	function placeTile(id: number, row: number, col: number)
+		if board[row] and board[row][col] or pendingAt(row, col) then
+			return
+		end
 		if rack[id].letter == "?" then
 			pickFor = { id = id, row = row, col = col }
 			picker.Visible = true
@@ -282,8 +346,103 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		end
 		placed[id] = { row = row, col = col, letter = rack[id].letter }
 		selected = nil
+		Audio.play("piece", { volume = 0.5 })
 		render()
 	end
+
+	-- Drag and drop, like every word app: drag a rack tile onto the board, or along the
+	-- rack to reorder it. A short press is still a tap.
+	local drag: { id: number, ghost: Frame, start: Vector2, moved: boolean }? = nil
+	local function cellAt(point: Vector2): (number?, number?)
+		if not grid then
+			return nil, nil
+		end
+		local size = #premium
+		for r = 1, size do
+			for c = 1, size do
+				local cell = grid.cell(r, c)
+				local p, sz = cell.AbsolutePosition, cell.AbsoluteSize
+				if point.X >= p.X and point.X <= p.X + sz.X and point.Y >= p.Y and point.Y <= p.Y + sz.Y then
+					return r, c
+				end
+			end
+		end
+		return nil, nil
+	end
+	local function startDrag(id: number, input: InputObject, slot: GuiObject)
+		if drag or placed[id] or swapMode then
+			return
+		end
+		local ghost = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Size = UDim2.fromOffset(slot.AbsoluteSize.X * 1.1, slot.AbsoluteSize.Y * 1.1),
+			Visible = false,
+			ZIndex = 30,
+			Parent = root,
+		})
+		local visual = tileVisual(rack[id].letter, rack[id].letter == "?", PENDING_STROKE)
+		visual.ZIndex = 31
+		for _, d in visual:GetDescendants() do
+			if d:IsA("GuiObject") then
+				d.ZIndex = 32
+			end
+		end
+		visual.Parent = ghost
+		drag = { id = id, ghost = ghost, start = Vector2.new(input.Position.X, input.Position.Y), moved = false }
+	end
+	UserInputService.InputChanged:Connect(function(input)
+		if not drag then
+			return
+		end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local point = Vector2.new(input.Position.X, input.Position.Y)
+		if not drag.moved and (point - drag.start).Magnitude > 10 then
+			drag.moved = true
+			drag.ghost.Visible = true
+			Audio.play("lift", { volume = 0.5 })
+		end
+		if drag.moved then
+			-- input.Position is in screen space under the top bar inset; the ghost lives in root.
+			local inset = root.AbsolutePosition
+			local guiPoint = point + Vector2.new(0, game:GetService("GuiService"):GetGuiInset().Y)
+			drag.ghost.Position = UDim2.fromOffset(guiPoint.X - inset.X, guiPoint.Y - inset.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if not drag then
+			return
+		end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local d = drag
+		drag = nil
+		d.ghost:Destroy()
+		if not d.moved then
+			return -- a tap: the slot's Activated handles it
+		end
+		local point = Vector2.new(input.Position.X, input.Position.Y) + Vector2.new(0, game:GetService("GuiService"):GetGuiInset().Y)
+		local r, c = cellAt(point)
+		if r and c then
+			placeTile(d.id, r :: number, c :: number)
+			return
+		end
+		-- Dropped on the rack: move the tile to that spot.
+		local rp, rs = rackFrame.AbsolutePosition, rackFrame.AbsoluteSize
+		if point.Y >= rp.Y and point.Y <= rp.Y + rs.Y and point.X >= rp.X and point.X <= rp.X + rs.X then
+			local slotWidth = rs.X / math.max(1, #order)
+			local to = math.clamp(math.floor((point.X - rp.X) / slotWidth) + 1, 1, #order)
+			local from = table.find(order, d.id)
+			if from and from ~= to then
+				table.remove(order, from)
+				table.insert(order, to, d.id)
+				render()
+			end
+		end
+	end)
 
 	local function buildBoard(key: string)
 		if grid then
@@ -407,6 +566,50 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 
+		-- Score bubble on the board next to the word you're laying out: "+24", or red when
+		-- the shape doesn't work yet (the apps show it before you press Play).
+		local pendingNow = pendingTiles()
+		if #pendingNow > 0 and not over then
+			local endTile = pendingNow[1]
+			for _, t in pendingNow do
+				if t.row > endTile.row or (t.row == endTile.row and t.col > endTile.col) then
+					endTile = t
+				end
+			end
+			local result = Rules.evaluate(board, premium, pendingNow, nil)
+			local bubble = Kit.label(if result then `+{result.score}` else "✗", {
+				Font = Theme.FontBold,
+				TextScaled = true,
+				TextColor3 = Color3.new(1, 1, 1),
+				BackgroundColor3 = if result then Color3.fromRGB(60, 170, 90) else Theme.Bad,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(1, 0),
+				Size = UDim2.fromScale(0.9, 0.55),
+				ZIndex = 8,
+				Parent = grid.content(endTile.row, endTile.col),
+			})
+			Kit.corner(8).Parent = bubble
+			Kit.padding(2).Parent = bubble
+		end
+
+		-- Scores across the top of the side panel.
+		Kit.clear(scoreBar)
+		for seat, score in view.scores do
+			local on = not over and table.find(snapshot.activeSeats, seat) ~= nil
+			local chip = Kit.label(`{nameOf(seat)} {score}`, {
+				Font = Theme.FontBold,
+				TextSize = 14,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextColor3 = if on then Theme.AccentText else Theme.Text,
+				BackgroundColor3 = if on then Theme.Accent else HudKit.shade(HudKit.seatColor(seat), 0.5),
+				Size = UDim2.new(1 / #view.scores, -4, 1, 0),
+				LayoutOrder = seat,
+				Parent = scoreBar,
+			})
+			Kit.corner(8).Parent = chip
+		end
+
 		-- Rack.
 		Kit.clear(rackFrame)
 		for index, id in order do
@@ -437,6 +640,14 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 					visual.Position = UDim2.fromScale(0.5, 0.4)
 				end
 			end
+			slot.InputBegan:Connect(function(input)
+				if over or not snapshot.yourSeat then
+					return
+				end
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					startDrag(id, input, slot)
+				end
+			end)
 			slot.Activated:Connect(function()
 				if over then
 					return
@@ -484,7 +695,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 			previewLabel.TextColor3 = Theme.SubText
 		end
 
-		bagLabel.Text = `{view.bagCount} tiles in the bag`
+		bagLabel.Text = `👜 {view.bagCount} in the bag · see unseen`
 		local lines = {}
 		for i = #(view.log or {}), 1, -1 do
 			table.insert(lines, describe(view.log[i]))

@@ -643,6 +643,33 @@ function WordTiles.getSeatInfo(state): { [number]: string }
 	return info
 end
 
+-- Tiles you can't see yet (in the bag or on other racks), like Woogles' unseen-tiles
+-- list: the board's full set minus the letters on the board and on your rack. Board rows
+-- use upper case for blanks. Returns { [letter or "?"] = count }.
+function WordTiles.unseen(boardKey: string, rows: { string }, rack: { string }?): { [string]: number }
+	local def = WordTiles.boards[boardKey]
+	local left = table.clone(def and def.bag or {})
+	local function take(letter: string)
+		if (left[letter] or 0) > 0 then
+			left[letter] -= 1
+		end
+	end
+	for _, row in rows do
+		for i = 1, #row do
+			local ch = string.sub(row, i, i)
+			if string.match(ch, "%l") then
+				take(ch)
+			elseif string.match(ch, "%u") then
+				take("?")
+			end
+		end
+	end
+	for _, letter in rack or {} do
+		take(letter)
+	end
+	return left
+end
+
 function WordTiles.getView(state, seat: number?)
 	local counts = {}
 	for s = 1, state.seatCount do
