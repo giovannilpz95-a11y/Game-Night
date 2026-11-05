@@ -351,6 +351,26 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		handList.HorizontalAlignment = if fits then Enum.HorizontalAlignment.Center else Enum.HorizontalAlignment.Left
 	end
 	hand:GetPropertyChangedSignal("AbsoluteSize"):Connect(squeezeHand)
+	-- Scaled text in turned cards can come up empty when the cards are made before the
+	-- hand has its size (the first deal), and stays empty until something redraws it (a
+	-- hover). Re-scaling the labels once the hand is laid out fixes that.
+	local function refitText()
+		for _, d in hand:GetDescendants() do
+			if d:IsA("TextLabel") and d.TextScaled then
+				d.TextScaled = false
+				d.TextScaled = true
+			end
+		end
+	end
+	local function refitSoon()
+		task.defer(refitText)
+		task.delay(0.25, function()
+			if hand.Parent then
+				refitText()
+			end
+		end)
+	end
+	hand:GetPropertyChangedSignal("AbsoluteSize"):Connect(refitSoon)
 	local handHover = PlayingCard.hover(hand)
 	-- One padding for the hand (a second UIPadding would be ignored). The bottom keeps
 	-- the cards clear of the scroll bar.
@@ -814,15 +834,17 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			face.Parent = slot
 			slots[id] = { slot = slot, face = face }
 			local drop = (offset * spread / 28) ^ 2 * 0.5 -- the fan's curve, in card heights
-			local rest = UDim2.fromScale(0, drop + (if canPlay then -0.08 else 0))
+			-- Cards you can play stand well up out of the fan.
+			local rest = UDim2.fromScale(0, drop + (if canPlay then -0.18 else 0))
 			face.Position = rest
 			face.Rotation = offset * spread
-			-- Cards you can't play now are only a touch darker: never looking switched off.
+			-- On your turn, cards you can't play are blacked out (hovering one still shows
+			-- it at full brightness).
 			local shade: Frame? = nil
 			if myTurn and not canPlay then
 				shade = Kit.new("Frame", {
 					BackgroundColor3 = Color3.new(0, 0, 0),
-					BackgroundTransparency = 0.8,
+					BackgroundTransparency = 0.42,
 					BorderSizePixel = 0,
 					Size = UDim2.fromScale(1, 1),
 					ZIndex = 3,
@@ -858,6 +880,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			end)
 		end
 		squeezeHand()
+		refitSoon()
 		playEffects(view, slots)
 	end
 

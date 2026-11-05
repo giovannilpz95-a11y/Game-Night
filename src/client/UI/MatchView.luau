@@ -717,8 +717,16 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 					rim.Enabled = not held
 				end
 				dockLip.Visible = not held
-				dock.Position = UDim2.fromOffset(boardX, top + boardH - h)
-				dock.Size = UDim2.fromOffset(boardW, h)
+				-- A held hand spans the whole screen width so it's centered under you, not
+				-- under the game area (which starts right of the seat list).
+				local dockX, dockW = boardX, boardW
+				if held then
+					dockX = left
+					dockW = math.max(100, info.width - left - right)
+					board.Size = UDim2.fromOffset(dockW, boardH)
+				end
+				dock.Position = UDim2.fromOffset(dockX, top + boardH - h)
+				dock.Size = UDim2.fromOffset(dockW, h)
 				board.Position = UDim2.fromOffset(0, h - boardH)
 				dockLip.Position = UDim2.fromOffset(0, 0)
 				dockLip.Size = UDim2.new(1, 0, 0, 3)
