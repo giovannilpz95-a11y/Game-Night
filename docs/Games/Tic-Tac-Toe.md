@@ -20,3 +20,4 @@ The first game, used to prove parties, tables, turns and bots work end to end.
   often (50% casual, 30% careless), medium sometimes (25%, 10%), hard rarely (10%, 4%).
   Hard beats easy about 9 games in 10.
 - Rewards: `minMoves = 5` (the fastest possible win) and `minMinutes = 0.1` still fit.
+- Hover: on your turn, pointing at an empty square shows a faint ghost of your mark (2D view).

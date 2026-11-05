@@ -347,6 +347,13 @@ local entries: { Entry } = {
 				choices = { { label = "Fast (5 s)", value = 5 }, { label = "Normal (8 s)", value = 8 }, { label = "Slow (12 s)", value = 12 } },
 				default = 2,
 			},
+			{
+				key = "letters",
+				name = "Letters",
+				hint = "Losing a round earns a letter instead of knocking you out. Spell the word and you're out.",
+				choices = { { label = "Off (out at once)", value = "" }, { label = "P-I-G", value = "PIG" }, { label = "S-P-O-O-N", value = "SPOON" } },
+				default = 1,
+			},
 		},
 	},
 	{
