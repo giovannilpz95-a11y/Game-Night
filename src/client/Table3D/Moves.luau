@@ -1,363 +1,709 @@
--- The Showtime moves (shared/Showtime): the poses players strike in the game-start intro
--- and the celebrations winners do at the end. Like the other gestures in Avatars, they're
--- procedural: joint angles on the seated R15 body (upper body, plus a little leg bounce),
--- added on top of the sitting animation. No animation assets.
+-- The Showtime moves (shared/Showtime) as full-body keyframes for Table3D/Dance.
+-- Avatars hop up onto the table (Table3D/Stage) and perform them standing, so the legs
+-- and hips are part of it. Poses: a quick wind-up, a snap into the pose with overshoot,
+-- then a small living hold (looped). Celebrations: loops on a 120 BPM count (a beat is
+-- 0.5 s), with sounds and particle bursts on the hits.
 --
--- Each move is build(t, w, rel) -> pose, where t is seconds since it started, w the fade
--- in/out weight, and rel(x, y, z, w) a joint rotation (radians) scaled by w. Rough sign
--- guide, from the existing gestures: Shoulder x = arm forward/up, z = arm out to the side
--- and up (right +, left -); Elbow x = bend; Neck x = look up, y = turn, z = tilt;
--- Waist x = lean back, y = twist, z = side lean; Wrist z = wiggle.
---
--- Avatars turns every entry into a gesture named by its id (Showtime.PoseSeconds or
--- Showtime.VictorySeconds long). tests/Showtime.spec.luau checks every Showtime id has one.
+-- Angles in degrees; see Dance.luau for the joint names and what x/y/z mean. Original
+-- takes on popular dance styles (see vault 05 Research/Emotes and Celebrations).
+-- tests/Showtime.spec.luau checks every Showtime id has a move here.
 
-type Rel = (number, number, number, number) -> any
-type Build = (t: number, w: number, rel: Rel) -> { [string]: any }
+local Dance = require(script.Parent.Dance)
+
+type Key = Dance.Key
+type Move = Dance.Move
 
 local Moves = {}
 
-local sin, abs, floor, pi = math.sin, math.abs, math.floor, math.pi
-
--- 0 or 1, switching every `period` seconds (for snappy two-beat moves).
-local function beat(t: number, period: number): number
-	return floor(t / period) % 2
+-- A key at time t with ease e, made of the given parts (later parts win).
+local function K(t: number, e: string?, ...: { [string]: any }): Key
+	local key: Key = { t = t, e = e }
+	for i = 1, select("#", ...) do
+		for name, value in (select(i, ...)) :: any do
+			if name ~= "t" and name ~= "e" then
+				key[name] = value
+			end
+		end
+	end
+	return key
 end
 
--- A soft bounce in the knees, for celebrations.
-local function knees(pose: { [string]: any }, t: number, w: number, rel: Rel, speed: number, amount: number)
-	pose.RightKnee = rel(sin(t * speed) * amount, 0, 0, w)
-	pose.LeftKnee = rel(-sin(t * speed) * amount, 0, 0, w)
-	return pose
+local M = Dance.mirror
+
+-- Knees bent by d degrees (hips and ankles follow so the feet stay flat), body lowered.
+local function crouch(d: number, extra: { number }?): { [string]: any }
+	local drop = -2.4 * (1 - math.cos(math.rad(d)))
+	local r = extra or { 0, 0, 0, 0, 0, 0 }
+	return {
+		RH = { d, 0, 0 }, LH = { d, 0, 0 },
+		RK = { -2 * d, 0, 0 }, LK = { -2 * d, 0, 0 },
+		RA = { d, 0, 0 }, LA = { d, 0, 0 },
+		R = { r[1], r[2], r[3], 0, r[4] or 0, drop + (r[5] or 0), r[6] or 0 },
+	}
 end
+
+local function root(x: number, y: number, z: number, px: number?, py: number?, pz: number?)
+	return { R = { x, y, z, 0, px or 0, py or 0, pz or 0 } }
+end
+
+local STAND = {}
+local WIDE = { RH = { 0, 0, 9 }, LH = { 0, 0, -9 }, RA = { 0, 0, -9 }, LA = { 0, 0, 9 } }
+-- Hands on hips.
+local HIPS_R = { RS = { -12, 20, 32 }, RE = { 85, 0, 0 } }
+local HIPS_L = { LS = { -12, -20, -32 }, LE = { 85, 0, 0 } }
+-- Double biceps: arms out, twisted so the elbows bend up.
+local FLEX = { RS = { 0, 0, 92, -90 }, LS = { 0, 0, -92, 90 }, RE = { 115, 0, 0 }, LE = { 115, 0, 0 } }
 
 ---------------------------------------------------------------- intro poses
 
-local poses: { [string]: Build } = {}
+local poses: { [string]: Move } = {}
 
-poses.pose_wave = function(t, w, rel)
-	return {
-		RightShoulder = rel(0, 0, 2.5 + sin(t * 12) * 0.3, w),
-		RightElbow = rel(0.4, 0, 0, w),
-		RightWrist = rel(0, 0, sin(t * 12) * 0.25, w),
-		Neck = rel(0.1, 0, -0.14, w),
-		Waist = rel(0.04, 0, -0.06, w),
+do
+	local base = { RS = { 10, 0, 155 }, RE = { 25, 0, 0 }, LS = { 0, 0, -8 }, N = { 6, 0, -10 }, W = { 0, 0, -6 } }
+	local hip = { R = { 0, 0, 4, 0, 0.08, 0, 0 }, LH = { 0, 0, -6 }, RK = { -8, 0, 0 } }
+	poses.pose_wave = {
+		length = 1.0,
+		loop = { 0.45, 0.95 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.12, "out", crouch(8), { RS = { 20, 0, 40 }, RE = { 60, 0, 0 } }),
+			K(0.3, "back", base, hip),
+			K(0.45, "io", base, hip, { RW = { 0, 0, 30 }, RE = { 35, 0, 0 } }),
+			K(0.7, "io", base, hip, { RW = { 0, 0, -30 }, RE = { 15, 0, 0 } }),
+			K(0.95, "io", base, hip, { RW = { 0, 0, 30 }, RE = { 35, 0, 0 } }),
+		},
+		cues = { { t = 0.3, sound = "pop" } },
 	}
 end
 
-poses.pose_thumbs = function(t, w, rel)
-	local pump = sin(t * 7) * 0.1
-	return {
-		RightShoulder = rel(0.95 + pump, 0.2, 0.15, w),
-		LeftShoulder = rel(0.95 + pump, -0.2, -0.15, w),
-		RightElbow = rel(1.45, 0, 0, w),
-		LeftElbow = rel(1.45, 0, 0, w),
-		Neck = rel(0.12, 0, sin(t * 3.5) * 0.08, w),
-		Waist = rel(0.08, 0, 0, w),
+do
+	local arms = { RS = { 75, 10, 12 }, LS = { 75, -10, -12 }, RE = { 85, 0, 0 }, LE = { 85, 0, 0 }, N = { 8, 0, 0 }, W = { 6, 0, 0 } }
+	poses.pose_thumbs = {
+		length = 1.0,
+		loop = { 0.34, 1.0 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.14, "out", crouch(14), { RS = { -25, 0, 8 }, LS = { -25, 0, -8 }, RE = { 30, 0, 0 }, LE = { 30, 0, 0 }, W = { -8, 0, 0 } }),
+			K(0.34, "back", arms, WIDE),
+			K(0.67, "io", arms, crouch(6), { RS = { 82, 10, 12 }, LS = { 82, -10, -12 }, N = { 14, 0, 4 } }),
+			K(1.0, "io", arms, WIDE),
+		},
+		cues = { { t = 0.34, sound = "callout", burst = 10 } },
 	}
 end
 
-poses.pose_flex = function(t, w, rel)
-	local squeeze = 0.12 * sin(t * 9)
-	return {
-		RightShoulder = rel(0.25, 0.9, 1.45 + squeeze, w),
-		LeftShoulder = rel(0.25, -0.9, -(1.45 + squeeze), w),
-		RightElbow = rel(1.9, 0, 0, w),
-		LeftElbow = rel(1.9, 0, 0, w),
-		Neck = rel(0.12, sin(t * 2.5) * 0.25, 0, w),
-		Waist = rel(0.12, 0, 0, w),
+do
+	local pose = { W = { 10, 0, 0 }, N = { 10, 0, 0 } }
+	poses.pose_flex = {
+		length = 1.0,
+		loop = { 0.4, 1.0 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.16, "out", crouch(16), { RS = { 30, 0, -12 }, LS = { 30, 0, 12 }, RE = { 50, 0, 0 }, LE = { 50, 0, 0 }, W = { -10, 0, 0 } }),
+			K(0.4, "back", FLEX, pose, WIDE),
+			K(0.7, "io", FLEX, WIDE, { RE = { 130, 0, 0 }, LE = { 130, 0, 0 }, W = { 14, 0, 0 }, N = { 14, 18, 0 } }, root(0, 0, 0, 0, -0.05)),
+			K(1.0, "io", FLEX, pose, WIDE),
+		},
+		cues = { { t = 0.4, sound = "callout", burst = 14 } },
 	}
 end
 
-poses.pose_peace = function(t, w, rel)
-	return {
-		RightShoulder = rel(1.05, 0.15, 0.55, w),
-		RightElbow = rel(1.55, 0, 0, w),
-		RightWrist = rel(0, 0, sin(t * 6) * 0.15, w),
-		LeftShoulder = rel(0.1, 0, -0.35, w),
-		Neck = rel(0.08, 0.1, 0.22, w),
-		Waist = rel(0.04, 0, 0.08, w),
+do
+	local peace = { RS = { 115, 10, 40 }, RE = { 95, 0, 0 }, RW = { 0, 0, -15 }, LS = { 0, 0, -12 }, N = { 5, 10, 18 }, W = { 0, 10, 8 }, LH = { 0, 0, -8 }, RK = { -10, 0, 0 } }
+	poses.pose_peace = {
+		length = 1.2,
+		loop = { 0.3, 1.2 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.12, "out", crouch(8), { RS = { 40, 0, 10 }, RE = { 40, 0, 0 } }),
+			K(0.3, "back", peace),
+			K(0.75, "io", peace, { N = { 5, 14, 24 }, W = { 0, 12, 11 }, RW = { 0, 0, -5 } }, root(0, 0, 3, 0.06)),
+			K(1.2, "io", peace),
+		},
+		cues = { { t = 0.3, sound = "pop" } },
 	}
 end
 
-poses.pose_superstar = function(t, w, rel)
-	local reach = math.min(1, t / 0.5)
-	return {
-		RightShoulder = rel(0.25, 0, 2.95 * reach, w),
-		RightElbow = rel(0.05, 0, 0, w),
-		LeftShoulder = rel(-0.1, 0.3, -0.45, w),
-		LeftElbow = rel(1.25, 0, 0, w),
-		Neck = rel(0.4, 0, -0.1, w),
-		Waist = rel(0.16, 0, -0.06, w),
+do
+	local think = { RS = { 70, 30, 0 }, RE = { 135, 0, 0 }, LS = { 45, -35, 0 }, LE = { 100, 0, 0 }, N = { 12, 15, 10 }, W = { -6, 0, 0 }, RK = { -12, 0, 0 } }
+	poses.pose_thinker = {
+		length = 1.6,
+		loop = { 0.35, 1.6 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.35, "io", think),
+			K(0.95, "io", think, { N = { 16, -12, -10 } }),
+			K(1.6, "io", think),
+		},
+		cues = { { t = 0.35, sound = "pop" } },
 	}
 end
 
-poses.pose_cool = function(t, w, rel)
-	return {
-		RightShoulder = rel(0.85, 0.75, 0, w),
-		LeftShoulder = rel(0.8, -0.75, 0, w),
-		RightElbow = rel(1.9, 0, 0, w),
-		LeftElbow = rel(1.95, 0, 0, w),
-		Neck = rel(0.12 + sin(t * 4) * 0.06, 0.15, 0.1, w),
-		Waist = rel(0.22, 0, 0, w),
+do
+	local guard = {
+		RS = { 75, 15, 20 }, RE = { 125, 0, 0 }, LS = { 85, -15, -20 }, LE = { 130, 0, 0 },
+		RH = { 22, 0, 8 }, RK = { -34, 0, 0 }, RA = { 12, 0, 0 }, LH = { -10, 0, -8 }, LK = { -14, 0, 0 },
+		N = { -8, 0, 0 }, W = { -6, -10, 0 },
+	}
+	local function bob(t: number, e: string?, side: number, extra: { [string]: any }?)
+		return K(t, e, guard, root(0, -18, 0, 0.08 * side, -0.12, 0), extra or {})
+	end
+	poses.pose_boxer = {
+		length = 1.4,
+		loop = { 0.3, 1.4 },
+		keys = {
+			K(0, nil, STAND),
+			bob(0.3, "back", 1),
+			bob(0.55, "io", -1),
+			bob(0.8, "io", 1),
+			bob(0.9, "out", 1, { RS = { 92, 0, 6 }, RE = { 8, 0, 0 }, W = { -10, 18, 0 } }),
+			bob(1.05, "io", 1),
+			bob(1.4, "io", 1),
+		},
+		cues = { { t = 0.3, sound = "pop" }, { t = 0.9, sound = "grab" } },
 	}
 end
 
-poses.pose_heart = function(t, w, rel)
-	return {
-		RightShoulder = rel(1.6, 0.4, 0, w),
-		LeftShoulder = rel(1.6, -0.4, 0, w),
-		RightElbow = rel(1.25, 0, 0, w),
-		LeftElbow = rel(1.25, 0, 0, w),
-		Neck = rel(0.05, 0, sin(t * 3) * 0.15, w),
-		Waist = rel(0.02, 0, sin(t * 3) * 0.06, w),
+do
+	local point = { RS = { 90, 0, 8 }, RE = { 5, 0, 0 }, N = { -5, 0, 0 }, W = { -10, 0, 0 }, LS = { -12, -20, -32 }, LE = { 85, 0, 0 }, RH = { 20, 0, 0 }, RK = { -15, 0, 0 } }
+	poses.pose_challenge = {
+		length = 1.6,
+		loop = { 0.7, 1.3 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.12, "out", crouch(10), { RS = { -20, 0, 10 }, W = { 6, 0, 0 } }),
+			K(0.32, "back", point),
+			K(0.7, "io", point, { RS = { 80, 0, 8 }, RE = { 20, 0, 0 }, RW = { 0, 0, 0 } }),
+			K(0.85, "out", point, { RS = { 80, 0, 8 }, RE = { 95, 0, 0 } }),
+			K(1.0, "io", point, { RS = { 80, 0, 8 }, RE = { 20, 0, 0 } }),
+			K(1.15, "out", point, { RS = { 80, 0, 8 }, RE = { 95, 0, 0 } }),
+			K(1.3, "io", point, { RS = { 80, 0, 8 }, RE = { 20, 0, 0 } }),
+		},
+		cues = { { t = 0.32, sound = "callout" } },
 	}
 end
 
-poses.pose_tada = function(t, w, rel)
-	local jazz = sin(t * 22) * 0.45
-	return {
-		RightShoulder = rel(0.35, 0, 1.9, w),
-		LeftShoulder = rel(0.35, 0, -1.9, w),
-		RightElbow = rel(0.5, 0, 0, w),
-		LeftElbow = rel(0.5, 0, 0, w),
-		RightWrist = rel(0, 0, jazz, w),
-		LeftWrist = rel(0, 0, -jazz, w),
-		Neck = rel(0.2, 0, 0, w),
-		Waist = rel(0.12, 0, 0, w),
+do
+	local heart = { RS = { 105, 25, 0 }, LS = { 105, -25, 0 }, RE = { 95, 0, 0 }, LE = { 95, 0, 0 }, RW = { 0, 0, -30 }, LW = { 0, 0, 30 }, N = { 5, 0, 10 } }
+	poses.pose_heart = {
+		length = 1.3,
+		loop = { 0.3, 1.3 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.3, "back", heart, { RK = { -10, 0, 0 } }, root(0, 0, -4, -0.06)),
+			K(0.8, "io", heart, { N = { 5, 0, -10 }, W = { 0, 0, 6 }, LK = { -10, 0, 0 } }, root(0, 0, 4, 0.06)),
+			K(1.3, "io", heart, { RK = { -10, 0, 0 } }, root(0, 0, -4, -0.06)),
+		},
+		cues = { { t = 0.3, sound = "pop", burst = 12 } },
 	}
 end
 
-poses.pose_bow = function(t, w, rel)
-	-- Flourish out, bow down, come back up proud.
-	local down = math.clamp((t - 0.35) / 0.4, 0, 1) * (1 - math.clamp((t - 1.5) / 0.4, 0, 1))
-	return {
-		Waist = rel(-0.55 * down + 0.06 * (1 - down), 0, 0, w),
-		Neck = rel(-0.3 * down + 0.15 * (1 - down), 0, 0, w),
-		RightShoulder = rel(0.9, 0.55, 0.1, w),
-		RightElbow = rel(1.7, 0, 0, w),
-		LeftShoulder = rel(0.3, 0, -1.5 + down * 0.3, w),
-		LeftElbow = rel(0.25, 0, 0, w),
-		LeftWrist = rel(0, 0, sin(t * 8) * 0.3, w),
+do
+	local cool = {
+		RS = { 70, 45, 0 }, LS = { 65, -45, 0 }, RE = { 118, 0, 0 }, LE = { 122, 0, 0 },
+		W = { 14, 0, 0 }, N = { 10, 20, 8 }, LH = { 0, 0, -10 }, LA = { 0, 0, 10 }, RK = { -12, 0, 0 },
+	}
+	poses.pose_cool = {
+		length = 1.4,
+		loop = { 0.35, 1.4 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.35, "back", cool, root(0, -15, 0)),
+			K(0.7, "io", cool, { N = { 16, 20, 8 } }, root(0, -15, 0)),
+			K(0.85, "io", cool, root(0, -15, 0)),
+			K(1.4, "io", cool, root(0, -15, 0)),
+		},
+		cues = { { t = 0.35, sound = "pop" } },
 	}
 end
 
-poses.pose_challenge = function(t, w, rel)
-	-- Point at the table, then beckon: "come on".
-	local beckon = if t > 1 then 0.6 + sin((t - 1) * 12) * 0.55 else 0.08
-	return {
-		RightShoulder = rel(1.5, 0, 0.1, w),
-		RightElbow = rel(beckon, 0, 0, w),
-		Neck = rel(-0.06, 0, 0.1, w),
-		Waist = rel(-0.08, 0, 0, w),
-		LeftShoulder = rel(0.1, 0.3, -0.4, w),
-		LeftElbow = rel(1.3, 0, 0, w),
+do
+	local star = {
+		RS = { 10, 0, 170 }, RE = { 0, 0, 0 }, N = { 25, 0, -6 }, W = { 10, 0, -4 },
+		RH = { 0, 0, 8 }, LH = { -10, 0, -12 }, LK = { -18, 0, 0 },
+	}
+	poses.pose_superstar = {
+		length = 1.2,
+		loop = { 0.45, 1.2 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.2, "out", crouch(22), { RS = { 45, 0, -25 }, RE = { 90, 0, 0 }, W = { -12, 0, 0 } }),
+			K(0.45, "back", star, HIPS_L, root(0, 0, 0, 0, 0.08)),
+			K(0.85, "io", star, HIPS_L, { N = { 30, 0, -10 } }),
+			K(1.2, "io", star, HIPS_L, root(0, 0, 0, 0, 0.08)),
+		},
+		cues = { { t = 0.45, sound = "callout", burst = 18 } },
 	}
 end
 
-poses.pose_thinker = function(t, w, rel)
-	return {
-		RightShoulder = rel(0.95, 0.4, 0, w),
-		RightElbow = rel(2.15, 0, 0, w),
-		LeftShoulder = rel(0.7, -0.6, 0, w),
-		LeftElbow = rel(1.6, 0, 0, w),
-		Neck = rel(0.15 + sin(t * 2) * 0.04, 0.2, 0.12, w),
-		Waist = rel(-0.04, 0, 0, w),
+do
+	local tada = { RS = { 20, 0, 125 }, LS = { 20, 0, -125 }, RE = { 20, 0, 0 }, LE = { 20, 0, 0 }, N = { 15, 0, 0 }, W = { 8, 0, 0 } }
+	local function jazz(t: number, s: number)
+		return K(t, "io", tada, WIDE, { RW = { 0, 0, 35 * s }, LW = { 0, 0, 35 * s } }, root(0, 0, 0, 0, 0.1))
+	end
+	poses.pose_tada = {
+		length = 1.0,
+		loop = { 0.4, 0.88 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.16, "out", crouch(18), { RS = { 60, 30, 0 }, LS = { 60, -30, 0 }, RE = { 120, 0, 0 }, LE = { 120, 0, 0 } }),
+			K(0.4, "back", tada, WIDE, root(0, 0, 0, 0, 0.1)),
+			jazz(0.52, 1),
+			jazz(0.64, -1),
+			jazz(0.76, 1),
+			jazz(0.88, -1),
+		},
+		cues = { { t = 0.4, sound = "callout", burst = 16 } },
 	}
 end
 
-poses.pose_boxer = function(t, w, rel)
-	-- Guard up, bob and weave, a quick jab.
-	local jab = math.max(0, sin(t * 5)) ^ 6
-	return {
-		RightShoulder = rel(1.0 + jab * 0.5, 0.3, 0, w),
-		LeftShoulder = rel(1.0, -0.3, 0, w),
-		RightElbow = rel(2.0 - jab * 1.8, 0, 0, w),
-		LeftElbow = rel(2.0, 0, 0, w),
-		Waist = rel(-0.06, sin(t * 7) * 0.12, sin(t * 3.5) * 0.08, w),
-		Neck = rel(-0.1, 0, 0, w),
+do
+	local sweep = { RS = { 40, 40, 60 }, RE = { 50, 0, 0 } }
+	local bow = {
+		W = { -45, 0, 0 }, N = { -20, 0, 0 }, RS = { 80, 40, 0 }, RE = { 110, 0, 0 }, LS = { -30, 0, -60 }, LE = { 20, 0, 0 },
+		RH = { 22, 0, 0 }, RK = { -12, 0, 0 }, LH = { -20, 0, 0 }, LK = { -30, 0, 0 },
+	}
+	local proud = { W = { 8, 0, 0 }, N = { 12, 0, 0 }, RS = { 0, 0, 10 }, LS = { 0, 0, -10 } }
+	poses.pose_bow = {
+		length = 2.1,
+		loop = { 1.5, 2.1 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.25, "out", sweep),
+			K(0.6, "io", bow),
+			K(1.15, "io", bow, { W = { -48, 0, 0 } }),
+			K(1.5, "back", proud, HIPS_R, HIPS_L),
+			K(2.1, "io", proud, HIPS_R, HIPS_L, { N = { 15, 0, 0 } }),
+		},
+		cues = { { t = 0.6, sound = "pop" }, { t = 1.5, burst = 16 } },
+	}
+end
+
+do
+	local air = { RH = { 70, 0, 0 }, RK = { -110, 0, 0 }, LH = { 70, 0, 0 }, LK = { -110, 0, 0 }, RS = { 0, 0, 150 }, LS = { 0, 0, -150 }, R = { 0, 0, 0, 0, 0, 1.1, 0 } }
+	local land = {
+		W = { -25, 0, 0 }, N = { 20, 0, 0 },
+		RH = { 85, 0, 15 }, RK = { -115, 0, 0 }, RA = { 30, 0, 0 },
+		LH = { -5, 0, -15 }, LK = { -105, 0, 0 }, LA = { -20, 0, 0 },
+		RS = { 25, 0, 12 }, RE = { 5, 0, 0 }, LS = { -25, 0, -65 }, LE = { 15, 0, 0 },
+		R = { 0, 0, 0, 0, 0, -1.55, 0.2 },
+	}
+	local hero = { W = { 12, 0, 0 }, N = { 15, 0, 0 } }
+	poses.pose_hero = {
+		length = 1.9,
+		loop = { 1.35, 1.9 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.1, "out", crouch(20)),
+			K(0.24, "out", air),
+			K(0.4, "in", land),
+			K(1.0, "io", land, { N = { 25, 0, 0 } }),
+			K(1.35, "back", hero, HIPS_R, HIPS_L, WIDE),
+			K(1.9, "io", hero, HIPS_R, HIPS_L, WIDE, { N = { 18, 0, 0 } }),
+		},
+		cues = { { t = 0.4, sound = "caught", burst = 24 }, { t = 1.35, sound = "callout" } },
+	}
+end
+
+do
+	local dab = { LS = { 110, -60, 0 }, LE = { 125, 0, 0 }, RS = { 20, 0, 125 }, RE = { 0, 0, 0 }, N = { -30, 28, 0 }, W = { -6, 18, 0 } }
+	poses.pose_dab = {
+		length = 1.2,
+		loop = { 0.35, 1.2 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.15, "out", crouch(12), { RS = { 30, 0, -20 }, LS = { 30, 0, 20 }, RE = { 40, 0, 0 } }),
+			K(0.35, "back", dab, root(0, 0, -6, 0.1)),
+			K(0.8, "io", dab, root(0, 0, -6, 0.1, -0.05), { N = { -34, 30, 0 } }),
+			K(1.2, "io", dab, root(0, 0, -6, 0.1)),
+		},
+		cues = { { t = 0.35, sound = "pop", burst = 14 } },
+	}
+end
+
+do
+	local lean = {
+		RS = { 0, 0, 150, -90 }, LS = { 0, 0, -150, 90 }, RE = { 140, 0, 0 }, LE = { 140, 0, 0 },
+		W = { 18, 0, 0 }, N = { -4, 10, 0 }, RH = { 10, -10, -6 }, RK = { -20, 0, 0 },
+	}
+	poses.pose_lean = {
+		length = 1.6,
+		loop = { 0.4, 1.6 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.4, "back", lean, root(-8, 0, 0)),
+			K(1.0, "io", lean, root(-10, 0, 5, 0.05)),
+			K(1.6, "io", lean, root(-8, 0, 0)),
+		},
+		cues = { { t = 0.4, sound = "pop" } },
 	}
 end
 
 ---------------------------------------------------------------- celebrations
 
-local dances: { [string]: Build } = {}
+local dances: { [string]: Move } = {}
 
-dances.win_pump = function(t, w, rel)
-	local r, l = sin(t * 10), sin(t * 10 + pi)
-	return knees({
-		RightShoulder = rel(0.2, 0, 2.55 + r * 0.3, w),
-		LeftShoulder = rel(0.2, 0, -(2.55 + l * 0.3), w),
-		RightElbow = rel(0.5 + abs(r) * 0.5, 0, 0, w),
-		LeftElbow = rel(0.5 + abs(l) * 0.5, 0, 0, w),
-		Neck = rel(0.3, 0, sin(t * 5) * 0.1, w),
-		Waist = rel(0.1 + abs(sin(t * 10)) * 0.06, 0, 0, w),
-	}, t, w, rel, 10, 0.15)
-end
-
-dances.win_clap = function(t, w, rel)
-	local open = 0.5 + 0.5 * sin(t * 15)
-	return knees({
-		RightShoulder = rel(1.35, 0.45 - open * 0.3, 0, w),
-		LeftShoulder = rel(1.35, -(0.45 - open * 0.3), 0, w),
-		RightElbow = rel(0.55, 0, 0, w),
-		LeftElbow = rel(0.55, 0, 0, w),
-		Neck = rel(0.2, sin(t * 4) * 0.2, 0, w),
-		Waist = rel(0.06 + abs(sin(t * 7.5)) * 0.06, 0, sin(t * 3.75) * 0.06, w),
-	}, t, w, rel, 7.5, 0.12)
-end
-
-dances.win_roof = function(t, w, rel)
-	local push = math.max(0, sin(t * 8))
-	return knees({
-		RightShoulder = rel(0.2, 0, 2.3 + push * 0.35, w),
-		LeftShoulder = rel(0.2, 0, -(2.3 + push * 0.35), w),
-		RightElbow = rel(1.3 - push * 1.0, 0, 0, w),
-		LeftElbow = rel(1.3 - push * 1.0, 0, 0, w),
-		Neck = rel(0.2 + sin(t * 8) * 0.12, 0, 0, w),
-		Waist = rel(0.08, 0, 0, w),
-	}, t, w, rel, 8, 0.15)
-end
-
-dances.win_sprinkler = function(t, w, rel)
-	-- Hand behind the head, the other arm out front ticking across, then whipping back.
-	local cycle = (t % 1.6) / 1.6
-	local sweep = if cycle < 0.8 then -0.5 + floor(cycle / 0.1) * 0.125 else 0.5 - (cycle - 0.8) / 0.2 * 1.0
-	return {
-		LeftShoulder = rel(0.3, 0, -2.3, w),
-		LeftElbow = rel(2.0, 0, 0, w),
-		RightShoulder = rel(1.5, 0, 0.05, w),
-		RightElbow = rel(0.1, 0, 0, w),
-		Waist = rel(0.05, sweep, 0, w),
-		Neck = rel(0.05, sweep * 0.5, 0, w),
+do
+	local tuck = { RH = { 35, 0, 0 }, RK = { -65, 0, 0 }, LH = { 35, 0, 0 }, LK = { -65, 0, 0 } }
+	local up = { RS = { 10, 0, 160 }, LS = { 10, 0, -160 }, RE = { 30, 0, 0 }, LE = { 30, 0, 0 }, N = { 25, 0, 0 } }
+	dances.win_pump = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			K(0, "io", { RS = { 0, 0, 140 }, LS = { 0, 0, -140 }, RE = { 60, 0, 0 }, LE = { 60, 0, 0 } }),
+			K(0.25, "out", crouch(25), { RS = { -20, 0, 12 }, LS = { -20, 0, -12 }, RE = { 30, 0, 0 }, LE = { 30, 0, 0 }, W = { -10, 0, 0 } }),
+			K(0.5, "back", up, tuck, root(0, 0, 0, 0, 0.75)),
+			K(0.75, "in", crouch(22), up, { RE = { 70, 0, 0 }, LE = { 70, 0, 0 } }),
+			K(1.0, "out", { RS = { 0, 0, 140 }, LS = { 0, 0, -140 }, RE = { 60, 0, 0 }, LE = { 60, 0, 0 } }),
+		},
+		cues = { { t = 0.5, burst = 12 }, { t = 0.75, sound = "pop" } },
 	}
 end
 
-dances.win_robot = function(t, w, rel)
-	local step = floor(t * 4) % 4
-	local rx = ({ 0.3, 1.5, 1.5, 0.3 })[step + 1]
-	local lx = ({ 1.5, 0.3, 0.3, 1.5 })[step + 1]
-	local head = ({ -0.35, 0, 0.35, 0 })[step + 1]
-	return {
-		RightShoulder = rel(rx, 0, 0.1, w),
-		LeftShoulder = rel(lx, 0, -0.1, w),
-		RightElbow = rel(1.57, 0, 0, w),
-		LeftElbow = rel(1.57, 0, 0, w),
-		Neck = rel(0, head, 0, w),
-		Waist = rel(0, -head * 0.4, 0, w),
+do
+	local open = { RS = { 10, 0, 145 }, LS = { 10, 0, -145 }, RE = { 20, 0, 0 }, LE = { 20, 0, 0 } }
+	local clap = { RS = { 10, 0, 172 }, LS = { 10, 0, -172 }, RE = { 10, 0, 0 }, LE = { 10, 0, 0 }, N = { 20, 0, 0 } }
+	local stepR = { RH = { 0, 0, 12 }, LK = { -18, 0, 0 }, LH = { 9, 0, 0 }, R = { 0, 0, -4, 0, 0.25, -0.08, 0 } }
+	dances.win_clap = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			K(0, "io", open),
+			K(0.25, "in", clap, stepR),
+			K(0.5, "out", open),
+			K(0.75, "in", clap, M(stepR)),
+			K(1.0, "out", open),
+		},
+		cues = { { t = 0.25, sound = "clap" }, { t = 0.75, sound = "clap" } },
 	}
 end
 
-dances.win_disco = function(t, w, rel)
-	local up = beat(t, 0.45) == 0
-	return knees({
-		RightShoulder = if up then rel(0.3, 0, 2.6, w) else rel(0.7, -0.6, 0.3, w),
-		RightElbow = rel(0.08, 0, 0, w),
-		LeftShoulder = rel(-0.1, 0.3, -0.45, w),
-		LeftElbow = rel(1.25, 0, 0, w),
-		Neck = if up then rel(0.3, 0, -0.1, w) else rel(-0.2, -0.2, 0.1, w),
-		Waist = rel(0.05, 0, if up then -0.1 else 0.1, w),
-	}, t, w, rel, pi / 0.45, 0.2)
+do
+	local low = { RS = { 10, 0, 140 }, LS = { 10, 0, -140 }, RE = { 95, 0, 0 }, LE = { 95, 0, 0 }, N = { -6, 0, 0 } }
+	local push = { RS = { 10, 0, 168 }, LS = { 10, 0, -168 }, RE = { 8, 0, 0 }, LE = { 8, 0, 0 }, N = { 18, 0, 0 } }
+	dances.win_roof = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			K(0, "io", low, crouch(16, { 0, 0, 0, 0.15 })),
+			K(0.25, "out", push, root(0, 0, 0, 0.1, 0.05)),
+			K(0.5, "io", low, crouch(16, { 0, 0, 0, -0.15 })),
+			K(0.75, "out", push, root(0, 0, 0, -0.1, 0.05)),
+			K(1.0, "io", low, crouch(16, { 0, 0, 0, 0.15 })),
+		},
+		cues = { { t = 0.25, sound = "pop" }, { t = 0.75, sound = "pop" } },
+	}
 end
 
-dances.win_groove = function(t, w, rel)
-	local s = sin(t * 6)
-	return knees({
-		Waist = rel(0.04, s * 0.25, sin(t * 3) * 0.1, w),
-		RightShoulder = rel(0.5 + s * 0.35, 0, 0.2, w),
-		LeftShoulder = rel(0.5 - s * 0.35, 0, -0.2, w),
-		RightElbow = rel(1.4, 0, 0, w),
-		LeftElbow = rel(1.4, 0, 0, w),
-		Neck = rel(sin(t * 12) * 0.12, -s * 0.15, 0, w),
-	}, t, w, rel, 6, 0.25)
-end
-
-dances.win_champion = function(t, w, rel)
-	-- Trophy overhead (both hands up together), pumping; then a big double flex.
-	if t < 3 then
-		local pump = sin(t * 7) * 0.15
-		return {
-			RightShoulder = rel(0.3, 0.25, 2.75 + pump, w),
-			LeftShoulder = rel(0.3, -0.25, -(2.75 + pump), w),
-			RightElbow = rel(0.55, 0, 0, w),
-			LeftElbow = rel(0.55, 0, 0, w),
-			Neck = rel(0.4, 0, 0, w),
-			Waist = rel(0.14, 0, 0, w),
-		}
+do
+	local stance = { LS = { 0, 0, -140, 90 }, LE = { 140, 0, 0 }, RS = { 90, 0, 0 }, RE = { 0, 0, 0 } }
+	local keys = { K(0, nil, stance, crouch(15, { 0, -40, 0 })) }
+	local cues = {}
+	-- Six ticks across, then a sweep back.
+	for i = 1, 6 do
+		local t = i * 0.16
+		table.insert(keys, K(t, "out", stance, crouch(15, { 0, -40 + i * 13.3, 0 }), { N = { 0, 0, 0 } }))
+		table.insert(cues, { t = t, sound = "tick" })
 	end
-	local squeeze = 0.12 * sin(t * 9)
-	return knees({
-		RightShoulder = rel(0.25, 0.9, 1.45 + squeeze, w),
-		LeftShoulder = rel(0.25, -0.9, -(1.45 + squeeze), w),
-		RightElbow = rel(1.9, 0, 0, w),
-		LeftElbow = rel(1.9, 0, 0, w),
-		Neck = rel(0.2, sin(t * 3) * 0.3, 0, w),
-		Waist = rel(0.14, 0, 0, w),
-	}, t, w, rel, 9, 0.1)
+	table.insert(keys, K(1.28, "io", stance, crouch(15, { 0, -40, 0 })))
+	dances.win_sprinkler = { length = 1.28, loop = { 0, 1.28 }, keys = keys, cues = cues }
 end
 
-dances.win_wave = function(t, w, rel)
-	local s = sin(t * 3)
-	return {
-		RightShoulder = rel(0.1, 0, 2.55 + s * 0.25, w),
-		LeftShoulder = rel(0.1, 0, -(2.55 - s * 0.25), w),
-		RightElbow = rel(0.3, 0, 0, w),
-		LeftElbow = rel(0.3, 0, 0, w),
-		RightWrist = rel(0, 0, s * 0.4, w),
-		LeftWrist = rel(0, 0, s * 0.4, w),
-		Waist = rel(0.06, 0, s * 0.25, w),
-		Neck = rel(0.2, 0, s * 0.15, w),
+do
+	local a = { RS = { 0, 0, 5 }, RE = { 90, 0, 0 }, LS = { 90, 0, -5 }, LE = { 90, 0, 0 }, N = { 0, -30, 0 }, W = { 0, -15, 0 }, RK = { -20, 0, 0 }, RH = { 10, 0, 0 } }
+	local b = M(a)
+	dances.win_robot = {
+		length = 2.0,
+		loop = { 0, 2.0 },
+		keys = {
+			K(0, "out", a),
+			K(0.1, "out", a, { N = { 0, -32, 0 } }),
+			K(0.5, "hold", a),
+			K(0.6, "out", b, root(0, 0, 0, 0, -0.06)),
+			K(1.0, "hold", b, root(0, 0, 0, 0, -0.06)),
+			K(1.1, "out", a, { RS = { 90, 0, 5 }, LS = { 0, 0, -5 }, N = { -10, 0, 0 } }),
+			K(1.5, "hold", a, { RS = { 90, 0, 5 }, LS = { 0, 0, -5 }, N = { -10, 0, 0 } }),
+			K(1.6, "out", b, { N = { 12, 0, 0 } }),
+			K(2.0, "hold", a),
+		},
+		cues = { { t = 0.1, sound = "tick" }, { t = 0.6, sound = "tick" }, { t = 1.1, sound = "tick" }, { t = 1.6, sound = "tick" } },
 	}
 end
 
-dances.win_heart = function(t, w, rel)
-	-- Kiss the hand, throw it out; left, then right.
-	local cycle = (t % 1.1) / 1.1
-	local out = math.clamp((cycle - 0.45) / 0.25, 0, 1)
-	local right = beat(t, 1.1) == 0
-	local kiss = { x = 1.3 + out * 0.3, y = 0.3 - out * 0.3, z = out * 0.6, e = 2.2 - out * 1.9 }
-	local pose = {
-		Neck = rel(0.15 + out * 0.15, if right then 0.15 else -0.15, 0, w),
-		Waist = rel(0.06, 0, if right then -0.05 else 0.05, w),
+do
+	local up = K(0, "io", { RS = { 20, 0, 150 }, RE = { 0, 0, 0 }, N = { 20, 0, -10 } }, HIPS_L, crouch(10, { 0, 0, -6, 0.15 }))
+	local down = { RS = { 60, -50, -20 }, RE = { 0, 0, 0 }, N = { -15, -20, 6 } }
+	dances.win_disco = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			up,
+			K(0.5, "back", down, HIPS_L, crouch(10, { 0, 0, 6, -0.15 })),
+			K(1.0, "back", up),
+		},
+		cues = { { t = 0, burst = 8 }, { t = 0.5, burst = 8 } },
 	}
-	if right then
-		pose.RightShoulder = rel(kiss.x, kiss.y, kiss.z, w)
-		pose.RightElbow = rel(kiss.e, 0, 0, w)
-	else
-		pose.LeftShoulder = rel(kiss.x, -kiss.y, -kiss.z, w)
-		pose.LeftElbow = rel(kiss.e, 0, 0, w)
+end
+
+do
+	local arms = { RE = { 70, 0, 0 }, LE = { 70, 0, 0 } }
+	local function at(t: number, px: number, pz: number, sx: number)
+		return K(t, "io", arms, crouch(10, { 0, px * 60, 0, px, 0, pz }), {
+			RS = { 20 + 20 * sx, 0, 18 }, LS = { 20 - 20 * sx, 0, -18 }, W = { 0, -px * 70, pz * 40 }, N = { 6 * sx, 0, 0 },
+		})
 	end
-	return pose
+	dances.win_groove = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = { at(0, 0.18, 0, 1), at(0.25, 0, 0.18, -1), at(0.5, -0.18, 0, 1), at(0.75, 0, -0.18, -1), at(1.0, 0.18, 0, 1) },
+	}
 end
 
-dances.win_fire = function(t, w, rel)
-	local flap = sin(t * 16)
-	return knees({
-		RightShoulder = rel(0.9, 0.2, 0.2, w),
-		LeftShoulder = rel(0.9, -0.2, -0.2, w),
-		RightElbow = rel(1.8 + flap * 0.3, 0, 0, w),
-		LeftElbow = rel(1.8 - flap * 0.3, 0, 0, w),
-		RightWrist = rel(0, 0, flap * 0.5, w),
-		LeftWrist = rel(0, 0, -flap * 0.5, w),
-		Neck = rel(0.25, sin(t * 4) * 0.2, 0, w),
-		Waist = rel(0.08 + abs(sin(t * 8)) * 0.05, 0, 0, w),
-	}, t, w, rel, 8, 0.15)
+do
+	local trophy = { RS = { 10, 15, 165 }, LS = { 10, -15, -165 }, RE = { 30, 0, 0 }, LE = { 30, 0, 0 }, N = { 30, 0, 0 } }
+	local pump = { RS = { 10, 15, 150 }, LS = { 10, -15, -150 }, RE = { 70, 0, 0 }, LE = { 70, 0, 0 }, N = { 20, 0, 0 } }
+	dances.win_champion = {
+		length = 3.4,
+		loop = { 0.9, 3.4 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.3, "out", crouch(25)),
+			K(0.6, "back", trophy, root(0, 0, 0, 0, 0.6)),
+			K(0.9, "in", trophy, crouch(14)),
+			K(1.15, "io", pump, crouch(10)),
+			K(1.4, "out", trophy, WIDE),
+			K(1.65, "io", pump, crouch(10)),
+			K(1.9, "out", trophy, WIDE),
+			K(2.3, "back", FLEX, WIDE, { W = { 12, 0, 0 }, N = { 15, 0, 0 } }),
+			K(2.8, "io", FLEX, WIDE, { RE = { 130, 0, 0 }, LE = { 130, 0, 0 }, W = { 14, 0, 0 } }),
+			K(3.15, "io", trophy, crouch(14, { 0, 360, 0, 0, 0.3 })),
+			K(3.4, "out", trophy, crouch(14, { 0, 360, 0 })),
+		},
+		cues = { { t = 0.6, sound = "pop", burst = 20 }, { t = 2.3, sound = "callout" }, { t = 3.15, burst = 14 } },
+	}
 end
 
-dances.win_money = function(t, w, rel)
-	local flick = math.max(0, sin(t * 14)) ^ 2
-	return knees({
-		LeftShoulder = rel(0.9, -0.3, 0, w),
-		LeftElbow = rel(1.6, 0, 0, w),
-		RightShoulder = rel(1.2, 0, 0.6, w),
-		RightElbow = rel(0.9 - flick * 0.5, 0, 0, w),
-		RightWrist = rel(0, 0, flick * 0.7, w),
-		Neck = rel(0.18, sin(t * 2.5) * 0.3, 0, w),
-		Waist = rel(0.1, sin(t * 2.5) * 0.12, 0, w),
-	}, t, w, rel, 7, 0.12)
+do
+	local left = { RS = { 10, 0, 150 }, LS = { 10, 0, -130 }, RE = { 10, 0, 0 }, LE = { 10, 0, 0 }, W = { 0, 0, -12 }, N = { 15, 0, -10 } }
+	local stepL = { RH = { 0, 0, 10 }, LK = { -14, 0, 0 }, R = { 0, 0, -5, 0, 0.22, -0.05, 0 } }
+	dances.win_wave = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			K(0, "io", left, stepL),
+			K(0.5, "io", M(left), M(stepL)),
+			K(1.0, "io", left, stepL),
+		},
+		cues = { { t = 0, burst = 6 }, { t = 0.5, burst = 6 } },
+	}
+end
+
+do
+	local kiss = { RS = { 110, 30, 0 }, RE = { 140, 0, 0 }, N = { 5, 10, 0 } }
+	local throw = { RS = { 110, -10, 40 }, RE = { 10, 0, 0 }, N = { 15, -5, 0 }, R = { 0, 0, 0, 0, 0, 0.2, 0 }, LH = { -15, 0, 0 }, LK = { -40, 0, 0 } }
+	dances.win_heart = {
+		length = 2.0,
+		loop = { 0, 2.0 },
+		keys = {
+			K(0, "io", HIPS_L),
+			K(0.35, "io", kiss, HIPS_L),
+			K(0.6, "back", throw, HIPS_L),
+			K(1.0, "io", HIPS_R),
+			K(1.35, "io", M(kiss), HIPS_R),
+			K(1.6, "back", M(throw), HIPS_R),
+			K(2.0, "io", HIPS_L),
+		},
+		cues = { { t = 0.6, sound = "pop", burst = 12 }, { t = 1.6, sound = "pop", burst = 12 } },
+	}
+end
+
+do
+	local fan = { RS = { 40, 0, 25 }, LS = { 40, 0, -25 }, RE = { 90, 0, 0 }, LE = { 90, 0, 0 }, N = { 20, 0, 0 } }
+	local keys = {}
+	for i = 0, 8 do
+		local s = if i % 2 == 0 then 1 else -1
+		table.insert(keys, K(i * 0.125, "io", fan, crouch(if i % 4 < 2 then 14 else 6, { 0, 0, 0, 0.08 * s }), {
+			RW = { 0, 0, 40 * s }, LW = { 0, 0, 40 * s }, RE = { 90 + 20 * s, 0, 0 }, LE = { 90 - 20 * s, 0, 0 },
+		}))
+	end
+	dances.win_fire = { length = 1.0, loop = { 0, 1.0 }, keys = keys, cues = { { t = 0, burst = 10 }, { t = 0.5, burst = 10 } } }
+end
+
+do
+	local hold = { LS = { 70, -20, 0 }, LE = { 110, 0, 0 }, N = { 14, 0, 0 } }
+	local ready = { RS = { 80, 0, 20 }, RE = { 85, 0, 0 }, RW = { 0, 0, -20 } }
+	local flick = { RS = { 90, 0, 38 }, RE = { 25, 0, 0 }, RW = { 0, 0, 40 } }
+	dances.win_money = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			K(0, "io", hold, ready, crouch(10, { 0, 15, 0, 0.1 })),
+			K(0.25, "out", hold, flick, crouch(4, { 0, 15, 0, 0.1 })),
+			K(0.5, "io", hold, ready, crouch(10, { 0, -15, 0, -0.1 })),
+			K(0.75, "out", hold, flick, crouch(4, { 0, -15, 0, -0.1 })),
+			K(1.0, "io", hold, ready, crouch(10, { 0, 15, 0, 0.1 })),
+		},
+		cues = { { t = 0.25, sound = "coin", burst = 8 }, { t = 0.75, sound = "coin", burst = 8 } },
+	}
+end
+
+-- Goggle Strut: "goggle" hands round the eyes while the heels tap, then the arms swing.
+do
+	local goggles = { RS = { 100, 10, 30 }, RE = { 145, 0, 0 }, LS = { 100, -10, -30 }, LE = { 145, 0, 0 }, N = { 6, 0, 0 } }
+	local tapR = { RH = { 28, 0, 0 }, RK = { -6, 0, 0 }, RA = { -30, 0, 0 }, LH = { 10, 0, 0 }, LK = { -24, 0, 0 }, LA = { 12, 0, 0 }, R = { 0, 8, 0, 0, 0, -0.12, 0 } }
+	local tapL = M(tapR)
+	local swingR = { RS = { 55, 0, 6 }, RE = { 40, 0, 0 }, LS = { -40, 0, -6 }, LE = { 20, 0, 0 }, W = { 0, -14, 0 } }
+	local swingL = M(swingR)
+	local keys, cues = {}, {}
+	for i = 0, 15 do
+		local t = i * 0.25
+		local legs = if i % 2 == 0 then tapR else tapL
+		local arms = if i < 8 then goggles else (if i % 2 == 0 then swingR else swingL)
+		table.insert(keys, K(t, if i % 2 == 0 then "out" else "out", arms, legs))
+	end
+	table.insert(keys, K(4.0, "out", goggles, tapR))
+	table.insert(cues, { t = 0.25, burst = 10 })
+	table.insert(cues, { t = 2.0, sound = "pop", burst = 10 })
+	dances.win_goggles = { length = 4.0, loop = { 0, 4.0 }, keys = keys, cues = cues }
+end
+
+-- Loser Hop: an "L" on the forehead, hopping from foot to foot and kicking out.
+do
+	local sign = { RS = { 125, 0, 30 }, RE = { 100, 0, 0 }, RW = { 0, 0, -10 }, LS = { 20, 0, -35 }, LE = { 30, 0, 0 }, W = { 10, 0, 0 }, N = { 12, 15, 0 } }
+	local kickR = { RH = { 50, 0, 0 }, RK = { -10, 0, 0 }, LH = { 12, 0, 0 }, LK = { -22, 0, 0 } }
+	local kickL = { LH = { 50, 0, 0 }, LK = { -10, 0, 0 }, RH = { 12, 0, 0 }, RK = { -22, 0, 0 } }
+	dances.win_lhop = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			K(0, "in", sign, kickR, root(0, 0, -4, 0, -0.1)),
+			K(0.25, "out", sign, kickR, root(0, 0, -4, 0, 0.35), { LS = { 20, 0, -60 } }),
+			K(0.5, "in", sign, kickL, root(0, 0, 4, 0, -0.1)),
+			K(0.75, "out", sign, kickL, root(0, 0, 4, 0, 0.35), { LS = { 20, 0, -60 } }),
+			K(1.0, "in", sign, kickR, root(0, 0, -4, 0, -0.1)),
+		},
+		cues = { { t = 0, sound = "pop" }, { t = 0.5, sound = "pop" }, { t = 0.25, burst = 6 } },
+	}
+end
+
+-- Classic Bop: punch down across, punch the other way, both arms up, clap.
+do
+	local punchR = { RS = { 60, -40, -10 }, RE = { 10, 0, 0 }, LS = { 20, 0, -10 }, LE = { 70, 0, 0 } }
+	local up = { RS = { 0, 0, 120 }, LS = { 0, 0, -120 }, RE = { 60, 0, 0 }, LE = { 60, 0, 0 }, N = { 12, 0, 0 } }
+	local clap = { RS = { 70, 30, 0 }, LS = { 70, -30, 0 }, RE = { 40, 0, 0 }, LE = { 40, 0, 0 } }
+	local open = { RS = { 50, 0, 25 }, LS = { 50, 0, -25 }, RE = { 60, 0, 0 }, LE = { 60, 0, 0 } }
+	dances.win_bop = {
+		length = 2.0,
+		loop = { 0, 2.0 },
+		keys = {
+			K(0, "out", punchR, crouch(12, { 0, 10, 0, -0.1 })),
+			K(0.25, "io", crouch(4)),
+			K(0.5, "out", M(punchR), crouch(12, { 0, -10, 0, 0.1 })),
+			K(0.75, "io", crouch(4)),
+			K(1.0, "out", up, crouch(12)),
+			K(1.25, "io", crouch(4), { RS = { 0, 0, 60 }, LS = { 0, 0, -60 } }),
+			K(1.5, "in", clap, crouch(12)),
+			K(1.75, "out", open, crouch(4)),
+			K(2.0, "out", punchR, crouch(12, { 0, 10, 0, -0.1 })),
+		},
+		cues = { { t = 1.0, burst = 8 }, { t = 1.5, sound = "clap" } },
+	}
+end
+
+-- Running Man: knee up, slide back, switch.
+do
+	local upR = { RH = { 80, 0, 0 }, RK = { -95, 0, 0 }, LH = { -22, 0, 0 }, LK = { -18, 0, 0 }, RS = { -30, 0, 8 }, RE = { 80, 0, 0 }, LS = { 50, 0, -8 }, LE = { 80, 0, 0 }, R = { 0, 0, 0, 0, 0, 0.1, 0 } }
+	local down = crouch(15)
+	dances.win_runman = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			K(0, "out", upR),
+			K(0.25, "in", down, { RS = { 10, 0, 8 }, LS = { 10, 0, -8 }, RE = { 80, 0, 0 }, LE = { 80, 0, 0 } }),
+			K(0.5, "out", M(upR)),
+			K(0.75, "in", down, { RS = { 10, 0, 8 }, LS = { 10, 0, -8 }, RE = { 80, 0, 0 }, LE = { 80, 0, 0 } }),
+			K(1.0, "out", upR),
+		},
+		cues = { { t = 0.25, sound = "pop" }, { t = 0.75, sound = "pop" } },
+	}
+end
+
+-- Heel Shuffle: quick kicks out to the side, arms pumping.
+do
+	local kickR = { RH = { 10, 0, 35 }, RK = { -10, 0, 0 }, LH = { 12, 0, 0 }, LK = { -24, 0, 0 }, LA = { 12, 0, 0 }, RS = { 20, 0, 25 }, LS = { 20, 0, -10 }, RE = { 80, 0, 0 }, LE = { 40, 0, 0 }, R = { 0, 0, 0, 0, -0.1, -0.08, 0 } }
+	local together = crouch(10, { 0, 0, 0, 0, 0.05 })
+	dances.win_shuffle = {
+		length = 0.5,
+		loop = { 0, 0.5 },
+		keys = {
+			K(0, "out", kickR),
+			K(0.125, "io", together, { RE = { 60, 0, 0 }, LE = { 60, 0, 0 } }),
+			K(0.25, "out", M(kickR)),
+			K(0.375, "io", together, { RE = { 60, 0, 0 }, LE = { 60, 0, 0 } }),
+			K(0.5, "out", kickR),
+		},
+		cues = { { t = 0, burst = 4 } },
+	}
+end
+
+-- Swingback: straight arms swing side to side, one in front and one behind, hips the
+-- other way; front and back swap every swing.
+do
+	local function beat(t: number, side: number, front: number)
+		return K(t, "io", {
+			RS = { 22 * front, 0, -30 * side }, LS = { -22 * front, 0, -30 * side }, RE = { 5, 0, 0 }, LE = { 5, 0, 0 },
+			W = { 0, 0, 6 * side }, N = { 0, 0, -6 * side },
+		}, crouch(6, { 0, 0, 8 * side, 0.3 * side }))
+	end
+	dances.win_swing = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = { beat(0, 1, 1), beat(0.25, -1, -1), beat(0.5, 1, -1), beat(0.75, -1, 1), beat(1.0, 1, 1) },
+	}
+end
+
+-- Woah!: arms swoosh down to one side and freeze, then the other side.
+do
+	local wind = { RS = { 0, 0, 140 }, LS = { 60, 40, -40 }, RE = { 20, 0, 0 } }
+	local woah = { RS = { 40, 0, 40 }, RE = { 60, 0, 0 }, LS = { 60, 40, 0 }, LE = { 90, 0, 0 }, W = { 0, -15, -10 }, N = { -10, -20, 0 } }
+	dances.win_woah = {
+		length = 2.0,
+		loop = { 0, 2.0 },
+		keys = {
+			K(0, "io", wind),
+			K(0.3, "out", wind, crouch(5)),
+			K(0.45, "out", woah, crouch(22, { 0, 0, -6 })),
+			K(0.95, "io", woah, crouch(18, { 0, 0, -6 })),
+			K(1.3, "out", M(wind), crouch(5)),
+			K(1.45, "out", M(woah), crouch(22, { 0, 0, 6 })),
+			K(1.95, "io", M(woah), crouch(18, { 0, 0, 6 })),
+			K(2.0, "io", wind),
+		},
+		cues = { { t = 0.45, sound = "grab", burst = 8 }, { t = 1.45, sound = "grab", burst = 8 } },
+	}
+end
+
+-- Moonslide: glide backward in place, one heel up, smooth arm swing.
+do
+	local slideR = { RH = { -8, 0, 0 }, RK = { 0, 0, 0 }, LH = { 22, 0, 0 }, LK = { -45, 0, 0 }, LA = { -25, 0, 0 }, RS = { -20, 0, 6 }, RE = { 70, 0, 0 }, LS = { 25, 0, -6 }, LE = { 70, 0, 0 }, N = { 5, 0, 0 } }
+	dances.win_moon = {
+		length = 1.0,
+		loop = { 0, 1.0 },
+		keys = {
+			K(0, "lin", slideR, root(0, 0, 0, 0, -0.08, -0.25)),
+			K(0.5, "lin", M(slideR), root(0, 0, 0, 0, -0.08, 0.25)),
+			K(1.0, "lin", slideR, root(0, 0, 0, 0, -0.08, -0.25)),
+		},
+		cues = { { t = 0, burst = 4 } },
+	}
 end
 
 Moves.poses = poses
 Moves.dances = dances
+
+-- The move for a Showtime id, or nil.
+function Moves.get(id: string): Move?
+	return poses[id] or dances[id]
+end
 
 return Moves

@@ -20,9 +20,7 @@ local TweenService = game:GetService("TweenService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
 local TableActions = require(ReplicatedStorage.Shared.TableActions)
-local Showtime = require(ReplicatedStorage.Shared.Showtime)
 local Perf = require(script.Parent.Parent.Perf)
-local Moves = require(script.Parent.Moves)
 
 local Avatars = {}
 
@@ -56,11 +54,7 @@ type Rig = {
 	head: BasePart?,
 }
 
-local JOINTS = {
-	"Waist", "Neck", "RightShoulder", "RightElbow", "RightWrist", "LeftShoulder", "LeftElbow", "LeftWrist",
-	-- Only the Showtime celebrations use the legs (a bounce in the chair).
-	"RightKnee", "LeftKnee",
-}
+local JOINTS = { "Waist", "Neck", "RightShoulder", "RightElbow", "RightWrist", "LeftShoulder", "LeftElbow", "LeftWrist" }
 
 local function jointOf(model: Model, name: string): Joint?
 	-- Prefer a Motor6D; fall back to an AnimationConstraint of the same name.
@@ -851,18 +845,6 @@ G.facepalm = posed(1.7, 0.3, 0.4, function(t, w)
 	}
 end)
 
--- Showtime (shared/Showtime): intro poses and winners' celebrations, from Table3D/Moves.
-for id, build in Moves.poses do
-	G[id] = posed(Showtime.PoseSeconds, 0.25, 0.4, function(t, w)
-		return build(t, w, rel)
-	end)
-end
-for id, build in Moves.dances do
-	G[id] = posed(Showtime.VictorySeconds, 0.3, 0.5, function(t, w)
-		return build(t, w, rel)
-	end)
-end
-
 ---------------------------------------------------------------- playing
 
 type Playing = { gesture: Gesture, ctx: Ctx, start: number, written: { [string]: boolean } }
@@ -1324,16 +1306,7 @@ local function play(payload: any)
 	end
 end
 
--- Plays a Showtime move (a shared/Showtime id) on whoever sits at a table seat:
--- `who` = { seat = table seat, userId? , bot? (the bot body's name) }.
-function Avatars.perform(tableId: any, who: any, moveId: string)
-	if type(who) ~= "table" or not G[moveId] then
-		return
-	end
-	play({ table = tableId, seat = who.seat, userId = who.userId, bot = who.bot, kind = moveId })
-end
-
--- The body sitting at a table seat (`who` as in perform), for the Showtime camera.
+-- The body sitting at a table seat, for Showtime: `who` = { seat = table seat, userId?, bot? }.
 function Avatars.bodyAt(tableId: any, who: any): Model?
 	local model = findTable(tableId)
 	if not model or type(who) ~= "table" then

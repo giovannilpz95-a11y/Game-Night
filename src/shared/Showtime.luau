@@ -17,7 +17,8 @@ export type Move = {
 	name: string,
 	icon: string,
 	blurb: string,
-	fx: string?, -- celebrations: the particles around the winner (Showtime.Fx)
+	fx: string?, -- particle colors for its bursts (Showtime.Fx)
+	hot: boolean?, -- a take on a dance everyone knows right now (shop tag)
 }
 
 -- Particles a celebration throws around the winner: colors for client/Table3D/Showtime.
@@ -32,34 +33,47 @@ Showtime.Fx = {
 }
 
 -- Order matters: the shop lists them in this order, and the first free one is the default.
+-- `hot` = an original take on a dance everyone knows right now (a "🔥 Trending" tag in the
+-- shop). See vault 05 Research/Emotes and Celebrations.
 Showtime.Poses = {
-	{ id = "pose_wave", name = "Hello There", icon = "👋", blurb = "A big friendly wave" },
-	{ id = "pose_thumbs", name = "Thumbs Up", icon = "👍", blurb = "Two thumbs, full confidence" },
-	{ id = "pose_flex", name = "Flex", icon = "💪", blurb = "Show off those arms" },
-	{ id = "pose_peace", name = "Peace Out", icon = "✌️", blurb = "Peace sign and a head tilt" },
-	{ id = "pose_superstar", name = "Superstar", icon = "🌟", blurb = "Point to the sky, chin up" },
-	{ id = "pose_cool", name = "Too Cool", icon = "😎", blurb = "Arms crossed, leaning back" },
-	{ id = "pose_heart", name = "Heart Hands", icon = "🫶", blurb = "A heart for the table" },
-	{ id = "pose_tada", name = "Ta-da!", icon = "🎩", blurb = "Jazz hands, wiggling fingers" },
-	{ id = "pose_bow", name = "Royal Bow", icon = "👑", blurb = "A deep bow with a flourish" },
-	{ id = "pose_challenge", name = "Bring It", icon = "🫵", blurb = "Point at the table, then beckon" },
-	{ id = "pose_thinker", name = "Mastermind", icon = "🧠", blurb = "Hand on chin, eyebrows up" },
-	{ id = "pose_boxer", name = "Boxer", icon = "🥊", blurb = "Fists up, bobbing" },
+	{ id = "pose_wave", name = "Hello There", icon = "👋", blurb = "Hop up and wave hello", fx = "stars" },
+	{ id = "pose_thumbs", name = "Thumbs Up", icon = "👍", blurb = "Two thumbs, full confidence", fx = "stars" },
+	{ id = "pose_flex", name = "Flex", icon = "💪", blurb = "Double biceps, squeeze!", fx = "gold" },
+	{ id = "pose_hero", name = "Hero Landing", icon = "🦸", blurb = "Leap, slam down on one knee, rise", fx = "fire", hot = true },
+	{ id = "pose_dab", name = "Dab", icon = "🙇", blurb = "The classic dab", fx = "confetti", hot = true },
+	{ id = "pose_lean", name = "Lean Back", icon = "😌", blurb = "Hands behind head, too relaxed", fx = "bubbles" },
+	{ id = "pose_peace", name = "Peace Out", icon = "✌️", blurb = "Peace sign and a head tilt", fx = "stars" },
+	{ id = "pose_superstar", name = "Superstar", icon = "🌟", blurb = "Crouch, then point to the sky", fx = "stars" },
+	{ id = "pose_cool", name = "Too Cool", icon = "😎", blurb = "Arms crossed, leaning back", fx = "disco" },
+	{ id = "pose_heart", name = "Heart Hands", icon = "🫶", blurb = "A heart for the table", fx = "hearts" },
+	{ id = "pose_tada", name = "Ta-da!", icon = "🎩", blurb = "Jazz hands, wiggling fingers", fx = "confetti" },
+	{ id = "pose_bow", name = "Royal Bow", icon = "👑", blurb = "A deep bow with a flourish", fx = "gold" },
+	{ id = "pose_challenge", name = "Bring It", icon = "🫵", blurb = "Point at the table, then beckon", fx = "fire" },
+	{ id = "pose_thinker", name = "Mastermind", icon = "🧠", blurb = "Hand on chin, plotting", fx = "disco" },
+	{ id = "pose_boxer", name = "Boxer", icon = "🥊", blurb = "Guard up, bob, jab", fx = "fire" },
 } :: { Move }
 
 Showtime.Dances = {
-	{ id = "win_pump", name = "Arm Pump", icon = "🙌", blurb = "Both fists in the air", fx = "confetti" },
-	{ id = "win_clap", name = "Happy Clap", icon = "👏", blurb = "Clapping and bouncing", fx = "stars" },
+	{ id = "win_pump", name = "Arm Pump", icon = "🙌", blurb = "Jump with both fists in the air", fx = "confetti" },
+	{ id = "win_clap", name = "Happy Clap", icon = "👏", blurb = "Step, clap overhead, step, clap", fx = "stars" },
+	{ id = "win_goggles", name = "Goggle Strut", icon = "🥽", blurb = "Goggle hands, heel taps, arm swings", fx = "fire", hot = true },
+	{ id = "win_lhop", name = "Loser Hop", icon = "🫲", blurb = "An L on the forehead, hop hop hop", fx = "confetti", hot = true },
+	{ id = "win_bop", name = "Classic Bop", icon = "🕺", blurb = "Punch, punch, arms up, clap", fx = "disco", hot = true },
+	{ id = "win_swing", name = "Swingback", icon = "🔁", blurb = "Arms swing, hips swing the other way", fx = "bubbles", hot = true },
+	{ id = "win_runman", name = "Running Man", icon = "🏃", blurb = "Knee up, slide back, switch", fx = "stars", hot = true },
+	{ id = "win_shuffle", name = "Heel Shuffle", icon = "👟", blurb = "Quick side kicks, fast feet", fx = "disco", hot = true },
+	{ id = "win_woah", name = "Woah!", icon = "😮", blurb = "Swoosh down and freeze", fx = "stars", hot = true },
+	{ id = "win_moon", name = "Moonslide", icon = "🌙", blurb = "Glide backward like on ice", fx = "bubbles" },
 	{ id = "win_roof", name = "Raise the Roof", icon = "🏠", blurb = "Push it up, push it up", fx = "confetti" },
-	{ id = "win_sprinkler", name = "Sprinkler", icon = "💦", blurb = "The lawn-sprinkler classic", fx = "bubbles" },
+	{ id = "win_sprinkler", name = "Sprinkler", icon = "💦", blurb = "Tick, tick, tick... swoosh", fx = "bubbles" },
 	{ id = "win_robot", name = "Robot", icon = "🤖", blurb = "Stiff, jerky, perfect", fx = "stars" },
-	{ id = "win_disco", name = "Disco Point", icon = "🕺", blurb = "Point up, point down, repeat", fx = "disco" },
-	{ id = "win_groove", name = "Chair Groove", icon = "🎶", blurb = "Shoulders, hips, the whole chair", fx = "disco" },
-	{ id = "win_champion", name = "Champion", icon = "🏆", blurb = "Lift the trophy and flex", fx = "gold" },
-	{ id = "win_wave", name = "Stadium Wave", icon = "🌊", blurb = "Arms rolling side to side", fx = "bubbles" },
+	{ id = "win_disco", name = "Disco Point", icon = "🪩", blurb = "Point up, point down, hips", fx = "disco" },
+	{ id = "win_groove", name = "Hip Groove", icon = "🎶", blurb = "Hip circles and shoulder rolls", fx = "disco" },
+	{ id = "win_wave", name = "Stadium Wave", icon = "🌊", blurb = "Arms up, step side to side", fx = "bubbles" },
 	{ id = "win_heart", name = "Blow Kisses", icon = "😘", blurb = "Kisses for the fans", fx = "hearts" },
 	{ id = "win_fire", name = "On Fire", icon = "🔥", blurb = "Fanning the flames", fx = "fire" },
 	{ id = "win_money", name = "Make It Rain", icon = "💸", blurb = "Flicking bills to the crowd", fx = "gold" },
+	{ id = "win_champion", name = "Champion", icon = "🏆", blurb = "Trophy up, flex, spin", fx = "gold" },
 } :: { Move }
 
 local byId: { [string]: Move } = {}
@@ -79,12 +93,12 @@ Showtime.Slots = { pose = "pose", victory = "victory" }
 -- Timing (seconds). The intro: a wide shot of the table, then one shot per seat, then
 -- the game starts. Big tables get shorter shots so the whole intro stays short.
 Showtime.IntroLead = 1.2 -- the wide shot with the game's name
-Showtime.ShotSeconds = 1.7 -- one seat's shot at a small table
-Showtime.MinShotSeconds = 1.1
-Showtime.MaxIntroSeconds = 11 -- lead + every shot, at most
-Showtime.IntroTail = 0.4 -- a beat after the last shot before play starts
-Showtime.PoseSeconds = 2.4 -- how long a pose lasts on the avatar (starts just before its shot)
-Showtime.VictorySeconds = 5.5 -- the winners' celebration before the result card
+Showtime.ShotSeconds = 2.2 -- one seat's shot at a small table
+Showtime.MinShotSeconds = 1.4
+Showtime.MaxIntroSeconds = 13 -- lead + every shot, at most
+Showtime.IntroTail = 0.5 -- a beat after the last shot before play starts
+Showtime.PoseLinger = 1.0 -- a pose stays on the table this long after the camera moves on
+Showtime.VictorySeconds = 6.5 -- the winners' celebration before the result card
 
 function Showtime.get(id: any): Move?
 	return if type(id) == "string" then byId[id] else nil
