@@ -66,6 +66,20 @@ function TicTacToe.create(container: Frame, sendMove: (any) -> ())
 				sendMove({ cell = i })
 			end
 		end)
+		-- A ghost of your mark on the empty square you point at, like the web versions.
+		cell.MouseEnter:Connect(function()
+			if snapshot and snapshot.view.board[i] == 0 and table.find(snapshot.activeSeats, snapshot.yourSeat) then
+				cell.Text = TicTacToeRules.marks[snapshot.yourSeat] or ""
+				cell.TextColor3 = Theme.Seat[snapshot.yourSeat] or Theme.Text
+				cell.TextTransparency = 0.7
+			end
+		end)
+		cell.MouseLeave:Connect(function()
+			if snapshot and snapshot.view.board[i] == 0 then
+				cell.Text = ""
+				cell.TextTransparency = 0
+			end
+		end)
 		cells[i] = cell
 	end
 

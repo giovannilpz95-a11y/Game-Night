@@ -235,6 +235,77 @@ return function(T)
 		T.eq(ColorClash.getView(s, nil).hand, nil, "spectators see no hand")
 	end)
 
+	T.test("going down to one card without calling it can be caught by the next player", function()
+		local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
+		local s = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip } }, coral9)
+		play(s, 1, { kind = "play", card = coral5 })
+		T.eq(s.exposed, 1)
+		T.ok(s.lastAction.forgot)
+		T.eq((ColorClash.validateMove(s, 3, { kind = "catch" })), false, "only the player on turn")
+		T.ok(ColorClash.getView(s, 2).canCatch)
+		play(s, 2, { kind = "catch" })
+		T.eq(#s.hands[1], 3)
+		T.eq(s.lastAction.kind, "catch")
+		T.eq(s.lastAction.target, 1)
+		T.eq(s.turn, 2, "catching doesn't use your turn")
+		T.eq((ColorClash.validateMove(s, 2, { kind = "catch" })), false, "only once")
+	end)
+
+	T.test("calling last card is safe, and the chance to catch passes with the next move", function()
+		local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
+		local s = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip } }, coral9)
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = coral5, call = "yes" })), false)
+		local legal = ColorClash.getLegalMoves(s, 1)
+		T.eq(legal[1].call, true, "bots and fuzzers see the call too")
+		play(s, 1, { kind = "play", card = coral5, call = true })
+		T.eq(s.exposed, nil)
+		T.ok(s.lastAction.called)
+		T.eq((ColorClash.validateMove(s, 2, { kind = "catch" })), false)
+
+		local t = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip } }, coral9)
+		play(t, 1, { kind = "play", card = coral5 })
+		play(t, 2, { kind = "play", card = honey5, call = true })
+		T.eq(t.exposed, nil, "too late now")
+	end)
+
+	T.test("the last card call can be turned off", function()
+		local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
+		local s = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip } }, coral9)
+		s.lastCall = false
+		play(s, 1, { kind = "play", card = coral5 })
+		T.eq(s.exposed, nil)
+	end)
+
+	T.test("7-0: a 7 swaps hands with the player you pick, a 0 passes every hand along", function()
+		local coral7 = find(function(c) return c.color == 1 and c.value == 7 end)
+		local coral0 = find(function(c) return c.color == 1 and c.value == 0 end)
+		local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
+		local s = setup(3, { { coral7, honey7, teal3 }, { honey5 }, { coralSkip, coral0 } }, coral9)
+		s.sevenZero = true
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = coral7 })), false, "needs a target")
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = coral7, target = 1 })), false, "not yourself")
+		play(s, 1, { kind = "play", card = coral7, target = 2 })
+		T.eq(#s.hands[1], 1)
+		T.eq(s.hands[1][1], honey5)
+		T.eq(#s.hands[2], 2, "they got the rest of yours")
+		T.eq(s.lastAction.swap, 2)
+		-- Seat 2 has no coral; seat 3 plays the 0 after a draw-free pass round.
+		s.turn = 3
+		play(s, 3, { kind = "play", card = coral0 })
+		T.eq(s.hands[1][1], coralSkip, "seat 3's hand moved on to seat 1")
+		T.eq(s.hands[3][1], honey7, "seat 2's hand moved on to seat 3")
+		T.eq(s.lastAction.rotate, 1)
+	end)
+
+	T.test("skips and draw cards name who they hit", function()
+		local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
+		local s = setup(3, { { coralSkip, honey7 }, { honey5, teal3 }, { coral5, coralDraw2 } }, coral9)
+		play(s, 1, { kind = "play", card = coralSkip, call = true })
+		T.eq(s.lastAction.victim, 2)
+		play(s, 3, { kind = "play", card = coralDraw2, call = true })
+		T.eq(s.lastAction.victim, 1)
+	end)
+
 	T.test("rejects junk moves from the network", function()
 		local s = ColorClash.new(2, nil, T.Random.new(2))
 		T.eq((ColorClash.validateMove(s, 1, "x")), false)
@@ -249,7 +320,8 @@ return function(T)
 		for _, level in { "easy", "medium", "hard" } do
 			for seats = 2, 8, 3 do
 				local rng = T.Random.new(seats * 10 + #level)
-				local s = ColorClash.new(seats, { botLevel = level }, rng)
+				-- Every other game with 7-0 on, so swaps get played out too.
+				local s = ColorClash.new(seats, { botLevel = level, rules = { sevenZero = seats % 2 == 0 } }, rng)
 				local plies = 0
 				while not ColorClash.getResult(s) and plies < 2000 do
 					local seat = ColorClash.getActiveSeats(s)[1]

@@ -119,6 +119,7 @@ local entries: { Entry } = {
 			{ key = "chainAnything", name = "Chain anything", hint = "Any draw card answers any draw card: a +2 can answer a +4.", choices = Toggle, default = 1 },
 			{ key = "forcePlay", name = "Force play", hint = "If the card you draw fits, you have to play it.", choices = Toggle, default = 1 },
 			{ key = "sevenZero", name = "7-0", hint = "A 7 swaps hands with a player you pick. A 0 passes every hand along.", choices = Toggle, default = 1 },
+			{ key = "lastCard", name = "Call last card", hint = "Say \"Last card!\" as you go down to one, or the next player can catch you: draw 2.", choices = Toggle, default = 2 },
 			{
 				key = "handSize",
 				name = "Starting hand",
@@ -398,6 +399,13 @@ local entries: { Entry } = {
 				hint = "How long everyone gets to pass a card each round.",
 				choices = { { label = "Fast (5 s)", value = 5 }, { label = "Normal (8 s)", value = 8 }, { label = "Slow (12 s)", value = 12 } },
 				default = 2,
+			},
+			{
+				key = "letters",
+				name = "Letters",
+				hint = "Losing a round earns a letter instead of knocking you out. Spell the word and you're out.",
+				choices = { { label = "Off (out at once)", value = "" }, { label = "P-I-G", value = "PIG" }, { label = "S-P-O-O-N", value = "SPOON" } },
+				default = 1,
 			},
 		},
 	},

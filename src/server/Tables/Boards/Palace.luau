@@ -38,6 +38,31 @@ function Palace.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 		Cards.messyPile(folder, boardCF, layout, Cards.center(boardCF, 0.5), history.items, function(id)
 			return Scene.playingFront(PlayingCards, id)
 		end)
+		-- Burned cards go out of the game onto a pile off to the side.
+		Scene.pile(folder, Cards.center(boardCF, 1.7, 0.6) * CFrame.Angles(0, math.rad(25), 0), view.burned or 0)
+		-- The burn: the pile goes up in flames and the player calls it.
+		if action and action.burned then
+			Cards.speech(folder, boardCF, layout, action.seat, "Burn! Again!", Color3.fromRGB(255, 190, 120))
+			local flame = Instance.new("Part")
+			flame.Name = "Burn"
+			flame.Anchored = true
+			flame.CanCollide = false
+			flame.CanQuery = false
+			flame.CanTouch = false
+			flame.Transparency = 1
+			flame.Size = Vector3.new(1, 0.1, 1)
+			flame.CFrame = Cards.center(boardCF, 0.5) * CFrame.new(0, 0.1, 0)
+			local fire = Instance.new("Fire")
+			fire.Size = 3
+			fire.Heat = 6
+			fire.Color = Color3.fromRGB(255, 140, 40)
+			fire.SecondaryColor = Color3.fromRGB(255, 220, 90)
+			fire.Parent = flame
+			flame.Parent = folder
+			task.delay(1.6, function()
+				fire.Enabled = false
+			end)
+		end
 	end, Color3.fromRGB(96, 50, 104))
 end
 

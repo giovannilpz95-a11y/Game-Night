@@ -17,3 +17,4 @@ Back to [[Home]].
   - Medium: depth 5.
   - Hard: depth 9 within 0.9 s.
 - Models: `ReplicatedStorage.Assets.Checkers.<Man|King>_<Dark|Light>`.
+- Crowning: `lastMove.crowned` is set when a man becomes a king; the 3D board shows "👑 Crowned!" and a burst of sparkles over the square.

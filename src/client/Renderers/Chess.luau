@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ChessRules = require(ReplicatedStorage.Shared.Games.Chess)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
+local DrawOffer = require(script.Parent.Parent.UI.DrawOffer)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
 local Theme = Kit.Theme
@@ -75,13 +76,15 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Position = UDim2.new(0, 0, 0, 50),
-		Size = UDim2.new(1, 0, 1, -50),
+		Size = UDim2.new(1, 0, 1, -134),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 4,
 		Parent = side,
 	}, { Kit.list(2) })
 
+	-- Offer / accept a draw, under the move list.
+	local draw = DrawOffer.new(side, sendMove, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.new(1, 0, 0, 76) })
 	local promotionPicker: Frame? = nil
 
 	local function closePicker()
@@ -134,7 +137,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			button.Activated:Connect(function()
 				closePicker()
 				selected = nil
-				sendMove({ from = from, to = to, promotion = choice[1] })
+				sendMove(draw.withOffer({ from = from, to = to, promotion = choice[1] }))
 				render()
 			end)
 		end
@@ -160,7 +163,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 				local m = choices[1]
 				selected = nil
 				closePicker()
-				sendMove({ from = m.from, to = m.to })
+				sendMove(draw.withOffer({ from = m.from, to = m.to }))
 				render()
 				return
 			end
@@ -272,6 +275,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
+			draw.update(newSnapshot)
 			if not myTurn() then
 				selected = nil
 				closePicker()

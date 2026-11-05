@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ChessRules = require(ReplicatedStorage.Shared.Games.Chess)
+local DrawOffer = require(script.Parent.Parent.UI.DrawOffer)
 
 local Chess = {}
 
@@ -24,6 +25,8 @@ function Chess.create(ctx: any)
 	local snapshot: any = nil
 	local selected: string? = nil
 	local picker: Frame? = nil
+	-- Offer / accept a draw, bottom right over the room.
+	local draw = DrawOffer.new(ctx.gui, ctx.sendMove, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16) })
 
 	local function closePicker()
 		if picker then
@@ -96,7 +99,7 @@ function Chess.create(ctx: any)
 			button.Activated:Connect(function()
 				closePicker()
 				selected = nil
-				ctx.sendMove({ from = from, to = to, promotion = choice[1] })
+				ctx.sendMove(draw.withOffer({ from = from, to = to, promotion = choice[1] }))
 				render()
 			end)
 		end
@@ -107,6 +110,7 @@ function Chess.create(ctx: any)
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
+			draw.update(newSnapshot)
 			if not myTurn() then
 				selected = nil
 				closePicker()
@@ -132,7 +136,7 @@ function Chess.create(ctx: any)
 				elseif #choices == 1 then
 					selected = nil
 					closePicker()
-					ctx.sendMove({ from = choices[1].from, to = choices[1].to })
+					ctx.sendMove(draw.withOffer({ from = choices[1].from, to = choices[1].to }))
 					render()
 					return
 				end
@@ -141,7 +145,13 @@ function Chess.create(ctx: any)
 			selected = if #movesFrom(square) > 0 and square ~= selected then square else nil
 			render()
 		end,
-		destroy = closePicker,
+		setShown = function(shown: boolean)
+			draw.frame.Parent = if shown then ctx.gui else nil
+		end,
+		destroy = function()
+			closePicker()
+			draw.destroy()
+		end,
 	}
 end
 
