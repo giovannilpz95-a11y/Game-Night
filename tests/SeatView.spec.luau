@@ -1,0 +1,99 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SeatView = require(ReplicatedStorage.Shared.SeatView)
+
+return function(T)
+	local ASPECT = 16 / 9
+
+	-- The 8 corners of a box centered on the table's middle.
+	local function box(halfX: number, halfZ: number, low: number, high: number)
+		local out = {}
+		for _, x in { -halfX, halfX } do
+			for _, z in { -halfZ, halfZ } do
+				for _, y in { low, high } do
+					table.insert(out, { x = x, y = y, z = z })
+				end
+			end
+		end
+		return out
+	end
+
+	-- Heads of the others around a round table of `reach`, you at the bottom (-z).
+	local function heads(count: number, reach: number)
+		local out = {}
+		for i = 1, count - 1 do
+			local a = i / count * math.pi * 2
+			table.insert(out, { x = math.sin(a) * reach, y = 2.6, z = -math.cos(a) * reach })
+		end
+		return out
+	end
+
+	local function inside(view, points, free, msg)
+		for _, p in points do
+			local x, y, depth = SeatView.project(view, p, ASPECT)
+			T.ok(depth > 0, `{msg}: in front of the camera`)
+			T.ok(x >= free.left - 1e-6 and x <= free.right + 1e-6, `{msg}: x {x} in {free.left}..{free.right}`)
+			T.ok(y >= free.bottom - 1e-6 and y <= free.top + 1e-6, `{msg}: y {y} in {free.bottom}..{free.top}`)
+		end
+	end
+
+	local FULL = { left = -1, right = 1, bottom = -1, top = 0.88 }
+
+	T.test("a chess board and the player across both fit from your seat", function()
+		local board = box(3.8, 3, 0, 1.3)
+		local others = heads(2, 6)
+		local view = SeatView.solve(board, others, 7.2, 7, ASPECT, FULL)
+		T.eq(view.fits, "all")
+		inside(view, board, FULL, "board")
+		inside(view, others, FULL, "heads")
+		T.ok(view.pitch > math.rad(15) and view.pitch < math.rad(75), `looks down {math.deg(view.pitch)}`)
+		T.ok(math.abs(view.yaw) < 1e-6, "a symmetric board needs no turn")
+	end)
+
+	T.test("the eye stays at its seat when everything already fits", function()
+		local view = SeatView.solve(box(1.5, 1.5, 0, 0.3), heads(2, 6), 7.2, 7, ASPECT, FULL)
+		T.eq(view.back, 7.2)
+		T.eq(view.height, 7)
+	end)
+
+	T.test("a right-side panel turns the view so the table sits in the free left part", function()
+		local free = { left = -1, right = 0.16, bottom = -1, top = 0.88 }
+		local board = box(4, 4, 0, 0.8)
+		local others = heads(4, 6.5)
+		local view = SeatView.solve(board, others, 7.8, 7.25, ASPECT, free)
+		T.ok(view.fits ~= "none", `fits {view.fits}`)
+		T.ok(view.yaw > 0, "turned right, so the table shows left of center")
+		inside(view, board, free, "board")
+		if view.fits == "all" then
+			inside(view, others, free, "heads")
+		end
+	end)
+
+	T.test("a big board makes the eye sit further back rather than cut it off", function()
+		local board = box(7, 7, 0, 0.6)
+		local view = SeatView.solve(board, heads(4, 9), 10.8, 8.5, ASPECT, FULL)
+		T.ok(view.fits ~= "none", `fits {view.fits}`)
+		inside(view, board, FULL, "board")
+	end)
+
+	T.test("a bottom strip (Word Tiles' rack) keeps the board above it", function()
+		local free = { left = -1, right = 1, bottom = -0.7, top = 0.88 }
+		local board = box(4, 4, 0, 0.4)
+		local view = SeatView.solve(board, heads(4, 6.5), 7.8, 7.25, ASPECT, free)
+		T.ok(view.fits ~= "none", `fits {view.fits}`)
+		inside(view, board, free, "board")
+	end)
+
+	T.test("an upright frame (Four in a Row) fits, top to bottom", function()
+		local board = box(3.2, 0.5, 0, 5)
+		local view = SeatView.solve(board, heads(2, 6), 7.2, 7, ASPECT, FULL)
+		T.ok(view.fits ~= "none", `fits {view.fits}`)
+		inside(view, board, FULL, "frame")
+	end)
+
+	T.test("a phone-shaped free area still gives a usable answer", function()
+		local free = { left = -1, right = -0.4, bottom = -1, top = 0.8 }
+		local view = SeatView.solve(box(4, 4, 0, 0.6), heads(4, 6.5), 7.8, 7.25, 19.5 / 9, free)
+		T.ok(view.back == view.back and view.pitch == view.pitch and view.yaw == view.yaw, "no NaN")
+		T.ok(view.pitch > 0 and view.pitch < math.rad(89), "looks down")
+	end)
+end
