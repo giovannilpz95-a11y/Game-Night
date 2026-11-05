@@ -31,7 +31,7 @@ function GinRummy.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 				Scene.hand(folder, boardCF, layout, seat, count)
 			end
 		end
-		Scene.pile(folder, Cards.center(boardCF, -0.6), view.stockCount or 0, true)
+		Scene.pile(folder, Cards.center(boardCF, -0.6), view.stockCount or 0, true, true)
 		-- The discard pile: messy, each card turned toward whoever threw it away.
 		local action = view.lastAction
 		local count = if view.discardTop then math.max(1, view.discardCount or 1) else 0

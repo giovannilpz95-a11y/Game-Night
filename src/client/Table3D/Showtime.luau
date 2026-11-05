@@ -25,6 +25,8 @@ local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Shared = require(ReplicatedStorage.Shared.Showtime)
 local Avatars = require(script.Parent.Avatars)
 local Stage = require(script.Parent.Stage)
+local ShowFx = require(script.Parent.ShowFx)
+local FxMath = require(script.Parent.FxMath)
 local Moves = require(script.Parent.Moves)
 local Controller = require(script.Parent.Controller)
 local Kit = require(script.Parent.Parent.UI.Kit)
@@ -55,6 +57,8 @@ type Run = {
 	shown: CFrame?,
 	savedType: Enum.CameraType?,
 	savedFov: number,
+	fov: number, -- the field of view before any zoom punch
+	focusRoot: BasePart?, -- the stand-in in the current shot
 }
 
 local current: Run? = nil
@@ -297,6 +301,7 @@ local function finish(skipped: boolean)
 	end
 	current = nil
 	RunService:UnbindFromRenderStep("GameNightShowtime")
+	ShowFx.finish()
 	dropCard(run.card)
 	run.gui:Destroy()
 	Controller.setCinematic(false)
@@ -324,9 +329,16 @@ local function step(dt: number)
 	local cf, fov, index = target(run, t)
 	local k = 1 - math.exp(-GLIDE * math.min(dt, 0.1))
 	run.shown = if run.shown then (run.shown :: CFrame):Lerp(cf, k) else cf
+	run.fov += (fov - run.fov) * k
+	-- Effects: motion blur from the camera's speed, focus on whoever is on stage, and
+	-- the zoom punch and shake of a big hit.
+	local handle = index and staged.matchId == run.payload.matchId and staged.kind == run.kind and staged.handles[index] or nil
+	local root = handle and handle.root()
+	run.focusRoot = root
+	local shown, punch = ShowFx.frame(dt, run.shown :: CFrame, if root then root.Position else nil)
 	camera.CameraType = Enum.CameraType.Scriptable
-	camera.CFrame = run.shown :: CFrame
-	camera.FieldOfView += (fov - camera.FieldOfView) * k
+	camera.CFrame = shown
+	camera.FieldOfView = run.fov + punch
 	-- The name card follows the shot.
 	if run.kind == "intro" and index ~= run.cardFor then
 		run.cardFor = index
@@ -373,6 +385,8 @@ local function begin(payload: any)
 		shown = camera.CFrame,
 		savedType = camera.CameraType,
 		savedFov = camera.FieldOfView,
+		fov = camera.FieldOfView,
+		focusRoot = nil,
 	}
 	current = run
 
@@ -407,6 +421,7 @@ local function begin(payload: any)
 	Kit.new("UIStroke", { Color = Theme.Stroke, Thickness = 1, Parent = skip })
 
 	Controller.setCinematic(true)
+	ShowFx.begin(camera, gui)
 	notify(true, payload.kind)
 	RunService:BindToRenderStep("GameNightShowtime", Enum.RenderPriority.Camera.Value + 2, step)
 end
@@ -521,6 +536,13 @@ function Showtime.start()
 		return
 	end
 	started = true
+	-- A big beat from whoever is in the shot kicks the camera.
+	Stage.onHit(function(root: BasePart, power: number)
+		local run = current
+		if run and run.focusRoot == root and power >= FxMath.KickMin then
+			ShowFx.kick(power)
+		end
+	end)
 	remote = Net.event(Net.Names.Showtime)
 	remote.OnClientEvent:Connect(onEvent)
 end

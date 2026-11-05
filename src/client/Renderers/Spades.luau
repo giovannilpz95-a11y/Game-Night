@@ -8,6 +8,7 @@ local Spades = require(ReplicatedStorage.Shared.Games.Spades)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local SpadesRenderer = {}
@@ -16,6 +17,7 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local bid = 3
 	local ui = CardTable.layout(container)
+	local afterHand = CardFx.tricks(ui.felt)
 	local render: () -> ()
 
 	local function nameOf(seat: number?): string
@@ -138,11 +140,16 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			local can = myTurn and playable[id] == true
 			table.insert(cards, { id = id, glow = can, dim = myTurn and not can, enabled = can })
 		end
-		PlayingCard.renderHand(ui.hand, cards, function(id: number)
+		-- Off your turn mid-trick: all dimmed, the cards that would follow suit lifted.
+		if me and view.phase == "play" and not myTurn and not snapshot.result then
+			CardFx.followSuit(cards, view.hand or {}, view.trick)
+		end
+		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
 			if myTurn and playable[id] then
 				sendMove({ kind = "play", card = id })
 			end
 		end)
+		afterHand(snapshot, faces, nil, 1)
 	end
 
 	ui.refresh = function()

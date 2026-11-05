@@ -25,7 +25,7 @@ function Palace.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 				end
 			end
 		end
-		Scene.pile(folder, Cards.center(boardCF, -0.6), view.drawCount or 0, false)
+		Scene.pile(folder, Cards.center(boardCF, -0.6), view.drawCount or 0, false, true)
 		-- The discard pile: messy, each card turned toward whoever played it.
 		local top = view.pileTop or {}
 		local count = view.pileCount or 0

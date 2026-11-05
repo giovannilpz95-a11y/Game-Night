@@ -223,13 +223,18 @@ function Scene.card(parent: Instance, cf: CFrame, front: { text: string, color: 
 end
 
 -- A face-down pile of `count` cards (drawn as a block, at most 0.6 studs tall) with the
--- count written on top if `showCount`. Returns where a card laid on it goes.
-function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: boolean?): CFrame
+-- count written on top if `showCount`. `drawPile` marks it as the game's draw pile (the
+-- stock), so the client can fly drawn cards off it (UI/CardFx). Returns where a card laid
+-- on it goes.
+function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: boolean?, drawPile: boolean?): CFrame
 	if count <= 0 then
 		return cf
 	end
 	local height = math.min(0.6, 0.05 + count * 0.012)
-	Models.block(parent, "Pile", Vector3.new(Scene.CARD_W, height, Scene.CARD_H), cf * CFrame.new(0, height / 2, 0), CARD_EDGE:Lerp(Color3.new(0, 0, 0), 0.08))
+	local block = Models.block(parent, "Pile", Vector3.new(Scene.CARD_W, height, Scene.CARD_H), cf * CFrame.new(0, height / 2, 0), CARD_EDGE:Lerp(Color3.new(0, 0, 0), 0.08))
+	if drawPile then
+		block:SetAttribute("DrawPile", true)
+	end
 	cardBack(parent, cf * CFrame.new(0, height, 0))
 	-- Where the next card goes: clear of the back's raised panel and emblem.
 	local top = cf * CFrame.new(0, height + Scene.STACK - Scene.CARD_T, 0)

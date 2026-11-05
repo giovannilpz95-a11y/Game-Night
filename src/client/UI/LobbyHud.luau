@@ -1,6 +1,6 @@
 -- The lobby is the 3D room. On top of it there's only a small HUD:
 -- * one big Play button at the bottom center (opens the game picker),
--- * a side rail of round icon buttons on the left: Party, Tables, Stats, Shop, Looks, Host, Voice,
+-- * a side rail of round icon buttons on the left: Party, Tables, Stats, Shop, Pass, Looks, Host, Voice,
 -- * a round ? (Help) right of Play: every game's rules and the lobby tour,
 -- * a round 🔊 (Sound) left of Play: the music and effects sliders.
 -- Everything else opens on demand and closes back to the room.
@@ -20,6 +20,7 @@ export type Actions = {
 	tables: () -> (),
 	stats: () -> (),
 	shop: () -> (),
+	pass: () -> (),
 	looks: () -> (),
 	host: () -> (),
 	voice: () -> (),
@@ -105,9 +106,10 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 	railButton("Tables", 2, "🎲", "Tables", actions.tables)
 	railButton("Stats", 3, "📊", "Stats", actions.stats)
 	railButton("Shop", 4, "🛒", "Shop", actions.shop)
-	railButton("Looks", 5, "👕", "Looks", actions.looks)
-	railButton("Host", 6, "👑", "Host", actions.host)
-	local voiceButton = railButton("Voice", 7, "🎙", "Voice", actions.voice, VOICE_COLOR)
+	railButton("Pass", 5, "🎟️", "Pass", actions.pass)
+	railButton("Looks", 6, "👕", "Looks", actions.looks)
+	railButton("Host", 7, "👑", "Host", actions.host)
+	local voiceButton = railButton("Voice", 8, "🎙", "Voice", actions.voice, VOICE_COLOR)
 	voiceButton.Visible = false
 
 	-- The one big call to action.
@@ -171,6 +173,17 @@ function LobbyHud.create(parent: Instance, actions: Actions)
 	Layout.onChange(function(info)
 		railSize = if info.compact then 48 else 60
 		local gap = if info.compact then 6 else 8
+		-- Short screens (phones held sideways): shrink the buttons so the whole rail fits.
+		local shown = 0
+		for _, button in buttons do
+			if button.Visible then
+				shown += 1
+			end
+		end
+		local room = info.height - info.top - info.bottom - 16
+		if shown > 0 and room > 0 then
+			railSize = math.max(36, math.min(railSize, math.floor((room - gap * (shown - 1)) / shown)))
+		end
 		local list = rail:FindFirstChildOfClass("UIListLayout")
 		if list then
 			list.Padding = UDim.new(0, gap)

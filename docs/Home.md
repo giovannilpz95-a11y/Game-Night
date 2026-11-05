@@ -12,6 +12,7 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Economy]]: Gems, Coins, saving, the shop and Robux products
 - [[Reactions]]: the 😀 wheel's animated reactions and the reaction packs for sale
 - [[Showtime]]: the game-start intro (camera visits each player, who strikes a pose) and the winners' celebration, and the poses and celebrations for sale
+- [[Season pass]]: the Game Night Pass (30 tiers a season, free and premium tracks) and the daily and weekly quests that earn Stars
 - [[Progression]]: levels, badges, weekly leaderboards and the stats profile
 - [[Store page]]: title, description, genre, icon, thumbnails and trailer shot list
 - [[LaunchChecklist]]: what Giovanni must do himself before going public, and what the launch audit checked
@@ -23,4 +24,4 @@ Technical notes that live next to the code. Planning (roadmap, decisions, game r
 - [[Voice Servers]]: voice-only servers and teleporting the party there and back
 - [[Card games]]: the shared 52-card deck, Card Coins, and why poker and blackjack are left out
 - [[CardGameIdeas]]: card game backlog with build priorities
-- Per-game technical notes: [[Tic-Tac-Toe]], [[Chess]], [[Checkers]], [[Four-in-a-Row]], [[Color Clash]], [[Sketch & Guess]], [[Trivia Night]], [[Werewolf]], [[Whodunit]], [[Property Party]], [[Word Tiles]], [[Conquest Isles]], [[Hexlands]], [[Speed]], [[Spoons]], [[War]], [[Go Fish]], [[I Doubt It]], [[President]], [[Slap Stack]], [[Hearts]], [[Spades]], [[Thirty-One]], [[Palace]], [[Old Maid]], [[Snap]], [[Gin Rummy]], [[Oh Hell]]
+- Per-game technical notes: [[Tic-Tac-Toe]], [[Chess]], [[Checkers]], [[Four-in-a-Row]], [[Color Clash]], [[Sketch & Guess]], [[Trivia Night]], [[Werewolf]], [[Five Dice]], [[Whodunit]], [[Property Party]], [[Word Tiles]], [[Conquest Isles]], [[Hexlands]], [[Speed]], [[Spoons]], [[War]], [[Go Fish]], [[I Doubt It]], [[President]], [[Slap Stack]], [[Hearts]], [[Spades]], [[Thirty-One]], [[Palace]], [[Old Maid]], [[Snap]], [[Gin Rummy]], [[Oh Hell]]

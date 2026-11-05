@@ -10,6 +10,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local GinRummy = {}
@@ -28,6 +29,10 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 	local knocking = false
 	local render: () -> ()
 	local calledRound: any = nil -- the hand whose showdown was already called out
+	local piles: CardFx.StockPiles = {}
+	local afterHand = CardFx.stockAndDiscard(ui.root, function(id: number)
+		sendMove({ kind = "discard", card = id })
+	end)
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -92,7 +97,10 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 			calledRound = view.round
 			local text = if show.kind == "gin" then "GIN!" elseif show.kind == "undercut" then "UNDERCUT!" else "KNOCK!"
 			HudKit.callout(ui.root, `{text}  {nameOf(show.winner)} +{show.points}`, if show.kind == "knock" then nil else Color3.fromRGB(120, 220, 150))
+			-- And off the table in Table view.
+			CardFx.pop(text, if show.kind == "knock" then Theme.Accent else Color3.fromRGB(120, 220, 150))
 		end
+		piles = {}
 		if show then
 			local title
 			if show.kind == "wash" then
@@ -122,6 +130,7 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 			local stock = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.38, 0.55), Size = UDim2.fromScale(1, 0.62), Parent = ui.content })
 			PlayingCard.show(stock, nil, true)
 			local discard = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.62, 0.55), Size = UDim2.fromScale(1, 0.62), Parent = ui.content })
+			piles = { stock = stock, discard = discard }
 			if view.discardTop then
 				local face = PlayingCard.show(discard, view.discardTop)
 				if drawing then
@@ -214,7 +223,7 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 			local can = discarding and id ~= view.taken and (not knocking or knockable[id] == true)
 			table.insert(cards, { id = id, raised = id == view.taken, glow = can, dim = discarding and not can, enabled = can })
 		end
-		PlayingCard.renderHand(ui.hand, cards, function(id: number)
+		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
 			if not discarding or id == view.taken then
 				return
 			end
@@ -226,6 +235,9 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 			else
 				sendMove({ kind = "discard", card = id })
 			end
+		end)
+		afterHand(snapshot, faces, piles, discarding and not knocking, function(id: number)
+			return id ~= view.taken
 		end)
 		-- A thin bar under each card that's in a meld.
 		for _, slot in ui.hand:GetChildren() do

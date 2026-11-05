@@ -42,6 +42,9 @@ Showtime.Poses = {
 	{ id = "pose_hero", name = "Hero Landing", icon = "🦸", blurb = "Leap, slam down on one knee, rise", fx = "fire", hot = true },
 	{ id = "pose_dab", name = "Dab", icon = "🙇", blurb = "The classic dab", fx = "confetti", hot = true },
 	{ id = "pose_lean", name = "Lean Back", icon = "😌", blurb = "Hands behind head, too relaxed", fx = "bubbles" },
+	-- Game Night Pass rewards (shared/Season); the shop shows which pass gives them.
+	{ id = "pose_spotlight", name = "Spotlight", icon = "🔦", blurb = "Squint into the lights, then point up", fx = "stars" },
+	{ id = "pose_redcarpet", name = "Red Carpet", icon = "📸", blurb = "Strut, wave, blow a kiss to the cameras", fx = "gold" },
 	{ id = "pose_peace", name = "Peace Out", icon = "✌️", blurb = "Peace sign and a head tilt", fx = "stars" },
 	{ id = "pose_superstar", name = "Superstar", icon = "🌟", blurb = "Crouch, then point to the sky", fx = "stars" },
 	{ id = "pose_cool", name = "Too Cool", icon = "😎", blurb = "Arms crossed, leaning back", fx = "disco" },
@@ -74,6 +77,7 @@ Showtime.Dances = {
 	{ id = "win_fire", name = "On Fire", icon = "🔥", blurb = "Fanning the flames", fx = "fire" },
 	{ id = "win_money", name = "Make It Rain", icon = "💸", blurb = "Flicking bills to the crowd", fx = "gold" },
 	{ id = "win_champion", name = "Champion", icon = "🏆", blurb = "Trophy up, flex, spin", fx = "gold" },
+	{ id = "win_showstopper", name = "Showstopper", icon = "🎭", blurb = "Kick line, jazz hands, take a bow", fx = "gold" },
 } :: { Move }
 
 local byId: { [string]: Move } = {}

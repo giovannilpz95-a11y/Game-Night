@@ -157,6 +157,21 @@ rules.Hexlands = {
 	},
 }
 
+rules.FiveDice = {
+	goal = "Score the most points by filling all the boxes on your score card.",
+	card = {
+		"Roll the five dice. Tap dice to keep them, then roll the rest. Up to 3 rolls.",
+		"Then pick an empty box on your card to score the roll. Every box is used once.",
+		"Fill the card and the highest total wins. Five the same is a Big Five: 50!",
+	},
+	sections = {
+		{ title = "Your turn", lines = { "Roll up to three times. Between rolls, tap dice to keep (hold) them.", "You can stop early. Then tap a box on your card and Score.", "If the roll doesn't fit the box you pick, it scores 0 there." } },
+		{ title = "Upper boxes", lines = { "Ones to Sixes: add up the dice showing that number.", "Reach 63 in the upper boxes for a 35 point bonus (three of each number gets you there)." } },
+		{ title = "Lower boxes", lines = { "3 of a kind, 4 of a kind: add up all five dice.", "Full house (three + two): 25. Small straight (four in a row): 30. Large straight (five in a row): 40.", "Big Five (five the same): 50. Chance: add up anything." } },
+		{ title = "Extra Big Fives", lines = { "Roll another Big Five after scoring 50 there: +100 bonus.", "It's also a joker: it must go in its number's upper box if that's open, otherwise it scores in full in any lower box." } },
+	},
+}
+
 rules.Whodunit = {
 	goal = "Be the first to name who swiped the Golden Trophy, with what, and where.",
 	card = {

@@ -77,6 +77,7 @@ local Config = {
 		TriviaNight = true,
 		SketchGuess = true,
 		Werewolf = true,
+		FiveDice = true,
 	},
 
 	-- Saved progress (DataService). Changing the store name starts everyone from zero.

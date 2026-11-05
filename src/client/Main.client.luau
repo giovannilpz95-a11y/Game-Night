@@ -21,6 +21,7 @@ local VoicePanel = require(script.Parent.UI.VoicePanel)
 local FriendsPanel = require(script.Parent.UI.FriendsPanel)
 local DailyRewardCard = require(script.Parent.UI.DailyRewardCard)
 local StatsPanel = require(script.Parent.UI.StatsPanel)
+local SeasonPanel = require(script.Parent.UI.SeasonPanel)
 local Layout = require(script.Parent.UI.Layout)
 local LobbyHud = require(script.Parent.UI.LobbyHud)
 local RulesPanel = require(script.Parent.UI.RulesPanel)
@@ -146,6 +147,14 @@ end)
 shopPanel.root:GetPropertyChangedSignal("Visible"):Connect(function()
 	popups.setAtBottom(shopPanel.root.Visible)
 end)
+local seasonPanel = SeasonPanel.create(lobby, function(request)
+	economyRequest:FireServer(request)
+end, function(request)
+	purchaseRequest:FireServer(request)
+end)
+Layout.onChange(function(info)
+	seasonPanel.fit(info.top, info.bottom)
+end)
 local dressingRoom = DressingRoomPanel.create(screen, function(request)
 	dressingRequest:FireServer(request)
 end)
@@ -159,6 +168,7 @@ local function closeWindows()
 	pickerWindow.close()
 	tableList.close()
 	statsPanel.close()
+	seasonPanel.close()
 	dressingRoom.close()
 	shopPanel.root.Visible = false
 end
@@ -199,6 +209,10 @@ local hud = LobbyHud.create(lobby, {
 	shop = function()
 		closeWindows()
 		shopPanel.open(nil)
+	end,
+	pass = function()
+		closeWindows()
+		seasonPanel.open()
 	end,
 	looks = function()
 		closeWindows()
@@ -243,6 +257,7 @@ function startTour()
 		railStep("Party", "Party", "Invite friends to your party. The party leader picks the game and everyone plays together."),
 		railStep("Tables", "Tables", "See other tables in this server and join one."),
 		railStep("Stats", "Stats", "Your level, badges, every game's record and this week's leaderboards."),
+		railStep("Pass", "Game Night Pass", "Daily and weekly quests earn ⭐ Stars. Climb the season's tiers to unlock poses, dances and more."),
 		{
 			target = function()
 				return walletBar.root
@@ -338,6 +353,9 @@ Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
 	end
 	walletBar.setWallet(state)
 	shopPanel.setWallet(state)
+	seasonPanel.setWallet(state)
+	local unclaimed = SeasonPanel.unclaimed(state)
+	hud.setBadge("Pass", if unclaimed > 0 then tostring(unclaimed) else nil)
 	matchView.setOwned(state.owned)
 	local isHost = state.passes ~= nil and state.passes.partyHost == true
 	if isHost ~= wasHost then

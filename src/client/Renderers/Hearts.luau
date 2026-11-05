@@ -10,6 +10,7 @@ local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
 local FlowArrow = require(script.Parent.Parent.UI.FlowArrow)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local Hearts = {}
@@ -24,6 +25,8 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 	local wasBroken: boolean? = nil
 	local moonRound: any = nil
 	local STEP = { left = 1, right = -1, across = 2 }
+	local afterHand = CardFx.tricks(ui.felt)
+	local QUEEN_OF_SPADES = PlayingCards.make(12, 1)
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -98,7 +101,7 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 		end
 		-- The moment hearts break gets its own call-out, like the classic game's.
 		if wasBroken == false and view.heartsBroken and view.phase == "play" then
-			HudKit.callout(ui.root, "♥ Hearts are broken!", Color3.fromRGB(235, 87, 110))
+			CardFx.pop("♥ BROKEN!", Color3.fromRGB(235, 87, 110), ui.root)
 		end
 		wasBroken = view.heartsBroken == true
 		if view.moon and view.phase == "round" and moonRound ~= view.round then
@@ -146,7 +149,11 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 				enabled = can or passing,
 			})
 		end
-		PlayingCard.renderHand(ui.hand, cards, function(id: number)
+		-- Off your turn mid-trick: all dimmed, the cards that would follow suit lifted.
+		if me and view.phase == "play" and not myTurn and not snapshot.result then
+			CardFx.followSuit(cards, view.hand or {}, view.trick)
+		end
+		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
 			if passing then
 				CardTable.toggle(selected, id, 3)
 				render()
@@ -154,6 +161,19 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 				sendMove({ kind = "play", card = id })
 			end
 		end)
+		-- The 3 cards passed to you come from that player's seat; a new deal from the middle.
+		local from = nil
+		if view.received and step and me and view.phase == "play" then
+			from = CardFx.seatOnScreen(snapshot, (me - 1 - step) % 4 + 1)
+		end
+		local won = afterHand(snapshot, faces, from, nil)
+		if won then
+			for _, play in won.plays do
+				if play.card == QUEEN_OF_SPADES then
+					CardFx.pop("♛ +13", Color3.fromRGB(150, 160, 255))
+				end
+			end
+		end
 	end
 
 	ui.refresh = function()

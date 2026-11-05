@@ -9,6 +9,7 @@ local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
+local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Theme = Kit.Theme
 
 local ThirtyOne = {}
@@ -16,6 +17,12 @@ local ThirtyOne = {}
 function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local ui = CardTable.layout(container)
+	local piles: CardFx.StockPiles = {}
+	local afterHand = CardFx.stockAndDiscard(ui.root, function(id: number)
+		sendMove({ kind = "discard", card = id })
+	end)
+	local knocks = CardFx.watch()
+	local blitzes = CardFx.watch()
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -49,6 +56,13 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 		CardTable.seatChips(ui.seats, snapshot, chips)
 
 		Kit.clear(ui.content)
+		piles = {}
+		if knocks(if view.knocker then tostring(view.knocker) .. ":" .. tostring(view.round) else "none") and view.knocker then
+			CardFx.pop("KNOCK!", Theme.Accent, ui.root)
+		end
+		if blitzes(if showdown and showdown.blitz then tostring(showdown.blitz) .. ":" .. tostring(view.round) else "none") and showdown and showdown.blitz then
+			CardFx.pop("31!", Color3.fromRGB(120, 220, 150), ui.root)
+		end
 		if showdown then
 			local title = if showdown.blitz then `{nameOf(showdown.blitz)} hit 31! Blitz!` else "Showdown"
 			CardTable.feltText(ui.content, title, 0.03, 18).TextColor3 = Theme.Accent
@@ -65,6 +79,7 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 			local stock = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.38, 0.55), Size = UDim2.fromScale(1, 0.62), Parent = ui.content })
 			PlayingCard.show(stock, nil, true)
 			local discard = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.62, 0.55), Size = UDim2.fromScale(1, 0.62), Parent = ui.content })
+			piles = { stock = stock, discard = discard }
 			if view.discardTop then
 				local face = PlayingCard.show(discard, view.discardTop)
 				if drawing then
@@ -136,10 +151,13 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 			local can = discarding and id ~= view.taken
 			table.insert(cards, { id = id, raised = id == view.taken, glow = can, enabled = can })
 		end
-		PlayingCard.renderHand(ui.hand, cards, function(id: number)
+		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
 			if discarding and id ~= view.taken then
 				sendMove({ kind = "discard", card = id })
 			end
+		end)
+		afterHand(snapshot, faces, piles, discarding, function(id: number)
+			return id ~= view.taken
 		end)
 	end
 

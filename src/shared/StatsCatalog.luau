@@ -56,6 +56,13 @@ StatsCatalog.games = {
 			{ key = "survived", label = "Games survived to the end", kind = "sum" },
 		},
 	},
+	FiveDice = {
+		extra = {
+			{ key = "bigFives", label = "Big Fives rolled", kind = "sum" },
+			{ key = "upperBonus", label = "Upper bonuses earned", kind = "sum" },
+		},
+		score = { label = "Best score" },
+	},
 	Whodunit = {
 		extra = {
 			{ key = "solved", label = "Cases solved", kind = "sum" },

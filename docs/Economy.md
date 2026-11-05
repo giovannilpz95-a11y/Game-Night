@@ -36,7 +36,7 @@ minMinutes = 0.25,      -- shorter matches pay nothing
 minMoves = 7,           -- matches with fewer moves pay nothing
 ```
 
-Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The daily login calendar pays Gems or Universal Coins (see [[Friends]]). The first win of the day and each daily challenge pay Gems; XP from time played levels the account up, and level-ups pay Gems. Badges pay Gems once each (see [[Progression]]).
+Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The daily login calendar pays Gems or Universal Coins (see [[Friends]]). The first win of the day and each daily quest pay Gems, and matches and quests earn Game Night Pass Stars (see [[Season pass]]); XP from time played levels the account up, and level-ups pay Gems. Badges pay Gems once each (see [[Progression]]).
 
 For bonuses inside a game, or for games that don't use `MatchService`, call `EconomyService` from server code:
 
@@ -66,6 +66,7 @@ Create these in the Creator Hub (your experience > Monetization), then paste eac
 | 50 / 110 / 300 / 650 / 1,400 Gems | Developer product | 49 / 99 / 249 / 499 / 999 R$ | `Economy.GemPacks[i].productId` |
 | Starter Pack (first 3 days) | Developer product | 79 R$ | `Economy.StarterPack.productId` |
 | All Reaction Packs (see [[Reactions]]) | Developer product | 499 R$ | `Economy.ReactionBundle.productId` |
+| Game Night Pass premium (see [[Season pass]]) | Developer product | 299 R$ | `Season.Premium.productId` (shared/Season.luau) |
 | VIP | Game pass | 399 R$ | `Economy.Passes.vip.gamePassId` |
 | Party Host | Game pass | 199 R$ | `Economy.Passes.partyHost.gamePassId` |
 
@@ -75,4 +76,4 @@ Developer products are granted in `ProcessReceipt`. The purchase ID is stored in
 - Cosmetics are bought and equipped (saved in `equipped[shop][slot]`) but not drawn yet. Renderers will read the equipped piece set or board when the art exists.
 - VIP lounge, gold nameplate and VIP-only skins. (Every perk listed on VIP and Party Host is built: see [[Party Host]].)
 - Dressing Room extras beyond look slots (poses, effects); see [[Dressing Room]].
-- Season pass, Game Night Club subscription, Robux-direct bundles.
+- Game Night Club subscription, Robux-direct bundles. (The season pass is built: see [[Season pass]].)
