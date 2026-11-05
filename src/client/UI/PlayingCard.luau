@@ -4,6 +4,8 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Kit)
@@ -194,6 +196,65 @@ function PlayingCard.setHeld(container: Frame, held: boolean)
 	container:SetAttribute("Held", held)
 end
 
+-- Hover for an overlapping fan: exactly one card is up at a time, the top-most one under
+-- the mouse. (Per-card MouseEnter/MouseLeave can't do this: the cards' boxes overlap, so
+-- two could be entered at once, and leaving one for the card under it fires nothing.)
+-- Returns add(slot, lift, drop) for each card and clear() before a redraw.
+export type Hover = { add: (slot: GuiObject, lift: () -> (), drop: () -> ()) -> (), clear: () -> () }
+function PlayingCard.hover(container: GuiObject): Hover
+	local entries: { { slot: GuiObject, lift: () -> (), drop: () -> () } } = {}
+	local current: any = nil
+	local function set(entry: any)
+		if entry == current then
+			return
+		end
+		if current then
+			current.drop()
+		end
+		current = entry
+		if entry then
+			entry.lift()
+		end
+	end
+	local function update(position: Vector2)
+		local gui = container:FindFirstAncestorWhichIsA("ScreenGui")
+		if gui and not gui.IgnoreGuiInset then
+			position -= GuiService:GetGuiInset()
+		end
+		local best = nil
+		-- Later cards sit on top of earlier ones, so the last one hit wins.
+		for _, entry in entries do
+			local slot = entry.slot
+			if slot.Parent and slot.Visible then
+				local at, size = slot.AbsolutePosition, slot.AbsoluteSize
+				if position.X >= at.X and position.X <= at.X + size.X and position.Y >= at.Y and position.Y <= at.Y + size.Y then
+					best = entry
+				end
+			end
+		end
+		set(best)
+	end
+	local moved = UserInputService.InputChanged:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			update(UserInputService:GetMouseLocation())
+		end
+	end)
+	container.Destroying:Once(function()
+		moved:Disconnect()
+	end)
+	return {
+		add = function(slot: GuiObject, lift: () -> (), drop: () -> ())
+			table.insert(entries, { slot = slot, lift = lift, drop = drop })
+		end,
+		clear = function()
+			entries = {}
+			current = nil
+		end,
+	}
+end
+
+local hovers: { [Instance]: Hover } = {}
+
 -- Held: overlapping cards in a fan (outer ones turned and a little lower). Hovering a
 -- card lifts it out of the hand, straightens it and brings it to full brightness. Cards
 -- you can't play are only a touch darker, never looking switched off.
@@ -209,6 +270,15 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 	list.Padding = UDim.new(0, math.floor(gap))
 	list.VerticalAlignment = Enum.VerticalAlignment.Top
 	local spread = if count > 1 then math.min(4, 28 / (count - 1)) else 0
+	local hover = hovers[container]
+	if not hover then
+		hover = PlayingCard.hover(container)
+		hovers[container] = hover
+		container.Destroying:Once(function()
+			hovers[container] = nil
+		end)
+	end
+	hover.clear()
 	for index, card in cards do
 		local offset = index - (count + 1) / 2
 		local slot = Kit.new("Frame", {
@@ -240,14 +310,13 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 		end
 		if onClick then
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
-			button.MouseEnter:Connect(function()
+			hover.add(slot, function()
 				slot.ZIndex = 10
 				if shade then
 					shade.Visible = false
 				end
 				TweenService:Create(face, LIFT, { Position = UDim2.fromScale(0, -0.22), Rotation = 0 }):Play()
-			end)
-			button.MouseLeave:Connect(function()
+			end, function()
 				slot.ZIndex = 1
 				if shade then
 					shade.Visible = true
