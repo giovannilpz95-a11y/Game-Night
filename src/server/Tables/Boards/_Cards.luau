@@ -129,12 +129,12 @@ function Cards.messyPile(folder: Instance, boardCF: CFrame, layout: Scene.Layout
 	if n > shown then
 		base = Scene.pile(folder, center, n - shown, false)
 	end
-	local spread = 0.22 * (scale or 1)
+	local spread = 0.3 * (scale or 1)
 	for k = 1, shown do
 		local index = n - shown + k -- position in the whole pile, so seeds stay put as it grows
 		local item = items[index]
 		local rng = Random.new(index * 7919 + 17)
-		local twist = rng:NextNumber(-16, 16)
+		local twist = rng:NextNumber(-22, 22)
 		local nudge = Vector3.new(rng:NextNumber(-1, 1), 0, rng:NextNumber(-1, 1)) * spread
 		local info = item.seat and layout.seats[item.seat]
 		local yaw: number
@@ -177,7 +177,6 @@ function Cards.speech(folder: Instance, boardCF: CFrame, layout: Scene.Layout, s
 	pad.PaddingTop, pad.PaddingBottom = UDim.new(0.12, 0), UDim.new(0.12, 0)
 	pad.Parent = label
 	local gui = label.Parent :: BillboardGui
-	gui.AlwaysOnTop = true
 	gui.MaxDistance = 60
 end
 

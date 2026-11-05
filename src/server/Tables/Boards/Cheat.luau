@@ -25,12 +25,12 @@ function Cheat.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 		local reveal = view.reveal
 		if reveal and view.phase == "reveal" then
 			Cards.speech(folder, boardCF, layout, reveal.doubter, "I doubt it!", Color3.fromRGB(255, 200, 200))
-		elseif play and view.phase == "doubt" then
-			-- The claim, said out loud: the whole game is whether you believe it.
-			Cards.speech(folder, boardCF, layout, play.seat, Cards.rankSaid(play.rank, play.count))
 			for i, id in reveal.cards or {} do
 				Scene.card(folder, Cards.center(boardCF, (i - (#reveal.cards + 1) / 2) * 0.8, 1.1), Scene.playingFront(PlayingCards, id))
 			end
+		elseif play and view.phase == "doubt" then
+			-- The claim, said out loud: the whole game is whether you believe it.
+			Cards.speech(folder, boardCF, layout, play.seat, Cards.rankSaid(play.rank, play.count))
 		end
 	end, Color3.fromRGB(70, 52, 110))
 end
