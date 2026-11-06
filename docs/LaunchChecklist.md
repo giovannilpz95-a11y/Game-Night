@@ -47,9 +47,10 @@ Create each under Creator Hub > Game Night > Monetization, then paste the ID int
 
 ## 5. Store art
 
-- [ ] Icon (concept in `/mnt/project-files/store-page/`)
-- [ ] Thumbnails shot in the furnished lobby, not on the grey baseplate ([[Store page]])
-- [ ] Trailer: real gameplay only, no voice-over, no lyric music
+- [ ] Icon: upload `store-assets/icon/icon-1024.png` from the project files ([[Store page]])
+- [ ] Thumbnails: upload `store-assets/thumbnails/` 01 to 05 plus five extras, personalization on for 01 to 05
+- [ ] Description: paste the 29-game version from [[Store page]]
+- [ ] Trailer: record the 30-second shot list in [[Store page]] in Studio (real gameplay only, no voice-over, no lyric music)
 
 ## 6. Clean up GitHub branches
 
