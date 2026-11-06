@@ -5,7 +5,7 @@
 -- pile, then throw one card away (not the one you just took from the discard pile).
 -- Instead of drawing you may knock (after the first time around): everyone else gets one
 -- last turn, then all hands are shown. The lowest hand loses a life; if the knocker is
--- lowest they lose two. Hitting exactly 31 is a Blitz: hands are shown at once and
+-- lowest alone they lose two, and a knocker tied for lowest is safe. Hitting exactly 31 is a Blitz: hands are shown at once and
 -- everyone else loses a life. No chips and no betting, only lives (shown as hearts).
 -- Out of lives, out of the game. The last player standing wins.
 --
@@ -156,9 +156,19 @@ function reveal(state, blitz: number?)
 		for _, seat in alive do
 			low = math.min(low, value(state.hands[seat], state.trips))
 		end
+		local lowest = {}
 		for _, seat in alive do
 			if value(state.hands[seat], state.trips) == low then
-				lost[tostring(seat)] = if seat == state.knocker and state.knockDouble ~= false then 2 else 1
+				table.insert(lowest, seat)
+			end
+		end
+		-- The knocker pays double only when they're lowest alone. Tied for lowest, the
+		-- knocker is safe and the others tied with them lose (Pagat, Wikipedia, CardzMania).
+		for _, seat in lowest do
+			if seat ~= state.knocker then
+				lost[tostring(seat)] = 1
+			elseif #lowest == 1 then
+				lost[tostring(seat)] = if state.knockDouble ~= false then 2 else 1
 			end
 		end
 	end

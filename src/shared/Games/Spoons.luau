@@ -12,6 +12,10 @@
 -- The deck uses as many ranks as players + 2 (4 cards each), so sets come together at
 -- a good pace with any table size.
 --
+-- A round can jam: say two players each hold a pair of 7s and a pair of 10s, so nobody can
+-- ever get four. After STALL_PASSES passes bots start breaking a pair now and then, and
+-- after MAX_PASSES passes without a grab the round is dealt again (nobody is out).
+--
 -- Moves:
 --   { kind = "pass", card = id }   (pass phase)
 --   { kind = "grab" }              (with four of a kind, or once the scramble starts)
@@ -28,6 +32,8 @@ Spoons.maxSeats = 8
 Spoons.PASS_SECONDS = 8 -- house rule "passSeconds" can change it
 Spoons.SCRAMBLE_SECONDS = 5
 Spoons.REVEAL_SECONDS = 4
+Spoons.STALL_PASSES = 12 -- passes in a round before bots start giving up a pair
+Spoons.MAX_PASSES = 60 -- passes in a round before a fresh deal
 
 local rank = PlayingCards.rank
 
@@ -173,6 +179,12 @@ local function finishPass(state)
 	state.passed = {}
 	state.passNumber += 1
 	state.phaseId += 1
+	if state.passNumber > Spoons.MAX_PASSES then
+		-- Jammed: nobody has got four in all this time. Deal again; nobody goes out.
+		deal(state)
+		state.round -= 1 -- it's the same round, dealt again
+		state.freshDeals = (state.freshDeals or 0) + 1
+	end
 end
 
 local function grabCount(state): number
@@ -315,9 +327,27 @@ function Spoons.applyMove(state, seat: number, move: any)
 	end
 end
 
--- A sensible card to pass: one of the rank we hold fewest of.
-local function worstCard(hand: { number }, rng: Random): number
+-- A sensible card to pass: one of the rank we hold fewest of. In a jammed round (two
+-- pairs each, nobody getting anywhere) sometimes give up a pair instead.
+local function worstCard(hand: { number }, rng: Random, stalled: boolean?): number
 	local counts = PlayingCards.rankCounts(hand)
+	if stalled and rng:NextNumber() < 0.5 then
+		local most = 0
+		for _, n in counts do
+			most = math.max(most, n)
+		end
+		if most <= 2 then
+			local pairs = {}
+			for _, card in hand do
+				if counts[rank(card)] == 2 then
+					table.insert(pairs, card)
+				end
+			end
+			if #pairs > 0 then
+				return pairs[rng:NextInteger(1, #pairs)]
+			end
+		end
+	end
 	local best, bestScore = hand[1], math.huge
 	for _, card in hand do
 		local score = counts[rank(card)] + rng:NextNumber() * 0.5
@@ -427,6 +457,7 @@ function Spoons.getView(state, seat: number?)
 			return list
 		end)(),
 		lastLetter = state.lastLetter,
+		freshDeals = state.freshDeals or 0, -- how many jammed rounds were dealt again
 	}
 end
 
@@ -488,7 +519,7 @@ function Spoons.chooseBotMove(state, seat: number, rng: Random): any?
 	if state.botLevel == "easy" and rng:NextNumber() < 0.35 then
 		return { kind = "pass", card = hand[rng:NextInteger(1, #hand)] }
 	end
-	return { kind = "pass", card = worstCard(hand, rng) }
+	return { kind = "pass", card = worstCard(hand, rng, state.passNumber > Spoons.STALL_PASSES) }
 end
 
 return Spoons

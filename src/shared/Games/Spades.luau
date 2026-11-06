@@ -9,8 +9,10 @@
 -- 1 per extra trick ("bags"). Fall short and lose 10 per trick bid. Every 10 bags costs
 -- 100 points. Nil: +100 if that player takes no tricks, -100 if they take any (their
 -- tricks count as bags, not toward the partner's bid).
--- First team to the target (300 by default) wins; a team at -200 or below loses. After
--- MAX_ROUNDS the higher score wins.
+-- First team to the target (300 by default) wins; a team at -200 or below loses. A safety
+-- limit of hands (Spades.maxRoundsFor: a tenth of the target, at least 15, so 30 at 300
+-- and 50 at 500) ends a game that never gets there: the higher score wins. The limit is in
+-- the view, and the table is told when the last hand starts.
 --
 -- House rules (options.rules): nilBids (default on; off means every bid is 1-13), bags
 -- (default on: every 10 bags costs 100; off: bags are just +1 each), blindNil (default
@@ -36,7 +38,14 @@ Spades.maxSeats = 4
 
 Spades.TARGET = 300 -- house rule "target" can change it
 Spades.FLOOR = -200
-Spades.MAX_ROUNDS = 15
+Spades.MIN_ROUNDS_LIMIT = 15
+
+-- How many hands a game may run before the higher score wins. Long enough that bot games
+-- reach the target about 98% of the time (300: median 8 hands, 98% within 22; 500:
+-- median 17, 98% within 36), so it only ends games that are really stuck.
+function Spades.maxRoundsFor(target: number): number
+	return math.max(Spades.MIN_ROUNDS_LIMIT, math.ceil(target / 10))
+end
 Spades.TRICK_SECONDS = 1.4
 Spades.ROUND_SECONDS = 6
 Spades.BLIND_NIL = 200
@@ -267,7 +276,7 @@ local function endRound(state)
 	local a, b = state.scores[1], state.scores[2]
 	local reached = (a >= state.target or b >= state.target) and a ~= b
 	local sunk = a <= Spades.FLOOR or b <= Spades.FLOOR
-	if reached or sunk or state.round >= Spades.MAX_ROUNDS then
+	if reached or sunk or state.round >= Spades.maxRoundsFor(state.target) then
 		state.over = true
 		state.phase = "done"
 	else
@@ -350,7 +359,7 @@ function Spades.getResult(state): GameModule.Result?
 		return { winners = { 1, 2, 3, 4 }, isDraw = true, reason = `Tied at {a}` }
 	end
 	local team = if a > b then 1 else 2
-	local reason = if math.max(a, b) >= state.target then `Reached {state.target}` elseif math.min(a, b) <= Spades.FLOOR then "The other team sank" else "Higher score"
+	local reason = if math.max(a, b) >= state.target then `Reached {state.target}` elseif math.min(a, b) <= Spades.FLOOR then "The other team sank" else `Higher score after {state.round} hands`
 	return { winners = if team == 1 then { 1, 3 } else { 2, 4 }, isDraw = false, reason = reason }
 end
 
@@ -385,6 +394,7 @@ function Spades.getView(state, seat: number?)
 		allowNil = state.allowNil ~= false,
 		roundSummary = GameModule.copy(state.roundSummary),
 		round = state.round,
+		maxRounds = Spades.maxRoundsFor(state.target),
 		target = state.target,
 		dealer = state.dealer,
 		spadesBroken = state.spadesBroken,

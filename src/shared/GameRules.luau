@@ -463,7 +463,7 @@ rules.Spades = {
 		{ title = "Bidding", lines = { "Everyone bids 0-13 tricks. A bid of 0 is Nil: +100 if you take none, -100 if you take any." } },
 		{ title = "Tricks", lines = { "Follow suit if you can. Highest spade wins, or else the highest card of the led suit.", "Spades can't be led until one has been played (unless you have only spades)." } },
 		{ title = "Scoring", lines = { "Make your team's bid: 10 per trick bid, plus 1 per extra trick (a bag).", "Fall short: lose 10 per trick bid. Every 10 bags costs 100." } },
-		{ title = "Winning", lines = { "First team to the target wins. A team at -200 loses." } },
+		{ title = "Winning", lines = { "First team to the target wins. A team at -200 loses.", "A game that runs very long (30 hands at 300, 50 at 500) ends after its last hand: higher score wins." } },
 	},
 }
 
@@ -477,7 +477,7 @@ rules.ThirtyOne = {
 	sections = {
 		{ title = "Hand value", lines = { "Only your best suit counts. Aces are 11, face cards 10, others their number." } },
 		{ title = "Your turn", lines = { "Take the top card of the stock or discard pile, then discard one (not the one you just took from the discard).", "Or knock instead of drawing (after the first time around)." } },
-		{ title = "Showdown", lines = { "After a knock, everyone else gets one last turn, then hands are shown.", "The lowest hand loses a life. A knocker who is lowest loses two.", "Hit exactly 31 for a Blitz: everyone else loses a life." } },
+		{ title = "Showdown", lines = { "After a knock, everyone else gets one last turn, then hands are shown.", "The lowest hand loses a life. A knocker who is lowest alone loses two; tied for lowest, the knocker is safe.", "Hit exactly 31 for a Blitz: everyone else loses a life." } },
 		{ title = "Winning", lines = { "Out of lives, out of the game. Last player standing wins." } },
 	},
 }
