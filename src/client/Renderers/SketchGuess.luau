@@ -7,10 +7,14 @@
 --            only the right DOCK_SHARE of the board shows (MatchView's DOCK entry).
 --
 -- Drawer: pick 1 of 3 words, then draw with the pen or the line / box / oval tools,
--- 14 colors (white is the eraser), 4 sizes, fill for boxes and ovals, undo and clear.
+-- 14 colors (white is the eraser), 4 sizes, Solid for filled boxes and ovals, the Fill
+-- bucket (a flood fill, see shared/SketchFill), undo and clear. Keyboard: P L B O F, Ctrl+Z.
 -- Pen lines are drawn locally right away and sent in small chunks (about 5 a second) so
 -- everyone sees the drawing build up live. Touch follows one finger only.
--- Guessers: type guesses in the box. Near misses get a private "close!" note.
+-- Guessers: type guesses in the box. Near misses get a private "close!" note. Once you
+-- got it, the box chats with the drawer and the others who got it (nobody else sees it).
+-- Like / dislike: thumbs under the drawing, and at the reveal. After the last drawing the
+-- gallery shows the most liked drawings of the game.
 -- Moderation: anyone can hide a drawing on their own screen (and the screen over the
 -- table), vote to skip it, or report it. Reporting hides that player's drawings for you
 -- for the rest of the match, counts as a skip vote, and can block them through Roblox.
@@ -26,6 +30,8 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Rules = require(ReplicatedStorage.Shared.Games.SketchGuess)
 local SketchCanvas = require(ReplicatedStorage.Shared.SketchCanvas)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local Juice = require(script.Parent.Parent.UI.Juice)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local SketchGuess = {}
@@ -43,6 +49,14 @@ local TOOLS = {
 	{ id = "line", label = "Line" },
 	{ id = "rect", label = "Box" },
 	{ id = "ellipse", label = "Oval" },
+	{ id = "bucket", label = "Fill" },
+}
+local SHORTCUTS = {
+	[Enum.KeyCode.P] = "pen",
+	[Enum.KeyCode.L] = "line",
+	[Enum.KeyCode.B] = "rect",
+	[Enum.KeyCode.O] = "ellipse",
+	[Enum.KeyCode.F] = "bucket",
 }
 
 function SketchGuess.create(container: Frame, sendMove: (any) -> ())
@@ -128,7 +142,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	local swatchButtons: { TextButton } = {}
 	local sizeButtons: { TextButton } = {}
 	local toolButtons: { [string]: TextButton } = {}
-	local fillButton: TextButton
+	local fillButton: TextButton -- "Solid": filled boxes and ovals
 
 	local function refreshTools()
 		for i, b in swatchButtons do
@@ -197,7 +211,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			refreshTools()
 		end)
 	end
-	fillButton = toolButton("Fill", 20, function()
+	fillButton = toolButton("Solid", 20, function()
 		fill = not fill
 		if tool ~= "rect" and tool ~= "ellipse" then
 			tool = "rect"
@@ -244,6 +258,13 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	local reportButton = barButton("Report", 3, function()
 		reportPrompt.Visible = true
 	end, Theme.Bad)
+	local likeButton = barButton("👍", 4, function()
+		sendMove({ kind = "rate", up = true })
+	end)
+	local dislikeButton = barButton("👎", 5, function()
+		sendMove({ kind = "rate", up = false })
+	end)
+	local barButtons = { hideButton, skipVoteButton, reportButton, likeButton, dislikeButton }
 
 	-- Guesses -------------------------------------------------------------------------
 
@@ -283,7 +304,8 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		lastGuessAt = os.clock()
-		sendMove({ kind = "guess", text = text })
+		local view = snapshot and snapshot.view
+		sendMove({ kind = if view and view.youGuessed then "chat" else "guess", text = text })
 	end)
 
 	-- Report prompt ---------------------------------------------------------------------
@@ -393,7 +415,8 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		local drawing = amDrawing()
 		local guessing = amGuessing()
 		local view = snapshot and snapshot.view
-		local canGuess = guessing and view and not view.youGuessed
+		-- Guessers always have the box: after a right guess it's the "got it" chat.
+		local canGuess = guessing and view ~= nil
 
 		local stacked = docked or W < 560 or W < H * 1.15
 		local x0, colW = 0, W
@@ -443,8 +466,9 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			if canGuess then
 				place(guessBox, x0, H - boxH, colW, boxH)
 			end
-			for _, b in { hideButton, skipVoteButton, reportButton } do
-				b.Size = UDim2.new(1 / 3, -GAP, 1, 0)
+			for _, b in barButtons do
+				local share = if b == likeButton or b == dislikeButton then 0.13 else 0.24
+				b.Size = UDim2.new(share, -GAP, 1, 0)
 			end
 		else
 			local leftW = W * 0.68 - 10
@@ -469,8 +493,9 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			end
 			if guessing then
 				place(guesserBar, 0, H - 38, leftW, 38)
-				for _, b in { hideButton, skipVoteButton, reportButton } do
-					b.Size = UDim2.fromOffset(130, 38)
+				for _, b in barButtons do
+					local share = if b == likeButton or b == dislikeButton then 0.12 else 0.2
+					b.Size = UDim2.new(share, -GAP, 1, 0)
 				end
 			end
 			local boxH = if canGuess then 44 else 0
@@ -497,6 +522,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 
 	local rendered = 0 -- how many of the server's strokes are on the canvas
 	local renderedLast: string? = nil
+	local raster = SketchCanvas.newRaster() -- where fill buckets spread
 
 	-- Drawer's own lines and shapes that the server hasn't echoed yet.
 	local previewChunks: { Frame } = {}
@@ -518,9 +544,10 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 
 	local function redrawAll()
 		strokeLayer:ClearAllChildren()
+		raster:reset()
 		local strokes = snapshot and snapshot.view.strokes or {}
 		for _, s in strokes do
-			SketchCanvas.draw(strokeLayer, s, canvasSize, { round = true })
+			SketchCanvas.draw(strokeLayer, s, canvasSize, { round = true, raster = raster })
 		end
 		rendered = #strokes
 		renderedLast = if rendered > 0 then strokes[rendered].points else nil
@@ -535,7 +562,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		for i = rendered + 1, #strokes do
-			SketchCanvas.draw(strokeLayer, strokes[i], canvasSize, { round = true })
+			SketchCanvas.draw(strokeLayer, strokes[i], canvasSize, { round = true, raster = raster })
 			-- The server now has one of our chunks: drop its preview copy.
 			local oldest = table.remove(previewChunks, 1)
 			table.remove(previewSentAt, 1)
@@ -682,6 +709,21 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if tool == "bucket" then
+				-- One tap pours the fill. It shows when the server echoes it (the area depends
+				-- on the whole drawing); the empty placeholder keeps the preview queue in step.
+				local view = snapshot.view
+				if (view.buckets or 0) >= (view.maxBuckets or math.huge) then
+					Juice.nope(toolButtons.bucket)
+					return
+				end
+				local x, y = toCanvas(screenPos(input))
+				sendMove({ kind = "bucket", color = brushColor, points = Rules.encodePoints({ x, y }) })
+				table.insert(previewChunks, newLiveFrame())
+				table.insert(previewSentAt, os.clock())
+				Audio.play("pop", { volume = 0.5 })
+				return
+			end
 			drawing = true
 			activeInput = input
 			liveTool = if snapshot.view.tools == "shapes" and tool == "pen" then "line" else tool
@@ -747,6 +789,57 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end)
 
+	-- Keyboard shortcuts for the drawer on a computer (not while typing in a box).
+	local keys = UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or input.UserInputType ~= Enum.UserInputType.Keyboard or not isDrawer() then
+			return
+		end
+		if UserInputService:GetFocusedTextBox() then
+			return
+		end
+		local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+		if input.KeyCode == Enum.KeyCode.Z and ctrl then
+			sendMove({ kind = "undo" })
+			return
+		end
+		local pick = SHORTCUTS[input.KeyCode]
+		if pick and not ctrl and toolButtons[pick] and toolButtons[pick].Visible then
+			tool = pick
+			refreshTools()
+			Juice.bump(toolButtons[pick])
+		end
+	end)
+
+	-- A ring under the mouse showing the brush size and color (drawer, mouse only).
+	local mousePos = Vector2.new(-1e4, -1e4)
+	local cursor = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Visible = false,
+		ZIndex = 5,
+		Parent = canvas,
+	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(120, 120, 130) }) })
+	local function updateCursor()
+		local show = isDrawer() and not overlay.Visible and UserInputService.MouseEnabled and not UserInputService.TouchEnabled
+		local rel = mousePos - canvas.AbsolutePosition
+		local inside = rel.X >= 0 and rel.Y >= 0 and rel.X <= canvas.AbsoluteSize.X and rel.Y <= canvas.AbsoluteSize.Y
+		cursor.Visible = show and inside
+		if cursor.Visible then
+			local d = if tool == "bucket" then 10 else math.max(4, SketchCanvas.width(brushSize, canvasSize))
+			cursor.Size = UDim2.fromOffset(d, d)
+			cursor.Position = UDim2.fromOffset(rel.X, rel.Y)
+			local stroke = cursor:FindFirstChildOfClass("UIStroke") :: UIStroke
+			stroke.Color = if brushColor == 2 then Color3.fromRGB(120, 120, 130) else SketchCanvas.color(brushColor)
+		end
+	end
+	-- Same space as the drawing input (see screenPos), so the ring sits on the pen.
+	local cursorMoved = UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			mousePos = screenPos(input)
+		end
+	end)
+	local cursorBeat = RunService.RenderStepped:Connect(updateCursor)
+
 	-- Rendering -------------------------------------------------------------------------
 
 	local function nameOf(seat: number?): string
@@ -758,6 +851,40 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local feedKey = ""
+	local heardKey: string? = nil -- the newest feed entry we've played a sound for
+	local function playFeedSounds(feed: { any })
+		local last = feed[#feed]
+		local key = if last then `{last.kind}:{last.seat}:{last.text}:{#feed}` else ""
+		if heardKey == nil or key == heardKey then
+			heardKey = key -- first look at this match: don't replay what already happened
+			return
+		end
+		-- Walk back to the entries we haven't heard yet (at most a few per update).
+		local start = #feed
+		for i = #feed, math.max(1, #feed - 5), -1 do
+			local e = feed[i]
+			if `{e.kind}:{e.seat}:{e.text}:{i}` == heardKey then
+				break
+			end
+			start = i
+		end
+		heardKey = key
+		for i = start, #feed do
+			local e = feed[i]
+			if e.kind == "correct" then
+				if e.seat == snapshot.yourSeat then
+					Audio.coins(4)
+				else
+					Audio.play("callout")
+				end
+			elseif e.kind == "close" then
+				Audio.play("pop")
+			elseif e.kind == "like" then
+				Audio.play("toggle", { volume = 0.6 })
+			end
+		end
+	end
+
 	local function renderFeed(view: any)
 		local feed = view.feed
 		local last = feed[#feed]
@@ -766,6 +893,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		feedKey = key
+		playFeedSounds(feed)
 		Kit.clear(feedFrame)
 		for i, entry in feed do
 			local who = if entry.seat then nameOf(entry.seat) else ""
@@ -780,13 +908,20 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			elseif entry.kind == "close" then
 				text = entry.text
 				color = Theme.Accent
+			elseif entry.kind == "like" then
+				text = `👍 {who} {entry.text}`
+				color = Theme.SubText
+			elseif entry.kind == "chat" then
+				-- Only players who know the word get these.
+				text = `✓ {who}: {entry.text}`
+				color = Theme.Good
 			else
 				text = `{who}: {entry.text}`
 			end
 			Kit.label(text, {
 				TextSize = 15,
 				TextColor3 = color,
-				Font = if entry.kind == "guess" then Theme.Font else Theme.FontBold,
+				Font = if entry.kind == "guess" or entry.kind == "chat" then Theme.Font else Theme.FontBold,
 				AutomaticSize = Enum.AutomaticSize.Y,
 				Size = UDim2.new(1, -6, 0, 18),
 				LayoutOrder = i,
@@ -814,8 +949,82 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		return label
 	end
 
+	-- After the last drawing: the most liked drawings of the game, small, two by two.
+	-- Drawings by players you reported, or ones you hid, stay out of it.
+	local function renderGallery(view: any)
+		overlayLabel("Best drawings", 1)
+		local entries = {}
+		for _, e in view.gallery or {} do
+			if not hiddenDrawers[e.drawer] and hiddenTurn ~= e.turn then
+				table.insert(entries, e)
+			end
+		end
+		if #entries == 0 then
+			overlayLabel("Nothing to show this time.", 2, { Font = Theme.Font, TextColor3 = Theme.SubText, TextSize = math.max(13, overlayTitleSize - 6) })
+			return
+		end
+		local area = canvas.AbsoluteSize
+		local cols = if #entries == 1 then 1 else 2
+		local rows = math.ceil(#entries / cols)
+		local captionH = math.clamp(math.floor(area.Y / 16), 12, 18)
+		local availH = area.Y - 16 - (overlayTitleSize + 4) - 6
+		local cellH = math.floor((availH - (rows - 1) * GAP) / rows)
+		local thumbH = math.max(20, cellH - captionH - 2)
+		local thumbW = math.min(math.floor(thumbH * CANVAS_RATIO), math.floor((area.X - 16 - (cols - 1) * GAP) / cols))
+		thumbH = math.floor(thumbW / CANVAS_RATIO)
+		local grid = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, rows * (thumbH + captionH + 2) + (rows - 1) * GAP),
+			LayoutOrder = 2,
+			ZIndex = 11,
+			Parent = overlay,
+		})
+		Kit.new("UIGridLayout", {
+			CellSize = UDim2.fromOffset(thumbW, thumbH + captionH + 2),
+			CellPadding = UDim2.fromOffset(GAP, GAP),
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = grid,
+		})
+		for i, e in entries do
+			local cell = Kit.new("Frame", { BackgroundTransparency = 1, LayoutOrder = i, ZIndex = 11, Parent = grid })
+			local thumb = Kit.new("Frame", {
+				BackgroundColor3 = Color3.new(1, 1, 1),
+				BorderSizePixel = 0,
+				Size = UDim2.fromOffset(thumbW, thumbH),
+				ClipsDescendants = true,
+				ZIndex = 11,
+				Parent = cell,
+			}, { Kit.corner(8) })
+			local thumbRaster = SketchCanvas.newRaster()
+			local budget = 350
+			for _, stroke in e.strokes do
+				budget -= SketchCanvas.draw(thumb, stroke, Vector2.new(thumbW, thumbH), { raster = thumbRaster, budget = budget })
+			end
+			for _, d in thumb:GetDescendants() do
+				if d:IsA("GuiObject") then
+					d.ZIndex = 12
+				end
+			end
+			local crown = if i == 1 and e.likes > 0 then "🏆 " else ""
+			local likes = if e.likes > 0 then `  👍 {e.likes}` else ""
+			Kit.label(`{crown}{e.word} · {nameOf(e.drawer)}{likes}`, {
+				TextSize = captionH - 2,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Position = UDim2.fromOffset(0, thumbH + 2),
+				Size = UDim2.fromOffset(thumbW, captionH),
+				ZIndex = 12,
+				Parent = cell,
+			})
+			Juice.popIn(cell)
+		end
+	end
+
 	function renderOverlay(view: any, force: boolean?)
-		local key = `{view.phase}:{view.turnNumber}`
+		local key = `{view.phase}:{view.turnNumber}:{view.likes or 0}:{tostring(view.youLiked)}`
+		if view.phase ~= "reveal" then
+			key = `{view.phase}:{view.turnNumber}`
+		end
 		if key == overlayKey and not force then
 			return
 		end
@@ -829,24 +1038,37 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			overlay.Visible = true
 			if view.choices then
 				overlayLabel("Pick a word to draw", 1)
+				local count = #view.choices
+				local h = if count > 3 then math.max(24, math.floor(overlayButtonH * 0.72)) else overlayButtonH
 				for i, word in view.choices do
 					local label = string.split(word, "|")[1]
-					Kit.button(`{label}   ({({ "easy", "medium", "hard" })[i] or "?"})`, function()
+					local level = view.choiceLevels and view.choiceLevels[i]
+					local b = Kit.button(if level then `{label}   ({level})` else label, function()
 						sendMove({ kind = "choose", index = i })
 					end, {
-						Size = UDim2.new(0.9, 0, 0, overlayButtonH),
-						TextSize = math.clamp(overlayButtonH - 22, 13, 18),
+						Size = UDim2.new(0.9, 0, 0, h),
+						TextSize = math.clamp(h - 22, 13, 18),
 						LayoutOrder = 1 + i,
 						ZIndex = 12,
 						Parent = overlay,
 					})
+					Juice.popIn(b)
+				end
+				if not force then
+					Audio.play("turn")
 				end
 			else
 				overlayLabel(`{nameOf(view.drawer)} {if view.drawer == me then "are" else "is"} picking a word...`, 1)
 			end
+		elseif view.phase == "gallery" then
+			overlay.Visible = true
+			renderGallery(view)
 		elseif view.phase == "reveal" or view.phase == "done" then
 			overlay.Visible = true
 			overlayLabel(if view.word then `The word was "{view.word}"` else "Round over", 1)
+			if view.phase == "reveal" and (view.likes or 0) > 0 then
+				overlayLabel(`👍 {view.likes}`, 2, { TextSize = math.max(13, overlayTitleSize - 8), TextColor3 = Theme.SubText })
+			end
 			local order = {}
 			for seat, points in view.lastPoints or {} do
 				table.insert(order, { seat = seat, points = points })
@@ -861,7 +1083,26 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 				if i > 6 then
 					break
 				end
-				overlayLabel(`{nameOf(row.seat)}   +{row.points}`, 1 + i, { TextColor3 = Theme.Good, TextSize = math.max(13, overlayTitleSize - 6) })
+				overlayLabel(`{nameOf(row.seat)}   +{row.points}`, 2 + i, { TextColor3 = Theme.Good, TextSize = math.max(13, overlayTitleSize - 6) })
+			end
+			-- Rate it before the next one starts (skribbl's thumbs at the turn's end).
+			if view.phase == "reveal" and me ~= nil and me ~= view.drawer and view.youLiked == nil and #view.strokes > 0 then
+				local row = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, overlayButtonH), LayoutOrder = 20, ZIndex = 11, Parent = overlay })
+				local list = Kit.list(GAP, true)
+				list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+				list.Parent = row
+				for i, up in { true, false } do
+					Kit.button(if up then "👍" else "👎", function()
+						sendMove({ kind = "rate", up = up })
+					end, {
+						Size = UDim2.fromOffset(overlayButtonH * 1.6, overlayButtonH),
+						TextSize = math.clamp(overlayButtonH - 16, 14, 26),
+						BackgroundColor3 = Theme.PanelLight,
+						LayoutOrder = i,
+						ZIndex = 12,
+						Parent = row,
+					})
+				end
 			end
 		else
 			overlay.Visible = false
@@ -908,6 +1149,8 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			end
 		elseif view.phase == "choose" then
 			wordBar.Text = `Drawing {view.turnNumber} of {view.totalTurns}`
+		elseif view.phase == "gallery" then
+			wordBar.Text = "Gallery"
 		else
 			wordBar.Text = ""
 		end
@@ -921,6 +1164,9 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		local drawerSeat = snapshot.seats[view.drawer]
 		local drawerIsBot = view.drawerIsBot or (drawerSeat ~= nil and drawerSeat.kind == "bot")
 		skipVoteButton.Visible = not view.youVotedSkip
+		likeButton.BackgroundColor3 = if view.youLiked == true then Theme.Good else Theme.PanelLight
+		dislikeButton.BackgroundColor3 = if view.youLiked == false then Theme.Bad else Theme.PanelLight
+		guessBox.PlaceholderText = if view.youGuessed then "Chat with players who got it..." else "Type your guess..."
 		reportButton.Visible = not view.youReported and not drawerIsBot
 		if not amGuessing() or not reportButton.Visible then
 			reportPrompt.Visible = false
@@ -930,9 +1176,12 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		strokeLayer.Visible = not hidden
 		hiddenLabel.Visible = hidden
 		hideButton.Text = if hidden then "Show" else "Hide"
-		setScreenHidden(hidden)
+		-- The screen over the table shows the gallery's best drawing at the end.
+		local best = view.phase == "gallery" and view.gallery and view.gallery[1]
+		local bestHidden = best and (hiddenDrawers[best.drawer] == true or hiddenTurn == best.turn)
+		setScreenHidden(hidden or bestHidden == true)
 
-		if not guessBox.Visible or view.youGuessed then
+		if not guessBox.Visible then
 			guessBox:ReleaseFocus()
 		end
 		if not isDrawer() and drawing then
@@ -972,6 +1221,9 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			moved:Disconnect()
 			ended:Disconnect()
 			heartbeat:Disconnect()
+			keys:Disconnect()
+			cursorBeat:Disconnect()
+			cursorMoved:Disconnect()
 			root:Destroy()
 		end,
 	}

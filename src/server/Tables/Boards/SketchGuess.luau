@@ -35,23 +35,31 @@ function SketchGuess.create(boardCF: CFrame, parent: Instance, _layout: Scene.La
 
 	local rendered = 0
 	local renderedLast: string? = nil
+	local raster = SketchCanvas.newRaster() -- one for all four sides: fill buckets
 
 	local function drawStroke(s: any)
+		local rects = raster:add(s)
 		for _, side in sides do
-			side.segments += SketchCanvas.draw(side.canvas, s, CANVAS, { budget = MAX_SEGMENTS - side.segments })
+			side.segments += SketchCanvas.draw(side.canvas, s, CANVAS, { budget = MAX_SEGMENTS - side.segments, rects = rects })
 		end
 	end
 
 	return {
 		model = model,
-		update = function(view: any, _snapshot: any)
+		update = function(view: any, snapshot: any)
 			local strokes = view.strokes or {}
+			-- The gallery at the end: the most liked drawing goes back up.
+			local best = view.gallery and view.gallery[1]
+			if best then
+				strokes = best.strokes
+			end
 			local consistent = #strokes >= rendered and (rendered == 0 or (strokes[rendered] and strokes[rendered].points == renderedLast))
 			if not consistent then
 				for _, side in sides do
 					side.canvas:ClearAllChildren()
 					side.segments = 0
 				end
+				raster:reset()
 				rendered = 0
 			end
 			for i = rendered + 1, #strokes do
@@ -62,6 +70,10 @@ function SketchGuess.create(boardCF: CFrame, parent: Instance, _layout: Scene.La
 
 			-- The spectator view never has the word until the reveal.
 			local caption = if view.word then string.upper(view.word) elseif view.hint then view.hint else (view.status or "")
+			if best then
+				local seat = snapshot and snapshot.seats and snapshot.seats[best.drawer]
+				caption = `BEST DRAWING: {string.upper(best.word)}{if seat and seat.name then ` BY {string.upper(seat.name)}` else ""}`
+			end
 			for _, side in sides do
 				side.caption.Text = caption
 			end

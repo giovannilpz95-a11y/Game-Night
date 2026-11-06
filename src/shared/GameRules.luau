@@ -287,8 +287,10 @@ rules.SketchGuess = {
 			title = "Drawing",
 			lines = {
 				"Pick one of three words: easy, medium or hard.",
-				"Draw with the pen, or the line, box and oval tools (tap Fill for solid boxes and ovals). White is the eraser.",
-				"Undo takes back your last line or shape. You score for every player who guesses it.",
+				"Draw with the pen, or the line, box and oval tools (tap Solid for filled boxes and ovals). White is the eraser.",
+				"Fill pours your color into a closed area, like a paint bucket.",
+				"Undo takes back your last line, shape or fill. You score for every player who guesses it.",
+				"On a computer: P pen, L line, B box, O oval, F fill, Ctrl+Z undo.",
 			},
 		},
 		{
@@ -296,6 +298,8 @@ rules.SketchGuess = {
 			lines = {
 				"Type guesses in the box. A right guess scores more the earlier it comes, and nobody sees what you typed.",
 				"One letter off? Only you get a \"close!\" note.",
+				"Got it? Keep typing to chat with the drawer and the others who got it. Nobody else sees it.",
+				"Tap the thumbs to like or dislike a drawing.",
 			},
 		},
 		{
@@ -307,7 +311,7 @@ rules.SketchGuess = {
 			},
 		},
 		{ title = "Bots", lines = { "With fewer than 3 players, bots take turns drawing simple doodles. Bots always guess." } },
-		{ title = "Winning", lines = { "After everyone has drawn, the highest score wins." } },
+		{ title = "Winning", lines = { "After everyone has drawn, the gallery shows the most liked drawings, and the highest score wins." } },
 	},
 }
 

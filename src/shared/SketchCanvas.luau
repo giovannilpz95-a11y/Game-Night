@@ -9,15 +9,44 @@
 -- oval is a ring of short lines, or stacked bars when filled. opts.round gives line ends
 -- round caps (nicer, but one more instance each); opts.budget caps how many Frames one
 -- call may make (busy drawings stop adding detail instead of piling up instances).
+-- Fill bucket strokes need opts.raster (SketchCanvas.newRaster(), fed every stroke in
+-- order and reset when the canvas is redrawn); without it a bucket draws nothing.
 
 local Rules = require(script.Parent.Games.SketchGuess)
+local SketchFill = require(script.Parent.SketchFill)
 
 local SketchCanvas = {}
 
 local BASE_WIDTH = 600 -- brush sizes are in pixels on a canvas this wide
 local OVAL_SIDES = 28
 
-export type Options = { round: boolean?, budget: number? }
+export type Options = { round: boolean?, budget: number?, raster: any?, rects: { { number } }? }
+
+-- Tracks the drawing so fill buckets know their area (see shared/SketchFill).
+function SketchCanvas.newRaster()
+	return SketchFill.new()
+end
+
+-- A bucket's area as Frames: one per rect, a touch bigger so no seams show at the edges.
+local function drawFill(parent: Instance, rects: { { number } }, stroke: any, canvasSize: Vector2, budget: number): number
+	local color = SketchCanvas.color(stroke.color)
+	local sx, sy = canvasSize.X / SketchFill.W, canvasSize.Y / SketchFill.H
+	local grow = 0.4
+	local made = 0
+	for _, r in rects do
+		if made >= budget then
+			break
+		end
+		made += 1
+		local f = Instance.new("Frame")
+		f.BackgroundColor3 = color
+		f.BorderSizePixel = 0
+		f.Position = UDim2.fromOffset((r[1] - grow) * sx, (r[2] - grow) * sy)
+		f.Size = UDim2.fromOffset((r[3] + 2 * grow) * sx, (r[4] + 2 * grow) * sy)
+		f.Parent = parent
+	end
+	return made
+end
 
 local function toColor(rgb: { number }): Color3
 	return Color3.fromRGB(rgb[1], rgb[2], rgb[3])
@@ -32,6 +61,13 @@ function SketchCanvas.width(sizeIndex: number, canvasSize: Vector2): number
 end
 
 function SketchCanvas.draw(parent: Instance, stroke: any, canvasSize: Vector2, opts: Options?): number
+	-- opts.rects: a bucket's area already worked out (one raster shared by several canvases).
+	local raster = opts and opts.raster
+	local rects = if opts and opts.rects then opts.rects elseif raster then raster:add(stroke) else nil
+	if stroke.shape == "bucket" then
+		local budget = if opts and opts.budget then opts.budget else math.huge
+		return if rects and budget > 0 then drawFill(parent, rects, stroke, canvasSize, budget) else 0
+	end
 	local points = Rules.decodePoints(stroke.points or "")
 	if not points then
 		return 0
@@ -85,7 +121,9 @@ function SketchCanvas.drawPoints(parent: Instance, points: { number }, stroke: a
 	end
 
 	local shape = stroke.shape
-	if shape == nil then
+	if shape == "bucket" then
+		return made -- drawn by draw(), which has the raster
+	elseif shape == nil then
 		if #points == 2 then
 			local p = px(points[1], points[2])
 			segment(p, p)
