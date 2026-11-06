@@ -391,7 +391,15 @@ function WordTiles.new(seatCount: number, options: any?, rng: Random?)
 		finished = false,
 		reason = nil,
 		botLevel = (options and options.botLevel) or "medium",
+		-- Hindsight, like Words With Friends and Scrabble GO: after each of your plays,
+		-- the best play your rack had. Only you see yours. Bots don't need it.
+		bots = {} :: { [number]: boolean },
+		hindsight = {} :: { [number]: any }, -- seat -> { word, score, played }
+		biggestMiss = {} :: { [number]: any }, -- seat -> the play that left most on the table
 	}
+	for _, seat in (options and options.bots) or {} do
+		state.bots[seat] = true
+	end
 	for seat = 1, seatCount do
 		state.racks[seat] = {}
 		state.scores[seat] = 0
@@ -544,6 +552,7 @@ function WordTiles.applyMove(state, seat: number, move: any)
 	if move.kind == "place" then
 		local result, tiles = checkPlacement(state, seat, move)
 		assert(result and tiles, "applyMove called with an invalid placement")
+		WordTiles._hindsight(state, seat, result)
 		play.cells = {}
 		for _, t in tiles do
 			state.board[t.row][t.col] = if t.blank then string.upper(t.letter) else t.letter
@@ -685,6 +694,9 @@ function WordTiles.getView(state, seat: number?)
 		canExchange = #state.bag >= EXCHANGE_MIN_BAG,
 		lastPlay = GameModule.copy(state.lastPlay),
 		log = GameModule.copy(state.log),
+		-- Your own hindsight only: it is made from your rack.
+		hindsight = if seat then GameModule.copy(state.hindsight[seat]) else nil,
+		biggestMiss = if seat and state.finished then GameModule.copy(state.biggestMiss[seat]) else nil,
 	}
 end
 
@@ -1017,6 +1029,37 @@ local function findPlays(state, rack: { string }, dict: WordTrie.Trie): { any }
 	return plays
 end
 WordTiles._findPlays = findPlays -- for tests
+
+-- Before a play lands: what was the highest-scoring play on that rack? Saved for the
+-- player (view.hindsight) and kept if it's the most they left on the table all game.
+function WordTiles._hindsight(state, seat: number, result: any)
+	local dict = getDictionary()
+	if state.bots[seat] or not dict then
+		return
+	end
+	local best = nil
+	for _, play in findPlays(state, state.racks[seat], dict) do
+		if best == nil or play.score > best.score then
+			best = play
+		end
+	end
+	if best == nil or best.score <= result.score then
+		state.hindsight[seat] = { best = true, played = result.score, turn = state.turns + 1 }
+		return
+	end
+	local found = WordTiles.evaluate(state.board, state.premium, best.tiles)
+	local word = if found and found.words[1] then string.upper(found.words[1].word) else "?"
+	local cells = {}
+	for _, t in best.tiles do
+		table.insert(cells, { t.row, t.col })
+	end
+	local entry = { word = word, score = best.score, played = result.score, cells = cells, turn = state.turns + 1 }
+	state.hindsight[seat] = entry
+	local miss = state.biggestMiss[seat]
+	if miss == nil or entry.score - entry.played > miss.score - miss.played then
+		state.biggestMiss[seat] = entry
+	end
+end
 
 -- Swaps the clunky tiles (keeps blanks and one S).
 local function exchangeMove(rack: { string })

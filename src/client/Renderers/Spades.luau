@@ -19,6 +19,8 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 	local ui = CardTable.layout(container)
 	local afterHand = CardFx.tricks(ui.felt)
 	local render: () -> ()
+	local peekLast = false -- showing the last trick instead of the current one
+	local wasBroken: boolean? = nil
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -30,6 +32,12 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 
 	function render()
 		local view = snapshot.view
+		-- Last trick peek (Trickster, Spades Plus, Windows Hearts): look back at the trick
+		-- that just went while the next one is played.
+		local canPeek = view.lastTrick ~= nil and view.phase == "play"
+		if not canPeek then
+			peekLast = false
+		end
 		local me = snapshot.yourSeat
 		local active = CardTable.isActive(snapshot, me)
 		local bidding = active and view.phase == "bid"
@@ -42,7 +50,7 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			local partner = me ~= nil and seat == Spades.partnerOf(me)
 			table.insert(chips, {
 				seat = seat,
-				lines = { if partner then "Partner" else `Team {Spades.teamOf(seat)}`, `bid {bidText(view.bids[tostring(seat)])} · won {view.tricks[seat]}` },
+				lines = { if partner then "Partner" else `Team {Spades.teamOf(seat)}`, `bid {if view.blind and view.blind[tostring(seat)] then "Blind Nil" else bidText(view.bids[tostring(seat)])} · won {view.tricks[seat]}` },
 				turn = view.turn == seat and (view.phase == "bid" or view.phase == "play"),
 				highlight = partner,
 			})
@@ -85,10 +93,13 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 				return if b == nil then "not bid yet" else `bid {bidText(b)}`
 			end
 			CardTable.feltText(ui.content, `You: {said(myBid)} · Partner: {said(partnerBid)}`, 0.5, 16)
+			if view.faceDown then
+				CardTable.feltText(ui.content, "Your cards are face down", 0.66, 14).TextColor3 = Theme.SubText
+			end
 		else
 			local plays = view.trick
 			local winner = nil
-			if #plays == 0 and view.phase == "trick" and view.lastTrick then
+			if view.lastTrick and ((#plays == 0 and view.phase == "trick") or peekLast) then
 				plays = view.lastTrick.plays
 				winner = view.lastTrick.winner
 			end
@@ -101,8 +112,27 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 
+		-- The first spade played gets a call-out, like Hearts' "BROKEN!".
+		if wasBroken == false and view.spadesBroken and view.phase ~= "bid" then
+			CardFx.pop("♠ BROKEN!", Color3.fromRGB(120, 140, 200), ui.root)
+		end
+		wasBroken = view.spadesBroken == true
 		local buttons = {}
-		if bidding then
+		if canPeek then
+			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
+				peekLast = not peekLast
+				render()
+			end })
+		end
+		if bidding and view.canBlindNil then
+			-- Blind Nil (house rule): decide before turning your cards over.
+			table.insert(buttons, { text = "Blind Nil (200)", color = Color3.fromRGB(40, 36, 44), onClick = function()
+				sendMove({ kind = "bid", bid = 0, blind = true })
+			end })
+			table.insert(buttons, { text = "Look at cards", onClick = function()
+				sendMove({ kind = "look" })
+			end })
+		elseif bidding then
 			table.insert(buttons, { text = "-", color = Theme.PanelLight, onClick = function()
 				bid = math.max(if view.allowNil == false then 1 else 0, bid - 1)
 				render()
@@ -121,6 +151,8 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = "Watching"
 		elseif snapshot.result then
 			ui.prompt.Text = ""
+		elseif bidding and view.canBlindNil then
+			ui.prompt.Text = "Your team is 100+ behind: bid Blind Nil for 200 without looking, or look at your cards"
 		elseif bidding then
 			ui.prompt.Text = "How many tricks will you win? (Nil = none at all, for 100)"
 		elseif myTurn then

@@ -128,6 +128,7 @@ local entries: { Entry } = {
 			{ key = "forcePlay", name = "Force play", hint = "If the card you draw fits, you have to play it.", choices = Toggle, default = 1 },
 			{ key = "sevenZero", name = "7-0", hint = "A 7 swaps hands with a player you pick. A 0 passes every hand along.", choices = Toggle, default = 1 },
 			{ key = "jumpIn", name = "Jump-in", hint = "Hold the exact same card as the top one? Slam it down out of turn.", choices = Toggle, default = 1 },
+			{ key = "challenge", name = "Challenge a Wild +4", hint = "Hit by a Wild +4? Challenge it: if they had the color in play they draw 4, if not you draw 6.", choices = Toggle, default = 2 },
 			{ key = "lastCard", name = "Call last card", hint = "Say \"Last card!\" as you go down to one, or the next player can catch you: draw 2.", choices = Toggle, default = 2 },
 			{
 				key = "handSize",
@@ -621,6 +622,7 @@ local entries: { Entry } = {
 			},
 			{ key = "swaps", name = "Card swap", hint = "Between rounds the Beggar hands their best cards to the President.", choices = Toggle, default = 2 },
 			{ key = "twoClears", name = "2s clear the pile", hint = "Playing 2s clears the pile and you lead again.", choices = Toggle, default = 1 },
+			{ key = "revolution", name = "Revolution", hint = "Four of a kind flips the order: low beats high until the round ends.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -642,6 +644,13 @@ local entries: { Entry } = {
 			{ key = "topBottom", name = "Top and bottom", hint = "Also slap when the top card matches the bottom card of the pile.", choices = Toggle, default = 1 },
 			{ key = "marriage", name = "Marriage", hint = "Also slap a King and Queen together.", choices = Toggle, default = 1 },
 			{ key = "tens", name = "Tens", hint = "Also slap when the top two cards add up to 10 (Ace = 1).", choices = Toggle, default = 1 },
+			{
+				key = "penalty",
+				name = "Bad slap costs",
+				hint = "Cards you burn for slapping when you shouldn't.",
+				choices = { { label = "1 card", value = 1 }, { label = "2 cards", value = 2 } },
+				default = 1,
+			},
 		},
 	},
 	{
@@ -674,6 +683,7 @@ local entries: { Entry } = {
 				default = 1,
 			},
 			{ key = "jackDiamonds", name = "Jack of Diamonds", hint = "Whoever takes the Jack of Diamonds scores -10.", choices = Toggle, default = 1 },
+			{ key = "queenBreaks", name = "Queen breaks hearts", hint = "Playing the Queen of Spades breaks hearts too.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -700,6 +710,7 @@ local entries: { Entry } = {
 			},
 			{ key = "nilBids", name = "Nil bids", hint = "Bid 0 (Nil) for +100 if you take no tricks.", choices = Toggle, default = 2 },
 			{ key = "bags", name = "Bag penalty", hint = "Every 10 extra tricks (bags) costs 100 points.", choices = Toggle, default = 2 },
+			{ key = "blindNil", name = "Blind Nil", hint = "100+ behind? Bid Nil before looking at your cards for +200 / -200.", choices = Toggle, default = 1 },
 		},
 	},
 	{

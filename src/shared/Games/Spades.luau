@@ -13,9 +13,14 @@
 -- MAX_ROUNDS the higher score wins.
 --
 -- House rules (options.rules): nilBids (default on; off means every bid is 1-13), bags
--- (default on: every 10 bags costs 100; off: bags are just +1 each).
+-- (default on: every 10 bags costs 100; off: bags are just +1 each), blindNil (default
+-- off, like Spades Plus and Trickster: a player whose team is 100+ behind may bid Nil
+-- before looking at their cards, for +200 / -200; their hand stays face down until they
+-- look or bid).
 --
--- Moves: { kind = "bid", bid = 0..13 }  (bid phase, in turn)
+-- Moves: { kind = "bid", bid = 0..13, blind = true? }  (bid phase, in turn; blind only
+--        for bid 0 while you haven't looked)
+--        { kind = "look" }               (bid phase, your turn: turn your cards over)
 --        { kind = "play", card = id }   (your turn)
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -34,6 +39,8 @@ Spades.FLOOR = -200
 Spades.MAX_ROUNDS = 15
 Spades.TRICK_SECONDS = 1.4
 Spades.ROUND_SECONDS = 6
+Spades.BLIND_NIL = 200
+Spades.BLIND_BEHIND = 100 -- how far behind a team must be to bid blind
 
 local SPADES = 1
 local suit = PlayingCards.suit
@@ -65,6 +72,8 @@ local function deal(state)
 	state.round += 1
 	state.dealer = state.dealer % 4 + 1
 	state.bids = {}
+	state.blind = {} -- seat -> true: bid Blind Nil this round
+	state.looked = {} -- seat -> true: has seen this round's cards
 	state.trick = {}
 	state.lastTrick = nil
 	state.tricksPlayed = 0
@@ -98,6 +107,9 @@ function Spades.new(seatCount: number, options: any?, rng: Random?)
 		target = if type(rules.target) == "number" and rules.target > 0 then rules.target else Spades.TARGET,
 		allowNil = rules.nilBids ~= false,
 		bagPenalty = rules.bags ~= false,
+		blindNil = rules.blindNil == true,
+		blind = {},
+		looked = {},
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	deal(state)
@@ -121,6 +133,15 @@ function Spades.playable(state, seat: number): { number }
 		return table.clone(hand)
 	end
 	return Tricks.followable(hand, state.trick)
+end
+
+-- May this seat still bid Blind Nil (house rule on, team 100+ behind, hasn't looked)?
+function Spades.canBlindNil(state, seat: number): boolean
+	if not state.blindNil or state.phase ~= "bid" or state.looked[seat] or state.bids[seat] ~= nil then
+		return false
+	end
+	local team = teamOf(seat)
+	return state.scores[3 - team] - state.scores[team] >= Spades.BLIND_BEHIND
 end
 
 function Spades.getActiveSeats(state): { number }
@@ -154,6 +175,12 @@ function Spades.validateMove(state, seat: number, move: any): (boolean, string?)
 	if type(move) ~= "table" then
 		return false, "Bad move"
 	end
+	if move.kind == "look" then
+		if state.phase ~= "bid" or state.looked[seat] then
+			return false, "Your cards are already face up"
+		end
+		return true
+	end
 	if seat ~= state.turn then
 		return false, "It's not your turn"
 	end
@@ -167,6 +194,14 @@ function Spades.validateMove(state, seat: number, move: any): (boolean, string?)
 		end
 		if bid == 0 and state.allowNil == false then
 			return false, "Nil bids are off at this table"
+		end
+		if move.blind ~= nil and move.blind ~= false then
+			if move.blind ~= true or bid ~= 0 then
+				return false, "Only Nil can be bid blind"
+			end
+			if not Spades.canBlindNil(state, seat) then
+				return false, "You can bid Blind Nil only before looking, when your team is 100 behind"
+			end
 		end
 		return true
 	elseif move.kind == "play" then
@@ -193,7 +228,8 @@ local function scoreTeam(state, team: number)
 		if state.bids[seat] == 0 then
 			local ok = state.tricks[seat] == 0
 			nils[tostring(seat)] = ok
-			pts += if ok then 100 else -100
+			local worth = if state.blind[seat] then Spades.BLIND_NIL else 100
+			pts += if ok then worth else -worth
 			bags += state.tricks[seat]
 		else
 			contract += state.bids[seat]
@@ -210,6 +246,8 @@ local function scoreTeam(state, team: number)
 	end
 	return { bid = contract, took = took, points = pts, bags = bags, nils = nils }
 end
+
+Spades._scoreTeam = scoreTeam -- for tests
 
 local function endRound(state)
 	local summary = {}
@@ -239,8 +277,16 @@ local function endRound(state)
 end
 
 function Spades.applyMove(state, seat: number, move: any)
+	if move.kind == "look" then
+		state.looked[seat] = true
+		return
+	end
 	if move.kind == "bid" then
 		state.bids[seat] = move.bid
+		if move.blind == true then
+			state.blind[seat] = true
+		end
+		state.looked[seat] = true
 		state.turn = seat % 4 + 1
 		if state.bids[state.turn] ~= nil then
 			-- Everyone has bid: the player left of the dealer leads.
@@ -317,8 +363,17 @@ function Spades.getView(state, seat: number?)
 		end
 	end
 	local yourTurn = seat ~= nil and state.phase == "play" and seat == state.turn and not state.over
+	-- A seat that could still bid Blind Nil hasn't seen its cards: keep them face down.
+	local faceDown = seat ~= nil and Spades.canBlindNil(state, seat)
+	local blinds = {}
+	for s, on in state.blind do
+		blinds[tostring(s)] = on
+	end
 	return {
-		hand = if seat and state.hands[seat] then sortHand(state.hands[seat]) else nil,
+		hand = if faceDown then {} elseif seat and state.hands[seat] then sortHand(state.hands[seat]) else nil,
+		faceDown = faceDown,
+		canBlindNil = faceDown,
+		blind = blinds,
 		playable = if yourTurn then Spades.playable(state, seat :: number) else {},
 		handCounts = counts,
 		bids = bids,
@@ -342,7 +397,7 @@ function Spades.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, 4 do
 		local bid = state.bids[seat]
-		local bidText = if bid == nil then "bidding" elseif bid == 0 then "Nil" else `bid {bid}`
+		local bidText = if bid == nil then "bidding" elseif bid == 0 then (if state.blind[seat] then "Blind Nil" else "Nil") else `bid {bid}`
 		info[seat] = `Team {teamOf(seat)} · {bidText} · {state.tricks[seat]} won`
 	end
 	return info

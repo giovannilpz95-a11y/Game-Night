@@ -713,6 +713,16 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 
 		bagLabel.Text = `👜 {view.bagCount} in the bag · see unseen`
 		local lines = {}
+		-- Hindsight (Words With Friends, Scrabble GO): the best play your last rack had.
+		local hint = view.hindsight
+		if over and view.biggestMiss then
+			local m = view.biggestMiss
+			table.insert(lines, `💡 Your biggest missed play: {m.word} for {m.score} (you scored {m.played})`)
+		elseif hint and hint.best then
+			table.insert(lines, `💡 Your last play was the best one on your rack!`)
+		elseif hint and hint.word then
+			table.insert(lines, `💡 Best on your last rack: {hint.word} for {hint.score} (you scored {hint.played})`)
+		end
 		for i = #(view.log or {}), 1, -1 do
 			table.insert(lines, describe(view.log[i]))
 		end

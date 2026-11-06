@@ -94,7 +94,7 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 		elseif a and a.kind == "slap" then
 			text = `{nameOf(a.seat)} slapped and took {a.count} cards!`
 		elseif a and a.kind == "badSlap" then
-			text = `{nameOf(a.seat)} slapped too soon and burned a card`
+			text = `{nameOf(a.seat)} slapped too soon and burned {if (a.count or 1) > 1 then `{a.count} cards` else "a card"}`
 		elseif a and a.kind == "collect" then
 			text = `{nameOf(a.seat)} took {a.count} cards`
 		end

@@ -20,6 +20,7 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 	local selected: { number } = {}
 	local ui = CardTable.layout(container)
 	local render: () -> ()
+	local peekLast = false -- showing the last trick instead of the current one
 	-- Which way your 3 cards go, flowing toward the player who gets them.
 	local passArrow = FlowArrow.new(ui.root)
 	local wasBroken: boolean? = nil
@@ -34,6 +35,12 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 
 	function render()
 		local view = snapshot.view
+		-- Last trick peek (Trickster, Spades Plus, Windows Hearts): look back at the trick
+		-- that just went while the next one is played.
+		local canPeek = view.lastTrick ~= nil and view.phase == "play"
+		if not canPeek then
+			peekLast = false
+		end
 		local me = snapshot.yourSeat
 		local active = CardTable.isActive(snapshot, me)
 		local passing = active and view.phase == "pass"
@@ -64,7 +71,7 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 		else
 			local plays = view.trick
 			local winner = nil
-			if #plays == 0 and view.phase == "trick" and view.lastTrick then
+			if view.lastTrick and ((#plays == 0 and view.phase == "trick") or peekLast) then
 				plays = view.lastTrick.plays
 				winner = view.lastTrick.winner
 			end
@@ -110,6 +117,12 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		local buttons = {}
+		if canPeek then
+			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
+				peekLast = not peekLast
+				render()
+			end })
+		end
 		if passing then
 			table.insert(buttons, { text = `Pass {#selected}/3`, enabled = #selected == 3, onClick = function()
 				sendMove({ kind = "pass", cards = selected })

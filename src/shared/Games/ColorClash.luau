@@ -16,7 +16,9 @@
 -- played), sevenZero = true (a 7 swaps hands with a player you pick; a 0 passes every hand
 -- on the way play is going), jumpIn = true (anyone holding a card identical to the top
 -- card, same color and same number or symbol, may slam it down out of turn; play goes on
--- from them).
+-- from them), challenge = false (turns off the official Wild Draw Four challenge: the
+-- player hit by a lone Wild +4 may challenge it. If the player who played it held a card
+-- of the color in play, they draw the 4 instead; if not, the challenger draws 6).
 -- First to empty their hand wins. If the game drags past TURN_LIMIT turns, the fewest
 -- cards wins.
 --
@@ -26,6 +28,7 @@
 --   { kind = "draw" }
 --   { kind = "pass" }                            (only after drawing a playable card)
 --   { kind = "jump", card = id, target = seat? } (jump-in rule: out of turn, see getJumpIns)
+--   { kind = "challenge" }                       (hit by a lone Wild +4: challenge it)
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
@@ -145,6 +148,10 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 		-- Jump-in (off by default): play an identical card out of turn.
 		jumpIn = rules.jumpIn == true,
 		exposed = nil,
+		challenge = rules.challenge ~= false,
+		-- The Wild +4 waiting on the next player, while it can be challenged:
+		-- { by = seat, guilty = they held the old color }.
+		challengeable = nil,
 	}
 end
 
@@ -341,6 +348,9 @@ function ColorClash.getLegalMoves(state, seat: number): { any }
 	if ColorClash.canCatch(state, seat) then
 		table.insert(moves, { kind = "catch" })
 	end
+	if ColorClash.canChallenge(state, seat) then
+		table.insert(moves, { kind = "challenge" })
+	end
 	if state.drawnCard then
 		if not state.forcePlay then
 			table.insert(moves, { kind = "pass" })
@@ -386,6 +396,11 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 	if move.kind == "catch" then
 		if not ColorClash.canCatch(state, seat) then
 			return false, "Nobody to catch"
+		end
+		return true
+	elseif move.kind == "challenge" then
+		if not ColorClash.canChallenge(state, seat) then
+			return false, "There's no Wild +4 to challenge"
 		end
 		return true
 	elseif move.kind == "draw" then
@@ -450,8 +465,31 @@ function ColorClash.applyMove(state, seat: number, move: any)
 		GameModule.addStat(state, seat, "catches")
 		return
 	end
-	-- Any other move lets a forgotten call go.
+	if move.kind == "challenge" then
+		local c = state.challengeable :: any
+		state.challengeable = nil
+		state.exposed = nil
+		state.pendingDraw = 0
+		if c.guilty then
+			-- Caught bluffing: they take the 4 and the challenger plays on as normal.
+			for _ = 1, 4 do
+				drawOne(state, c.by)
+			end
+			state.lastAction = { seat = seat, kind = "challenge", target = c.by, guilty = true, count = 4 }
+			GameModule.addStat(state, seat, "catches")
+		else
+			-- It was fair: the challenger takes 6 and loses the turn.
+			for _ = 1, 6 do
+				drawOne(state, seat)
+			end
+			state.lastAction = { seat = seat, kind = "challenge", target = c.by, guilty = false, count = 6 }
+			endTurn(state, 1)
+		end
+		return
+	end
+	-- Any other move lets a forgotten call go, and a Wild +4 that wasn't challenged.
 	state.exposed = nil
+	state.challengeable = nil
 	local jumped = move.kind == "jump"
 	if jumped then
 		-- Out of turn: play carries on from the jumper. Whoever was on turn loses any card
@@ -502,6 +540,7 @@ function ColorClash.applyMove(state, seat: number, move: any)
 	state.discardBy = state.discardBy or {}
 	state.discardBy[#state.discard] = seat
 	local card = cards[id]
+	local oldColor = state.color
 	state.color = if isWild(card) then move.color else card.color
 	state.lastAction = { seat = seat, kind = "play", card = id, color = state.color, jumped = if jumped then true else nil }
 	GameModule.addStat(state, seat, "cards")
@@ -563,10 +602,26 @@ function ColorClash.applyMove(state, seat: number, move: any)
 		endTurn(state, 1)
 	elseif card.kind == "wild4" then
 		state.pendingDraw += 4
+		if state.challenge and state.pendingDraw == 4 then
+			-- Only a lone Wild +4 can be challenged (not one stacked on other draw cards).
+			local guilty = false
+			for _, other in hand do
+				if cards[other].color == oldColor then
+					guilty = true
+					break
+				end
+			end
+			state.challengeable = { by = seat, guilty = guilty }
+		end
 		endTurn(state, 1)
 	else
 		endTurn(state, 1)
 	end
+end
+
+-- Hit by a lone Wild +4 that may still be challenged?
+function ColorClash.canChallenge(state, seat: number): boolean
+	return state.challengeable ~= nil and not state.winner and seat == state.turn and state.pendingDraw == 4 and not state.drawnCard
 end
 
 function ColorClash.getResult(state): GameModule.Result?
@@ -617,6 +672,7 @@ function ColorClash.getView(state, seat: number?)
 		lastCall = state.lastCall,
 		exposed = state.exposed,
 		canCatch = seat ~= nil and ColorClash.canCatch(state, seat),
+		canChallenge = seat ~= nil and ColorClash.canChallenge(state, seat),
 		jumpIn = state.jumpIn == true,
 		jumpIns = if seat ~= nil then ColorClash.getJumpIns(state, seat) else {},
 		winner = state.winner,
@@ -658,6 +714,7 @@ end
 
 local CATCH_CHANCE = { easy = 0.4, medium = 0.75, hard = 1 }
 local CALL_CHANCE = { easy = 0.7, medium = 0.9, hard = 1 }
+local CHALLENGE_CHANCE = { easy = 0.1, medium = 0.2, hard = 0.3 }
 
 -- How often a bot holding an identical card slams it down (each chance it gets).
 local JUMP_CHANCE = { easy = 0.25, medium = 0.55, hard = 0.85 }
@@ -686,6 +743,10 @@ function ColorClash.chooseBotMove(state, seat: number, rng: Random): any?
 	end
 	if ColorClash.canCatch(state, seat) and rng:NextNumber() < (CATCH_CHANCE[state.botLevel] or 0.75) then
 		return { kind = "catch" }
+	end
+	-- Bots can't see the other hand, so they challenge on a hunch now and then.
+	if ColorClash.canChallenge(state, seat) and rng:NextNumber() < (CHALLENGE_CHANCE[state.botLevel] or 0.2) then
+		return { kind = "challenge" }
 	end
 	local move = ColorClash.chooseBotPlay(state, seat, rng)
 	if move and move.kind == "play" and state.lastCall and #state.hands[seat] == 2 then

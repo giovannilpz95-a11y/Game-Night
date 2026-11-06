@@ -10,6 +10,8 @@
 --   client/Renderers/<module>.
 -- * "Your turn!" slides in with a sound when your turn starts.
 -- * The end screen shows the result, standings, rewards and a big Rematch button.
+--   A renderer can add one more button there (renderer.endAction, e.g. Chess's Game
+--   Review): it hides the card and shows the 2D board; a Results button brings it back.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -632,6 +634,23 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = resultOverlay,
 	})
 	local closeButton: TextButton
+	local renderResult: () -> ()
+	local resultHidden = false -- put away for the renderer's end action (Game Review)
+	local endActionButton: TextButton
+	local runEndAction: () -> ()
+	endActionButton = Kit.button("Review", function()
+		runEndAction()
+	end, {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0.4, 0, 1, 0),
+		Size = UDim2.new(0.3, -4, 0, 46),
+		BackgroundColor3 = Color3.fromRGB(129, 182, 76),
+		TextColor3 = Color3.new(1, 1, 1),
+		TextSize = 18,
+		Visible = false,
+		ZIndex = 51,
+		Parent = resultOverlay,
+	})
 
 	---------------------------------------------------------------- state
 	local renderer: any = nil
@@ -663,6 +682,13 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local lastTick = -1
 
 	viewButton = Kit.button("2D view", function()
+		if resultHidden then
+			-- "Results": back to the end card.
+			resultHidden = false
+			renderResult()
+			applyMode()
+			return
+		end
 		if snapshot then
 			-- From what's on screen: if Table view was wanted but the table never
 			-- streamed in, the button reads "Table view" and should try again.
@@ -891,7 +917,10 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		viewButton.Visible = table3D.available() and snapshot ~= nil and not isOver()
 		emotes.setEnabled(snapshot ~= nil and snapshot.yourSeat ~= nil and not isOver(), snapshot ~= nil and snapshot.table ~= nil)
 		local compact = Layout.get().compact
-		if table3D.playable() then
+		if resultHidden and isOver() then
+			viewButton.Visible = true
+			viewButton.Text = "Results"
+		elseif table3D.playable() then
 			viewButton.Text = if in3D then "2D view" else "3D view"
 		elseif compact then
 			viewButton.Text = if in3D then "Game" else "Table"
@@ -1125,7 +1154,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 
 	local checkTurn: () -> ()
 
-	local function renderResult()
+	function renderResult()
 		local result = snapshot.result
 		local over = isOver()
 		if cinematic then
@@ -1133,8 +1162,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			return
 		end
 		local wasShown = resultOverlay.Visible
-		resultOverlay.Visible = over
 		if not over then
+			resultHidden = false
+		end
+		resultOverlay.Visible = over and not resultHidden
+		if not over or resultHidden then
 			return
 		end
 		if not wasShown then
@@ -1302,7 +1334,34 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end
 		-- Only people who were playing can ask (not spectators).
 		rematchButton.Visible = snapshot.yourSeat ~= nil
-		closeButton.Size = if rematchButton.Visible then UDim2.new(0.4, -4, 0, 46) else UDim2.new(1, 0, 0, 46)
+		local action = if renderer and renderer.endAction then renderer.endAction() else nil
+		endActionButton.Visible = action ~= nil
+		if action then
+			endActionButton.Text = action.label
+			rematchButton.Size = UDim2.new(0.4, -4, 0, 46)
+			endActionButton.Position = UDim2.new(if rematchButton.Visible then 0.4 else 0, 0, 1, 0)
+			endActionButton.Size = if rematchButton.Visible then UDim2.new(0.3, -4, 0, 46) else UDim2.new(0.6, -4, 0, 46)
+			closeButton.Size = UDim2.new(if rematchButton.Visible then 0.3 else 0.4, 0, 0, 46)
+		else
+			rematchButton.Size = UDim2.new(0.6, -4, 0, 46)
+			closeButton.Size = if rematchButton.Visible then UDim2.new(0.4, -4, 0, 46) else UDim2.new(1, 0, 0, 46)
+		end
+	end
+
+	function runEndAction()
+		local action = if renderer and renderer.endAction then renderer.endAction() else nil
+		if not (action and snapshot) then
+			return
+		end
+		resultHidden = true
+		resultOverlay.Visible = false
+		-- The review lives on the 2D board.
+		if table3D.isActive() then
+			viewChoice[snapshot.gameId] = false
+			table3D.setSnapshot(snapshot, wanted())
+		end
+		action.run()
+		applyMode()
 	end
 
 	-- Your turn just started: say so, loudly. Party games (everyone moves at once, with
@@ -1369,6 +1428,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				end
 				rewardLabel.Text = ""
 				rematchAsked = false
+				resultHidden = false
 				wasMyTurn = false
 				timerFor = nil
 				closeMenu()

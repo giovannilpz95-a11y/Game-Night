@@ -21,6 +21,7 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 	local ui = CardTable.layout(container)
 	local afterHand = CardFx.tricks(ui.felt)
 	local render: () -> ()
+	local peekLast = false -- showing the last trick instead of the current one
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -28,6 +29,12 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 
 	function render()
 		local view = snapshot.view
+		-- Last trick peek (Trickster, Spades Plus, Windows Hearts): look back at the trick
+		-- that just went while the next one is played.
+		local canPeek = view.lastTrick ~= nil and view.phase == "play"
+		if not canPeek then
+			peekLast = false
+		end
 		local me = snapshot.yourSeat
 		local n = #snapshot.seats
 		local active = CardTable.isActive(snapshot, me)
@@ -104,7 +111,7 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 		else
 			local plays = view.trick
 			local winner = nil
-			if #plays == 0 and view.phase == "trick" and view.lastTrick then
+			if view.lastTrick and ((#plays == 0 and view.phase == "trick") or peekLast) then
 				plays = view.lastTrick.plays
 				winner = view.lastTrick.winner
 			end
@@ -115,6 +122,12 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		local buttons = {}
+		if canPeek then
+			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
+				peekLast = not peekLast
+				render()
+			end })
+		end
 		if bidding then
 			local banned = view.forbidden
 			table.insert(buttons, { text = "-", color = Theme.PanelLight, onClick = function()

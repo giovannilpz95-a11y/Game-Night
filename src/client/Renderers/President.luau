@@ -10,6 +10,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
 local CardFx = require(script.Parent.Parent.UI.CardFx)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local PresidentRenderer = {}
@@ -87,7 +88,7 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 		if myTurn then
 			local ok = #selected > 0 and PlayingCards.sameRank(selected)
 			if ok and view.pile then
-				ok = #selected == view.pile.count and President.power(selected[1]) > view.pile.power
+				ok = #selected == view.pile.count and President.beats(President.power(selected[1]), view.pile.power, view.revolution)
 			end
 			table.insert(buttons, { text = if #selected == 0 then "Pick cards" else `Play {#selected}`, enabled = ok, onClick = function()
 				sendMove({ kind = "play", cards = selected })
@@ -108,7 +109,7 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 		elseif view.places[tostring(me)] then
 			ui.prompt.Text = `You're out: {President.roleName(view.places[tostring(me)], n)}!`
 		elseif myTurn then
-			ui.prompt.Text = if view.pile then "Your turn: beat it or pass" else "Your lead"
+			ui.prompt.Text = (if view.revolution then "Revolution! Low beats high. " else "") .. (if view.pile then "Your turn: beat it or pass" else "Your lead")
 		elseif view.phase == "play" then
 			ui.prompt.Text = `{nameOf(view.turn)}'s turn`
 		else
@@ -124,7 +125,7 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 		end
 		for _, id in view.hand or {} do
 			local p = President.power(id)
-			local could = myTurn and (view.pile == nil or (p > view.pile.power and counts[p] >= view.pile.count))
+			local could = myTurn and (view.pile == nil or (President.beats(p, view.pile.power, view.revolution) and counts[p] >= view.pile.count))
 			table.insert(cards, { id = id, raised = table.find(selected, id) ~= nil, glow = could, dim = myTurn and not could, enabled = myTurn })
 		end
 		-- Off your turn: all dimmed, the cards that could beat the pile lifted.
@@ -132,7 +133,7 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 		if me and pile and not myTurn and view.phase == "play" and not snapshot.result then
 			CardFx.offTurn(cards, function(id: number): boolean
 				local p = President.power(id)
-				return p > pile.power and counts[p] >= pile.count
+				return President.beats(p, pile.power, view.revolution) and counts[p] >= pile.count
 			end)
 		end
 		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
@@ -153,8 +154,12 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 		arrivals.update(faces, from)
 		-- The pile is cleared (everyone passed, or a 2): it pops off the table.
 		local a = view.lastAction
-		if clears(CardFx.key(a, view.round)) and a and a.kind == "clear" then
+		local fresh = clears(CardFx.key(a, view.round))
+		if fresh and a and a.kind == "clear" then
 			CardFx.pop("CLEAR!", Theme.Accent, ui.root)
+		elseif fresh and a and a.flipped then
+			-- Four of a kind: the order flips (Daifugō's revolution).
+			HudKit.callout(ui.root, if a.revolution then "REVOLUTION! Low beats high" else "Counter-revolution! High beats low", Color3.fromRGB(235, 87, 87))
 		end
 	end
 

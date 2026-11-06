@@ -5,12 +5,16 @@
 --   * premoves: pick a move while the other side thinks; it plays the moment your turn
 --     comes if it's still legal (tap anywhere else to cancel)
 --   * tap a move in the list (or < >) to look back at that position; Live returns
+--   * the opening's name while you play (from shared/ChessReview's book)
+--   * Game Review after the game, like chess.com: every move labelled Best ... Blunder,
+--     accuracy for both sides, an eval bar, and a green arrow for the better move
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 
 local ChessRules = require(ReplicatedStorage.Shared.Games.Chess)
+local ChessReview = require(ReplicatedStorage.Shared.ChessReview)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
@@ -71,6 +75,9 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	local premoveFrom: string? = nil -- picked a piece to premove with
 	local connections: { RBXScriptConnection } = {}
 	local drag: any = nil
+	local review: any = nil -- a ChessReview once the player asks for one
+	local reviewing = false -- the review is running
+	local reviewFor: string? = nil -- the game (start fen + moves) it reviews
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -230, 1, 0), Parent = root })
@@ -110,6 +117,20 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			Parent = nav,
 		})
 	end
+	-- Game Review: shows once the game is over.
+	local reviewButton: TextButton
+	local startReview: () -> ()
+	reviewButton = Kit.button("Game Review", function()
+		startReview()
+	end, {
+		BackgroundColor3 = Color3.fromRGB(129, 182, 76),
+		TextColor3 = Color3.new(1, 1, 1),
+		TextSize = 14,
+		Position = UDim2.new(0, 0, 1, -68),
+		Size = UDim2.new(1, 0, 0, 30),
+		Visible = false,
+		Parent = side,
+	})
 	local moves = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -390,13 +411,34 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	local inner = grid.cell(1, 1).Parent :: Frame
 	local markLayer = Kit.new("Frame", { Name = "Marks", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = inner })
 	local marks: { [string]: boolean } = {} -- "a1" (ring) or "a1>c3" (arrow)
+	local BEST_ARROW = Color3.fromRGB(129, 182, 76)
+	local reviewArrow: string? = nil -- "e2>e4": the better move while looking at a reviewed move
+	-- Eval bar beside the board during a review: white fills from White's side.
+	local evalBar = Kit.new("Frame", {
+		Name = "EvalBar",
+		BackgroundColor3 = Color3.fromRGB(40, 36, 44),
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(0, -6, 0, 0),
+		Size = UDim2.new(0.03, 0, 1, 0),
+		Visible = false,
+		Parent = inner,
+	}, { Kit.corner(4) })
+	local evalFill = Kit.new("Frame", { BackgroundColor3 = Color3.fromRGB(250, 248, 240), BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 0.5), Parent = evalBar }, { Kit.corner(4) })
 	local function center(row: number, col: number): Vector2
 		local p = grid.cell(row, col).Position
 		return Vector2.new(p.X.Scale + 1 / 16, p.Y.Scale + 1 / 16)
 	end
 	local function drawMarks()
 		Kit.clear(markLayer)
+		local keys = {}
 		for key in marks do
+			keys[key] = MARK
+		end
+		if reviewArrow then
+			keys[reviewArrow] = BEST_ARROW
+		end
+		for key, color in keys do
 			local from, to = string.match(key, "^(%w+)>(%w+)$")
 			if from and to then
 				local a = center(cellOf(from))
@@ -405,7 +447,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 				local angle = math.deg(math.atan2(d.Y, d.X))
 				local tip = b - d.Unit * 0.03
 				Kit.new("Frame", {
-					BackgroundColor3 = MARK,
+					BackgroundColor3 = color,
 					BackgroundTransparency = 0.2,
 					BorderSizePixel = 0,
 					AnchorPoint = Vector2.new(0.5, 0.5),
@@ -417,7 +459,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 				}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 				Kit.label("▶", {
 					TextScaled = true,
-					TextColor3 = MARK,
+					TextColor3 = color,
 					TextTransparency = 0.1,
 					TextXAlignment = Enum.TextXAlignment.Center,
 					AnchorPoint = Vector2.new(0.5, 0.5),
@@ -438,7 +480,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 					Parent = markLayer,
 				}, {
 					Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
-					Kit.new("UIStroke", { Color = MARK, Thickness = 4, Transparency = 0.15 }),
+					Kit.new("UIStroke", { Color = color, Thickness = 4, Transparency = 0.15 }),
 				})
 			end
 		end
@@ -619,6 +661,45 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			return if d > 0 then `  +{d}` else ""
 		end
 		capturedLabel.Text = `White took: {white}{lead(1)}\nBlack took: {black}{lead(2)}`
+		local openingName = ChessReview.opening(view.moveList)
+		if openingName then
+			capturedLabel.Text ..= `\n{openingName}`
+		end
+		-- Game Review results: accuracy, and a coach line for the move you're looking at.
+		local reviewed = review and review.done and reviewFor == view.startFen .. #view.past
+		local shown = if reviewed then review.moves[viewing or #view.past] else nil
+		if reviewed then
+			capturedLabel.Text = `Accuracy  White {review.accuracy[1]}  ·  Black {review.accuracy[2]}\n` .. capturedLabel.Text
+			if shown then
+				capturedLabel.Text ..= `\n{shown.symbol} {ChessReview.describe(shown)}`
+			end
+		end
+		local labelHeight = if reviewed then 100 else 58
+		capturedLabel.Size = UDim2.new(1, 0, 0, labelHeight)
+		capturedLabel.TextWrapped = true
+		moves.Position = UDim2.new(0, 0, 0, labelHeight + 6)
+		reviewButton.Visible = over and #view.past >= 2 and not reviewed
+		local buttonRoom = if reviewButton.Visible then 34 else 0
+		moves.Size = UDim2.new(1, 0, 1, -(labelHeight + 44 + buttonRoom))
+		if reviewing and review then
+			reviewButton.Text = `Reviewing... {review.progress}/{#review.plies}`
+		elseif not reviewed then
+			reviewButton.Text = "Game Review"
+		end
+		local arrow = if shown and shown.bestFrom and viewing then `{shown.bestFrom}>{shown.bestTo}` else nil
+		if arrow ~= reviewArrow then
+			reviewArrow = arrow
+			drawMarks()
+		end
+		evalBar.Visible = reviewed == true
+		if reviewed then
+			local cp = if shown then shown.evalAfter else 0
+			local whiteShare = ChessReview.winPercent(cp) / 100
+			-- The bar's White end is the side nearest you.
+			evalFill.AnchorPoint = if flipped then Vector2.new(0, 0) else Vector2.new(0, 1)
+			evalFill.Position = if flipped then UDim2.fromScale(0, 0) else UDim2.fromScale(0, 1)
+			evalFill.Size = UDim2.fromScale(1, whiteShare)
+		end
 		if view.checks then
 			capturedLabel.Text ..= `\nChecks: White {view.checks[1]}/3 · Black {view.checks[2]}/3`
 		end
@@ -636,11 +717,12 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 					local san = view.moveList[ply]
 					if san then
 						local current = if viewing then ply == viewing else ply == plies
+						local graded = if reviewed then review.moves[ply] else nil
 						Kit.new("TextButton", {
-							Text = san,
+							Text = if graded then `{san} {graded.symbol}` else san,
+							TextColor3 = if graded and graded.label ~= "Book" and graded.label ~= "Forced" and graded.label ~= "Best" and graded.label ~= "Excellent" and graded.label ~= "Good" then ChessReview.COLORS[graded.label] else Theme.Text,
 							Font = if current then Theme.FontBold else Theme.Font,
 							TextSize = 14,
-							TextColor3 = Theme.Text,
 							BackgroundColor3 = if current then Theme.Accent else Theme.Panel,
 							BackgroundTransparency = if current then 0.3 else 1,
 							AutoButtonColor = true,
@@ -666,10 +748,45 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Runs the review one move per frame so the game never hitches, then opens it at move 1.
+	local destroyed = false
+	function startReview()
+		if reviewing or not snapshot then
+			return
+		end
+		local view = snapshot.view
+		local key = view.startFen .. #view.past
+		if review and reviewFor == key then
+			return
+		end
+		review = ChessReview.new(view.startFen, view.past, { depth = 4, seconds = 0.2 })
+		reviewFor = key
+		reviewing = true
+		Audio.play("click")
+		render()
+		task.spawn(function()
+			local current = review
+			while not destroyed and current == review and not current:step() do
+				render()
+				task.wait()
+			end
+			if destroyed or current ~= review then
+				return
+			end
+			reviewing = false
+			Audio.play("win", { volume = 0.4 })
+			stepTo(1)
+			render()
+		end)
+	end
+
 	return {
 		update = function(newSnapshot: any)
 			local hadMoves = snapshot and #snapshot.view.moveList or 0
 			snapshot = newSnapshot
+			if review and reviewFor ~= snapshot.view.startFen .. #snapshot.view.past and snapshot.result == nil then
+				review, reviewFor, reviewing = nil, nil, false -- a rematch started
+			end
 			if not myTurn() then
 				selected = nil
 				closePicker()
@@ -692,7 +809,15 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			end
 			render()
 		end,
+		-- The end card's extra button (UI/MatchView).
+		endAction = function(): any?
+			if not snapshot or #snapshot.view.past < 2 then
+				return nil
+			end
+			return { label = "Game Review", run = startReview }
+		end,
 		destroy = function()
+			destroyed = true
 			for _, connection in connections do
 				connection:Disconnect()
 			end

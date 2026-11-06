@@ -552,6 +552,27 @@ local function sanFor(pos: Pos, m: Move, all: { Move }): string
 	return san
 end
 
+-- Standard notation for a legal move in pos ("Nf3", "exd5", "O-O", "Qh7#").
+function Chess.san(pos: Pos, m: Move): string
+	return sanFor(pos, m, legalMoves(pos))
+end
+
+-- The wire move ({ from, to, promotion }) as the engine's move in pos, or nil if illegal.
+function Chess.findLegal(pos: Pos, move: any): Move?
+	if type(move) ~= "table" then
+		return nil
+	end
+	for _, m in legalMoves(pos) do
+		if Chess.squareName(m.from) == move.from and Chess.squareName(m.to) == move.to then
+			local promo = if m.promo then PIECE_TO_LETTER[m.promo] else nil
+			if promo == nil or promo == (move.promotion or "q") then
+				return m
+			end
+		end
+	end
+	return nil
+end
+
 -- Game module -------------------------------------------------------------------
 
 local HILL = { [27] = true, [28] = true, [35] = true, [36] = true } -- d4, e4, d5, e5
@@ -957,6 +978,7 @@ local function orderMoves(moves: { Move }, first: Move?)
 end
 
 local MATE = 100000
+Chess.MATE = MATE
 
 type Search = { nodes: number, deadline: number, outOfTime: boolean }
 
