@@ -666,7 +666,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			})
 			firstPerson = true
 			if not shown then
-				shown = camera.CFrame
+				shown = home -- straight to your seat, no sweep across the room
 			end
 			return
 		end
@@ -987,9 +987,15 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			return
 		end
 		if wasCinematic then
-			-- Back from Showtime: the seat's view again (and its field of view).
+			-- Back from Showtime: the seat's view again (and its field of view), easing in
+			-- from the intro's last shot. Seated boards cut straight to the seat: gliding
+			-- from wherever the camera was before the intro swept across the room.
 			wasCinematic = false
+			shown = camera.CFrame
 			placeCamera()
+			if seatedBoard and home then
+				shown = home
+			end
 		end
 		fadeSelf(true)
 		stepCamera(dt)
