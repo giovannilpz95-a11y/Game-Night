@@ -5,12 +5,15 @@
 --   draw    the drawer draws; guessers type guesses. Every DRAW_SEGMENT seconds a letter
 --           of the hint is revealed. Ends early when everyone has guessed.
 --   reveal  the word is shown to all for a few seconds, then the next drawer goes.
+--   gallery after the last drawing: the most liked drawings of the game, for a few
+--           seconds (skipped when there are none), then the game ends.
 -- Seats that start as players take drawing turns. Bots join the rotation only when there
 -- are fewer than three players, drawing simple doodles shape by shape (Data/SketchDoodles),
 -- so someone alone with bots still gets drawings to guess. Each drawer draws ROUNDS times
 -- (more when there are only one or two drawers).
 -- House rules (options.rules): rounds = 1..3, drawSeconds = 60 | 80 | 120,
--- tools = "all" (brush and shapes) | "shapes" (lines, boxes and ovals only, no brush).
+-- tools = "all" (brush and shapes) | "shapes" (lines, boxes and ovals only, no brush),
+-- wordChoices = 1 | 3 | 5 (words the drawer picks from), hints = "none" | "normal" | "lots".
 -- options.customWords: a Party Host's word list (already filtered by the server). When
 -- set, every choice comes from it instead of our list.
 --
@@ -29,10 +32,14 @@
 --                      cont = true if it continues the previous chunk of the same line }
 --                    { kind = "shape", shape = "line" | "rect" | "ellipse", color, size,
 --                      points = "<2 encoded points: start and end / two corners>", fill = bool }
+--                    { kind = "bucket", color, points = "<1 encoded point>" }   (fill an area)
 --                    { kind = "undo" } | { kind = "clear" }
 --   drawer, any:     { kind = "giveUp" }   (skip my turn; also what a bot drawer does)
 --   guesser, draw:   { kind = "guess", text = "...", shown = "<filtered by the server>" }
 --                    { kind = "voteSkip" } | { kind = "report" }
+--   guessed, draw:   { kind = "chat", text = "...", shown }   (seen only by the drawer and
+--                    the others who got it, like skribbl's green chat)
+--   guesser, draw or reveal: { kind = "rate", up = bool }   (like / dislike the drawing)
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local Words = require(script.Parent.Data.SketchWords)
@@ -56,6 +63,17 @@ local MAX_FEED = 40
 local MAX_GUESS = 40
 local STRIKES = 2 -- drawings skipped by vote before a player stops drawing this match
 local BOT_DRAWERS_BELOW = 3 -- bots take drawing turns when there are fewer players than this
+local MAX_BUCKETS = 20 -- fill buckets per drawing (each one is a batch of Frames)
+local GALLERY_SECONDS = 12
+local GALLERY_SIZE = 4 -- drawings shown in the end-of-game gallery
+local HINT_SHARE = { none = 0, normal = 0.5, lots = 0.7 } -- most letters a hint shows
+-- Difficulty of each word choice, by how many choices there are.
+local CHOICE_LEVELS = {
+	[1] = { "medium" },
+	[3] = { "easy", "medium", "hard" },
+	[5] = { "easy", "easy", "medium", "medium", "hard" },
+}
+SketchGuess.choiceLevels = CHOICE_LEVELS
 
 -- Drawing limits (they keep each snapshot small enough to send often).
 SketchGuess.maxPointsPerStroke = 64
@@ -260,6 +278,8 @@ function SketchGuess.new(seatCount: number, options: any?, rng: Random?)
 		drawSegments = math.clamp(math.floor(rules.drawSeconds / DRAW_SEGMENT + 0.5), 2, 6)
 	end
 	local tools = if rules.tools == "shapes" then "shapes" else "all"
+	local wordChoices = if CHOICE_LEVELS[rules.wordChoices] then rules.wordChoices else 3
+	local hintShare = HINT_SHARE[rules.hints] or HINT_SHARE.normal
 	local customWords = nil
 	if options and type(options.customWords) == "table" and #options.customWords >= 3 then
 		customWords = table.clone(options.customWords)
@@ -292,6 +312,12 @@ function SketchGuess.new(seatCount: number, options: any?, rng: Random?)
 		drawSegments = drawSegments,
 		customWords = customWords, -- nil = our built-in list
 		tools = tools,
+		wordChoices = wordChoices,
+		choiceLevels = {}, -- difficulty of each choice ("easy"...), shown on the buttons
+		hintShare = hintShare,
+		likes = {}, -- [seat] = true (like) | false (dislike), this drawing
+		buckets = 0, -- fill buckets in this drawing
+		gallery = {}, -- finished drawings: { drawer, word, strokes, likes }
 		strikes = {}, -- [seat] = drawings of theirs skipped by vote
 		benched = {}, -- [seat] = true: no more drawing turns this match
 		reports = {}, -- [seat] = true: reported this drawing
@@ -317,19 +343,27 @@ function SketchGuess._startTurn(state)
 	repeat
 		state.turnNumber += 1
 		if state.turnNumber > state.totalTurns then
-			state.phase = "done"
-			state.finished = true
+			state.turnNumber = state.totalTurns
+			state.drawer = 0
+			if #SketchGuess.galleryOf(state) > 0 then
+				state.phase = "gallery"
+			else
+				state.phase = "done"
+				state.finished = true
+			end
 			nextTimer(state)
 			return
 		end
 		state.drawer = state.drawers[(state.turnNumber - 1) % #state.drawers + 1]
 	until not state.benched[state.drawer]
 	state.phase = "choose"
+	local count = state.wordChoices
+	state.choiceLevels = table.clone(CHOICE_LEVELS[count])
 	if state.botSeats[state.drawer] then
 		-- Bots pick from the words they have a doodle for.
 		local list = doodleWordList()
 		local choices = {}
-		for _ = 1, 3 do
+		for _ = 1, count do
 			local entry
 			for _ = 1, 10 do
 				entry = pickWord(list, state.usedWords, state.rng)
@@ -341,9 +375,10 @@ function SketchGuess._startTurn(state)
 		end
 		state.choices = choices
 	elseif state.customWords then
-		-- Three different words from the host's list.
+		-- Different words from the host's list.
+		state.choiceLevels = {}
 		local choices = {}
-		for _ = 1, 3 do
+		for _ = 1, count do
 			local entry
 			for _ = 1, 10 do
 				entry = pickWord(state.customWords, state.usedWords, state.rng)
@@ -355,11 +390,18 @@ function SketchGuess._startTurn(state)
 		end
 		state.choices = choices
 	else
-		state.choices = {
-			pickWord(Words.easy, state.usedWords, state.rng),
-			pickWord(Words.medium, state.usedWords, state.rng),
-			pickWord(Words.hard, state.usedWords, state.rng),
-		}
+		local choices = {}
+		for _, level in state.choiceLevels do
+			local entry
+			for _ = 1, 10 do
+				entry = pickWord(Words[level], state.usedWords, state.rng)
+				if not table.find(choices, entry) then
+					break
+				end
+			end
+			table.insert(choices, entry)
+		end
+		state.choices = choices
 	end
 	state.word = nil
 	state.answers = {}
@@ -371,6 +413,8 @@ function SketchGuess._startTurn(state)
 	state.guessedCount = 0
 	state.skipVotes = {}
 	state.reports = {}
+	state.likes = {}
+	state.buckets = 0
 	state.lastPoints = {}
 	state.endReason = nil
 	nextTimer(state)
@@ -391,6 +435,12 @@ local function guesserCount(state): number
 end
 
 local function endDrawing(state, reason: string)
+	-- Finished drawings go in the end-of-game gallery. Not ones that were skipped,
+	-- given up or reported by anyone.
+	local finished = reason == "Time's up!" or reason == "Everyone guessed it!"
+	if finished and #state.strokes > 0 and next(state.reports) == nil and state.word then
+		table.insert(state.gallery, { drawer = state.drawer, word = state.word, strokes = state.strokes, likes = state.likes, turn = state.turnNumber })
+	end
 	state.phase = "reveal"
 	state.endReason = reason
 	state.choices = {}
@@ -415,7 +465,7 @@ local function revealLetter(state)
 		end
 	end
 	local shown = letters - #hidden
-	if #hidden <= 1 or shown >= math.floor(letters / 2) then
+	if #hidden <= 1 or shown >= math.floor(letters * state.hintShare) then
 		return
 	end
 	state.revealed[hidden[state.rng:NextInteger(1, #hidden)]] = true
@@ -438,6 +488,54 @@ function SketchGuess.hint(state): string
 		end
 	end
 	return table.concat(parts, " ")
+end
+
+local function likeCount(likes: { [number]: boolean }): number
+	local n = 0
+	for _, up in likes do
+		if up then
+			n += 1
+		end
+	end
+	return n
+end
+
+-- The drawings for the end-of-game gallery: most liked first (ties: the earlier one).
+function SketchGuess.galleryOf(state): { any }
+	local list = {}
+	for _, entry in state.gallery do
+		table.insert(list, { drawer = entry.drawer, word = entry.word, strokes = entry.strokes, likes = likeCount(entry.likes), turn = entry.turn })
+	end
+	table.sort(list, function(a, b)
+		if a.likes ~= b.likes then
+			return a.likes > b.likes
+		end
+		return a.turn < b.turn
+	end)
+	while #list > GALLERY_SIZE do
+		table.remove(list)
+	end
+	return list
+end
+
+-- Seats that may move out of turn: players who already guessed can chat with each other
+-- and rate the drawing; at the reveal anyone but the drawer can still rate it.
+function SketchGuess.getInterruptSeats(state): { number }
+	local seats = {}
+	if state.phase == "draw" then
+		for seat = 1, state.seatCount do
+			if seat ~= state.drawer and state.guessed[seat] then
+				table.insert(seats, seat)
+			end
+		end
+	elseif state.phase == "reveal" then
+		for seat = 1, state.seatCount do
+			if seat ~= state.drawer then
+				table.insert(seats, seat)
+			end
+		end
+	end
+	return seats
 end
 
 function SketchGuess.getActiveSeats(state): { number }
@@ -488,6 +586,20 @@ function SketchGuess.validateMove(state, seat: number, move: any): (boolean, str
 		elseif state.phase == "draw" then
 			if kind == "undo" or kind == "clear" then
 				return true
+			elseif kind == "bucket" then
+				if not isInt(move.color, 1, #SketchGuess.palette) then
+					return false, "Bad brush"
+				end
+				if type(move.points) ~= "string" or #move.points ~= 4 or not SketchGuess.decodePoints(move.points) then
+					return false, "Bad fill"
+				end
+				if state.buckets >= MAX_BUCKETS then
+					return false, `That's the most fills for one drawing ({MAX_BUCKETS})`
+				end
+				if #state.strokes >= SketchGuess.maxStrokes or state.pointCount + 2 > SketchGuess.maxPoints then
+					return false, "The canvas is full. Undo or clear to keep drawing."
+				end
+				return true
 			elseif kind == "shape" then
 				if not table.find(SketchGuess.shapes, move.shape) then
 					return false, "Bad shape"
@@ -526,10 +638,30 @@ function SketchGuess.validateMove(state, seat: number, move: any): (boolean, str
 		end
 		return false, "Not now"
 	end
+	if kind == "rate" then
+		if state.phase ~= "draw" and state.phase ~= "reveal" then
+			return false, "Wait for the next drawing"
+		end
+		if type(move.up) ~= "boolean" then
+			return false, "Bad move"
+		end
+		if state.likes[seat] == move.up then
+			return false, if move.up then "You already liked it" else "You already disliked it"
+		end
+		return true
+	end
 	if state.phase ~= "draw" then
 		return false, "Wait for the next drawing"
 	end
-	if kind == "voteSkip" then
+	if kind == "chat" then
+		if not state.guessed[seat] then
+			return false, "Guess the word first"
+		end
+		if type(move.text) ~= "string" or #move.text == 0 or #move.text > MAX_GUESS or normalize(move.text) == "" then
+			return false, "Type a message"
+		end
+		return true
+	elseif kind == "voteSkip" then
 		if state.skipVotes[seat] then
 			return false, "You already voted to skip"
 		end
@@ -581,11 +713,31 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 		table.insert(state.strokes, { shape = move.shape, fill = move.fill == true, color = move.color, size = move.size, points = move.points, cont = false })
 		state.pointCount += 2
 		return
+	elseif kind == "bucket" then
+		table.insert(state.strokes, { shape = "bucket", color = move.color, size = 1, points = move.points, cont = false })
+		state.pointCount += 2
+		state.buckets += 1
+		return
+	elseif kind == "rate" then
+		local first = state.likes[seat] == nil
+		state.likes[seat] = move.up
+		if move.up and first then
+			addFeed(state, { kind = "like", seat = seat, text = "liked the drawing!" })
+		end
+		return
+	elseif kind == "chat" then
+		-- Only the drawer and players who got it see this (it may name the word).
+		local shown = if type(move.shown) == "string" and move.shown ~= "" then move.shown else "(hidden)"
+		addFeed(state, { kind = "chat", seat = seat, text = shown, secret = true })
+		return
 	elseif kind == "undo" then
 		-- Remove the last whole line (one line can arrive as several chunks).
 		while #state.strokes > 0 do
 			local last = table.remove(state.strokes) :: any
-			state.pointCount -= #last.points // 4
+			state.pointCount -= if last.shape then 2 else #last.points // 4
+			if last.shape == "bucket" then
+				state.buckets -= 1
+			end
 			if not last.cont then
 				break
 			end
@@ -594,6 +746,7 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 	elseif kind == "clear" then
 		state.strokes = {}
 		state.pointCount = 0
+		state.buckets = 0
 		return
 	elseif kind == "voteSkip" or kind == "report" then
 		if kind == "report" then
@@ -674,6 +827,8 @@ function SketchGuess.getTimer(state): { id: number, seconds: number }?
 		}
 	elseif state.phase == "reveal" then
 		return { id = state.timerId, seconds = REVEAL_SECONDS }
+	elseif state.phase == "gallery" then
+		return { id = state.timerId, seconds = GALLERY_SECONDS }
 	end
 	return nil
 end
@@ -691,6 +846,10 @@ function SketchGuess.onTimeout(state)
 		end
 	elseif state.phase == "reveal" then
 		SketchGuess._startTurn(state)
+	elseif state.phase == "gallery" then
+		state.phase = "done"
+		state.finished = true
+		nextTimer(state)
 	end
 end
 
@@ -734,7 +893,7 @@ function SketchGuess.getView(state, seat: number?)
 	local knowsWord = isDrawer or state.phase == "reveal" or state.phase == "done" or (seat ~= nil and state.guessed[seat] ~= nil)
 	local feed = {}
 	for _, entry in state.feed do
-		if entry.to == nil or entry.to == seat then
+		if (entry.to == nil or entry.to == seat) and (not entry.secret or knowsWord) then
 			table.insert(feed, { kind = entry.kind, seat = entry.seat, text = entry.text })
 		end
 	end
@@ -745,6 +904,8 @@ function SketchGuess.getView(state, seat: number?)
 		status = if isDrawer then "Draw it!" elseif seat and state.guessed[seat] then "You got it! Waiting for the others..." else "Guess the word!"
 	elseif state.phase == "reveal" then
 		status = state.endReason or "Round over"
+	elseif state.phase == "gallery" then
+		status = "Best drawings of the game"
 	else
 		status = "Game over"
 	end
@@ -754,9 +915,16 @@ function SketchGuess.getView(state, seat: number?)
 		turnNumber = math.min(state.turnNumber, state.totalTurns),
 		totalTurns = state.totalTurns,
 		choices = if isDrawer and state.phase == "choose" then table.clone(state.choices) else nil,
+		choiceLevels = if isDrawer and state.phase == "choose" then table.clone(state.choiceLevels) else nil,
 		word = if knowsWord then state.word else nil,
 		hint = if state.phase == "draw" then SketchGuess.hint(state) else nil,
-		strokes = GameModule.copy(state.strokes),
+		-- The gallery carries its own drawings, so the last one isn't sent twice.
+		strokes = if state.phase == "gallery" or state.phase == "done" then {} else GameModule.copy(state.strokes),
+		gallery = if state.phase == "gallery" then GameModule.copy(SketchGuess.galleryOf(state)) else nil,
+		likes = likeCount(state.likes),
+		youLiked = if seat ~= nil then state.likes[seat] else nil,
+		buckets = state.buckets,
+		maxBuckets = MAX_BUCKETS,
 		pointCount = state.pointCount,
 		guessed = table.clone(state.guessed),
 		youGuessed = seat ~= nil and state.guessed[seat] ~= nil,
@@ -808,7 +976,14 @@ function SketchGuess.chooseBotMove(state, seat: number, rng: Random): any?
 	if seat == state.drawer then
 		return botDraw(state)
 	end
-	if state.phase ~= "draw" or state.guessed[seat] then
+	if state.phase ~= "draw" then
+		return nil
+	end
+	if state.guessed[seat] then
+		-- Now and then a bot that got it likes the drawing.
+		if state.likes[seat] == nil and rng:NextNumber() < 0.15 then
+			return { kind = "rate", up = true }
+		end
 		return nil
 	end
 	if rng:NextNumber() < 0.3 then
