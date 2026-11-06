@@ -108,6 +108,18 @@ function SeatView.solve(board: { Point }, heads: { Point }, back: number, height
 	-- Nothing fits (a tiny free area): highest and furthest, splitting the difference.
 	local b, h = back * SeatView.BACK.max, height * SeatView.RISE.max
 	local pitch, side = try(board, b, h, t, aspect, free)
+	-- Always look down at the board's middle at least (never out level over the room).
+	local cx, cy, cz, n = 0, 0, 0, 0
+	for _, p in board do
+		cx, cy, cz, n = cx + p.x, cy + p.y, cz + p.z, n + 1
+	end
+	if n > 0 then
+		cx, cy, cz = cx / n, cy / n, cz / n
+	end
+	local toMiddle = math.atan2(h - cy, math.max(0.1, cz + b))
+	if not (pitch == pitch) or pitch < toMiddle * 0.5 then
+		pitch, side = toMiddle, cx
+	end
 	return { back = b, height = h, pitch = pitch, side = side, fits = "none" }
 end
 
