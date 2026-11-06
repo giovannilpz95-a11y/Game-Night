@@ -920,7 +920,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if resultHidden and isOver() then
 			viewButton.Visible = true
 			viewButton.Text = "Results"
-		elseif table3D.playable() then
+		elseif table3D.playable() or (renderer ~= nil and renderer.setTableMode ~= nil) then
 			viewButton.Text = if in3D then "2D view" else "3D view"
 		elseif compact then
 			viewButton.Text = if in3D then "Game" else "Table"
