@@ -1,6 +1,7 @@
 -- Sea Strike table. Right (the part docked in Table view): the big grid you tap. In
--- setup it's your own ocean: tap a ship to pick it up (gold), tap water to drop it there,
--- Turn rotates it, Shuffle re-deals the fleet, Ready locks it in. In battle it's the
+-- setup it's your own ocean: drag a ship to move it (green where it fits, red where it
+-- doesn't), or tap it to pick it up (gold) and tap water to drop it. Tapping the picked
+-- ship again (or Turn) rotates it, Shuffle re-deals the fleet, Ready locks it in. In battle it's the
 -- enemy ocean: tap a square to fire. White peg miss, red peg hit, sunk ships show dark.
 -- Left: your own ocean with the enemy's pegs on it, and both fleets' ship lists with
 -- sunk ships crossed out ("You sank my Cruiser!" moments are called out over the board).
@@ -8,6 +9,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.SeaStrike)
 local Kit = require(script.Parent.Parent.UI.Kit)
@@ -26,10 +29,12 @@ local SELECTED = Color3.fromRGB(255, 206, 86)
 local MISS = Color3.fromRGB(245, 245, 245)
 local HIT = Color3.fromRGB(230, 50, 50)
 local FRAME = Color3.fromRGB(28, 52, 84)
+local FITS = Color3.fromRGB(96, 214, 120)
+local BLOCKED = Color3.fromRGB(226, 84, 84)
 
 type Grid = { frame: Frame, n: number, cells: { { any } }, radar: Frame }
 
-local function makeGrid(parent: Instance, n: number, onClick: (row: number, col: number) -> ()): Grid
+local function makeGrid(parent: Instance, n: number, onClick: (row: number, col: number) -> (), onPress: ((row: number, col: number, input: InputObject) -> ())?): Grid
 	local frame = Kit.new("Frame", {
 		BackgroundColor3 = FRAME,
 		BorderSizePixel = 0,
@@ -69,6 +74,13 @@ local function makeGrid(parent: Instance, n: number, onClick: (row: number, col:
 			button.Activated:Connect(function()
 				onClick(r, c)
 			end)
+			if onPress then
+				button.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+						onPress(r, c, input)
+					end
+				end)
+			end
 			cells[r][c] = { button = button, dot = dot, base = button.BackgroundColor3 }
 		end
 	end
@@ -259,7 +271,18 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			end
 			local ship = shipAtCell(row, col)
 			if ship then
-				selected = if selected == ship.id then nil else ship.id
+				if selected == ship.id then
+					-- Tap the picked ship again to turn it, like the online versions.
+					local dir = if ship.dir == "h" then "v" else "h"
+					if fitsAt(ship, ship.row, ship.col, dir) then
+						sendMove({ kind = "place", ship = ship.id, row = ship.row, col = ship.col, dir = dir })
+						Audio.play("piece")
+					elseif cell then
+						Juice.nope(cell.button)
+					end
+					return
+				end
+				selected = ship.id
 				Audio.play("lift")
 				render()
 				return
@@ -291,6 +314,102 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		end
 		sendMove({ kind = "fire", row = row, col = col })
 	end
+
+	-- Drag a ship in setup. `grab` is how far along the ship you took hold of it.
+	local drag: { ship: any, grab: number, start: Vector2, moved: boolean, row: number?, col: number? }? = nil
+	local connections: { RBXScriptConnection } = {}
+
+	local function cellUnder(point: Vector2): (number?, number?)
+		if not bigGrid then
+			return nil, nil
+		end
+		for r = 1, bigGrid.n do
+			for c = 1, bigGrid.n do
+				local b = bigGrid.cells[r][c].button
+				local p, sz = b.AbsolutePosition, b.AbsoluteSize
+				if point.X >= p.X and point.X <= p.X + sz.X + 1 and point.Y >= p.Y and point.Y <= p.Y + sz.Y + 1 then
+					return r, c
+				end
+			end
+		end
+		return nil, nil
+	end
+
+	-- Where the dragged ship's bow would go if dropped with the grabbed cell at r/c.
+	local function dropOrigin(d: any, r: number, c: number): (number, number)
+		if d.ship.dir == "h" then
+			return r, c - d.grab
+		end
+		return r - d.grab, c
+	end
+
+	local function onBigPress(row: number, col: number, input: InputObject)
+		if drag or not setupActive() then
+			return
+		end
+		local ship = shipAtCell(row, col)
+		if not ship then
+			return
+		end
+		local grab = if ship.dir == "h" then col - ship.col else row - ship.row
+		drag = { ship = ship, grab = grab, start = Vector2.new(input.Position.X, input.Position.Y), moved = false }
+	end
+
+	local function paintDrag()
+		local d = drag
+		if not d or not d.moved or not d.row or not bigGrid then
+			return
+		end
+		local r0, c0 = dropOrigin(d, d.row :: number, d.col :: number)
+		local ok = fitsAt(d.ship, r0, c0, d.ship.dir)
+		for _, c in Rules.cellsOf({ row = r0, col = c0, dir = d.ship.dir, len = d.ship.len }) do
+			local row = bigGrid.cells[c[1]] and bigGrid.cells[c[1]][c[2]]
+			if row then
+				row.button.BackgroundColor3 = if ok then FITS else BLOCKED
+			end
+		end
+	end
+
+	table.insert(connections, UserInputService.InputChanged:Connect(function(input)
+		local d = drag
+		if not d or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then
+			return
+		end
+		local point = Vector2.new(input.Position.X, input.Position.Y)
+		if not d.moved and (point - d.start).Magnitude > 8 then
+			d.moved = true
+			selected = d.ship.id
+			Audio.play("lift")
+		end
+		if d.moved then
+			local r, c = cellUnder(point + Vector2.new(0, GuiService:GetGuiInset().Y))
+			if r ~= d.row or c ~= d.col then
+				d.row, d.col = r, c
+				render()
+			end
+		end
+	end))
+
+	table.insert(connections, UserInputService.InputEnded:Connect(function(input)
+		local d = drag
+		if not d or (input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch) then
+			return
+		end
+		drag = nil
+		if not d.moved then
+			return -- a tap: the cell's Activated handles it
+		end
+		if d.row and setupActive() then
+			local r0, c0 = dropOrigin(d, d.row :: number, d.col :: number)
+			if fitsAt(d.ship, r0, c0, d.ship.dir) and (r0 ~= d.ship.row or c0 ~= d.ship.col) then
+				sendMove({ kind = "place", ship = d.ship.id, row = r0, col = c0, dir = d.ship.dir })
+				Audio.play("piece")
+			elseif bigGrid then
+				Juice.nope(bigGrid.frame)
+			end
+		end
+		render()
+	end))
 
 	local shuffleButton = smallButton("Shuffle", 0, 0.3, function()
 		if setupActive() then
@@ -413,7 +532,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		if not bigGrid or bigGrid.n ~= n then
 			Kit.clear(bigHolder)
 			Kit.clear(smallHolder)
-			bigGrid = makeGrid(bigHolder, n, onBigClick)
+			bigGrid = makeGrid(bigHolder, n, onBigClick, onBigPress)
 			smallGrid = makeGrid(smallHolder, n, function() end)
 		end
 		local big, small = bigGrid :: Grid, smallGrid :: Grid
@@ -453,7 +572,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		smallHolder.Visible = not (setup and mine ~= nil)
 		if setup then
 			if mine and not view.ready[mine] then
-				title.Text = if selected then "Tap water to move it · Turn to rotate" else "Place your fleet · tap a ship"
+				title.Text = if selected then "Tap water to move it · tap it again to turn" else "Place your fleet · drag or tap a ship"
 			elseif mine then
 				title.Text = "Ready! Waiting for the other admiral"
 			else
@@ -514,6 +633,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		first = false
+		paintDrag()
 	end
 
 	return {
@@ -527,6 +647,9 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		end,
 		destroy = function()
 			sweep:Disconnect()
+			for _, connection in connections do
+				connection:Disconnect()
+			end
 			root:Destroy()
 		end,
 	}

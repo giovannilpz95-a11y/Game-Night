@@ -14,3 +14,4 @@ Back to [[Home]] · see [[Tables]].
 - Stats: `sunk`, `hits`, `accuracy` (best %). Badge `seastrike_50` (sink 50 ships).
 - Tests: `tests/SeaStrike.spec.luau`.
 - A radar sweep runs over the target grid on your turn; hits throw sparks.
+- Setup: drag a ship on the big grid (green where it fits, red where it does not) or tap-tap; tapping the picked ship again turns it.

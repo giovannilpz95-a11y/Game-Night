@@ -186,7 +186,7 @@ rules.FiveDice = {
 rules.SeaStrike = {
 	goal = "Sink every ship in your rival's hidden fleet before they sink yours.",
 	card = {
-		"Your fleet starts placed for you. Tap a ship to pick it up, tap the grid to drop it, Turn to rotate. Then Ready!",
+		"Your fleet starts placed for you. Drag a ship to move it (or tap it, then tap the water). Tap a picked ship again, or Turn, to rotate it. Then Ready!",
 		"Take turns tapping a square on the enemy grid to fire. Red peg: hit. White peg: miss.",
 		"Hit every square of a ship to sink it. Sink the whole fleet to win.",
 	},
