@@ -840,7 +840,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			-- A see-through layer over the table: the bar along the bottom is all that
 			-- covers it, so the seated camera keeps the board above that.
 			board.Position = UDim2.fromOffset(boardX, top)
-			table3D.setInsets(0, (TablePrompt.HEIGHT + bottom) / info.height, seatsShare)
+			local barH = if renderer and renderer.tableHeight then renderer.tableHeight() else TablePrompt.HEIGHT
+			table3D.setInsets(0, (barH + bottom) / info.height, seatsShare)
 		else
 			board.Position = UDim2.fromOffset(boardX, top)
 			table3D.setInsets(0, 0, seatsShare)

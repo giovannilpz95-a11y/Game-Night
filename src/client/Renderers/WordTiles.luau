@@ -12,6 +12,7 @@ local UserInputService = game:GetService("UserInputService")
 local Rules = require(ReplicatedStorage.Shared.Games.WordTiles)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local Juice = require(script.Parent.Parent.UI.Juice)
 local Audio = require(script.Parent.Parent.Audio)
@@ -91,6 +92,12 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	local passConfirm = false
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	-- Table view without the board or side panel: your rack and its buttons stay along
+	-- the bottom, the scores and what your word would score are chips over it, and you
+	-- lay tiles on the board on the table (UI/TablePrompt).
+	local tableMode = false
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
 	local calledPlay: string? = nil -- the last play already seen (nil until the first update)
 	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.66, -8, 1, -96), Parent = root })
 
@@ -723,6 +730,20 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		passButton.Visible = canAct
 		passButton.Text = if swapMode then "Cancel" elseif passConfirm then "Sure? Pass" else "Pass"
 		rackFrame.Visible = snapshot.yourSeat ~= nil
+
+		if tableMode then
+			local chips = {}
+			for seat, score in view.scores do
+				local on = not over and table.find(snapshot.activeSeats, seat) ~= nil
+				table.insert(chips, TablePrompt.chip(`{nameOf(seat)} {score}`, if on then Theme.Accent else HudKit.seatColor(seat)))
+			end
+			table.insert(chips, TablePrompt.chip(`{view.bagCount} in the bag`))
+			local text = string.gsub(previewLabel.Text, "\n", "  ")
+			if text ~= "" then
+				table.insert(chips, TablePrompt.chip(text, if previewLabel.TextColor3 == Theme.Bad then Theme.Bad elseif previewLabel.TextColor3 == Theme.Good then Theme.Good else nil))
+			end
+			prompt.chips(if over then nil else "info", chips)
+		end
 	end
 
 	return {
@@ -769,6 +790,18 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 				marks[`sq:{p.row}:{p.col}`] = { kind = "picked", text = p.letter }
 			end
 			return marks
+		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			boardArea.Visible = not value
+			side.Visible = not value
+			prompt.setVisible(value)
+			if snapshot then
+				render()
+			end
 		end,
 		destroy = function()
 			root:Destroy()
