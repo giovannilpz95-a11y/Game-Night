@@ -879,7 +879,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		local docked = scene and not tableMode
 		board.Parent = if docked then dock else root
 		if renderer and renderer.setTableMode then
-			renderer.setTableMode(tableMode)
+			renderer.setTableMode(tableMode, table3D.tapParts)
 		end
 		if renderer and renderer.setDocked then
 			-- Some games lay out a compact strip for the dock (Trivia: just the answers).
