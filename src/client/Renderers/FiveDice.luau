@@ -4,8 +4,9 @@
 -- On your turn, after a roll, every box you may use shows what it would score (faded);
 -- tap a box to pick it, then Score (or tap the same box again).
 --
--- In Table view the right side is docked: the dice and buttons move to the top of the
--- score card panel (setDocked), and the 3D tray on the table shows everyone's dice.
+-- In Table view (setTableMode) the panel is gone and you play on the table: tap your
+-- dice to keep them (they glow) and the cup to roll. Roll, Score and the score card
+-- are a bar along the bottom; scoring opens the card, tap a box, confirm in a pop-up.
 
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,6 +16,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Juice = require(script.Parent.Parent.UI.Juice)
 local Audio = require(script.Parent.Parent.Audio)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local Theme = Kit.Theme
 
 local FiveDice = {}
@@ -88,6 +90,13 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 	local first = true
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local tableMode = false
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
+	-- Callouts and confetti go wherever is on screen.
+	local function fx(): GuiObject
+		return if tableMode then prompt.layer else root
+	end
 
 	---------------------------------------------------------------- the tray (left)
 	local tray = Kit.new("Frame", {
@@ -146,6 +155,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local render: () -> () = function() end
+	local renderTable: () -> ()
 
 	for i = 1, Rules.DICE do
 		local slot = Kit.new("Frame", {
@@ -411,6 +421,12 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 						Juice.nope(frame)
 						return
 					end
+					if tableMode then
+						selected = id
+						Audio.play("toggle")
+						render()
+						return
+					end
 					if selected == id then
 						sendMove({ kind = "score", box = id })
 						selected = nil
@@ -546,8 +562,8 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 				end
 				if fiveKind(p.dice) then
 					task.delay(0.45, function()
-						HudKit.callout(root, if mine then "BIG FIVE!" else `{nameOf(seat)}: BIG FIVE!`, Theme.Accent, 0.3)
-						HudKit.confetti(root, 50, 50)
+						HudKit.callout(fx(), if mine then "BIG FIVE!" else `{nameOf(seat)}: BIG FIVE!`, Theme.Accent, 0.3)
+						HudKit.confetti(fx(), 50, 50)
 					end)
 				end
 			end
@@ -642,12 +658,12 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			if not wasFirst then
 				local who = if last.seat == me then "" else `{nameOf(last.seat)}: `
 				if last.bonus then
-					HudKit.callout(root, `{who}Big Five bonus +100!`, Theme.Accent, 0.3)
-					HudKit.confetti(root, 60, 50)
+					HudKit.callout(fx(), `{who}Big Five bonus +100!`, Theme.Accent, 0.3)
+					HudKit.confetti(fx(), 60, 50)
 				elseif last.bigFive then
-					HudKit.callout(root, `{who}Big Five +50!`, Theme.Accent, 0.3)
+					HudKit.callout(fx(), `{who}Big Five +50!`, Theme.Accent, 0.3)
 				elseif CALLS[last.box] and last.points > 0 then
-					HudKit.callout(root, `{who}{CALLS[last.box]} +{last.points}`, Theme.Good, 0.3)
+					HudKit.callout(fx(), `{who}{CALLS[last.box]} +{last.points}`, Theme.Good, 0.3)
 				end
 			end
 		end
@@ -655,12 +671,81 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			local got = sp.totals.upperBonus > 0
 			if got and not shownBonus[s] and not first then
 				task.delay(0.8, function()
-					HudKit.callout(root, if s == me then "Upper bonus +35!" else `{nameOf(s)}: upper bonus +35`, Theme.Good, 0.42)
+					HudKit.callout(fx(), if s == me then "Upper bonus +35!" else `{nameOf(s)}: upper bonus +35`, Theme.Good, 0.42)
 				end)
 			end
 			shownBonus[s] = got
 		end
 		first = false
+		renderTable()
+	end
+
+	-- Table mode: the bar, the score pop-up and the score card window.
+	function renderTable()
+		if not tableMode or not snapshot then
+			return
+		end
+		local view = snapshot.view
+		local me = snapshot.yourSeat
+		local meP = me and view.players[me]
+		local active = view.preview ~= nil and not snapshot.result and meP ~= nil
+		local function openCard()
+			prompt.sheet(panel, "Score card", function()
+				selected = nil
+				prompt.ask(nil)
+				task.defer(render)
+			end)
+		end
+		local cardButton = { text = "Score card", color = Theme.PanelLight, onClick = openCard }
+		if snapshot.result then
+			prompt.bar(nil)
+			prompt.ask(nil)
+			return
+		end
+		if active and meP then
+			local left = view.maxRolls - meP.rolls
+			local round = `Round {math.min(view.round, view.rounds)} of {view.rounds}`
+			if meP.rolls == 0 then
+				prompt.bar("first", `Your roll! {round}`, {
+					{ text = "Roll!", onClick = roll },
+					cardButton,
+				})
+			else
+				local line = if left > 0 then "Tap dice to keep them, then roll again or score" else "No rolls left: pick a box to score"
+				if view.joker then
+					line = "Big Five joker! Pick any open box"
+				end
+				prompt.bar("rolled", line, {
+					{ text = if left > 0 then `Roll ({left} left)` else "No rolls left", onClick = roll, enabled = left > 0 },
+					{ text = "Score", color = Theme.Good, onClick = openCard },
+				})
+			end
+		else
+			selected = nil
+			prompt.bar("wait", if not me then "Watching"
+				elseif view.together then "You've scored this round. Waiting for the others…"
+				else `{nameOf(view.turn)} is rolling…`, { cardButton })
+		end
+		-- Picked a box on the card: confirm it.
+		if active and selected and view.preview[selected] ~= nil and prompt.sheetOpen() then
+			local box = selected
+			local points = view.preview[box]
+			prompt.ask(`score:{box}`, `{Rules.BOX[box].name} for {points}?`, if points == 0 then "That box scores nothing with these dice." else nil, {
+				{ text = "Score it", color = Theme.Good, onClick = function()
+					sendMove({ kind = "score", box = box })
+					selected = nil
+					prompt.ask(nil)
+					prompt.sheet(nil)
+				end },
+				{ text = "Back", color = Theme.PanelLight, onClick = function()
+					selected = nil
+					prompt.ask(nil)
+					render()
+				end },
+			})
+		else
+			prompt.ask(nil)
+		end
 	end
 
 	return {
@@ -706,6 +791,32 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			if value ~= docked then
 				setDocked(value)
 			end
+		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			root.Visible = not value
+			prompt.setVisible(value)
+			render()
+		end,
+		-- Your kept dice glow on the table.
+		tableMarks = function(): { [any]: any }?
+			if not (tableMode and snapshot and snapshot.yourSeat) then
+				return nil
+			end
+			local p = snapshot.view.players[snapshot.yourSeat]
+			if not (p and p.rolls > 0) then
+				return nil
+			end
+			local marks = {}
+			for i, h in localHeld do
+				if h then
+					marks[`die:{snapshot.yourSeat}:{i}`] = "picked"
+				end
+			end
+			return marks
 		end,
 		destroy = function()
 			root:Destroy()

@@ -25,6 +25,7 @@ local Audio = require(script.Parent.Parent.Audio)
 local Flair = require(script.Parent.Flair)
 local HudKit = require(script.Parent.HudKit)
 local Layout = require(script.Parent.Layout)
+local TablePrompt = require(script.Parent.TablePrompt)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
 local Avatars = require(script.Parent.Parent.Table3D.Avatars)
 local EmoteWheel = require(script.Parent.EmoteWheel)
@@ -219,6 +220,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 
 	local viewButton: TextButton
 	local applyMode: () -> ()
+	local tableMode = false -- Table view of a game that plays without its panel
 	local relayout: () -> ()
 	local dockSpec: () -> { side: string, size: number, held: boolean? }
 	local table3D = Table3D.create(parent :: ScreenGui, function(move: any)
@@ -834,6 +836,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				dockLip.Fade.Rotation = 0
 				table3D.setInsets(0, (h + bottom) / info.height, seatsShare)
 			end
+		elseif tableMode then
+			-- A see-through layer over the table: the bar along the bottom is all that
+			-- covers it, so the seated camera keeps the board above that.
+			board.Position = UDim2.fromOffset(boardX, top)
+			table3D.setInsets(0, (TablePrompt.HEIGHT + bottom) / info.height, seatsShare)
 		else
 			board.Position = UDim2.fromOffset(boardX, top)
 			table3D.setInsets(0, 0, seatsShare)
@@ -865,13 +872,20 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		-- In 3D the screen stays see-through: header, seats and results float over the room.
 		root.BackgroundTransparency = if in3D then 1 else 0
 		-- Scenes keep your hand docked on screen; games played on the table don't need it.
-		local docked = in3D and not table3D.playable()
+		-- Games with a table mode drop their panel entirely: you play on the table, and
+		-- only their pop-ups and action bar stay on screen (UI/TablePrompt).
+		local scene = in3D and not table3D.playable()
+		tableMode = scene and renderer ~= nil and renderer.setTableMode ~= nil
+		local docked = scene and not tableMode
 		board.Parent = if docked then dock else root
+		if renderer and renderer.setTableMode then
+			renderer.setTableMode(tableMode)
+		end
 		if renderer and renderer.setDocked then
 			-- Some games lay out a compact strip for the dock (Trivia: just the answers).
 			renderer.setDocked(docked)
 		end
-		board.Visible = not in3D or docked
+		board.Visible = not in3D or docked or tableMode
 		dock.Visible = docked
 		viewButton.Visible = table3D.available() and snapshot ~= nil and not isOver()
 		emotes.setEnabled(snapshot ~= nil and snapshot.yourSeat ~= nil and not isOver(), snapshot ~= nil and snapshot.table ~= nil)
