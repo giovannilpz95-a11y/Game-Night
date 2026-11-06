@@ -339,6 +339,39 @@ return function(T)
 		T.eq((Werewolf.validateMove(s, 2, { kind = "accuse", target = 5 })), false, "no accusing the out")
 	end)
 
+	T.test("day 1: bots don't all pile onto the first player someone suspects", function()
+		-- 8 seats; on day 1 seats 1 and 2 already said they suspect seat 8. How often do the
+		-- other village bots name seat 8 too? It used to be every time on hard.
+		for _, level in { "medium", "hard" } do
+			local follow, total = 0, 0
+			for seed = 1, 60 do
+				local s = Werewolf.new(8, { botLevel = level }, T.Random.new(seed))
+				s.roles = { "villager", "villager", "seer", "guardian", "villager", "villager", "wolf", "wolf" }
+				Werewolf.onTimeout(s) -- roles -> night 1
+				for seat = 1, 8 do
+					apply(s, seat, { kind = "night", target = if seat >= 7 then 1 else 7 })
+				end
+				-- A guardian save and a night with nobody out, so it's a clean day 1.
+				s.alive[1] = true
+				Werewolf.onTimeout(s) -- dawn -> day
+				T.eq(s.phase, "day")
+				apply(s, 1, { kind = "accuse", target = 8 })
+				apply(s, 2, { kind = "accuse", target = 8 })
+				for _, seat in { 4, 5, 6 } do
+					local move = Werewolf.chooseBotMove(s, seat, T.Random.new(seed * 10 + seat))
+					if move and move.kind == "accuse" then
+						total += 1
+						if move.target == 8 then
+							follow += 1
+						end
+					end
+				end
+			end
+			T.ok(total > 20, `{level}: bots still accuse someone ({total})`)
+			T.ok(follow / total < 0.7, `{level}: {follow} of {total} accusations followed the pile`)
+		end
+	end)
+
 	T.test("the village's bots beat the wolves more often on hard than on easy", function()
 		local function villageWins(level: string): number
 			local wins = 0

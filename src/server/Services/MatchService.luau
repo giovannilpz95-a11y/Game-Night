@@ -24,6 +24,7 @@ type Entry = {
 	partyId: string,
 	ended: boolean,
 	turnEndsAt: number?,
+	turnKey: any?, -- the turn the AFK clock is running for (see turnKeyOf)
 	turnSeconds: number,
 	startedAt: number,
 	timerId: number?, -- the game's phase clock that is currently running
@@ -34,6 +35,7 @@ type Entry = {
 	graced: { [number]: boolean }, -- seats whose first turn already got Config.FirstTurnGrace
 	intro: boolean, -- the Showtime intro is on: no turns yet (startPlay ends it)
 	introSkips: { [number]: boolean }, -- userIds who skipped the intro
+	ownMoves: { [number]: number }, -- moves each seat's player made themselves (not bots or the turn timer)
 }
 
 local partyService: any = nil
@@ -115,6 +117,7 @@ local function finish(entry: Entry)
 		seats = match.seats,
 		minutes = (os.clock() - entry.startedAt) / 60,
 		moves = match.moveNumber,
+		ownMoves = entry.ownMoves, -- [seat] = moves that seat's player made themselves
 		scores = match:getScores(), -- party games: final points per seat (nil for others)
 		stats = match:getMatchStats(), -- per seat, for the stats profile (see StatsCatalog)
 		botLevel = entry.botLevel,
@@ -125,7 +128,7 @@ local function finish(entry: Entry)
 end
 
 -- Runs `callback(summary)` after every match ends. summary has gameId, result, aborted,
--- seats (with userId and left), minutes, moves, scores (games with getScores), stats (per
+-- seats (with userId and left), minutes, moves, ownMoves (per seat), scores (games with getScores), stats (per
 -- seat, see Match.getMatchStats) and botLevel (nil without bots).
 -- EconomyService pays out from this.
 function MatchService.onMatchFinished(callback: (any) -> ())
@@ -174,6 +177,15 @@ local function afterMove(entry: Entry)
 	end
 end
 
+-- What makes a new turn for the AFK clock: the game's own turn key, or else every move.
+local function turnKeyOf(match: any): any
+	local rules = match.rules
+	if rules.getTurnKey then
+		return rules.getTurnKey(match.state)
+	end
+	return match.moveNumber
+end
+
 function scheduleTurn(entry: Entry)
 	local match = entry.match
 	if match:isOver() or entry.intro then
@@ -211,6 +223,7 @@ function scheduleTurn(entry: Entry)
 	-- Party games: the game's own phase clock.
 	local timer = match:getTimer()
 	if timer then
+		entry.turnKey = nil
 		if entry.timerId ~= timer.id then
 			local timerId = timer.id
 			entry.timerId = timerId
@@ -228,8 +241,11 @@ function scheduleTurn(entry: Entry)
 	end
 	entry.timerId = nil
 
-	-- Turn games: a player who takes too long has a bot move for them.
-	local token = match.moveNumber
+	-- Turn games: a player who takes too long has a bot move for them. The clock runs
+	-- once per turn: games whose turn takes several moves (Five Dice: roll, hold, roll,
+	-- score) give a turn key, so holding a die doesn't restart it. Out of time, the bot
+	-- finishes the whole turn for the player.
+	local key = turnKeyOf(match)
 	local hasHumanTurn = false
 	local seconds = entry.turnSeconds
 	for _, seat in match:getActiveSeats() do
@@ -243,20 +259,40 @@ function scheduleTurn(entry: Entry)
 		end
 	end
 	if hasHumanTurn then
+		if entry.turnKey == key and entry.turnEndsAt then
+			return -- same turn, its clock is already running
+		end
+		entry.turnKey = key
 		entry.turnEndsAt = workspace:GetServerTimeNow() + seconds
 		task.delay(seconds, function()
-			if entry.ended or match.moveNumber ~= token then
+			if entry.ended or entry.turnKey ~= key or turnKeyOf(match) ~= key then
 				return
 			end
-			-- Out of time: a bot moves for whoever is still thinking.
+			-- Out of time: a bot moves for whoever is still thinking, to the end of the turn.
 			for _, seat in match:getActiveSeats() do
-				if not match:isBot(seat) and match:playForSeat(seat) then
-					afterMove(entry)
-					return
+				if not match:isBot(seat) then
+					local steps = 0
+					while steps < 40 and not entry.ended and not match:isOver() and turnKeyOf(match) == key and match:isSeatActive(seat) do
+						if not match:playForSeat(seat) then
+							break
+						end
+						steps += 1
+						afterMove(entry)
+					end
+					if steps > 0 then
+						if not entry.ended and not match:isOver() and turnKeyOf(match) == key then
+							-- The bot couldn't finish the turn: give the player a fresh clock.
+							entry.turnKey = nil
+							scheduleTurn(entry)
+							broadcast(entry)
+						end
+						return
+					end
 				end
 			end
 		end)
 	else
+		entry.turnKey = nil
 		entry.turnEndsAt = nil
 	end
 end
@@ -351,6 +387,7 @@ local function startMatch(leader: Player, request: any)
 		partyId = party.id,
 		ended = false,
 		turnEndsAt = nil,
+		turnKey = nil,
 		turnSeconds = HouseRules.turnSeconds(catalogEntry, ruleValues) or Config.TurnSeconds,
 		startedAt = os.clock(),
 		timerId = nil,
@@ -361,6 +398,7 @@ local function startMatch(leader: Player, request: any)
 		graced = {},
 		intro = false,
 		introSkips = {},
+		ownMoves = {},
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
@@ -516,6 +554,7 @@ function handlers.move(player: Player, request: any)
 	if not ok then
 		return notify(player, err :: string)
 	end
+	entry.ownMoves[seat] = (entry.ownMoves[seat] or 0) + 1
 	afterMove(entry)
 	emit("moved", { player = player, matchId = entry.match.id, gameId = entry.match.gameId })
 end

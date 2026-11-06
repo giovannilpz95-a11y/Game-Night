@@ -7,6 +7,7 @@
 -- * openHelp(): every game in a list, each opening its rules, plus "Replay the lobby tour".
 -- * showCard(gameId, hidden, onHide): the short card for a new match: the goal and 2-4
 --   lines, Full rules, Got it, and a "Don't show again for this game" toggle.
+--   tuckCard() folds it into a small "? How to play" button when the game needs you.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -214,8 +215,28 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 	local cardHidden = false
 	local onHide: ((boolean) -> ())? = nil
 
+	-- When the game needs you before you've closed the card, it steps aside into this
+	-- small button (top right, under the header) so it never covers a timed choice.
+	local chip = Kit.button("? How to play", function() end, {
+		Name = "HowToPlayChip",
+		BackgroundColor3 = Theme.Panel,
+		TextColor3 = Theme.Text,
+		TextSize = 14,
+		AnchorPoint = Vector2.new(1, 0),
+		Size = UDim2.fromOffset(132, 32),
+		Visible = false,
+		ZIndex = Z - 10,
+		Parent = screen,
+	})
+	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 1.5, Parent = chip })
+	chip.Activated:Connect(function()
+		chip.Visible = false
+		card.Visible = cardGameId ~= nil
+	end)
+
 	local function closeCard()
 		card.Visible = false
+		chip.Visible = false
 		cardGameId = nil
 	end
 	Kit.button("Full rules", function()
@@ -245,6 +266,7 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 		card.Size = UDim2.fromOffset(w, 0)
 		-- Centered under the top bar.
 		card.Position = UDim2.fromOffset(info.width / 2, info.top + (info.height - info.top - info.bottom) / 2)
+		chip.Position = UDim2.fromOffset(info.width - 12, info.top + 4)
 		cardTitle.TextSize = if info.compact then 18 else 20
 	end)
 
@@ -288,9 +310,17 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 				})
 			end
 			renderHide()
+			chip.Visible = false
 			card.Visible = true
 		end,
 		closeCard = closeCard,
+		-- Tuck the open card into the small button; tapping it brings the card back.
+		tuckCard = function()
+			if card.Visible then
+				card.Visible = false
+				chip.Visible = true
+			end
+		end,
 		cardOpen = function(): boolean
 			return card.Visible
 		end,

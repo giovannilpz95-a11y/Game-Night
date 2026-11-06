@@ -527,6 +527,35 @@ Net.event(Net.Names.Notify).OnClientEvent:Connect(popups.toast)
 local cardShownFor: any = nil
 -- The card waits for the Showtime intro to finish.
 local cardAfterIntro: (() -> ())? = nil
+-- Once the card has been up a few seconds, a timed choice of yours (a turn, a night pick,
+-- a question) tucks it into a small "? How to play" button so it never covers the game
+-- while your clock runs. Tapping the button brings the card back for good.
+local CARD_READ_SECONDS = 6
+local cardOpenedAt = 0
+local cardTuckedFor: any = nil
+local cardTuckPending = false
+local latestSnapshot: any = nil
+local function tuckCardIfNeeded()
+	local snap = latestSnapshot
+	if type(snap) ~= "table" or snap.matchId ~= cardShownFor or cardTuckedFor == snap.matchId or not rulesPanel.cardOpen() then
+		return
+	end
+	local seat = snap.yourSeat
+	if not (snap.timed and seat and type(snap.activeSeats) == "table" and table.find(snap.activeSeats, seat)) then
+		return
+	end
+	local waited = os.clock() - cardOpenedAt
+	if waited >= CARD_READ_SECONDS then
+		cardTuckedFor = snap.matchId
+		rulesPanel.tuckCard()
+	elseif not cardTuckPending then
+		cardTuckPending = true
+		task.delay(CARD_READ_SECONDS - waited + 0.05, function()
+			cardTuckPending = false
+			tuckCardIfNeeded()
+		end)
+	end
+end
 Showtime.onChanged(function(running: boolean)
 	matchView.setCinematic(running)
 	if not running and cardAfterIntro then
@@ -537,6 +566,7 @@ Showtime.onChanged(function(running: boolean)
 end)
 Net.event(Net.Names.MatchState).OnClientEvent:Connect(function(snapshot)
 	matchView.setSnapshot(snapshot)
+	latestSnapshot = snapshot
 	if type(snapshot) ~= "table" then
 		rulesPanel.closeCard() -- left the match
 		cardAfterIntro = nil
@@ -557,6 +587,8 @@ Net.event(Net.Names.MatchState).OnClientEvent:Connect(function(snapshot)
 				rulesPanel.showCard(gameId, false, function(hide: boolean)
 					economyRequest:FireServer({ action = "tips", tip = "hideCard", gameId = gameId, hidden = hide })
 				end)
+				cardOpenedAt = os.clock()
+				tuckCardIfNeeded()
 			end
 			if Showtime.running() == "intro" and Showtime.matchId() == snapshot.matchId then
 				cardAfterIntro = show
@@ -564,6 +596,8 @@ Net.event(Net.Names.MatchState).OnClientEvent:Connect(function(snapshot)
 				show()
 			end
 		end
+	else
+		tuckCardIfNeeded()
 	end
 end)
 

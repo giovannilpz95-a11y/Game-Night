@@ -21,8 +21,10 @@ export type MatchContext = {
 	typicalMinutes: number,
 	minMinutes: number,
 	minMoves: number,
+	minOwnMoves: number?, -- this player must have made at least this many moves themselves (default 1)
 	minutes: number, -- how long the match lasted
 	moves: number, -- moves made by everyone
+	ownMoves: number?, -- moves this player made themselves (not bots or the turn timer); nil = don't check
 	won: boolean,
 	isDraw: boolean,
 	resigned: boolean?, -- this player gave up: no Coins, Gems, XP or challenge progress
@@ -114,6 +116,11 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 	end
 	if ctx.minutes < ctx.minMinutes or ctx.moves < ctx.minMoves then
 		table.insert(payout.notes, "Too short for rewards")
+		return payout
+	end
+	-- Sitting back while bots and the turn timer play for you earns nothing.
+	if ctx.ownMoves ~= nil and ctx.ownMoves < (ctx.minOwnMoves or 1) then
+		table.insert(payout.notes, "Play your turns to earn rewards")
 		return payout
 	end
 

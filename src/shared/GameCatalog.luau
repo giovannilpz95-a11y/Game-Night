@@ -22,6 +22,7 @@ export type Entry = {
 	typicalMinutes: number?, -- usual match length
 	minMinutes: number?, -- matches shorter than this pay nothing
 	minMoves: number?, -- matches with fewer moves than this pay nothing
+	minOwnMoves: number?, -- a player who made fewer moves than this themselves gets nothing (default 1)
 	-- Party Host (see shared/HouseRules.luau and shared/CustomContent.luau)
 	houseRules: { any }?, -- this game's own house rules; turn games also get the Turn timer
 	custom: string?, -- "words" or "quiz": the host's own word lists or quiz decks work here
@@ -206,6 +207,7 @@ local entries: { Entry } = {
 		typicalMinutes = 8,
 		minMinutes = 1,
 		minMoves = 5,
+		minOwnMoves = 3, -- answer at least 3 questions yourself
 		houseRules = {
 			{
 				key = "questions",

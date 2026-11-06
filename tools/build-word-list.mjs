@@ -4,7 +4,8 @@
 //
 // Source: the ENABLE word list (public domain), e.g.
 // https://raw.githubusercontent.com/dolph/dictionary/master/enable1.txt
-// Words with offensive meanings are dropped using tools/word-blocklist.rot13.txt, and words
+// Words with offensive meanings are dropped using tools/word-blocklist.rot13.txt (`keep` lines
+// put back clean words a `contains` or `family` rule would catch, like SPICES or BASEMENT), and words
 // longer than the biggest board (15) are dropped because they can never be played.
 //
 // Output is front-coded to keep it small: each word is one uppercase letter giving how many
@@ -28,17 +29,24 @@ const ENDINGS = ['', 's', 'es', 'd', 'ed', 'ing', 'er', 'ers', 'y', 'ier', 'iest
 const rot13 = (s) => s.replace(/[a-z]/g, (c) => String.fromCharCode(((c.charCodeAt(0) - 97 + 13) % 26) + 97))
 const contains = []
 const family = new Set()
+const keep = new Set()
 for (const line of readFileSync(join(root, 'tools', 'word-blocklist.rot13.txt'), 'utf8').split('\n')) {
-  const [kind, word] = line.trim().split(/\s+/)
-  if (!word || kind.startsWith('#')) continue
-  const plain = rot13(word)
-  if (kind === 'contains') contains.push(plain)
-  else if (kind === 'family') for (const end of ENDINGS) family.add(plain + end)
+  const [kind, ...rest] = line.trim().split(/\s+/)
+  if (!kind || kind.startsWith('#') || rest.length === 0) continue
+  for (const word of rest) {
+    const plain = rot13(word)
+    if (kind === 'contains') contains.push(plain)
+    else if (kind === 'family') for (const end of ENDINGS) family.add(plain + end)
+    else if (kind === 'word') family.add(plain)
+    else if (kind === 'keep') keep.add(plain)
+    else throw new Error(`word-blocklist: unknown kind "${kind}"`)
+  }
 }
+const blocked = (w) => !keep.has(w) && (family.has(w) || contains.some((bad) => w.includes(bad)))
 
 const words = [...new Set(readFileSync(source, 'utf8').split(/\r?\n/).map((w) => w.trim().toLowerCase()))]
   .filter((w) => /^[a-z]{2,}$/.test(w) && w.length <= MAX_LENGTH)
-  .filter((w) => !family.has(w) && !contains.some((bad) => w.includes(bad)))
+  .filter((w) => !blocked(w))
   .sort()
 
 let encoded = ''

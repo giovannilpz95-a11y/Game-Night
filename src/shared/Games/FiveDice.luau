@@ -326,6 +326,11 @@ local function validHeld(held: any): boolean
 	return n == FiveDice.DICE
 end
 
+-- One turn is roll, hold, roll, ..., score: the AFK clock runs once for all of it.
+function FiveDice.getTurnKey(state): string
+	return `{state.round}:{table.concat(FiveDice.getActiveSeats(state), ",")}`
+end
+
 function FiveDice.getLegalMoves(state, seat: number): { any }
 	if not isActive(state, seat) then
 		return {}
