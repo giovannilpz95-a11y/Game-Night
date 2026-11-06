@@ -13,6 +13,51 @@ return function(T)
 		return s
 	end
 
+	local function flyingBoard()
+		local s = Checkers.new(2, { rules = { flyingKings = true } })
+		for r = 1, 8 do
+			for c = 1, 8 do
+				s.board[r][c] = 0
+			end
+		end
+		s.board[1][2] = 2 -- something left for light, so the game isn't over
+		return s
+	end
+
+	local function pathText(m): string
+		local parts = {}
+		for _, sq in m.path do
+			table.insert(parts, `{sq[1]},{sq[2]}`)
+		end
+		return table.concat(parts, " ")
+	end
+
+	T.test("flying kings: a jumped piece blocks the way until the capture ends", function()
+		local s = flyingBoard()
+		s.board[5][4] = 3 -- dark king
+		s.board[4][5] = 2
+		s.board[6][3] = 2
+		local paths = {}
+		for _, m in Checkers.getLegalMoves(s, 1) do
+			table.insert(paths, pathText(m))
+		end
+		table.sort(paths)
+		-- Either piece can be taken, landing anywhere past it, but the king can't turn
+		-- back over the piece it just took to reach the other one.
+		T.eq(table.concat(paths, " | "), "1,8 | 2,7 | 3,6 | 7,2 | 8,1")
+	end)
+
+	T.test("flying kings: the king must land where the capture goes on", function()
+		local s = flyingBoard()
+		s.board[4][7] = 3 -- dark king
+		s.board[5][6] = 2
+		s.board[7][2] = 2
+		local moves = Checkers.getLegalMoves(s, 1)
+		T.eq(#moves, 1)
+		T.eq(pathText(moves[1]), "8,3 6,1")
+		T.eq((Checkers.validateMove(s, 1, { from = { 4, 7 }, path = { { 7, 4 } } })), false, "stopping early")
+	end)
+
 	T.test("opening position has 7 moves for Dark", function()
 		local s = Checkers.new(2)
 		T.eq(#Checkers.getLegalMoves(s, 1), 7)

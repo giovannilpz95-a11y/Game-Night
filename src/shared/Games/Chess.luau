@@ -483,6 +483,29 @@ local function insufficientMaterial(board): boolean
 	return true
 end
 
+local function onlyKings(board): boolean
+	for sq = 0, 63 do
+		local kind = math.abs(board[sq])
+		if kind ~= 0 and kind ~= KING then
+			return false
+		end
+	end
+	return true
+end
+
+-- The automatic draw on material. The variants can still be won without mating material
+-- (Lichess plays them on): in King of the Hill a lone king can walk to the centre, and in
+-- Three-check a lone minor piece can still give checks, so only bare kings are a draw there
+-- (and King of the Hill never draws on material: either king may reach the hill).
+local function drawnOnMaterial(state, board): boolean
+	if state.kingOfTheHill then
+		return false
+	elseif state.threeCheck then
+		return onlyKings(board)
+	end
+	return insufficientMaterial(board)
+end
+
 -- Repetition key: placement, side, castling and (only when capturable) the ep square.
 local function positionKey(pos: Pos): string
 	local fen = Chess.toFen(pos)
@@ -821,9 +844,9 @@ function Chess.applyMove(state, seat: number, move: any)
 	elseif pos.halfmove >= 100 then
 		state.isDraw = true
 		state.reason = "50-move rule"
-	elseif insufficientMaterial(pos.board) then
+	elseif drawnOnMaterial(state, pos.board) then
 		state.isDraw = true
-		state.reason = "Not enough pieces to checkmate"
+		state.reason = if state.kingOfTheHill or state.threeCheck then "Only the kings are left" else "Not enough pieces to checkmate"
 	end
 end
 

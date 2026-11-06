@@ -1,6 +1,8 @@
 # Words kept out of Word Tiles, ROT13-encoded so the list doesn't read as a list of slurs.
-# Each line: `contains <word>` (drop any word with it inside) or `family <word>` (drop the word
-# and its plain endings). Decode a line with any ROT13 tool. Used by tools/build-word-list.mjs.
+# Each line: `contains <word>` (drop any word with it inside), `family <word>` (drop the word
+# and its plain endings), `word <words...>` (drop exactly these) or `keep <words...>` (clean
+# words a contains/family rule would catch; these stay playable). Decode a line with any ROT13
+# tool. Used by tools/build-word-list.mjs; tests/WordTiles.spec.luau checks both directions.
 contains shpx
 contains fuvg
 contains phag
@@ -33,7 +35,7 @@ contains pyvgbe
 contains fpebg
 contains grfgvp
 contains rwnphyng
-contains frzra
+family frzra
 contains fcrez
 contains cebfgvghg
 contains rebgvp
@@ -159,3 +161,29 @@ family sybbml
 family sybbmvr
 family chffl
 family chffvrf
+# ethnic and religious slurs
+word wrj wrjrq wrjvat wrjf qnexl qnexrl qnexrlf qnexvr qnexvrf jbt jbtf cvpxnavaal cvpxnavaavrf xenhg xenhgf uror urorf furral furravrf furravr tevatb tevatbf pbbyvr pbbyvrf obuhax obuhaxf fnzob fnzobf wvtnobb wvtnobbf zhynggb zhynggbrf zhynggbf bpgbebba bpgbebbaf dhnqebba dhnqebbaf ternfronyy ternfronyyf ubaxrl ubaxrlf fuvxfn fuvxfnf fuvxfr fuvxfrf
+# slurs about sexuality and disability
+word yrm yrmmrf yrmmvr yrmmvrf yrmml cbbsgre cbbsgref cbbir cbbirf zbatbybvq zbatbybvqf zbatbyvfz zbatbyvfzf fcnfgvp fcnfgvpf
+# vulgar
+word penccre penccref penccl penccvre penccvrfg gvggvr gvggvrf qbhpur qbhpurf qbhpurq qbhpuvat
+# nazi (minerals and drugs)
+keep zbanmvgr zbanmvgrf curanmva curanmvar curanmvarf curanmvaf crecuranmvar crecuranmvarf syhcuranmvar syhcuranmvarf
+# erotic (medicine and physics)
+keep fpyrebgvp fpyrebgvpf ngurebfpyrebgvp prebgvp urgrebgvp krebgvp
+# nigg (niggle, snigger, renege)
+keep avttyr avttyrq avttyre avttyref avttyrf avttyvat avttyvatyl avttyvatf favttre favttrerq favttrere favttreref favttrevat favttref favttyr favttyrq favttyre favttyref favttyrf favttyvat eravttrq eravttvat
+# pubes (puberty)
+keep chorfprapr chorfpraprf chorfprag cerchorfprapr cerchorfpraprf cerchorfprag cerchorfpragf cbfgchorfprag cbfgchorfpragf
+# shit (mishit, shittah tree, shiitake)
+keep zvfuvg zvfuvgf zvfuvggvat fuvggnu fuvggnuf fuvggvz fuvggvzf fuvggvzjbbq fuvggvzjbbqf fuvgnxr fuvgnxrf
+# sperm (plants)
+keep natvbfcrez natvbfcrezf natvbfcrezbhf tlzabfcrez tlzabfcrezf tlzabfcrezbhf tlzabfcrezvrf tlzabfcrezl raqbfcrez raqbfcrezf bbfcrez bbfcrezf mbbfcrez mbbfcrezf cgrevqbfcrez cgrevqbfcrezf ntnzbfcrezvrf ntnzbfcrezl
+# twat (water, watch)
+keep phgjngre phgjngref zrygjngre zrygjngref fnygjngre bhgjngpu bhgjngpurq bhgjngpurf bhgjngpuvat jevfgjngpu jevfgjngpurf
+# wank (swank, twanky)
+keep fjnax fjnaxrq fjnaxre fjnaxrfg fjnaxvre fjnaxvrfg fjnaxvyl fjnaxvarff fjnaxvarffrf fjnaxvat fjnaxf fjnaxl gjnaxvrf gjnaxl
+# vagina (biology)
+keep rintvangvba rintvangvbaf vaintvangr vaintvangrq vaintvangrf vaintvangvat vaintvangvba vaintvangvbaf
+# family endings that make clean words
+keep ornarel ornarevrf ohggrq ohggre ohggref ohggrf ohggvat pbpxrq pbpxre pbpxref pbpxvre pbpxvrfg pbpxvarff pbpxvat pbpxl pencr pencrq pencrf pencvat pencf qvpxre qvpxref urebvarf wncrq wncre wncref wncrf wncvat cvzcyl cevpxrq cevpxre cevpxref cevpxvre cevpxvrfg cevpxvat cevpxyl cevpxl ergneqre ergneqref ergneqvat fcvprq fcvpre fcvpref fcvprf fcvpvre fcvpvrfg fcvpvarff fcvpvat fcvpl fchaxl fchaxvre fchaxvrfg fchaxvarff gvgre gvgref

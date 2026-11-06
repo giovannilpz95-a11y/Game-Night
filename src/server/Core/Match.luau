@@ -3,6 +3,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameModule = require(ReplicatedStorage.Shared.GameModule)
+local Offers = require(ReplicatedStorage.Shared.Offers)
 
 local Match = {}
 Match.__index = Match
@@ -193,6 +194,14 @@ function Match.playForSeat(self: Match, seat: number): boolean
 		end
 		local move = self.rules.chooseBotMove(self.state, seat, self.rng)
 		return move ~= nil and (self:submitMove(seat, move))
+	end
+	-- A player who is away never agrees to anything: their clock running out turns down
+	-- an open draw offer or takeback request instead of letting the bot answer for them.
+	local s = self.seats[seat]
+	if s and s.kind == "player" and type(self.state) == "table" and self.state.offer and Offers.answerer(self.state) == seat then
+		if self:submitMove(seat, { type = "answer", accept = false }) then
+			return true
+		end
 	end
 	local move = GameModule.chooseBotMove(self.rules, self.state, seat, self.rng)
 	if move == nil then

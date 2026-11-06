@@ -47,6 +47,11 @@
 	  onTimeout(state)
 	      Pure, like applyMove: go to the next phase.
 
+	  getTurnKey(state) -> any
+	      For games where one turn takes several moves (Five Dice: roll, hold, roll, score).
+	      The AFK turn clock starts once per key instead of after every move, and when it
+	      runs out the bot plays the rest of that turn. Without it every move is a new turn.
+
 	  getBotDelay(state, seat, rng) -> seconds
 	      How long a bot waits before moving. Config.BotMoveDelay if missing.
 

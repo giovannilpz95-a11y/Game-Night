@@ -276,6 +276,21 @@ return function(T)
 		T.ok(not dict:has("abcdefghijklmnop"), "too long")
 	end)
 
+	T.test("the word filter keeps clean words that contain a blocked root", function()
+		local dict = Dictionary.get()
+		for _, w in { "spice", "spices", "spicy", "butter", "basement", "amusement", "advertisement", "endorsement", "saltwater", "wristwatch", "swanky", "niggle", "snigger", "prickly", "pimply", "titer", "craps", "japes", "cocky", "heroines", "sclerotic", "endosperm", "pubescent", "mishit", "retarding", "beanery", "monazite" } do
+			T.ok(dict:has(w), w)
+		end
+	end)
+
+	T.test("the word filter leaves out slurs and vulgar words", function()
+		local dict = Dictionary.get()
+		-- ROT13 so the test doesn't read as a list of slurs.
+		for _, coded in { "wrj", "qnexl", "jbt", "cvpxnavaal", "xenhg", "uror", "furral", "cbbsgre", "zbatbybvq", "ubaxrl", "penccre", "qbhpur", "tevatb", "yrmmvr", "fcvp", "frzra", "fcrez", "gjng" } do
+			T.ok(not dict:has(rot13(coded)), `blocked word got in: {coded} (ROT13)`)
+		end
+	end)
+
 	T.test("bots finish legal games at every level with the full word list", function()
 		WordTiles.useDictionary(Dictionary.get)
 		for _, setupCase in { { "easy", 2, "quick" }, { "medium", 3, "quick" }, { "hard", 2, "quick" }, { "hard", 2, "classic" } } do
