@@ -86,6 +86,12 @@ local BOT_DELAY = {
 
 -- How much random noise bots add to their suspicions (more noise = sloppier reads).
 local NOISE = { easy = 3, medium = 1.4, hard = 0.6 }
+-- On day 1 every bot leans on its own hunch at least this much: nothing is known yet,
+-- so there is nothing for a sharp bot to be sharp about.
+local FIRST_HUNCH = 1.2
+-- A plain "I suspect X" adds this much to X, halving for each further one about X on
+-- the same day, so a pile of accusations can't outweigh everyone's own reads.
+local ACCUSE_WEIGHT = 0.5
 
 local function isInt(value: any, lo: number, hi: number): boolean
 	return type(value) == "number" and value == value and value % 1 == 0 and value >= lo and value <= hi
@@ -981,20 +987,29 @@ end
 local function suspicion(state, viewer: number, rng: Random): { [number]: number }
 	local level = state.botLevel
 	local weights = claimWeights(state, viewer)
+	local noise = NOISE[level] or 1.4
+	if state.day <= 1 then
+		noise = math.max(noise, FIRST_HUNCH)
+	end
 	local scores = {}
 	for t = 1, state.seatCount do
 		if state.alive[t] and t ~= viewer then
-			scores[t] = rng:NextNumber() * (NOISE[level] or 1.4)
+			scores[t] = rng:NextNumber() * noise
 		end
 	end
+	local accusedToday: { [string]: number } = {}
 	for _, h in state.history do
 		local t = h.target
 		if t and scores[t] ~= nil then
 			if h.kind == "claim" then
 				local w = weights[h.seat] or 1
 				scores[t] += if h.wolf then 3 * w else -2 * w
-			elseif h.kind == "accuse" then
-				scores[t] += 0.6
+			elseif h.kind == "accuse" and h.seat ~= viewer then
+				local key = `{h.day}:{t}`
+				local n = accusedToday[key] or 0
+				accusedToday[key] = n + 1
+				-- Day 1 talk is guesswork, and good players know it.
+				scores[t] += (if h.day <= 1 then ACCUSE_WEIGHT * 0.5 else ACCUSE_WEIGHT) * 0.5 ^ n
 			end
 		end
 		-- Accused someone who turned out to be innocent: a little shady.
