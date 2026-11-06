@@ -76,7 +76,10 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			end
 			local span = n * OCEAN_CELL
 			Models.block(model, "CaseBase", Vector3.new(span + 0.24, BASE_H, span + 0.24), ocean * CFrame.new(0, BASE_H / 2, 0), CASE)
-			Models.block(model, "Water", Vector3.new(span, WATER_H, span), ocean * CFrame.new(0, BASE_H + WATER_H / 2, 0), WATER, Enum.Material.Glass)
+			local water = Models.block(model, "Water", Vector3.new(span, WATER_H, span), ocean * CFrame.new(0, BASE_H + WATER_H / 2, 0), WATER, Enum.Material.Glass)
+			-- Your own ocean in Table view: place your fleet on it (renderer "ocean:<seat>";
+			-- uv X runs along columns, Z along rows toward the seat).
+			Scene.tappable(water, `ocean:{seat}`)
 			-- Target board standing up, its grid side facing the seat (+Z).
 			local tspan = n * TARGET_CELL
 			local height = tspan + 0.2

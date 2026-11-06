@@ -1058,6 +1058,15 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		setSceneTap = function(callbacks: SceneTap.Callbacks?)
 			scene.setCallbacks(callbacks)
 		end,
+		-- The table scene's parts tagged with a TapId (empty when Table view is off), so a
+		-- renderer in table mode can draw what only you should see over them.
+		tapParts = function(id: any): { BasePart }
+			if not (active and board) then
+				return {}
+			end
+			scene.setBoard(board)
+			return scene.partsOf(id)
+		end,
 		-- A gesture played at a table (Avatars.onAction): if it's yours, the camera
 		-- turns and moves in a little toward it, more for big moments.
 		focus = function(tableId: any, point: Vector3, kind: string)

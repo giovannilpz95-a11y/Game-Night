@@ -5,6 +5,12 @@
 -- enemy ocean: tap a square to fire. White peg miss, red peg hit, sunk ships show dark.
 -- Left: your own ocean with the enemy's pegs on it, and both fleets' ship lists with
 -- sunk ships crossed out ("You sank my Cruiser!" moments are called out over the board).
+--
+-- In Table view (setTableMode) both panels are gone. Your fleet is drawn on your own ocean
+-- on the table, on your screen only: tap a ship to pick it up (gold), tap water to move
+-- it, tap it again to turn it. Shuffle, Turn and Ready are a bar along the bottom. In
+-- battle you fire by tapping the target board standing in front of you; Fleets shows
+-- the ship lists in a window.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -17,6 +23,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Juice = require(script.Parent.Parent.UI.Juice)
 local Audio = require(script.Parent.Parent.Audio)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local Theme = Kit.Theme
 
 local SeaStrike = {}
@@ -149,6 +156,16 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 	local first = true
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local tableMode = false
+	local tapParts: ((id: any) -> { BasePart })? = nil
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
+	local function fx(): GuiObject
+		return if tableMode then prompt.layer else root
+	end
+	-- Your fleet on your ocean on the table: local parts only you see.
+	local fleetFolder: Folder? = nil
+	local fleetKey = ""
 
 	---------------------------------------------------------------- left: your ocean + fleets
 	local left = Kit.new("Frame", { BorderSizePixel = 0, Size = UDim2.fromScale(0.42, 1), Parent = root }, { Kit.corner(14) })
@@ -210,6 +227,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 	end)
 	local smallGrid: Grid? = nil
 	local render: () -> () = function() end
+	local renderTable: () -> ()
 
 	local function me(): number?
 		return snapshot and snapshot.yourSeat
@@ -417,16 +435,21 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			sendMove({ kind = "shuffle" })
 		end
 	end, Theme.PanelLight)
-	local turnButton = smallButton("Turn", 0.34, 0.3, function()
+	local function turnPicked(): boolean
 		local ship = myShip(selected)
 		if not setupActive() or not ship then
-			Juice.nope(buttons)
-			return
+			return false
 		end
 		local dir = if ship.dir == "h" then "v" else "h"
 		if fitsAt(ship, ship.row, ship.col, dir) then
 			sendMove({ kind = "place", ship = ship.id, row = ship.row, col = ship.col, dir = dir })
-		else
+			Audio.play("piece")
+			return true
+		end
+		return false
+	end
+	local turnButton = smallButton("Turn", 0.34, 0.3, function()
+		if not turnPicked() then
 			Juice.nope(buttons)
 		end
 	end, Theme.PanelLight)
@@ -621,11 +644,11 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 					local text = if shot.seat == mine then `You sank their {name}!`
 						elseif targetSeat == mine then `They sank your {name}!`
 						else `{nameOf(shot.seat)} sank a {name}!`
-					HudKit.callout(root, text, if shot.seat == mine then Theme.Accent else Theme.Bad, 0.35)
+					HudKit.callout(fx(), text, if shot.seat == mine then Theme.Accent else Theme.Bad, 0.35)
 				elseif shot.hit then
 					Audio.play("knock")
 					if shot.seat == mine then
-						HudKit.callout(root, "Hit!", HIT, 0.35)
+						HudKit.callout(fx(), "Hit!", HIT, 0.35)
 					end
 				else
 					Audio.play("piece")
@@ -634,6 +657,123 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		end
 		first = false
 		paintDrag()
+		renderTable()
+	end
+
+	-- Draws your ships (the ones not sunk yet: the server draws sunk ones for everyone)
+	-- on your ocean on the table. Shorter than the server's hulls, so hit pegs poke out.
+	local function drawFleet()
+		local view = snapshot and snapshot.view
+		local mine = me()
+		local water = if tableMode and tapParts and mine then tapParts(`ocean:{mine}`)[1] else nil
+		if not (view and water and view.fleet) or snapshot.result then
+			if fleetFolder then
+				fleetFolder:Destroy()
+				fleetFolder = nil
+			end
+			fleetKey = ""
+			return
+		end
+		local sunk = {}
+		for _, s in view.boards[mine].ships do
+			sunk[s.id] = s.sunk
+		end
+		local parts = { tostring(water.CFrame), selected or "" }
+		for _, ship in view.fleet do
+			table.insert(parts, `{ship.id}:{ship.row}:{ship.col}:{ship.dir}:{sunk[ship.id] == true}`)
+		end
+		local key = table.concat(parts, "|")
+		if key == fleetKey and fleetFolder and fleetFolder.Parent then
+			return
+		end
+		fleetKey = key
+		if fleetFolder then
+			fleetFolder:Destroy()
+		end
+		local folder = Instance.new("Folder")
+		folder.Name = "SeaStrikeYourFleet"
+		local n = view.size
+		local span = water.Size.X
+		local cell = span / n
+		local function center(row: number, col: number): Vector3
+			return water.CFrame:PointToWorldSpace(Vector3.new((col - 0.5) * cell - span / 2, water.Size.Y / 2, (row - 0.5) * cell - span / 2))
+		end
+		for _, ship in view.fleet do
+			if not sunk[ship.id] then
+				local cells = Rules.cellsOf(ship)
+				local a = center(cells[1][1], cells[1][2])
+				local b = center(cells[#cells][1], cells[#cells][2])
+				local long = ship.len * cell - 0.05
+				local size = if ship.dir == "h" then Vector3.new(long, 0.08, cell * 0.7) else Vector3.new(cell * 0.7, 0.08, long)
+				local hull = Instance.new("Part")
+				hull.Name = "Hull"
+				hull.Anchored = true
+				hull.CanCollide = false
+				hull.CanQuery = false
+				hull.CanTouch = false
+				hull.Size = size
+				hull.CFrame = water.CFrame.Rotation + (a + b) / 2 + water.CFrame.UpVector * 0.04
+				hull.Color = if selected == ship.id then SELECTED else SHIP
+				hull.Material = if selected == ship.id then Enum.Material.Neon else Enum.Material.SmoothPlastic
+				hull.Parent = folder
+			end
+		end
+		folder.Parent = workspace
+		fleetFolder = folder
+	end
+
+	-- Table mode: the bar along the bottom and the Fleets window.
+	function renderTable()
+		drawFleet()
+		if not tableMode or not snapshot then
+			return
+		end
+		local view = snapshot.view
+		local mine = me()
+		local fleets = { text = "Fleets", color = Theme.PanelLight, onClick = function()
+			prompt.sheet(left, "Fleets")
+		end }
+		if snapshot.result then
+			prompt.bar(nil)
+			prompt.chips(nil)
+			return
+		end
+		if view.phase == "setup" then
+			if setupActive() then
+				prompt.bar("setup", if selected then "Tap water to move it, or tap it again to turn it" else "Place your fleet: tap a ship on your ocean", {
+					{ text = "Shuffle", color = Theme.PanelLight, onClick = function()
+						selected = nil
+						sendMove({ kind = "shuffle" })
+					end },
+					{ text = "Turn", color = if selected then Theme.Accent else Theme.PanelLight, enabled = selected ~= nil, onClick = function()
+						turnPicked()
+					end },
+					{ text = "Ready!", color = Theme.Good, onClick = function()
+						selected = nil
+						sendMove({ kind = "ready" })
+					end },
+				})
+			else
+				prompt.bar("ready", if mine then "Ready! Waiting for the other admiral" else "Admirals are placing their fleets", {})
+			end
+			prompt.chips(nil)
+			return
+		end
+		local line
+		if mine and view.turn == mine then
+			line = if view.salvo and (view.shotsLeft or 1) > 1 then `Salvo! {view.shotsLeft} shots left: tap the target board` else "Your shot! Tap the target board in front of you"
+		else
+			line = `{nameOf(view.turn)} is aiming…`
+		end
+		prompt.bar("battle", line, { fleets })
+		if mine then
+			prompt.chips("left", {
+				TablePrompt.chip(`Enemy ships left: {view.boards[3 - mine].left}`, Theme.Bad),
+				TablePrompt.chip(`Yours: {view.boards[mine].left}`, Theme.Seat[2]),
+			})
+		else
+			prompt.chips(nil)
+		end
 	end
 
 	return {
@@ -649,10 +789,21 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		-- standing in the middle facing you. `uv` is where on the board (0..1).
 		canTap = function(id: any): boolean
 			local view = snapshot and snapshot.view
+			if view ~= nil and tableMode and id == `ocean:{me()}` then
+				return setupActive()
+			end
 			return view ~= nil and id == `target:{me()}` and view.phase == "battle" and view.turn == me() and not snapshot.result
 		end,
 		tapTable = function(id: any, uv: Vector3?, part: BasePart?)
 			local view = snapshot and snapshot.view
+			if view and uv and tableMode and id == `ocean:{me()}` then
+				-- Your ocean: X along the columns, Z along the rows (row 1 farthest from you).
+				local n = view.size or 10
+				if uv.X >= 0 and uv.X < 1 and uv.Z >= 0 and uv.Z < 1 then
+					onBigClick(math.floor(uv.Z * n) + 1, math.floor(uv.X * n) + 1)
+				end
+				return
+			end
 			if not (view and uv and id == `target:{me()}`) then
 				return
 			end
@@ -665,7 +816,21 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			end
 			onBigClick(math.floor((1 - fy) * n) + 1, math.floor(fx * n) + 1)
 		end,
+		setTableMode = function(value: boolean, parts: ((id: any) -> { BasePart })?)
+			tapParts = parts
+			if value == tableMode then
+				drawFleet()
+				return
+			end
+			tableMode = value
+			root.Visible = not value
+			prompt.setVisible(value)
+			render()
+		end,
 		destroy = function()
+			if fleetFolder then
+				fleetFolder:Destroy()
+			end
 			sweep:Disconnect()
 			for _, connection in connections do
 				connection:Disconnect()

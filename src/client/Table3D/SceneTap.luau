@@ -282,6 +282,19 @@ function SceneTap.new(camera: Camera, folder: Instance)
 		end
 	end
 
+	function api.partsOf(id: any): { BasePart }
+		if os.clock() - scannedAt > RESCAN then
+			scan()
+		end
+		local list = {}
+		for _, part in byId[id] or {} do
+			if part.Parent then
+				table.insert(list, part)
+			end
+		end
+		return list
+	end
+
 	function api.clear()
 		clearHover()
 		clearMarks()
