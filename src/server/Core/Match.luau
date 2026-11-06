@@ -89,7 +89,11 @@ function Match.submitMove(self: Match, seat: number, move: any): (boolean, strin
 		return false, "The game is over"
 	end
 	if not self:isSeatActive(seat) then
-		return false, "It's not your turn"
+		-- Some games take a few moves out of turn (Color Clash jump-ins).
+		local outOfTurn = self.rules.canMoveOutOfTurn
+		if not (outOfTurn and self.seats[seat] ~= nil and outOfTurn(self.state, seat, move)) then
+			return false, "It's not your turn"
+		end
 	end
 	local ok, err = self.rules.validateMove(self.state, seat, move)
 	if not ok then

@@ -325,6 +325,8 @@ rules.ColorClash = {
 			"Wild Draw Four: pick a color; the next player draws 4 and misses their turn.",
 			"Stacking: answer a Draw card with another one to pass the penalty on.",
 		} },
+		{ title = "Last card!", lines = { "Going down to one card? Tap Last card! before you play.", "Forget, and the next player can tap CATCH before they move: you draw 2." } },
+		{ title = "Jump in (house rule)", lines = { "Hold the exact same card as the top one (same color and number or symbol)? It glows: play it any time, even out of turn.", "Play carries on from you." } },
 		{ title = "Winning", lines = { "First to empty their hand wins. If a game drags on too long, fewest cards wins." } },
 	},
 }

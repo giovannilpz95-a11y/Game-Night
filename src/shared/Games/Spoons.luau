@@ -145,6 +145,11 @@ function Spoons.new(seatCount: number, options: any?, rng: Random?)
 	if type(rules.passSeconds) == "number" and rules.passSeconds > 0 then
 		state.passSeconds = rules.passSeconds
 	end
+	-- Letters mode: losing a round earns the next letter of the word; spell it and you're out.
+	if rules.letters == "PIG" or rules.letters == "SPOON" then
+		state.word = rules.letters
+		state.letters = {} -- letters[seat] = how many letters they have
+	end
 	deal(state)
 	return state
 end
@@ -185,9 +190,18 @@ local function endRound(state)
 			loser = seat
 		end
 	end
-	state.lastOut = loser
-	if loser then
+	state.lastOut = nil
+	state.lastLetter = nil
+	if loser and state.word then
+		state.letters[loser] = (state.letters[loser] or 0) + 1
+		state.lastLetter = loser
+		if state.letters[loser] >= #state.word then
+			state.out[loser] = state.round
+			state.lastOut = loser
+		end
+	elseif loser then
 		state.out[loser] = state.round
+		state.lastOut = loser
 	end
 	local alive = aliveSeats(state)
 	if #alive <= 1 then
@@ -404,6 +418,15 @@ function Spoons.getView(state, seat: number?)
 		firstGrab = GameModule.copy(state.firstGrab),
 		revealHand = revealHand,
 		lastOut = state.lastOut,
+		word = state.word,
+		letters = (function()
+			local list = {}
+			for s, n in state.letters or {} do
+				list[tostring(s)] = string.sub(state.word, 1, n)
+			end
+			return list
+		end)(),
+		lastLetter = state.lastLetter,
 	}
 end
 

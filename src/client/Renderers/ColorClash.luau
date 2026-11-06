@@ -15,6 +15,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local Fx = require(script.Parent.ColorClashFx)
 local Audio = require(script.Parent.Parent.Audio)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local ColorClash = {}
@@ -255,6 +256,13 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local docked = false
 	local shownTop: number? = nil
 	local topVisual: GuiObject? = nil
+	-- "Last card!": armed with the button before playing your second-to-last card.
+	local armed = false
+	local canCall = false
+	local function sendPlay(id: number, color: number?, target: number?)
+		sendMove({ kind = "play", card = id, color = color, target = target, call = if canCall then armed else nil })
+		armed = false
+	end
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 
@@ -352,6 +360,27 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local passAction = Kit.button("Keep it & pass", function()
 		sendMove({ kind = "pass" })
 	end, { Size = UDim2.new(0, 170, 1, 0), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, LayoutOrder = 2, Parent = actions })
+	-- Say it before you go down to one card, or the next player can catch you.
+	local callAction: TextButton
+	local function paintCall()
+		callAction.Text = if armed then "Last card! ✓" else "Last card!"
+		callAction.BackgroundColor3 = if armed then Color3.fromRGB(70, 170, 100) else Color3.fromRGB(235, 160, 40)
+	end
+	callAction = Kit.button("Last card!", function()
+		armed = not armed
+		paintCall()
+		Audio.play(if armed then "pop" else "click")
+	end, { Size = UDim2.new(0, 150, 1, 0), BackgroundColor3 = Color3.fromRGB(235, 160, 40), TextColor3 = Color3.new(1, 1, 1), LayoutOrder = 0, Visible = false, Parent = actions })
+	-- Someone went down to one card without saying it: catch them before you move.
+	local catchAction = Kit.button("CATCH!", function()
+		sendMove({ kind = "catch" })
+	end, { Size = UDim2.new(0, 190, 1, 0), BackgroundColor3 = Theme.Bad, TextColor3 = Color3.new(1, 1, 1), LayoutOrder = -1, Visible = false, Parent = actions })
+	HudKit.pulse(Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = catchAction }))
+	-- Call-outs float over the middle of the whole screen (in Table view this board is
+	-- only the strip along the bottom).
+	local function say(text: string, color: Color3?, y: number?)
+		HudKit.callout(container:FindFirstAncestorWhichIsA("ScreenGui") or root, text, color, y)
+	end
 	drawButton.Activated:Connect(function()
 		if drawAction.Visible then
 			sendMove({ kind = "draw" })
@@ -566,7 +595,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	end
 	function pick(color: number)
 		if pendingWild then
-			sendMove({ kind = "play", card = pendingWild, color = color })
+			sendPlay(pendingWild, color)
 		end
 		closePicker()
 	end
@@ -694,7 +723,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		elseif snapshot.view.sevenZero and card.kind == "number" and card.value == 7 then
 			openSwap(id)
 		else
-			sendMove({ kind = "play", card = id })
+			sendPlay(id)
 		end
 	end
 	local function playDrawn()
@@ -746,7 +775,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				local n = view.handCounts[seat]
 				Kit.button(`{nameOf(seat)} ({n})`, function()
 					if pendingSeven then
-						sendMove({ kind = "play", card = pendingSeven, target = seat })
+						sendPlay(pendingSeven, nil, seat)
 					end
 					closeSwap()
 				end, { Size = UDim2.new(0, 150, 1, 0), TextSize = 15, LayoutOrder = seat, ZIndex = 54, Parent = swapRow })
@@ -768,7 +797,9 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				elseif card.kind == "wild" then `a Wild ({Rules.colorNames[action.color]})`
 				elseif card.kind == "wild4" then `a Wild +4 ({Rules.colorNames[action.color]})`
 				else `a {Rules.colorNames[card.color]} {({ skip = "Skip", reverse = "Reverse", draw2 = "+2" })[card.kind]}`
-			return `{who} played {what}`
+			return if action.jumpIn then `{who} jumped in with {what}` else `{who} played {what}`
+		elseif action.kind == "catch" then
+			return `{who} caught {nameOf(action.target)}: +2 cards`
 		elseif action.kind == "draw" then
 			return if action.count == 1 then `{who} drew a card` else `{who} drew {action.count} cards`
 		elseif action.kind == "pass" then
@@ -856,6 +887,22 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		local a = view.lastAction
+		-- The calls, out loud.
+		if a.kind == "catch" then
+			say(if a.target == snapshot.yourSeat then "CAUGHT! You draw 2" else `CAUGHT! {nameOf(a.target)} draws 2`, Theme.Bad)
+		elseif a.kind == "play" then
+			if a.jumpIn then
+				say(if a.seat == snapshot.yourSeat then "JUMP IN!" else `{nameOf(a.seat)} JUMPS IN!`, Color3.fromRGB(120, 210, 255), 0.25)
+			end
+			if a.victim then
+				local hitCard = Rules.cards[a.card]
+				local hit = if hitCard.kind == "draw2" then "+2!" elseif hitCard.kind == "wild4" then "+4!" else "SKIPPED!"
+				say(if a.victim == snapshot.yourSeat then `{hit}  That's you` else `{hit}  {nameOf(a.victim)}`, if hitCard.kind == "wild4" then Color3.fromRGB(190, 120, 255) else Theme.Bad)
+			end
+			if a.called then
+				say(if a.seat == snapshot.yourSeat then "LAST CARD!" else `{nameOf(a.seat)}: LAST CARD!`, Color3.fromRGB(255, 200, 70), 0.3)
+			end
+		end
 		if a.kind == "play" then
 			local card = Rules.cards[a.card]
 			local color = COLORS[a.color or (card and card.color) or 0] or Theme.Accent
@@ -923,6 +970,15 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		lastLabel.Text = describe(view.lastAction)
 		pendingLabel.Text = if view.pendingDraw > 0 then `+{view.pendingDraw} waiting! Stack a draw card or take them.` else ""
 
+		canCall = myTurn and view.lastCall == true and #(view.hand or {}) == 2
+		if not canCall then
+			armed = false
+		end
+		callAction.Visible = canCall
+		paintCall()
+		catchAction.Visible = view.canCatch == true
+		catchAction.Text = if view.exposed then `CATCH {string.upper(nameOf(view.exposed))}!` else "CATCH!"
+
 		drawAction.Visible = myTurn and not view.canPass
 		drawAction.Text = if view.pendingDraw > 0 then `Take {view.pendingDraw} cards` else "Draw a card"
 		-- After drawing a card you can play, it's shown in the middle with Play / Keep.
@@ -942,6 +998,11 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		local playable = {}
 		for _, id in view.playable or {} do
 			playable[id] = true
+		end
+		-- Jump in: a twin of the top card can go down even off your turn.
+		local jumpable = {}
+		for _, id in view.jumpIns or {} do
+			jumpable[id] = true
 		end
 		-- The card on the Play / Keep prompt is that card: it isn't also in the fan.
 		local held = {}
@@ -969,7 +1030,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		end
 		local count = #held
 		for index, id in held do
-			local canPlay = myTurn and playable[id] == true
+			local canPlay = (myTurn and playable[id] == true) or (not myTurn and jumpable[id] == true)
 			local lifted = canPlay or (not myTurn and wouldFit(id))
 			-- Held like real cards: fanned out, the outer cards turned and a little lower.
 			local offset = index - (count + 1) / 2
@@ -1004,6 +1065,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			end
 			if id == view.drawnCard then
 				Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 5, Parent = face })
+			elseif jumpable[id] then
+				HudKit.pulse(Kit.new("UIStroke", { Color = Color3.fromRGB(120, 210, 255), Thickness = 5, Parent = face }))
 			end
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
 			-- Hover: the card comes up out of the hand, straightens and sits on top of its
@@ -1052,7 +1115,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				hand.ScrollBarThickness = 0
 				actions.AnchorPoint = Vector2.new(1, 1)
 				actions.Position = UDim2.new(1, -14, 1, -14)
-				actions.Size = UDim2.new(0, 360, 0, 44)
+				actions.Size = UDim2.new(0, 560, 0, 44)
 				actionList.HorizontalAlignment = Enum.HorizontalAlignment.Right
 			else
 				pendingLabel.Parent = felt

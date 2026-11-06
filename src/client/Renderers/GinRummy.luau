@@ -2,8 +2,12 @@
 -- on the felt (tap one to draw), your hand at the bottom sorted into melds with the
 -- deadwood last. After drawing, tap a card to throw it away, or press Knock first and
 -- then tap the card to knock with. The showdown lays both hands out on the felt.
+-- Drag a card along the hand to put it where you like (Gin Rummy Plus style); new
+-- cards join on the right. A fresh deal goes back to the sorted order.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Parent.UI.Kit)
@@ -28,6 +32,79 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 	local ui = CardTable.layout(container)
 	local knocking = false
 	local render: () -> ()
+	-- Your own card order once you've dragged one (nil = the server's sorted order).
+	local myOrder: { number }? = nil
+	local drag: { id: number, start: Vector2 }? = nil
+	local connections: { RBXScriptConnection } = {}
+
+	local function ordered(hand: { number }): { number }
+		if not myOrder then
+			return hand
+		end
+		local inHand = {}
+		for _, id in hand do
+			inHand[id] = true
+		end
+		local out, seen = {}, {}
+		for _, id in myOrder do
+			if inHand[id] then
+				table.insert(out, id)
+				seen[id] = true
+			end
+		end
+		-- Most of the hand is new: a fresh deal, so go back to sorted.
+		if #out < #hand / 2 then
+			myOrder = nil
+			return hand
+		end
+		for _, id in hand do
+			if not seen[id] then
+				table.insert(out, id)
+			end
+		end
+		myOrder = out
+		return out
+	end
+
+	table.insert(connections, UserInputService.InputEnded:Connect(function(input)
+		local d = drag
+		if not d or (input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch) then
+			return
+		end
+		drag = nil
+		local point = Vector2.new(input.Position.X, input.Position.Y)
+		if math.abs(point.X - d.start.X) < 16 or not snapshot or not snapshot.view.hand then
+			return
+		end
+		point += Vector2.new(0, GuiService:GetGuiInset().Y)
+		-- Drop between the cards whose middles are either side of the pointer.
+		local current = ordered(snapshot.view.hand)
+		local slots = {}
+		for _, slot in ui.hand:GetChildren() do
+			if slot:IsA("Frame") and current[slot.LayoutOrder] then
+				table.insert(slots, slot)
+			end
+		end
+		table.sort(slots, function(a, b)
+			return a.LayoutOrder < b.LayoutOrder
+		end)
+		local to = #slots
+		for i, slot in slots do
+			if point.X < slot.AbsolutePosition.X + slot.AbsoluteSize.X / 2 then
+				to = i
+				break
+			end
+		end
+		local from = table.find(current, d.id)
+		if not from then
+			return
+		end
+		local list = table.clone(current)
+		table.remove(list, from)
+		table.insert(list, math.clamp(if to > from then to - 1 else to, 1, #list + 1), d.id)
+		myOrder = list
+		render()
+	end))
 	local calledRound: any = nil -- the hand whose showdown was already called out
 	local piles: CardFx.StockPiles = {}
 	local afterHand = CardFx.stockAndDiscard(ui.root, function(id: number)
@@ -219,7 +296,7 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		local cards = {}
-		for _, id in view.hand or {} do
+		for _, id in ordered(view.hand or {}) do
 			local can = discarding and id ~= view.taken and (not knocking or knockable[id] == true)
 			table.insert(cards, { id = id, raised = id == view.taken, glow = can, dim = discarding and not can, enabled = can })
 		end
@@ -239,6 +316,17 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 		afterHand(snapshot, faces, piles, discarding and not knocking, function(id: number)
 			return id ~= view.taken
 		end)
+		-- Press a card to drag it along the hand.
+		for _, slot in ui.hand:GetChildren() do
+			local entry = slot:IsA("Frame") and cards[slot.LayoutOrder]
+			if entry then
+				slot.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+						drag = { id = entry.id, start = Vector2.new(input.Position.X, input.Position.Y) }
+					end
+				end)
+			end
+		end
 		-- A thin bar under each card that's in a meld.
 		for _, slot in ui.hand:GetChildren() do
 			if slot:IsA("Frame") and cards[slot.LayoutOrder] and inMeld[cards[slot.LayoutOrder].id] then
@@ -260,6 +348,9 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 		end,
 		setDocked = ui.setDocked,
 		destroy = function()
+			for _, connection in connections do
+				connection:Disconnect()
+			end
 			ui.root:Destroy()
 		end,
 	}

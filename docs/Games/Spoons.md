@@ -14,3 +14,4 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Bot: passes a card of the rank it holds fewest of (easy sometimes passes at random). Grab reaction by level (hard ~0.3-0.9 s, easy up to ~2.5 s).
 - Tests: `tests/Spoons.spec.luau`.
 - Not yet: the classic "S-P-O-O-N letters" mode as a Party Host house rule, real spoon models in the 3D table.
+- Letters house rule (`letters` = "PIG" | "SPOON"): losing a round earns the next letter; spelling the word puts you out. Letters show under each player.

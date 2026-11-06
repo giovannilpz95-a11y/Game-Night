@@ -14,7 +14,10 @@
 -- handSize = 5 | 7 | 10, chainAnything = true (any draw card answers any draw card, so a
 -- Draw Two can answer a Draw Four), forcePlay = true (a drawn card that fits must be
 -- played), sevenZero = true (a 7 swaps hands with a player you pick; a 0 passes every hand
--- on the way play is going).
+-- on the way play is going), lastCard = false (no "Last card!" call: by default, playing
+-- down to one card without calling lets the next player catch you for 2 cards), jumpIn =
+-- true (anyone holding the exact same card as the top one, same color and same number or
+-- symbol, may slap it down out of turn; play carries on from them).
 -- First to empty their hand wins. If the game drags past TURN_LIMIT turns, the fewest
 -- cards wins.
 --
@@ -23,6 +26,9 @@
 --   { kind = "play", card = id, target = seat }  (7-0 rule: who a 7 swaps hands with)
 --   { kind = "draw" }
 --   { kind = "pass" }                            (only after drawing a playable card)
+--   { kind = "catch" }                           (the player on turn catches whoever forgot
+--                                                 to call "Last card!": they draw 2)
+--   A play also carries call = true when it says "Last card!" (going down to one card).
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
@@ -134,6 +140,9 @@ function ColorClash.new(seatCount: number, options: any?, rng: Random?)
 		chainAnything = rules.chainAnything == true,
 		forcePlay = rules.forcePlay == true,
 		sevenZero = rules.sevenZero == true,
+		lastCall = rules.lastCard ~= false,
+		jumpIn = rules.jumpIn == true,
+		exposed = nil :: number?, -- who went down to one card without calling, until the next move
 	}
 end
 
@@ -217,6 +226,40 @@ local function swapsHands(state, id: number): boolean
 	return state.sevenZero == true and card.kind == "number" and card.value == 7
 end
 
+-- Jump-in: a card exactly like the top one (same color, same number or symbol, no Wilds).
+local function isTwin(state, id: number): boolean
+	local card, top = cards[id], topCard(state)
+	if isWild(card) or card.color ~= top.color or card.kind ~= top.kind then
+		return false
+	end
+	return card.kind ~= "number" or card.value == top.value
+end
+
+-- Cards `seat` could jump in with right now (not on its own turn, nothing waiting).
+function ColorClash.getJumpIns(state, seat: number): { number }
+	local out = {}
+	if not state.jumpIn or state.winner or seat == state.turn or state.pendingDraw > 0 or not state.hands[seat] then
+		return out
+	end
+	for _, id in state.hands[seat] do
+		if isTwin(state, id) then
+			table.insert(out, id)
+		end
+	end
+	return out
+end
+
+-- Match lets a jump-in through even though it isn't that seat's turn (GameModule).
+function ColorClash.canMoveOutOfTurn(state, seat: number, move: any): boolean
+	return type(move) == "table" and move.kind == "play" and type(move.card) == "number" and table.find(ColorClash.getJumpIns(state, seat), move.card) ~= nil
+end
+
+-- The player on turn can catch whoever just went down to one card without calling it.
+function ColorClash.canCatch(state, seat: number): boolean
+	local target = state.exposed
+	return target ~= nil and not state.winner and seat == state.turn and seat ~= target and #state.hands[target] == 1
+end
+
 function ColorClash.getActiveSeats(state): { number }
 	if state.winner then
 		return {}
@@ -248,20 +291,25 @@ function ColorClash.getLegalMoves(state, seat: number): { any }
 	if state.winner or seat ~= state.turn then
 		return moves
 	end
+	-- Going down to one card: the legal plays say "Last card!" too.
+	local call = if state.lastCall and #state.hands[seat] == 2 then true else nil
 	for _, id in ColorClash.getPlayable(state, seat) do
 		if isWild(cards[id]) then
 			for color = 1, 4 do
-				table.insert(moves, { kind = "play", card = id, color = color })
+				table.insert(moves, { kind = "play", card = id, color = color, call = call })
 			end
 		elseif swapsHands(state, id) then
 			for target = 1, state.seatCount do
 				if target ~= seat then
-					table.insert(moves, { kind = "play", card = id, target = target })
+					table.insert(moves, { kind = "play", card = id, target = target, call = call })
 				end
 			end
 		else
-			table.insert(moves, { kind = "play", card = id })
+			table.insert(moves, { kind = "play", card = id, call = call })
 		end
+	end
+	if ColorClash.canCatch(state, seat) then
+		table.insert(moves, { kind = "catch" })
 	end
 	if state.drawnCard then
 		if not state.forcePlay then
@@ -277,13 +325,21 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 	if state.winner then
 		return false, "The game is over"
 	end
-	if seat ~= state.turn then
-		return false, "It's not your turn"
-	end
 	if type(move) ~= "table" then
 		return false, "Bad move"
 	end
-	if move.kind == "draw" then
+	if seat ~= state.turn and not ColorClash.canMoveOutOfTurn(state, seat, move) then
+		return false, "It's not your turn"
+	end
+	if move.call ~= nil and type(move.call) ~= "boolean" then
+		return false, "Bad move"
+	end
+	if move.kind == "catch" then
+		if not ColorClash.canCatch(state, seat) then
+			return false, "Nobody to catch"
+		end
+		return true
+	elseif move.kind == "draw" then
 		if state.drawnCard then
 			return false, "You already drew. Play that card or pass."
 		end
@@ -304,10 +360,11 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 		if not table.find(state.hands[seat], id) then
 			return false, "That card isn't in your hand"
 		end
-		if state.drawnCard and id ~= state.drawnCard then
+		local jumping = seat ~= state.turn
+		if state.drawnCard and id ~= state.drawnCard and not jumping then
 			return false, "You can only play the card you just drew"
 		end
-		if not canPlay(state, id) then
+		if not jumping and not canPlay(state, id) then
 			if state.pendingDraw > 0 then
 				if not state.stacking then
 					return false, `Draw to take the {state.pendingDraw} cards`
@@ -334,6 +391,25 @@ function ColorClash.validateMove(state, seat: number, move: any): (boolean, stri
 end
 
 function ColorClash.applyMove(state, seat: number, move: any)
+	if move.kind == "catch" then
+		-- Caught! They draw 2, and it's still the catcher's turn.
+		local target = state.exposed :: number
+		state.exposed = nil
+		for _ = 1, 2 do
+			drawOne(state, target)
+		end
+		state.lastAction = { seat = seat, kind = "catch", target = target }
+		GameModule.addStat(state, seat, "catches")
+		return
+	end
+	-- Any other move lets a forgotten call go.
+	state.exposed = nil
+	-- Jump-in: play goes on from whoever slapped the twin down.
+	local jumped = seat ~= state.turn
+	if jumped then
+		state.turn = seat
+		state.drawnCard = nil
+	end
 	if move.kind == "draw" then
 		if state.pendingDraw > 0 then
 			local count = state.pendingDraw
@@ -378,8 +454,16 @@ function ColorClash.applyMove(state, seat: number, move: any)
 	state.discardBy[#state.discard] = seat
 	local card = cards[id]
 	state.color = if isWild(card) then move.color else card.color
-	state.lastAction = { seat = seat, kind = "play", card = id, color = state.color }
+	state.lastAction = { seat = seat, kind = "play", card = id, color = state.color, jumpIn = if jumped then true else nil }
 	GameModule.addStat(state, seat, "cards")
+	if #hand == 1 and state.lastCall then
+		if move.call == true then
+			state.lastAction.called = true
+		else
+			state.lastAction.forgot = true
+			state.exposed = seat
+		end
+	end
 	if isWild(card) then
 		GameModule.addStat(state, seat, "wilds")
 	end
@@ -405,6 +489,16 @@ function ColorClash.applyMove(state, seat: number, move: any)
 			state.hands = moved
 			state.lastAction.rotated = true
 		end
+		if card.value == 7 or card.value == 0 then
+			-- Whoever forgot to call may not be the one holding a single card any more.
+			state.exposed = nil
+			state.lastAction.forgot = nil
+		end
+	end
+
+	-- Who it hits: the skipped player, or whoever must stack or take the cards.
+	if card.kind == "skip" or card.kind == "draw2" or card.kind == "wild4" or (card.kind == "reverse" and state.seatCount == 2) then
+		state.lastAction.victim = nextSeat(state, seat, 1)
 	end
 
 	if card.kind == "skip" then
@@ -472,6 +566,10 @@ function ColorClash.getView(state, seat: number?)
 		canPass = yourTurn and state.drawnCard ~= nil and not state.forcePlay,
 		forcePlay = state.forcePlay == true,
 		sevenZero = state.sevenZero == true,
+		lastCall = state.lastCall == true,
+		exposed = state.exposed,
+		canCatch = seat ~= nil and ColorClash.canCatch(state, seat),
+		jumpIns = if seat then ColorClash.getJumpIns(state, seat) else {},
 		winner = state.winner,
 	}
 end
@@ -509,7 +607,23 @@ local function bestColor(state, seat: number, rng: Random): number
 	return best
 end
 
+local CATCH_CHANCE = { easy = 0.4, medium = 0.75, hard = 1 }
+local CALL_CHANCE = { easy = 0.7, medium = 0.9, hard = 1 }
+
+local chooseBotPlay: (any, number, Random) -> any?
+
 function ColorClash.chooseBotMove(state, seat: number, rng: Random): any?
+	if ColorClash.canCatch(state, seat) and rng:NextNumber() < (CATCH_CHANCE[state.botLevel] or 0.75) then
+		return { kind = "catch" }
+	end
+	local move = chooseBotPlay(state, seat, rng)
+	if move and move.kind == "play" and state.lastCall and #state.hands[seat] == 2 then
+		move.call = rng:NextNumber() < (CALL_CHANCE[state.botLevel] or 0.9)
+	end
+	return move
+end
+
+function chooseBotPlay(state, seat: number, rng: Random): any?
 	local playable = ColorClash.getPlayable(state, seat)
 	local fallback = if state.drawnCard then { kind = "pass" } else { kind = "draw" }
 	if #playable == 0 then

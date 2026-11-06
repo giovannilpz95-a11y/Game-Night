@@ -47,6 +47,10 @@
 	  onTimeout(state)
 	      Pure, like applyMove: go to the next phase.
 
+	  canMoveOutOfTurn(state, seat, move) -> boolean
+	      A move a seat may make while it isn't active (Color Clash jump-ins). The server
+	      still runs validateMove on it.
+
 	  getBotDelay(state, seat, rng) -> seconds
 	      How long a bot waits before moving. Config.BotMoveDelay if missing.
 

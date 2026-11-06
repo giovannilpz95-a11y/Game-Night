@@ -159,6 +159,20 @@ function ColorClash.create(boardCF: CFrame, parent: Instance, layout: Scene.Layo
 		Models.cyl(folder, "DiscardFelt", 2.25, 0.03, middle, Color3.fromRGB(28, 60, 44), Enum.Material.Fabric)
 		discardPile(folder, boardCF, layout, view)
 		arrowRing(folder, boardCF, layout, view.direction or 1, shown)
+		-- The calls, said out loud at the table, and the hit over whoever it hit.
+		local action = view.lastAction
+		if action and action.called then
+			Cards.speech(folder, boardCF, layout, action.seat, "Last card!", Color3.fromRGB(255, 225, 150))
+		elseif action and action.kind == "catch" then
+			Cards.speech(folder, boardCF, layout, action.seat, "Caught you! Draw 2", Color3.fromRGB(255, 200, 200))
+		elseif action and action.jumpIn then
+			Cards.speech(folder, boardCF, layout, action.seat, "Jump in!", Color3.fromRGB(190, 230, 255))
+		end
+		if action and action.victim then
+			local card = Rules.cards[action.card]
+			local hit = if card and card.kind == "draw2" then "+2!" elseif card and card.kind == "wild4" then "+4!" else "Skipped!"
+			Cards.speech(folder, boardCF, layout, action.victim, hit, Color3.fromRGB(255, 170, 170))
+		end
 	end)
 end
 
