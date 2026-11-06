@@ -27,6 +27,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Flair = require(script.Parent.Parent.UI.Flair)
 local Audio = require(script.Parent.Parent.Audio)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local Theme = Kit.Theme
 local Juice = Kit.Juice
 
@@ -179,6 +180,9 @@ end
 function Estates.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local docked = false
+	-- Table view without the board or players list: the action panel becomes a bar along
+	-- the bottom, everyone's money is chips over it, and pop-ups go over the table.
+	local tableMode = false
 	local quiet = Kit.inPreview(container) -- picker previews: no pop-ups, no sound
 	local alive = true
 
@@ -531,6 +535,10 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local actionPanel = Kit.panel({ Position = UDim2.fromScale(0, 0.56), Size = UDim2.new(1, 0, 0.44, 0), Parent = side })
+	local sideSize = Kit.new("UISizeConstraint", { MaxSize = Vector2.new(560, math.huge) })
+	local tablePrompt = TablePrompt.new(container)
+	tablePrompt.setVisible(false)
+	tablePrompt.setChipsY(160) -- over the action bar
 	local actionText = Kit.label("", {
 		TextSize = 16,
 		Font = Theme.FontBold,
@@ -561,6 +569,10 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	-- Center and size (pixels, in the overlay's space) of the area pop-ups go over.
 	local function stage(): (Vector2, Vector2)
 		local o = overlay.AbsolutePosition
+		if tableMode then
+			local height = math.max(200, side.AbsolutePosition.Y - o.Y - 60)
+			return Vector2.new(overlay.AbsoluteSize.X / 2, 40 + height / 2), Vector2.new(overlay.AbsoluteSize.X, height)
+		end
 		local right = side.AbsolutePosition.X - o.X - 10
 		local top = side.AbsolutePosition.Y - o.Y
 		local height = side.AbsoluteSize.Y
@@ -1840,6 +1852,16 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		renderPlayers(view, me, if rolled or walk > 0 then settled else now)
 		renderActions(view, me)
 		renderPopup(view, me)
+		if tableMode then
+			local chips = {}
+			for seat, p in view.players do
+				if not p.bankrupt then
+					table.insert(chips, TablePrompt.chip(`{nameOf(seat)} {money(p.cash)}`, if seat == view.turn then Theme.Accent else HudKit.seatColor(seat)))
+				end
+			end
+			table.insert(chips, TablePrompt.chip(`Round {math.min(view.round, view.maxRounds)} of {view.maxRounds}`))
+			tablePrompt.chips(if snapshot.result then nil else "money", chips)
+		end
 		if endTurnButton and not quiet then
 			Flair.nudge(endTurnButton, 5)
 		end
@@ -1860,6 +1882,38 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		setDocked = function(value: boolean)
 			docked = value
 			placePopup()
+		end,
+		-- Screen height the action bar and money chips take in table mode.
+		tableHeight = function(): number
+			return 190
+		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			boardArea.Visible = not value
+			playersPanel.Visible = not value
+			tablePrompt.setVisible(value)
+			if value then
+				side.AnchorPoint = Vector2.new(0.5, 1)
+				side.Position = UDim2.new(0.5, 0, 1, -4)
+				side.Size = UDim2.new(0.9, 0, 0, 150)
+				actionPanel.Position = UDim2.fromScale(0, 0)
+				actionPanel.Size = UDim2.fromScale(1, 1)
+				sideSize.Parent = side
+			else
+				side.AnchorPoint = Vector2.zero
+				side.Position = UDim2.new(0.6, 12, 0, 0)
+				side.Size = UDim2.new(0.4, -12, 1, 0)
+				actionPanel.Position = UDim2.fromScale(0, 0.56)
+				actionPanel.Size = UDim2.new(1, 0, 0.44, 0)
+				sideSize.Parent = nil
+			end
+			placePopup()
+			if snapshot then
+				rerender()
+			end
 		end,
 		-- A space tapped on the 3D board (Table view).
 		tapTable = function(id: any)

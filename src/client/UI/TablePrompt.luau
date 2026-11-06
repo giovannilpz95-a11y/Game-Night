@@ -389,6 +389,11 @@ function TablePrompt.new(parent: GuiObject)
 		end
 	end
 
+	-- How far up from the bottom the chips sit (a game with a taller bar of its own).
+	function api.setChipsY(offset: number)
+		chipRow.Position = UDim2.new(0.5, 0, 1, -offset)
+	end
+
 	-- The layer itself, for game-specific extras (Five Dice's pick-a-box row).
 	api.layer = layer
 

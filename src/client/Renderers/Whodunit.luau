@@ -12,6 +12,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Juice = require(script.Parent.Parent.UI.Juice)
 local Audio = require(script.Parent.Parent.Audio)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local Theme = Kit.Theme
 
 local Whodunit = {}
@@ -121,6 +122,24 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 
 	local render: () -> ()
 	local docked = false -- Table view: only the side panel shows
+	-- Table mode (Table view without the map): walk by tapping the glowing rooms on the
+	-- table; what to do now is a panel along the bottom, the notes open in a window, and
+	-- suggest / show / accuse pop up as before.
+	local tableMode = false
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
+	local sideSize = Kit.new("UISizeConstraint", { MaxSize = Vector2.new(560, math.huge) })
+	local notesButton = Kit.button("Notes", function()
+		prompt.sheet(bottom, "Detective notes")
+	end, {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, 0, 0, -6),
+		Size = UDim2.fromOffset(110, 34),
+		BackgroundColor3 = Theme.PanelLight,
+		TextColor3 = Theme.Text,
+		Visible = false,
+		Parent = side,
+	})
 	local function selectTab(tab: string)
 		bottomTab = tab
 		notes.Visible = tab == "notes"
@@ -1172,6 +1191,49 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	return {
+		tableHeight = function(): number
+			return 230
+		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			map.Visible = not value
+			bottom.Visible = not value
+			notesButton.Visible = value
+			prompt.setVisible(value)
+			if value then
+				side.AnchorPoint = Vector2.new(0.5, 1)
+				side.Position = UDim2.new(0.5, 0, 1, -4)
+				side.Size = UDim2.new(0.9, 0, 0, 180)
+				actionPanel.Size = UDim2.fromScale(1, 1)
+				sideSize.Parent = side
+			else
+				side.AnchorPoint = Vector2.zero
+				side.Position = UDim2.new(0.56, 12, 0, 0)
+				side.Size = UDim2.new(0.44, -12, 1, 0)
+				actionPanel.Size = UDim2.new(1, 0, 0.5, -6)
+				sideSize.Parent = nil
+			end
+			if snapshot then
+				render()
+			end
+		end,
+		-- Rooms you can walk to glow on the table.
+		canTap = function(id: any): boolean
+			return snapshot ~= nil and not ended() and type(id) == "number" and table.find(snapshot.view.legalRooms or {}, id) ~= nil
+		end,
+		tableMarks = function(): { [any]: any }?
+			if not (tableMode and snapshot) or ended() then
+				return nil
+			end
+			local marks = {}
+			for _, room in snapshot.view.legalRooms or {} do
+				marks[room] = "target"
+			end
+			return marks
+		end,
 		setDocked = function(value: boolean)
 			if docked ~= value then
 				docked = value
