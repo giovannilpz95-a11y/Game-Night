@@ -56,10 +56,12 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 		-- Beaches reach down into the sea. Neighbors overlap, so their tops step by 0.015
 		-- (three heights) to keep two sandy tops from fighting (flickering) in one plane.
 		local beachTop = 0.08 + (i % 3) * 0.015
-		Models.cyl(model, "Beach", 1.2, beachTop + 0.06, base * CFrame.new(0, -0.06, 0), Color3.fromRGB(232, 214, 160), Enum.Material.Sand)
-		Models.cyl(model, t.name, 1.05, 0.16, base, color, Enum.Material.Grass)
+		-- Tap an island in Table view to place, pick or attack (renderer tapTable "terr:<i>").
+		local id = `terr:{i}`
+		Scene.tappable(Models.cyl(model, "Beach", 1.2, beachTop + 0.06, base * CFrame.new(0, -0.06, 0), Color3.fromRGB(232, 214, 160), Enum.Material.Sand), id)
+		Scene.tappable(Models.cyl(model, t.name, 1.05, 0.16, base, color, Enum.Material.Grass), id)
 		-- A hill so the patches don't read as flat coins.
-		Models.egg(model, "Hill", Vector3.new(0.5, 0.2, 0.4), base * CFrame.new(-0.26, TOP_Y - LAND_Y, 0.26), color:Lerp(Color3.new(0, 0, 0), 0.15), Enum.Material.Grass)
+		Scene.tappable(Models.egg(model, "Hill", Vector3.new(0.5, 0.2, 0.4), base * CFrame.new(-0.26, TOP_Y - LAND_Y, 0.26), color:Lerp(Color3.new(0, 0, 0), 0.15), Enum.Material.Grass), id)
 	end
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent

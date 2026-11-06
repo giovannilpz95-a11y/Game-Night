@@ -645,6 +645,26 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			end
 			render()
 		end,
+		-- Table view (Table3D/SceneTap): fire by tapping your target board, the one
+		-- standing in the middle facing you. `uv` is where on the board (0..1).
+		canTap = function(id: any): boolean
+			local view = snapshot and snapshot.view
+			return view ~= nil and id == `target:{me()}` and view.phase == "battle" and view.turn == me() and not snapshot.result
+		end,
+		tapTable = function(id: any, uv: Vector3?, part: BasePart?)
+			local view = snapshot and snapshot.view
+			if not (view and uv and id == `target:{me()}`) then
+				return
+			end
+			local n = view.size or 10
+			local margin = (part and tonumber(part:GetAttribute("TapMargin"))) or 0
+			local fx = (uv.X - margin) / (1 - 2 * margin)
+			local fy = (uv.Y - margin) / (1 - 2 * margin)
+			if fx < 0 or fx >= 1 or fy < 0 or fy >= 1 then
+				return
+			end
+			onBigClick(math.floor((1 - fy) * n) + 1, math.floor(fx * n) + 1)
+		end,
 		destroy = function()
 			sweep:Disconnect()
 			for _, connection in connections do

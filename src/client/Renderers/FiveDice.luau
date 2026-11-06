@@ -214,7 +214,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 		Size = UDim2.fromScale(1, 0.36),
 		Parent = controls,
 	})
-	local rollButton = Kit.button("Roll", function()
+	local function roll()
 		if not snapshot or not snapshot.view.players[snapshot.yourSeat or 0] then
 			return
 		end
@@ -225,7 +225,8 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			sendMove({ kind = "roll", held = table.clone(localHeld) })
 		end
 		selected = nil
-	end, {
+	end
+	local rollButton = Kit.button("Roll", roll, {
 		Position = UDim2.fromScale(0, 0),
 		Size = UDim2.fromScale(0.48, 1),
 		TextScaled = true,
@@ -666,6 +667,40 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
 			render()
+		end,
+		-- Table view (Table3D/SceneTap): tap your dice to keep or free them, the cup or
+		-- the tray to roll.
+		canTap = function(id: any): boolean
+			if type(id) ~= "string" or not snapshot then
+				return false
+			end
+			local seat, i = string.match(id, "^die:(%d+):(%d+)$")
+			if seat then
+				return tonumber(seat) == snapshot.yourSeat and canHold() and tonumber(i) ~= nil
+			end
+			if id == "tray" or string.match(id, "^cup:(%d+)$") == tostring(snapshot.yourSeat) then
+				return rollButton.Visible and rollButton.Active
+			end
+			return false
+		end,
+		tapTable = function(id: any)
+			if type(id) ~= "string" or not snapshot then
+				return
+			end
+			local seat, i = string.match(id, "^die:(%d+):(%d+)$")
+			if seat then
+				local n = tonumber(i) :: number
+				if tonumber(seat) == snapshot.yourSeat and canHold() and localHeld[n] ~= nil then
+					localHeld[n] = not localHeld[n]
+					Audio.play(if localHeld[n] then "lift" else "piece")
+					sendMove({ kind = "hold", held = table.clone(localHeld) })
+					render()
+				end
+			elseif id == "tray" or string.match(id, "^cup:(%d+)$") == tostring(snapshot.yourSeat) then
+				if rollButton.Visible and rollButton.Active then
+					roll()
+				end
+			end
 		end,
 		setDocked = function(value: boolean)
 			if value ~= docked then

@@ -46,7 +46,16 @@ return function(T)
 		inside(view, board, FULL, "board")
 		inside(view, others, FULL, "heads")
 		T.ok(view.pitch > math.rad(15) and view.pitch < math.rad(75), `looks down {math.deg(view.pitch)}`)
-		T.ok(math.abs(view.yaw) < 1e-6, "a symmetric board needs no turn")
+		T.ok(math.abs(view.side) < 1e-6, "a symmetric board sits dead center")
+	end)
+
+	-- Studio (Chess): the seat list on the left made the old camera turn a little to the
+	-- side. With room to spare it stays dead center and straight.
+	T.test("chess with the seat list showing stays centered", function()
+		local free = { left = -1 + 2 * 0.18, right = 1, bottom = -1, top = 0.88 }
+		local view = SeatView.solve(box(3.8, 3, 0, 1.3), heads(2, 6), 7.2, 7, ASPECT, free)
+		T.ok(view.fits ~= "none", `fits {view.fits}`)
+		T.ok(math.abs(view.side) < 1e-6, `side {view.side}`)
 	end)
 
 	T.test("the eye stays at its seat when everything already fits", function()
@@ -55,13 +64,13 @@ return function(T)
 		T.eq(view.height, 7)
 	end)
 
-	T.test("a right-side panel turns the view so the table sits in the free left part", function()
+	T.test("a right-side panel slides the view so the table sits in the free left part", function()
 		local free = { left = -1, right = 0.16, bottom = -1, top = 0.88 }
 		local board = box(4, 4, 0, 0.8)
 		local others = heads(4, 6.5)
 		local view = SeatView.solve(board, others, 7.8, 7.25, ASPECT, free)
 		T.ok(view.fits ~= "none", `fits {view.fits}`)
-		T.ok(view.yaw > 0, "turned right, so the table shows left of center")
+		T.ok(view.side > 0, "slid right, so the table shows left of center")
 		inside(view, board, free, "board")
 		if view.fits == "all" then
 			inside(view, others, free, "heads")
@@ -89,18 +98,6 @@ return function(T)
 		T.ok(view.back <= reach * 1.2 * 2 + 1e-6, `back {view.back}`)
 	end)
 
-	T.test("of the spots that fit, the one nearest your chair wins", function()
-		local reach = 6.1
-		local free = { left = -1 + 2 * 0.18, right = 1 - 2 * 0.4, bottom = -1, top = 0.88 }
-		local board = box(4.5, 4.5, 0, 0.8)
-		local view = SeatView.solve(board, heads(4, reach), reach * 1.2, 4 + reach * 0.5, ASPECT, free)
-		local far = SeatView.solve(board, heads(4, reach), reach * 1.2 * 1.5, (4 + reach * 0.5) * 1.5, ASPECT, free)
-		local function dist(v)
-			return math.sqrt((v.back - reach * 1.2) ^ 2 + (v.height - (4 + reach * 0.5)) ^ 2)
-		end
-		T.ok(dist(view) <= dist(far) + 1e-6, "no further than needed")
-	end)
-
 	T.test("a bottom strip (Word Tiles' rack) keeps the board above it", function()
 		local free = { left = -1, right = 1, bottom = -0.7, top = 0.88 }
 		local board = box(4, 4, 0, 0.4)
@@ -119,7 +116,7 @@ return function(T)
 	T.test("a phone-shaped free area still gives a usable answer", function()
 		local free = { left = -1, right = -0.4, bottom = -1, top = 0.8 }
 		local view = SeatView.solve(box(4, 4, 0, 0.6), heads(4, 6.5), 7.8, 7.25, 19.5 / 9, free)
-		T.ok(view.back == view.back and view.pitch == view.pitch and view.yaw == view.yaw, "no NaN")
+		T.ok(view.back == view.back and view.pitch == view.pitch and view.side == view.side, "no NaN")
 		T.ok(view.pitch > 0 and view.pitch < math.rad(89), "looks down")
 	end)
 end

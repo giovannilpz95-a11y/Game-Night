@@ -21,6 +21,7 @@ local Players = game:GetService("Players")
 local Kit = require(script.Parent.Parent.UI.Kit)
 local Focus = require(script.Parent.Focus)
 local Lift = require(script.Parent.Lift)
+local SceneTap = require(script.Parent.SceneTap)
 local Audio = require(script.Parent.Parent.Audio)
 local SeatView = require(ReplicatedStorage.Shared.SeatView)
 
@@ -153,6 +154,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local liftFolder = Instance.new("Folder")
 	liftFolder.Name = "GameNightLift"
 	local lifter = Lift.new(liftFolder)
+	local scene = SceneTap.new(camera, liftFolder)
 	local hoveredCell: BasePart? = nil
 	local mousePosition: Vector2? = nil -- last mouse spot over the world (nil over the UI)
 	local updateHover: () -> ()
@@ -491,6 +493,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			marks.Parent = nil
 			marks:ClearAllChildren()
 			lifter.drop()
+			scene.clear()
 			hoveredCell = nil
 			liftFolder.Parent = nil
 			seatedBoard = false
@@ -595,9 +598,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			camera.FieldOfView = SeatView.FOV
 			seatedBoard = true
 			hideStool(seat, anchor.Y)
-			local eye = anchor - flat * view.back + Vector3.new(0, view.height, 0)
-			local look = flat * math.cos(view.yaw) + right * math.sin(view.yaw)
-			home = CFrame.lookAt(eye, eye + look) * CFrame.Angles(-view.pitch, 0, 0)
+			-- Always facing straight across the table; a side panel slides the eye instead.
+			local eye = anchor - flat * view.back + right * view.side + Vector3.new(0, view.height, 0)
+			home = CFrame.lookAt(eye, eye + flat) * CFrame.Angles(-view.pitch, 0, 0)
 			Focus.set({
 				table = model,
 				board = gameBoard :: Model?,
@@ -879,6 +882,12 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local hoverParams = RaycastParams.new()
 	hoverParams.FilterType = Enum.RaycastFilterType.Include
 	function updateHover()
+		if not handler and board then
+			scene.setBoard(board)
+			scene.hover(if UserInputService.MouseEnabled then mousePosition else nil)
+			scene.step()
+			return
+		end
 		if not (handler and handler.hover and board) then
 			return
 		end
@@ -957,28 +966,12 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 
-	-- Watch-only scenes can still have spots you tap to look at (Property Party's spaces
-	-- open their deed card). The server marks them with a TapId attribute; the game's 2D
-	-- renderer gets the id through onSceneTap.
-	local sceneTap: ((any) -> ())? = nil
+	-- Scenes you play by tapping the table: Table3D/SceneTap (TapId parts, the game's
+	-- renderer answers through setSceneTap).
 	local function tapScene(input: InputObject)
-		if not (sceneTap and board) then
-			return
-		end
-		local targets = {}
-		for _, part in board:GetDescendants() do
-			if part:IsA("BasePart") and part:GetAttribute("TapId") ~= nil then
-				table.insert(targets, part)
-			end
-		end
-		if #targets == 0 then
-			return
-		end
-		raycastParams.FilterDescendantsInstances = targets
-		local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
-		local hit = workspace:Raycast(ray.Origin, ray.Direction * 200, raycastParams)
-		if hit and hit.Instance then
-			sceneTap(hit.Instance:GetAttribute("TapId"))
+		if board then
+			scene.setBoard(board)
+			scene.tap(Vector2.new(input.Position.X, input.Position.Y))
 		end
 	end
 
@@ -1036,9 +1029,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		isActive = function(): boolean
 			return active
 		end,
-		-- Called with a TapId when a tappable spot of a watch-only scene is tapped.
-		setSceneTap = function(fn: ((any) -> ())?)
-			sceneTap = fn
+		-- The game's side of tapping a scene (see Table3D/SceneTap): `tap` gets the TapId
+		-- and where on the part; `canTap` and `marks` drive the outlines.
+		setSceneTap = function(callbacks: SceneTap.Callbacks?)
+			scene.setCallbacks(callbacks)
 		end,
 		-- A gesture played at a table (Avatars.onAction): if it's yours, the camera
 		-- turns and moves in a little toward it, more for big moments.

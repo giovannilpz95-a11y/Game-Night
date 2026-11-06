@@ -736,10 +736,51 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Table view (Table3D/SceneTap): the islands on the table work like the map's dots.
+	local function islandOf(id: any): number?
+		local t = type(id) == "string" and tonumber(string.match(id, "^terr:(%d+)$"))
+		return if t and snapshot and snapshot.view.owner[t] ~= nil then t else nil
+	end
+
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
 			render()
+		end,
+		canTap = function(id: any): boolean
+			local t = islandOf(id)
+			if not (t and myTurn()) then
+				return false
+			end
+			local view, me = snapshot.view, snapshot.yourSeat
+			if view.phase == "reinforce" then
+				return view.owner[t] == me and not view.mustTrade
+			elseif view.phase == "attack" then
+				return t == selected or (selected ~= nil and targetsOf(view, me)[t] ~= nil) or (view.owner[t] == me and view.armies[t] >= 2)
+			end
+			return false
+		end,
+		tapTable = function(id: any)
+			local t = islandOf(id)
+			if t then
+				onNode(t)
+			end
+		end,
+		tableMarks = function(): { [any]: string }?
+			if not (snapshot and myTurn() and snapshot.view.phase == "attack") then
+				return nil
+			end
+			local marks = {}
+			if selected then
+				marks[`terr:{selected}`] = "picked"
+				for t in targetsOf(snapshot.view, snapshot.yourSeat) do
+					marks[`terr:{t}`] = "target"
+				end
+			end
+			if target then
+				marks[`terr:{target}`] = "picked"
+			end
+			return marks
 		end,
 		destroy = function()
 			root:Destroy()
