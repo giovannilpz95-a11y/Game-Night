@@ -119,4 +119,13 @@ return function(T)
 		T.ok(view.back == view.back and view.pitch == view.pitch and view.side == view.side, "no NaN")
 		T.ok(view.pitch > 0 and view.pitch < math.rad(89), "looks down")
 	end)
+
+	T.test("a board far behind the seat still gets a downward view", function()
+		local far = box(3, 3, 0, 1)
+		for _, p in far do
+			p.z -= 40
+		end
+		local view = SeatView.solve(far, heads(2, 6), 6, 7, ASPECT, FULL)
+		T.ok(view.pitch > 0.2, `looks down ({view.pitch})`)
+	end)
 end

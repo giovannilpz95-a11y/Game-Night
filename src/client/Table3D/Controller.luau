@@ -418,6 +418,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	-- Seated board games look down from over (or behind) your own chair: your arms and
 	-- stool would fill the bottom of the screen, so all of you and the stool hide there.
 	local seatedBoard = false
+	local seatedRetry = false -- the seated view was framed before the board streamed in
 	local stoolHidden: { BasePart } = {}
 	local function showStool()
 		for _, part in stoolHidden do
@@ -581,14 +582,47 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			if gameBoard and gameBoard:IsA("Model") then
 				-- Measured once per match (and screen layout), with half a stud of room around
 				-- it for what lands beside the board later (taken pieces, rolled dice), so
-				-- the camera doesn't creep on every capture.
-				local boxCF, size = gameBoard:GetBoundingBox()
-				size += Vector3.new(1, 0, 1)
-				for _, x in { -0.5, 0.5 } do
-					for _, y in { -0.5, 0.5 } do
-						for _, z in { -0.5, 0.5 } do
-							table.insert(boardPoints, local3(boxCF * Vector3.new(size.X * x, size.Y * y, size.Z * z)))
+				-- the camera doesn't creep on every capture. Built from the parts on the
+				-- table itself: a board that hasn't streamed in yet has none (its bounding box
+				-- would sit at the world origin and send the camera up into the rafters), and
+				-- anything far from the table (a piece being carried off) doesn't count.
+				local lo = Vector3.new(math.huge, math.huge, math.huge)
+				local hi = -lo
+				for _, d in gameBoard:GetDescendants() do
+					if d:IsA("BasePart") and ((d.Position - anchor) * Vector3.new(1, 0, 1)).Magnitude < reach + 2 then
+						local half = d.Size / 2
+						for _, cx in { -1, 1 } do
+							for _, cy in { -1, 1 } do
+								for _, cz in { -1, 1 } do
+									local p = local3(d.CFrame * Vector3.new(half.X * cx, half.Y * cy, half.Z * cz))
+									local v = Vector3.new(p.x, p.y, p.z)
+									lo, hi = lo:Min(v), hi:Max(v)
+								end
+							end
 						end
+					end
+				end
+				if lo.X < hi.X then
+					lo -= Vector3.new(0.5, 0, 0.5)
+					hi += Vector3.new(0.5, 0, 0.5)
+					for _, x in { lo.X, hi.X } do
+						for _, y in { lo.Y, hi.Y } do
+							for _, z in { lo.Z, hi.Z } do
+								table.insert(boardPoints, { x = x, y = y, z = z })
+							end
+						end
+					end
+				end
+			end
+			local boardMissing = #boardPoints == 0
+			if boardMissing then
+				-- Not streamed in yet: frame a board-sized square for now (placed again once
+				-- it arrives).
+				local half = reach * 0.45
+				for _, x in { -half, half } do
+					for _, z in { -half, half } do
+						table.insert(boardPoints, { x = x, y = 0, z = z })
+						table.insert(boardPoints, { x = x, y = 1, z = z })
 					end
 				end
 			end
@@ -606,15 +640,14 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
 			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
 			local key = `{snapshot.matchId}|{tableSeat}|{#headPoints}|{insetRight}|{insetBottom}|{insetLeft}|{viewport.X}x{viewport.Y}`
-			local view = if seatedView and seatedView.key == key and #boardPoints > 0 then seatedView.view else SeatView.solve(boardPoints, headPoints, reach * EYE_BACK, EYE_ABOVE_TABLE + reach * EYE_RISE, aspect, {
+			local view = if seatedView and seatedView.key == key then seatedView.view else SeatView.solve(boardPoints, headPoints, reach * EYE_BACK, EYE_ABOVE_TABLE + reach * EYE_RISE, aspect, {
 				left = -1 + 2 * insetLeft,
 				right = 1 - 2 * insetRight,
 				bottom = -1 + 2 * insetBottom,
 				top = 1 - 2 * topBar,
 			}, SeatView.FOV)
-			if #boardPoints > 0 then
-				seatedView = { key = key, view = view }
-			end
+			seatedView = if boardMissing then nil else { key = key, view = view }
+			seatedRetry = boardMissing
 			camera.FieldOfView = SeatView.FOV
 			seatedBoard = true
 			hideStool(seat, anchor.Y)
@@ -973,6 +1006,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	end)
 
 	Frame.every("TableWatch", 0.1, function()
+		if active and seatedRetry and seatedBoard then
+			seatedRetry = false
+			placeCamera()
+		end
 		if wanted and snapshot and not active and os.clock() - waitingSince < FIND_TIMEOUT then
 			refresh()
 		end
