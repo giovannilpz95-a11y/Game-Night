@@ -212,6 +212,7 @@ function EconomyService.recordMatch(
 		resigned: boolean?,
 		minutes: number,
 		moves: number,
+		ownMoves: number?, -- moves this player made themselves; nil = don't check
 		humanOpponents: { number },
 		stats: { [string]: number }?, -- the game's own stats for this player (StatsCatalog)
 		score: number?,
@@ -230,8 +231,10 @@ function EconomyService.recordMatch(
 		typicalMinutes = typical,
 		minMinutes = entry.minMinutes or 0,
 		minMoves = entry.minMoves or 0,
+		minOwnMoves = entry.minOwnMoves or 1,
 		minutes = result.minutes,
 		moves = result.moves,
+		ownMoves = result.ownMoves,
 		won = result.won,
 		isDraw = result.isDraw == true,
 		resigned = result.resigned == true,
@@ -288,6 +291,7 @@ function EconomyService.onMatchFinished(summary: any)
 			resigned = summary.result.resignedSeat == index,
 			minutes = summary.minutes,
 			moves = summary.moves,
+			ownMoves = summary.ownMoves and summary.ownMoves[index] or 0,
 			humanOpponents = opponents,
 			stats = summary.stats and summary.stats[index],
 			score = summary.scores and summary.scores[index],

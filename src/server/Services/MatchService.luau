@@ -34,6 +34,7 @@ type Entry = {
 	graced: { [number]: boolean }, -- seats whose first turn already got Config.FirstTurnGrace
 	intro: boolean, -- the Showtime intro is on: no turns yet (startPlay ends it)
 	introSkips: { [number]: boolean }, -- userIds who skipped the intro
+	ownMoves: { [number]: number }, -- moves each seat's player made themselves (not bots or the turn timer)
 }
 
 local partyService: any = nil
@@ -115,6 +116,7 @@ local function finish(entry: Entry)
 		seats = match.seats,
 		minutes = (os.clock() - entry.startedAt) / 60,
 		moves = match.moveNumber,
+		ownMoves = entry.ownMoves, -- [seat] = moves that seat's player made themselves
 		scores = match:getScores(), -- party games: final points per seat (nil for others)
 		stats = match:getMatchStats(), -- per seat, for the stats profile (see StatsCatalog)
 		botLevel = entry.botLevel,
@@ -125,7 +127,7 @@ local function finish(entry: Entry)
 end
 
 -- Runs `callback(summary)` after every match ends. summary has gameId, result, aborted,
--- seats (with userId and left), minutes, moves, scores (games with getScores), stats (per
+-- seats (with userId and left), minutes, moves, ownMoves (per seat), scores (games with getScores), stats (per
 -- seat, see Match.getMatchStats) and botLevel (nil without bots).
 -- EconomyService pays out from this.
 function MatchService.onMatchFinished(callback: (any) -> ())
@@ -361,6 +363,7 @@ local function startMatch(leader: Player, request: any)
 		graced = {},
 		intro = false,
 		introSkips = {},
+		ownMoves = {},
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
@@ -516,6 +519,7 @@ function handlers.move(player: Player, request: any)
 	if not ok then
 		return notify(player, err :: string)
 	end
+	entry.ownMoves[seat] = (entry.ownMoves[seat] or 0) + 1
 	afterMove(entry)
 	emit("moved", { player = player, matchId = entry.match.id, gameId = entry.match.gameId })
 end

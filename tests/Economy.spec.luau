@@ -260,6 +260,21 @@ return function(T)
 		T.eq(data.daily.firstWin, false)
 	end)
 
+	T.test("a player who let bots and the turn timer play for them earns nothing", function()
+		local data = fresh()
+		local idle = Rewards.applyMatch(data, chessMatch({ won = true, ownMoves = 0 }))
+		T.eq(idle.coins + idle.gems + idle.xp + idle.stars, 0)
+		T.eq(data.daily.firstWin, false)
+		-- Trivia asks for 3 answers of your own; 2 isn't enough, 3 is.
+		local trivia = { gameId = "TriviaNight", coinKey = "party", typicalMinutes = 8, minMinutes = 1, minMoves = 5, minOwnMoves = 3, minutes = 4, moves = 40, won = true, isDraw = false, humanOpponents = {}, vip = false }
+		trivia.ownMoves = 2
+		T.eq(Rewards.applyMatch(data, trivia).coins, 0)
+		trivia.ownMoves = 3
+		T.ok(Rewards.applyMatch(data, trivia).coins > 0, "3 answers pay")
+		-- Callers that don't count own moves (nil) are not checked.
+		T.ok(Rewards.applyMatch(fresh(), chessMatch({ won = true })).coins > 0)
+	end)
+
 	T.test("resigning earns no Coins, Gems, XP or challenge progress", function()
 		local data = fresh()
 		for _ = 1, 5 do

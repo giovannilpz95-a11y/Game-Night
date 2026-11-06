@@ -34,7 +34,10 @@ coin = "arcade",        -- which Coins it pays (a key of Economy.Coins)
 typicalMinutes = 3,     -- usual match length; pay is about 5 Coins per minute played
 minMinutes = 0.25,      -- shorter matches pay nothing
 minMoves = 7,           -- matches with fewer moves pay nothing
+minOwnMoves = 1,        -- optional (default 1): a player who made fewer moves themselves gets nothing
 ```
+
+Only moves a player sends count as their own: moves the turn timer or a bot plays for an idle player don't, so sitting back while bots play earns nothing. Trivia Night asks for 3 answers.
 
 Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The daily login calendar pays Gems or Universal Coins (see [[Friends]]). The first win of the day and each daily quest pay Gems, and matches and quests earn Game Night Pass Stars (see [[Season pass]]); XP from time played levels the account up, and level-ups pay Gems. Badges pay Gems once each (see [[Progression]]).
 
