@@ -13,3 +13,4 @@ Back to [[Home]] · see [[Tables]].
 - Table (3D): `src/server/Tables/Boards/SeaStrike.luau`. Per seat a folding case: the flat ocean with the enemy's pegs and sunk hulls, and an upright target board with your own pegs. The two target boards stand back to back in the middle.
 - Stats: `sunk`, `hits`, `accuracy` (best %). Badge `seastrike_50` (sink 50 ships).
 - Tests: `tests/SeaStrike.spec.luau`.
+- Setup: drag a ship on the big grid (green where it fits, red where it does not) or tap-tap; tapping the picked ship again turns it.
