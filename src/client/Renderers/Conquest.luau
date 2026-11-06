@@ -14,6 +14,7 @@ local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Juice = require(script.Parent.Parent.UI.Juice)
 local Flair = require(script.Parent.Parent.UI.Flair)
 local Audio = require(script.Parent.Parent.Audio)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local Theme = Kit.Theme
 
 local Conquest = {}
@@ -46,6 +47,11 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local rerender: () -> () = function() end
+	-- Table view without the map or side panel: tap islands on the table; what to do
+	-- now is a bar along the bottom, attacks and moves pop up (UI/TablePrompt).
+	local tableMode = false
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
 
 	local function nameOf(seat: number?): string
 		if seat == nil then
@@ -702,6 +708,158 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	local function renderTable(view: any, me: number?)
+		if not tableMode then
+			return
+		end
+		local cardsN = if view.hand then #view.hand else 0
+		local info = { text = if cardsN > 0 then `Cards ({cardsN})` else "Info", color = Theme.PanelLight, onClick = function()
+			prompt.sheet(side, if cardsN > 0 then "Cards and battle" else "Battle")
+		end }
+		if snapshot.result then
+			prompt.bar(nil)
+			prompt.ask(nil)
+			prompt.chips(nil)
+			return
+		end
+		local chips = { TablePrompt.chip(`Round {view.round} of {view.maxRounds}`) }
+		if me and view.owner then
+			local lands, armies = 0, 0
+			for t, owner in view.owner do
+				if owner == me then
+					lands += 1
+					armies += view.armies[t]
+				end
+			end
+			table.insert(chips, TablePrompt.chip(`Your islands {lands} · armies {armies}`, HudKit.seatColor(me)))
+		end
+		prompt.chips("info", chips)
+		if not myTurn() then
+			local doing = if view.phase == "reinforce" then "placing armies" else "on the attack"
+			prompt.bar("wait", `{nameOf(view.turn)}'s turn: {doing}`, { info })
+			prompt.ask(nil)
+			return
+		end
+		if view.phase == "reinforce" then
+			prompt.ask(nil)
+			if view.mustTrade then
+				local cards, value = Rules.bestSet(view.hand)
+				if view.nextRising and value then
+					value = view.nextRising
+				end
+				prompt.ask("trade", `You have {cardsN} cards`, "Trade a set before placing armies.", {
+					{ text = if value then `Trade for {value}` else "Pick cards", color = Theme.Good, onClick = function()
+						if cards and value then
+							pickedCards = {}
+							sendMove({ kind = "trade", cards = cards })
+						else
+							prompt.sheet(side, "Cards")
+						end
+					end },
+					{ text = "See cards", color = Theme.PanelLight, onClick = function()
+						prompt.sheet(side, "Cards")
+					end },
+				})
+				prompt.bar("trade", nil, {})
+				return
+			end
+			local buttons = {}
+			for _, amount in { 1, 3, "all" } do
+				table.insert(buttons, {
+					text = if amount == "all" then "All" else `+{amount}`,
+					color = if placeAmount == amount then Theme.Accent else Theme.PanelLight,
+					onClick = function()
+						placeAmount = amount
+						rerender()
+					end,
+				})
+			end
+			table.insert(buttons, info)
+			prompt.bar("place", `Place {view.reinforcements} armies: tap your islands`, buttons)
+		elseif view.phase == "occupy" then
+			local occupy = view.occupy
+			if occupyFor ~= occupy.to then
+				occupyFor = occupy.to
+				moveCount = occupy.max
+			end
+			moveCount = math.clamp(moveCount, occupy.min, occupy.max)
+			prompt.bar("occupy", nil, {})
+			prompt.ask(`occupy:{occupy.to}`, `You took {territories[occupy.to].name}!`, "How many armies move in?", {
+				{ text = "-", color = Theme.PanelLight, enabled = moveCount > occupy.min, onClick = function()
+					moveCount = math.max(occupy.min, moveCount - 1)
+					rerender()
+				end },
+				{ text = `Move {moveCount} in`, color = Theme.Good, onClick = function()
+					sendMove({ kind = "occupy", count = moveCount })
+				end },
+				{ text = "+", color = Theme.PanelLight, enabled = moveCount < occupy.max, onClick = function()
+					moveCount = math.min(occupy.max, moveCount + 1)
+					rerender()
+				end },
+				{ text = "All", color = Theme.PanelLight, onClick = function()
+					moveCount = occupy.max
+					rerender()
+				end },
+			})
+		elseif view.phase == "attack" then
+			local targets = targetsOf(view, me)
+			local cancel = function()
+				selected, target = nil, nil
+				rerender()
+			end
+			if selected and target and targets[target] == "attack" then
+				local from, to = territories[selected].name, territories[target].name
+				local chance = Rules.winChance(view.armies[selected], view.armies[target])
+				prompt.ask(`attack:{selected}:{target}`, `Attack {to}?`, `From {from} ({view.armies[selected]}) against {view.armies[target]}. Blitz win chance {math.floor(chance * 100 + 0.5)}%`, {
+					{ text = "Roll", color = Theme.Bad, onClick = function()
+						sendMove({ kind = "attack", from = selected, to = target, blitz = false })
+					end },
+					{ text = "Blitz", onClick = function()
+						sendMove({ kind = "attack", from = selected, to = target, blitz = true })
+					end },
+					{ text = "Cancel", color = Theme.PanelLight, onClick = cancel },
+				})
+			elseif selected and target and targets[target] == "move" then
+				local max = view.armies[selected] - 1
+				moveCount = math.clamp(moveCount, 1, math.max(1, max))
+				prompt.ask(`move:{selected}:{target}`, `Move to {territories[target].name}?`, "Moving armies ends your turn.", {
+					{ text = "-", color = Theme.PanelLight, enabled = moveCount > 1, onClick = function()
+						moveCount = math.max(1, moveCount - 1)
+						rerender()
+					end },
+					{ text = `Move {moveCount}`, color = Theme.Good, onClick = function()
+						sendMove({ kind = "fortify", from = selected, to = target, count = moveCount })
+					end },
+					{ text = "+", color = Theme.PanelLight, enabled = moveCount < max, onClick = function()
+						moveCount = math.min(max, moveCount + 1)
+						rerender()
+					end },
+					{ text = "Cancel", color = Theme.PanelLight, onClick = cancel },
+				})
+			else
+				prompt.ask(nil)
+			end
+			local line
+			if view.conquestsLeft == 0 then
+				line = if selected then "Tap a green island to move armies there, or end your turn" else "No more conquests this turn: move armies or end your turn"
+			elseif selected then
+				line = "Tap a red neighbour to attack, or a green island to move armies"
+			else
+				line = "Tap one of your islands with 2+ armies to attack from it"
+			end
+			local buttons = {}
+			if selected then
+				table.insert(buttons, { text = "Cancel", color = Theme.PanelLight, onClick = cancel })
+			end
+			table.insert(buttons, info)
+			table.insert(buttons, { text = "End turn", color = Theme.PanelLight, onClick = function()
+				selected, target = nil, nil
+				sendMove({ kind = "endTurn" })
+			end })
+			prompt.bar("attack", line, buttons)
+		end
+	end
+
 	local function render()
 		local view = snapshot.view
 		local me = snapshot.yourSeat
@@ -729,6 +887,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		renderBattle(view)
 		renderRegions(view)
 		renderLog(view)
+		renderTable(view, me)
 	end
 	rerender = function()
 		if snapshot then
@@ -768,6 +927,16 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		end,
 		tableMarks = function(): { [any]: string }?
 			if not (snapshot and myTurn() and snapshot.view.phase == "attack") then
+				-- Table mode: where the armies you're placing can go.
+				if tableMode and snapshot and myTurn() and snapshot.view.phase == "reinforce" and not snapshot.view.mustTrade then
+					local marks = {}
+					for t, owner in snapshot.view.owner do
+						if owner == snapshot.yourSeat then
+							marks[`terr:{t}`] = "target"
+						end
+					end
+					return marks
+				end
 				return nil
 			end
 			local marks = {}
@@ -781,6 +950,15 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				marks[`terr:{target}`] = "picked"
 			end
 			return marks
+		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			root.Visible = not value
+			prompt.setVisible(value)
+			rerender()
 		end,
 		destroy = function()
 			root:Destroy()

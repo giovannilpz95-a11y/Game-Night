@@ -14,6 +14,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Flair = require(script.Parent.Parent.UI.Flair)
 local Juice = require(script.Parent.Parent.UI.Juice)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local Theme = Kit.Theme
 
 local Hexlands = {}
@@ -89,6 +90,13 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local rerender: () -> () = function() end
+	-- Table view without the map or side panel: build on the table's glowing spots; your
+	-- cards are chips over a build bar, trades and the Bandit pop up (UI/TablePrompt).
+	-- Bank trades, offers, discards and action cards open the side panel in a window.
+	local tableMode = false
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
+	local renderTable: (view: any, me: number?) -> ()
 	local renderTrade: (view: any, me: number?) -> ()
 
 	local function nameOf(seat: number?): string
@@ -1039,6 +1047,133 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	-- Render ------------------------------------------------------------------------
+	function renderTable(view: any, me: number?)
+		if not tableMode then
+			return
+		end
+		local you = view.you
+		local mine = me ~= nil and view.turn == me and view.phase ~= "over"
+		local phase = view.phase
+		local function panel(title: string)
+			return function()
+				prompt.sheet(side, title)
+			end
+		end
+		if phase == "over" or snapshot.result then
+			prompt.bar(nil)
+			prompt.ask(nil)
+			prompt.chips(nil)
+			return
+		end
+		-- Your hand, as chips over the bar.
+		if you then
+			local chips = {}
+			for _, res in RES do
+				table.insert(chips, TablePrompt.chip(`{info[res].icon} {you.hand[res]}`, info[res].color))
+			end
+			local p = view.players[me]
+			if p and p.points then
+				table.insert(chips, TablePrompt.chip(`{p.points} / {view.target} pts`))
+			end
+			if #you.cards > 0 then
+				table.insert(chips, TablePrompt.chip(`{#you.cards} action card{if #you.cards == 1 then "" else "s"}`, Theme.Accent))
+			end
+			prompt.chips("hand", chips)
+		else
+			prompt.chips(nil)
+		end
+		local cardsButton = { text = "Cards", color = Theme.PanelLight, onClick = panel("Your cards") }
+		local status = statusText(view, me)
+
+		-- Pop-ups: who to rob, a trade you're asked about.
+		local asked = phase == "trade" and me ~= nil and you ~= nil and view.trade.from ~= me and (view.trade.answers[me] or -1) == 0 and not (counter and counter.id == view.trade.id)
+		if phase == "bandit" and mine and banditHex then
+			local hex = banditHex
+			local buttons = {}
+			for _, victim in victimsAt(view, me, hex) do
+				table.insert(buttons, { text = nameOf(victim), color = Theme.Seat[victim], onClick = function()
+					banditHex = nil
+					sendMove({ kind = "bandit", hex = hex, victim = victim })
+				end })
+			end
+			prompt.ask(`rob:{hex}`, "Take a card from", nil, buttons)
+		elseif asked then
+			local t = view.trade
+			prompt.ask(`trade:{t.id}`, `{nameOf(t.from)} offers a trade`, `They give {cardsText(t.give)}, they want {cardsText(t.get)}`, {
+				{ text = "Accept", color = Theme.Good, enabled = canAfford(you.hand, t.get), onClick = function()
+					sendMove({ kind = "accept" })
+				end },
+				{ text = "Counter", onClick = function()
+					counter = { id = t.id, give = table.clone(t.get), get = table.clone(t.give) }
+					rerender()
+					prompt.sheet(side, "Counter-offer")
+				end },
+				{ text = "Decline", color = Theme.Bad, onClick = function()
+					sendMove({ kind = "reject" })
+				end },
+			})
+		else
+			prompt.ask(nil)
+		end
+
+		-- The bar.
+		if phase == "roll" and mine then
+			local buttons = { { text = "Roll", onClick = function()
+				sendMove({ kind = "roll" })
+			end } }
+			if view.canPlay.guard then
+				table.insert(buttons, { text = "Play Guard", color = Theme.Good, onClick = function()
+					sendMove({ kind = "play", card = "guard" })
+				end })
+			end
+			table.insert(buttons, cardsButton)
+			prompt.bar("roll", status, buttons)
+		elseif phase == "discard" and me and view.discards[me] > 0 and you then
+			prompt.bar("discard", status, { { text = "Pick cards to discard", color = Theme.Bad, onClick = panel("Discard") } })
+		elseif phase == "trade" and me and view.trade.from == me then
+			prompt.bar("myTrade", "Your trade offer: waiting for answers", {
+				{ text = "See answers", onClick = panel("Your trade") },
+				{ text = "Call it off", color = Theme.PanelLight, onClick = function()
+					sendMove({ kind = "cancel" })
+				end },
+			})
+		elseif phase == "roads" and mine then
+			prompt.bar("roads", status, { { text = "Stop building roads", color = Theme.PanelLight, onClick = function()
+				sendMove({ kind = "doneRoads" })
+			end } })
+		elseif phase == "main" and mine and you then
+			local p = view.players[me]
+			local opt = view.options
+			local buttons = {}
+			local function build(kind: string, label: string, spots: number)
+				table.insert(buttons, {
+					text = label,
+					color = if mode == kind then Theme.Good else Theme.Accent,
+					enabled = spots > 0,
+					onClick = function()
+						mode = if mode == kind then nil else kind
+						rerender()
+					end,
+				})
+			end
+			build("road", `Road ({p.roads})`, #opt.edges)
+			build("camp", `Camp ({p.camps})`, #opt.vertices)
+			build("town", `Town ({p.towns})`, #opt.towns)
+			table.insert(buttons, { text = "Buy card", enabled = view.deckLeft > 0 and canAfford(you.hand, Rules.costs.card), onClick = function()
+				sendMove({ kind = "buyCard" })
+			end })
+			table.insert(buttons, { text = "Trade / cards", color = Theme.PanelLight, onClick = panel("Trade and cards") })
+			table.insert(buttons, { text = "End turn", color = Theme.Bad, onClick = function()
+				mode = nil
+				sendMove({ kind = "endTurn" })
+			end })
+			local line = if mode then `Tap a glowing spot to build a {mode} ({costText(Rules.costs[mode])})` else status
+			prompt.bar("main", line, buttons)
+		else
+			prompt.bar("wait", status, { { text = "Info", color = Theme.PanelLight, onClick = panel("Island") } })
+		end
+	end
+
 	local function render()
 		local view = snapshot.view
 		local me = snapshot.yourSeat
@@ -1150,7 +1285,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 						end
 					end
 					if #parts > 0 then
-						HudKit.callout(root, table.concat(parts, "  "), Color3.fromRGB(150, 220, 120), 0.3)
+						HudKit.callout(if tableMode then prompt.layer else root, table.concat(parts, "  "), Color3.fromRGB(150, 220, 120), 0.3)
 					end
 					-- The cards fly off the hexes that paid into your hand.
 					local gainKey = `{gain.turn}|{gain.roll}|{snapshot.moveNumber}`
@@ -1208,6 +1343,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		renderPlayers(view, me)
 		renderDiceStats(view)
 		renderLog(view)
+		renderTable(view, me)
 	end
 	rerender = function()
 		if snapshot then
@@ -1282,6 +1418,15 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				marks[`h:{banditHex}`] = "picked"
 			end
 			return marks
+		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			root.Visible = not value
+			prompt.setVisible(value)
+			rerender()
 		end,
 		destroy = function()
 			root:Destroy()
