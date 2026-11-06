@@ -417,7 +417,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 				Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
 				Kit.new("UIStroke", { Thickness = 2, Color = Color3.fromRGB(30, 30, 40) }),
 			})
-			local lock = Kit.label("▥", { TextScaled = true, TextColor3 = Color3.new(0, 0, 0), TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 8, Visible = jail, Parent = frame })
+			local lock = Kit.label("🔒", { TextScaled = true, TextColor3 = Color3.new(0, 0, 0), TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 8, Visible = jail, Parent = frame })
 			tokens[seat] = { frame = frame, lock = lock, pos = p.pos, jail = jail }
 			return 0
 		end
@@ -819,6 +819,18 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	function openTrade(partner: number?, wantPos: number?)
+		if partner == nil and snapshot then
+			-- Only one other player still in: they're who you trade with.
+			local others = {}
+			for seat, p in snapshot.view.players do
+				if seat ~= snapshot.yourSeat and not p.bankrupt then
+					table.insert(others, seat)
+				end
+			end
+			if #others == 1 then
+				partner = others[1]
+			end
+		end
 		tradeDraft.partner = partner
 		table.clear(tradeDraft.give)
 		table.clear(tradeDraft.get)
@@ -1757,6 +1769,10 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		end
 		if #view.log > 0 then
 			lastLogN = view.log[#view.log].n
+		end
+		-- A roll clears a deed card you were looking at, so it doesn't sit under the dice.
+		if rolled and userPopup and userPopup.kind == "deed" then
+			userPopup = nil
 		end
 		local d = view.dice
 		local diceKey = if d then `{d[1]},{d[2]}` else ""

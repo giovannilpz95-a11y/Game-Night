@@ -6,13 +6,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ChessRules = require(ReplicatedStorage.Shared.Games.Chess)
-local DrawOffer = require(script.Parent.Parent.UI.DrawOffer)
 
 local Chess = {}
 
 local SELECTED = Color3.fromRGB(255, 214, 102)
 local TARGET = Color3.fromRGB(80, 220, 120)
-local PREMOVE = Color3.fromRGB(222, 110, 90)
+local PREMOVE = Color3.fromRGB(110, 150, 230)
 
 local function squareOf(row: number, col: number): string
 	return ChessRules.squareName((8 - row) * 8 + (col - 1))
@@ -26,13 +25,12 @@ end
 function Chess.create(ctx: any)
 	local snapshot: any = nil
 	local selected: string? = nil
-	-- Premoves (see the 2D board): played as soon as your turn comes, if still legal.
-	local preSel: string? = nil
-	local premove: { from: string, to: string }? = nil
 	local picker: Frame? = nil
-	-- Offer / accept a draw, bottom right over the room.
-	local draw = DrawOffer.new(ctx.gui, ctx.sendMove, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16) })
 	local hovered: string? = nil -- the square under the mouse
+	-- Premoves (Lichess style): while the other side thinks, pick a piece and a square;
+	-- it plays the moment your turn comes if it's still legal.
+	local premoveFrom: string? = nil
+	local premove: { from: string, to: string }? = nil
 
 	local function closePicker()
 		if picker then
@@ -76,22 +74,42 @@ function Chess.create(ctx: any)
 		return rose
 	end
 
+	local function canPremove(): boolean
+		local over = snapshot == nil or snapshot.result ~= nil or snapshot.aborted == true
+		return not over and snapshot.yourSeat ~= nil and snapshot.view.ask == nil and snapshot.view.turn ~= snapshot.yourSeat
+	end
+
+	local function premoveTargets(from: string): { any }
+		local out = {}
+		for _, m in ChessRules.premoves(snapshot.view.fen, snapshot.yourSeat) do
+			if m.from == from then
+				table.insert(out, m)
+			end
+		end
+		return out
+	end
+
 	local function render()
 		ctx.clearMarks()
 		lift()
-		local pre = {}
-		if preSel then
-			table.insert(pre, preSel)
-		end
 		if premove then
-			table.insert(pre, premove.from)
-			table.insert(pre, premove.to)
+			for _, square in { premove.from, premove.to } do
+				local cell = ctx.cell(cellOf(square))
+				if cell then
+					ctx.mark(cell, PREMOVE, "fill")
+				end
+			end
 		end
-		for _, square in pre do
-			local r, c = cellOf(square)
-			local cell = ctx.cell(r, c)
+		if premoveFrom and canPremove() then
+			local cell = ctx.cell(cellOf(premoveFrom))
 			if cell then
 				ctx.mark(cell, PREMOVE, "fill")
+			end
+			for _, m in premoveTargets(premoveFrom) do
+				local target = ctx.cell(cellOf(m.to))
+				if target then
+					ctx.mark(target, PREMOVE, "dot")
+				end
 			end
 		end
 		if not selected then
@@ -143,7 +161,7 @@ function Chess.create(ctx: any)
 				closePicker()
 				selected = nil
 				ctx.dropLift()
-				ctx.sendMove(draw.withOffer({ from = from, to = to, promotion = choice[1] }))
+				ctx.sendMove({ from = from, to = to, promotion = choice[1] })
 				render()
 			end)
 		end
@@ -154,48 +172,56 @@ function Chess.create(ctx: any)
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
-			draw.update(newSnapshot)
 			if not myTurn() then
 				selected = nil
 				closePicker()
-			elseif premove then
-				local pre = premove
-				premove, preSel = nil, nil
-				for _, m in snapshot.view.legalMoves or {} do
-					if m.from == pre.from and m.to == pre.to then
-						ctx.dropLift()
+			end
+			if not canPremove() then
+				premoveFrom = nil
+			end
+			if premove and myTurn() then
+				local queued = premove
+				premove = nil
+				for _, m in snapshot.view.legalMoves do
+					if m.from == queued.from and m.to == queued.to then
 						ctx.sendMove({ from = m.from, to = m.to, promotion = if m.promotion then "q" else nil })
 						break
 					end
 				end
-			end
-			if snapshot.result ~= nil or snapshot.aborted then
-				premove, preSel = nil, nil
+			elseif premove and (snapshot.result ~= nil or snapshot.aborted) then
+				premove = nil
 			end
 			render()
 		end,
 		click = function(cell: BasePart)
 			local r, c = cell:GetAttribute("Row"), cell:GetAttribute("Col")
-			if not (r and c) or not snapshot then
+			if r and c and canPremove() then
+				local square = squareOf(r :: number, c :: number)
+				local code = snapshot.view.board[(ChessRules.parseSquare(square) :: number) + 1]
+				local mine = code ~= 0 and (code > 0) == (snapshot.yourSeat == 1)
+				local hit = false
+				if premoveFrom then
+					for _, m in premoveTargets(premoveFrom) do
+						if m.to == square then
+							hit = true
+						end
+					end
+				end
+				if hit then
+					premove = { from = premoveFrom :: string, to = square }
+					premoveFrom = nil
+				elseif mine and square ~= premoveFrom then
+					premoveFrom, premove = square, nil
+				else
+					premoveFrom, premove = nil, nil
+				end
+				render()
+				return
+			end
+			if not (r and c) or not myTurn() then
 				return
 			end
 			local square = squareOf(r :: number, c :: number)
-			if not myTurn() then
-				if snapshot.yourSeat and snapshot.result == nil and not snapshot.aborted then
-					local code = snapshot.view.board[(ChessRules.parseSquare(square) :: number) + 1]
-					local mine = code ~= 0 and ((code > 0) == (snapshot.yourSeat == 1))
-					if preSel and square ~= preSel and not mine then
-						premove = { from = preSel, to = square }
-						preSel = nil
-					elseif mine and square ~= preSel then
-						preSel, premove = square, nil
-					else
-						preSel, premove = nil, nil
-					end
-					render()
-				end
-				return
-			end
 			if selected then
 				local choices = {}
 				for _, m in movesFrom(selected) do
@@ -210,7 +236,7 @@ function Chess.create(ctx: any)
 					selected = nil
 					closePicker()
 					ctx.dropLift()
-					ctx.sendMove(draw.withOffer({ from = choices[1].from, to = choices[1].to }))
+					ctx.sendMove({ from = choices[1].from, to = choices[1].to })
 					render()
 					return
 				end
@@ -219,19 +245,13 @@ function Chess.create(ctx: any)
 			selected = if #movesFrom(square) > 0 and square ~= selected then square else nil
 			render()
 		end,
-		setShown = function(shown: boolean)
-			draw.frame.Parent = if shown then ctx.gui else nil
-		end,
-		destroy = function()
-			closePicker()
-			draw.destroy()
-		end,
 		-- Returns true when a piece rose (the controller plays a soft tick).
 		hover = function(cell: BasePart?): boolean
 			local r, c = cell and cell:GetAttribute("Row"), cell and cell:GetAttribute("Col")
 			hovered = if r and c then squareOf(r :: number, c :: number) else nil
 			return lift() and hovered ~= selected
 		end,
+		destroy = closePicker,
 	}
 end
 

@@ -11,6 +11,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Rules = require(ReplicatedStorage.Shared.Games.Conquest)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
+local Juice = require(script.Parent.Parent.UI.Juice)
+local Flair = require(script.Parent.Parent.UI.Flair)
+local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
 local Conquest = {}
@@ -39,6 +42,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	local pickedCards: { number } = {}
 	local lastTurnId = -1
 	local occupyFor: number? = nil -- the conquest the occupy counter was set up for
+	local lastBattleId: number? = nil -- the battle whose losses already popped on the map
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local rerender: () -> () = function() end
@@ -168,6 +172,51 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		end)
 		nodes[t] = { button = node, stroke = stroke }
 	end
+
+	-- Phase bar across the top of the map, like the official app: Place · Attack · Move,
+	-- the current step lit.
+	local phaseBar = Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromRGB(24, 30, 48),
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 8),
+		Size = UDim2.new(0.5, 0, 0, 30),
+		ZIndex = 10,
+		Parent = map,
+	}, { Kit.corner(15), Kit.padding(3) })
+	local phaseList = Kit.list(4, true)
+	phaseList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	phaseList.Parent = phaseBar
+	local phasePills = {}
+	for i, label in { "1 Place", "2 Attack", "3 Move" } do
+		phasePills[i] = Kit.label(label, {
+			Font = Theme.FontBold,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			BackgroundColor3 = Theme.Accent,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1 / 3, -4, 1, 0),
+			LayoutOrder = i,
+			ZIndex = 11,
+			Parent = phaseBar,
+		})
+		Kit.corner(12).Parent = phasePills[i]
+	end
+	-- The blitz win chance, over the territory you're about to attack.
+	local chanceTag = Kit.label("", {
+		Font = Theme.FontBold,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextColor3 = Color3.new(1, 1, 1),
+		BackgroundColor3 = Theme.Bad,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Size = UDim2.fromOffset(58, 22),
+		Visible = false,
+		ZIndex = 12,
+		Parent = map,
+	})
+	Kit.corner(11).Parent = chanceTag
 
 	-- Side panel ---------------------------------------------------------------
 	local side = Kit.new("ScrollingFrame", {
@@ -334,10 +383,14 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				moveCount = math.min(occupy.max, moveCount + 1)
 				rerender()
 			end, Theme.PanelLight, 3)
-			smallButton("Max", counter, 0.4, function()
-				moveCount = occupy.max
+			smallButton("Half", counter, 0.2, function()
+				moveCount = math.clamp(math.ceil(occupy.max / 2), occupy.min, occupy.max)
 				rerender()
 			end, Theme.PanelLight, 4)
+			smallButton("All", counter, 0.2, function()
+				moveCount = occupy.max
+				rerender()
+			end, Theme.PanelLight, 5)
 			smallButton(`Move {moveCount} in`, actions, 1, function()
 				sendMove({ kind = "occupy", count = moveCount })
 			end, nil, 4)
@@ -346,6 +399,8 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			if selected and target and targets[target] == "attack" then
 				local from, to = territories[selected].name, territories[target].name
 				hint(`Attack {to} ({view.armies[target]}) from {from} ({view.armies[selected]})`, actions, 2, Theme.Text)
+				local chance = Rules.winChance(view.armies[selected], view.armies[target])
+				hint(`Blitz win chance: {math.floor(chance * 100 + 0.5)}%`, actions, 2, if chance >= 0.6 then Theme.Good elseif chance >= 0.35 then Theme.Accent else Theme.Bad)
 				local buttons = row(actions, 3)
 				smallButton("Roll", buttons, 0.5, function()
 					sendMove({ kind = "attack", from = selected, to = target, blitz = false })
@@ -358,19 +413,23 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				moveCount = math.clamp(moveCount, 1, math.max(1, max))
 				hint(`Move armies from {territories[selected].name} to {territories[target].name}. This ends your turn.`, actions, 2, Theme.Text)
 				local counter = row(actions, 3)
-				smallButton("−", counter, 0.25, function()
+				smallButton("−", counter, 0.2, function()
 					moveCount = math.max(1, moveCount - 1)
 					rerender()
 				end, Theme.PanelLight, 1)
-				Kit.label(`{moveCount}`, { Size = UDim2.new(0.25, -4, 1, 0), Font = Theme.FontBold, TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = counter })
-				smallButton("+", counter, 0.25, function()
+				Kit.label(`{moveCount}`, { Size = UDim2.new(0.2, -4, 1, 0), Font = Theme.FontBold, TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = counter })
+				smallButton("+", counter, 0.2, function()
 					moveCount = math.min(max, moveCount + 1)
 					rerender()
 				end, Theme.PanelLight, 3)
-				smallButton("Max", counter, 0.25, function()
-					moveCount = max
+				smallButton("Half", counter, 0.2, function()
+					moveCount = math.max(1, math.ceil(max / 2))
 					rerender()
 				end, Theme.PanelLight, 4)
+				smallButton("All", counter, 0.2, function()
+					moveCount = max
+					rerender()
+				end, Theme.PanelLight, 5)
 				smallButton(`Move {moveCount} and end turn`, actions, 1, function()
 					sendMove({ kind = "fortify", from = selected, to = target, count = moveCount })
 				end, Theme.Good, 4)
@@ -465,12 +524,15 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		end
 		if cards and value then
 			local label = if #pickedCards == 3 then `Trade for {value} armies` else `Trade best set for {value}`
-			smallButton(label, cardsSection, 1, function()
+			local tradeButton = smallButton(label, cardsSection, 1, function()
 				if canTrade then
 					pickedCards = {}
 					sendMove({ kind = "trade", cards = cards })
 				end
 			end, if canTrade then nil else Theme.PanelLight, 3)
+			if canTrade then
+				Flair.nudge(tradeButton, 3) -- a set is ready: the button nudges, like the card tray
+			end
 			if not canTrade then
 				hint("Trade at the start of your turn.", cardsSection, 4)
 			end
@@ -572,10 +634,23 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	local function renderMap(view: any, me: number?)
 		local targets = targetsOf(view, me)
 		local placing = myTurn() and view.phase == "reinforce" and not view.mustTrade
+		-- Phase bar: the step you're on (anyone's turn), Move lit once you pick a move.
+		local step = if view.phase == "reinforce" then 1 elseif target and targets[target] == "move" then 3 else 2
+		phaseBar.Visible = not snapshot.result
+		for i, pill in phasePills do
+			local on = i == step
+			pill.BackgroundTransparency = if on then 0 else 1
+			pill.TextColor3 = if on then Theme.AccentText else Theme.SubText
+		end
+		-- Everything you can't act on right now dims, so the choices stand out.
+		local focus = myTurn() and (placing or (view.phase == "attack" and selected ~= nil))
 		for t, node in nodes do
 			local owner = view.owner[t]
 			node.button.BackgroundColor3 = Theme.Seat[owner] or Theme.PanelLight
 			node.button.Text = `{view.armies[t]}`
+			local live = not focus or (placing and owner == me) or t == selected or targets[t] ~= nil
+			node.button.BackgroundTransparency = if live then 0 else 0.55
+			node.button.TextTransparency = if live then 0 else 0.4
 			local stroke = node.stroke
 			local mark = targets[t]
 			if t == selected then
@@ -590,6 +665,39 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				stroke.Color, stroke.Thickness = Theme.Accent, 3
 			else
 				stroke.Color, stroke.Thickness = Rules.regions[territories[t].region].color, 3
+			end
+		end
+		-- Win chance over the territory you're aiming at.
+		if myTurn() and selected and target and targets[target] == "attack" then
+			local chance = Rules.winChance(view.armies[selected], view.armies[target])
+			local spot = territories[target]
+			chanceTag.Visible = true
+			chanceTag.Text = `{math.floor(chance * 100 + 0.5)}%`
+			chanceTag.BackgroundColor3 = if chance >= 0.6 then Color3.fromRGB(60, 160, 90) elseif chance >= 0.35 then Color3.fromRGB(200, 150, 40) else Theme.Bad
+			chanceTag.Position = UDim2.fromScale(spot.x, spot.y - NODE_SIZE * MAP_ASPECT * 0.55)
+		else
+			chanceTag.Visible = false
+		end
+		-- A new battle: losses pop over both territories, a conquest flips with a bounce.
+		local b = view.lastBattle
+		if b and b.id and b.id ~= lastBattleId then
+			local first = lastBattleId == nil
+			lastBattleId = b.id
+			if not first then
+				for _, side in { { b.from, b.attackerLost }, { b.to, b.defenderLost } } do
+					local node = nodes[side[1]]
+					if node and side[2] > 0 then
+						local button = node.button
+						Flair.floatText(button, `-{side[2]}`, button.AbsolutePosition + button.AbsoluteSize / 2, Color3.fromRGB(255, 110, 110))
+						Juice.bump(button, 0.25)
+					end
+				end
+				if b.conquered and nodes[b.to] then
+					Juice.popIn(nodes[b.to].button, 0.4)
+					Audio.play("callout", { volume = 0.5 })
+				else
+					Audio.play("dice", { volume = 0.5 })
+				end
 			end
 		end
 	end

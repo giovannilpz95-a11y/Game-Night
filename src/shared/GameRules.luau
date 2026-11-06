@@ -52,7 +52,7 @@ rules.FourInARow = {
 rules.Chess = {
 	goal = "Checkmate the other king: attack it so it has no way out.",
 	card = {
-		"Tap a piece to see where it can go, then tap a square.",
+		"Tap a piece to see where it can go, then tap a square (or drag the piece).",
 		"White moves first. You can't make a move that leaves your king in check.",
 		"Checkmate wins. No legal moves but not in check is a draw (stalemate).",
 	},
@@ -70,7 +70,12 @@ rules.Chess = {
 			"En passant: a pawn that just moved two can be captured as if it moved one.",
 			"Promotion: a pawn reaching the far row becomes a queen, rook, bishop or knight.",
 		} },
-		{ title = "Draws", lines = { "Stalemate, the same position three times, 50 moves each with no capture or pawn move, or too few pieces to checkmate." } },
+		{ title = "Draws", lines = { "Stalemate, the same position three times, 50 moves each with no capture or pawn move, or too few pieces to checkmate.", "Or both agree: Offer a draw from the ⋯ menu on your turn." } },
+		{ title = "Online extras", lines = {
+			"Premove: while the other side thinks, pick your next move. It plays as soon as your turn comes, if it's still legal. Tap anywhere else to cancel.",
+			"Takeback: on your turn, ask to take back your last move (3 per game) from the ⋯ menu. The other player decides.",
+			"Tap a move in the list, or use < and >, to look back at the game. Live returns to the board.",
+		} },
 	},
 }
 
@@ -84,7 +89,8 @@ rules.Checkers = {
 	sections = {
 		{ title = "Your turn", lines = { "Move one piece one square diagonally forward onto a dark square.", "Or jump: hop over a diagonal enemy piece into the empty square behind it. Keep jumping while you can." } },
 		{ title = "Kings", lines = { "A piece that reaches the far row is crowned, and its turn ends.", "Kings move and jump forward and backward." } },
-		{ title = "Winning", lines = { "Win when your opponent has no pieces or no legal moves.", "40 moves each with no capture and no plain piece moving is a draw." } },
+		{ title = "Winning", lines = { "Win when your opponent has no pieces or no legal moves.", "40 moves each with no capture and no plain piece moving is a draw.", "Or both agree: Offer a draw from the ⋯ menu on your turn." } },
+		{ title = "Online extras", lines = { "A multi-jump plays by itself once only one route is left; the hops are numbered.", "Takeback: on your turn, ask to take back your last move (3 per game) from the ⋯ menu." } },
 	},
 }
 
@@ -145,6 +151,11 @@ rules.Hexlands = {
 	sections = {
 		{ title = "Setup", lines = { "Everyone places two camps and two roads, in snake order. Your second camp pays one card for each hex around it." } },
 		{ title = "Your turn", lines = { "Roll. Each hex with that number pays its corners: 1 card per camp, 2 per town.", "Then trade and build as much as you like, and end your turn." } },
+		{ title = "Trading", lines = {
+			"Offer a trade to everyone (or one player): what you give and what you want. Up to 3 offers a turn.",
+			"Each player says yes, no, or sends a counter-offer. You pick who to trade with, or call it off.",
+			"The bank trades 4 of one resource for 1 of any other; harbors make it 3:1 or 2:1.",
+		} },
 		{ title = "Costs", lines = {
 			"Road: Lumber + Clay.",
 			"Camp: Lumber + Clay + Wool + Grain. Must be on your road, two corners from any other camp.",

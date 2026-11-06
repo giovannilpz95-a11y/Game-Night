@@ -325,29 +325,52 @@ return function(T)
 		T.eq(s.log[#s.log - 1].target, 2, "log names the trade target by seat, for the client")
 	end)
 
-	T.test("counter-offers: the target answers with their own deal, once", function()
-		local s = afterSetup(2, 8)
+	T.test("offers to everyone: each answers, counters, the offerer picks who", function()
+		local s = afterSetup(3, 8)
 		s.rng = scripted({ 1, 1 })
 		play(s, 1, { kind = "roll" })
-		for _, r in Hexlands.RES do
-			s.players[1].hand[r] = 0
-			s.players[2].hand[r] = 0
+		for seat = 1, 3 do
+			for _, r in Hexlands.RES do
+				s.players[seat].hand[r] = 0
+			end
 		end
 		s.players[1].hand.lumber = 2
-		s.players[2].hand.stone = 2
-		play(s, 1, { kind = "offer", to = 2, give = { lumber = 1 }, get = { stone = 2 } })
-		rejects(s, 2, { kind = "counter", give = { stone = 3 }, get = { lumber = 1 } }, "can't give what you don't have")
-		play(s, 2, { kind = "counter", give = { stone = 1 }, get = { lumber = 1 } })
-		T.eq(s.phase, "trade")
-		T.eq(table.concat(Hexlands.getActiveSeats(s), ","), "1", "back to the player on turn")
-		T.eq(Hexlands.getView(s, 1).trade.counter, true)
-		rejects(s, 1, { kind = "counter", give = { lumber = 1 }, get = { stone = 1 } }, "no counter to a counter")
-		play(s, 1, { kind = "accept" })
-		T.eq(s.players[1].hand.stone, 1)
-		T.eq(s.players[1].hand.lumber, 1)
-		T.eq(s.players[2].hand.lumber, 1)
+		s.players[2].hand.stone = 1
+		s.players[3].hand.stone = 2
+		play(s, 1, { kind = "offer", to = 0, give = { lumber = 1 }, get = { stone = 1 } })
+		T.eq(table.concat(Hexlands.getActiveSeats(s), ","), "2,3", "both asked, the offerer waits")
+		local first = Hexlands.getTimer(s).id
+		rejects(s, 1, { kind = "confirm", with = 2 }, "nobody said yes yet")
+		play(s, 2, { kind = "accept" })
+		T.eq(s.phase, "trade", "a yes doesn't trade yet")
+		T.eq(table.concat(Hexlands.getActiveSeats(s), ","), "3,1", "the offerer can pick now")
+		rejects(s, 2, { kind = "reject" }, "already answered")
+		rejects(s, 3, { kind = "counter", give = { lumber = 1 }, get = { stone = 1 } }, "same terms")
+		rejects(s, 3, { kind = "counter", give = { lumber = 1 }, get = { stone = 3 } }, "can't pay 3 stone")
+		play(s, 3, { kind = "counter", give = { lumber = 2 }, get = { stone = 2 } })
+		T.ok(Hexlands.getTimer(s).id ~= first, "a fresh clock once everyone has answered")
+		local view = Hexlands.getView(s, 1)
+		T.eq(view.trade.answers[2], 1)
+		T.eq(view.trade.answers[3], 3)
+		T.eq(view.trade.answers[1], -1, "the offerer isn't asked")
+		T.eq(view.trade.counters[1].seat, 3)
+		play(s, 1, { kind = "confirm", with = 3 })
 		T.eq(s.phase, "main")
-		T.eq(Hexlands.getActiveSeats(s)[1], 1)
+		T.eq(s.players[1].hand.stone, 2, "the counter's terms")
+		T.eq(s.players[3].hand.lumber, 2)
+		T.eq(s.players[2].hand.stone, 1, "seat 2 kept its card")
+
+		-- Nobody wants it: the offer closes by itself.
+		play(s, 1, { kind = "offer", to = 0, give = { stone = 1 }, get = { wool = 1 } })
+		play(s, 2, { kind = "reject" })
+		play(s, 3, { kind = "reject" })
+		T.eq(s.phase, "main")
+		-- Called off.
+		play(s, 1, { kind = "offer", to = 0, give = { stone = 1 }, get = { lumber = 1 } })
+		play(s, 3, { kind = "accept" })
+		play(s, 1, { kind = "cancel" })
+		T.eq(s.phase, "main")
+		T.eq(s.players[1].hand.stone, 2)
 	end)
 
 	T.test("action cards: can't play the turn you buy, one per turn, Guard moves the Bandit", function()

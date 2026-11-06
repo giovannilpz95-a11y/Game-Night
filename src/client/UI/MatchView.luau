@@ -283,6 +283,79 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			openSound()
 		end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 5, ZIndex = 41, Parent = menu })
 	end
+	-- Game offers in the menu (Chess/Checkers: Offer a draw, Take back a move). The game's
+	-- view lists them as { label, move } for your seat (shared/Offers).
+	local offerButtons: { TextButton } = {}
+	local function renderMenuActions(actions: any)
+		for _, button in offerButtons do
+			button:Destroy()
+		end
+		table.clear(offerButtons)
+		if type(actions) ~= "table" then
+			return
+		end
+		for i, action in actions do
+			local button = Kit.button(tostring(action.label), function()
+				closeMenu()
+				sendMatch({ action = "move", move = action.move })
+			end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = -10 + i, ZIndex = 41, Parent = menu })
+			table.insert(offerButtons, button)
+		end
+	end
+
+	-- A question from the other player ("White offers a draw.") with its answers, over the
+	-- top of the board in every view.
+	local askPanel = Kit.panel({
+		Name = "Ask",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 64),
+		Size = UDim2.new(0, 320, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = Theme.PanelLight,
+		Visible = false,
+		ZIndex = 35,
+		Parent = root,
+	})
+	Kit.list(6).Parent = askPanel
+	Kit.padding(10).Parent = askPanel
+	local askLabel = Kit.label("", { TextSize = 18, TextWrapped = true, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, ZIndex = 36, Parent = askPanel })
+	local askRow = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 2, ZIndex = 36, Parent = askPanel }, { Kit.list(8, true) })
+	local shownAsk = ""
+	local function renderAsk(ask: any)
+		if type(ask) ~= "table" or type(ask.text) ~= "string" then
+			askPanel.Visible = false
+			shownAsk = ""
+			return
+		end
+		local choices = if type(ask.choices) == "table" then ask.choices else {}
+		local key = ask.text .. "#" .. #choices
+		if key == shownAsk then
+			return
+		end
+		shownAsk = key
+		askLabel.Text = ask.text
+		Kit.clear(askRow)
+		askRow.Visible = #choices > 0
+		for i, choice in choices do
+			Kit.button(tostring(choice.label), function()
+				askPanel.Visible = false
+				sendMatch({ action = "move", move = choice.move })
+			end, {
+				BackgroundColor3 = if i == 1 then Theme.Good else Theme.Panel,
+				TextColor3 = Theme.Text,
+				Size = UDim2.new(0.5, -4, 1, 0),
+				LayoutOrder = i,
+				ZIndex = 37,
+				Parent = askRow,
+			})
+		end
+		askPanel.Visible = true
+		Kit.popIn(askPanel)
+		if #choices > 0 then
+			Audio.play("knock")
+		end
+	end
+
 	menuButton.Activated:Connect(function()
 		menu.Visible = not menu.Visible
 		if menu.Visible then
@@ -1298,6 +1371,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			endButton.Visible = not over and isLeader()
 			resignButton.Visible = not over and #snapshot.seats == 2 and snapshot.yourSeat ~= nil
 			menuButton.Visible = not over
+			local gameView = if type(snapshot.view) == "table" then snapshot.view else {}
+			renderMenuActions(if over then nil else gameView.menuActions)
+			renderAsk(if over then nil else gameView.ask)
 			rulesButton.Visible = openRules ~= nil and not over
 			if over then
 				closeMenu()
