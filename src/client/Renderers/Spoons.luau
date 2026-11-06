@@ -18,6 +18,7 @@ local Spoons = {}
 function Spoons.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local lastPhase = ""
+	local shownFreshDeals: number? = nil
 	local arrivals = CardFx.arrivals()
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
@@ -190,6 +191,11 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 		local canGrab = me ~= nil and not view.youAreOut and not view.youHaveSpoon
 			and (view.phase == "scramble" or (view.phase == "pass" and view.hasFour))
 		grabButton.Visible = canGrab and snapshot.result == nil
+		-- A jammed round was dealt again (see Spoons.MAX_PASSES).
+		if shownFreshDeals ~= nil and (view.freshDeals or 0) > shownFreshDeals then
+			CardFx.pop("Nobody got four! Fresh deal", Theme.Accent)
+		end
+		shownFreshDeals = view.freshDeals or 0
 		-- The scramble starts: a spoon pops up off the middle of the table.
 		if view.phase == "scramble" and lastPhase == "pass" then
 			CardFx.pop("🥄 GRAB!", Theme.Bad)

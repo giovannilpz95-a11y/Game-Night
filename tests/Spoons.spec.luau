@@ -34,6 +34,62 @@ return function(T)
 		T.eq((Spoons.validateMove(s, 1, { kind = "pass", card = 999 })), false)
 	end)
 
+	-- Two players left, each holding two pairs of the ranks the other needs: with pairs
+	-- always kept, nobody could ever get four (found by the bot audit).
+	local function jammed(seed)
+		local s = Spoons.new(3, { botLevel = "hard" }, T.Random.new(seed))
+		s.out[3] = 1
+		s.dealer = 2
+		s.spoonsLeft = 1
+		s.hands = { { C(7, 1), C(7, 2), C(10, 1), C(10, 2), C(6, 2) }, { C(7, 3), C(7, 4), C(10, 3), C(10, 4), C(6, 1) } }
+		s.deck = { C(8, 1), C(8, 2), C(8, 3) }
+		s.discard = { C(6, 3), C(8, 4), C(6, 4) }
+		s.passed = {}
+		s.passNumber = 1
+		return s
+	end
+
+	T.test("a jammed round never stalls: bots give up a pair, or it is dealt again", function()
+		for seed = 1, 20 do
+			local s = jammed(seed)
+			local rng = T.Random.new(seed)
+			local steps = 0
+			while s.phase == "pass" and (s.freshDeals or 0) == 0 and steps < 1000 do
+				steps += 1
+				local moved = false
+				for _, seat in Spoons.getActiveSeats(s) do
+					local move = Spoons.chooseBotMove(s, seat, rng)
+					if move then
+						assert(Spoons.validateMove(s, seat, move))
+						Spoons.applyMove(s, seat, move)
+						moved = true
+						break
+					end
+				end
+				if not moved then
+					Spoons.onTimeout(s)
+				end
+			end
+			T.ok(s.phase ~= "pass" or (s.freshDeals or 0) > 0, `seed {seed}: the round moved on`)
+		end
+	end)
+
+	T.test("after MAX_PASSES passes without a grab the round is dealt again", function()
+		local s = jammed(1)
+		local round = s.round
+		s.passNumber = Spoons.MAX_PASSES
+		for _, seat in { 1, 2 } do
+			Spoons.applyMove(s, seat, { kind = "pass", card = s.hands[seat][#s.hands[seat]] })
+		end
+		T.eq(s.freshDeals, 1)
+		T.eq(s.passNumber, 1)
+		T.eq(s.round, round, "same round, dealt again")
+		T.eq(s.out[1], nil)
+		T.eq(s.out[2], nil)
+		T.eq(#s.hands[1], 5)
+		T.eq(Spoons.getView(s, 1).freshDeals, 1)
+	end)
+
 	T.test("you need four of a kind to grab the first spoon", function()
 		local s = Spoons.new(3, nil, T.Random.new(3))
 		s.hands[1] = { C(5, 1), C(5, 2), C(5, 3), C(9, 1), C(2, 1) }

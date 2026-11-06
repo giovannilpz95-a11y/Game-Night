@@ -21,6 +21,7 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 	local render: () -> ()
 	local peekLast = false -- showing the last trick instead of the current one
 	local wasBroken: boolean? = nil
+	local shownLastHand: number? = nil
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -117,6 +118,12 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			CardFx.pop("♠ BROKEN!", Color3.fromRGB(120, 140, 200), ui.root)
 		end
 		wasBroken = view.spadesBroken == true
+		-- The hand limit (a safety net for games that never reach the target): say so as
+		-- the last hand starts, so the end doesn't come out of nowhere.
+		if view.maxRounds and view.round == view.maxRounds and view.phase == "bid" and shownLastHand ~= view.round then
+			shownLastHand = view.round
+			CardFx.pop("LAST HAND!", Theme.Accent, ui.root)
+		end
 		local buttons = {}
 		if canPeek then
 			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
@@ -153,6 +160,8 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = ""
 		elseif bidding and view.canBlindNil then
 			ui.prompt.Text = "Your team is 100+ behind: bid Blind Nil for 200 without looking, or look at your cards"
+		elseif bidding and view.maxRounds and view.round == view.maxRounds then
+			ui.prompt.Text = "Last hand! How many tricks will you win?"
 		elseif bidding then
 			ui.prompt.Text = "How many tricks will you win? (Nil = none at all, for 100)"
 		elseif myTurn then
