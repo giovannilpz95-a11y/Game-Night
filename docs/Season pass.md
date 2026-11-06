@@ -20,7 +20,7 @@ The **Game Night Pass** is a 4-week season with 30 tiers. Players climb it with 
 
 ## Schedule
 - Season 1 starts Monday 2 November 2026 00:00 UTC (`Season.Epoch`). Each season is 28 days and starts on a Monday, so it holds exactly four weekly quest sets.
-- Season N uses `Season.Tracks[N]`. If no track is written for it yet, the last one runs again as an "encore". Items players already own pay Universal Coins instead (`Season.OwnedRefund`), so an encore is never worthless, but **write a new track before each season ends.** Season 3 is due before Mon 28 Dec 2026.
+- Season N uses `Season.Tracks[N]`. If no track is written for it yet, the last one runs again as an "encore". Items players already own pay Universal Coins instead (`Season.OwnedRefund`), so an encore is never worthless, but **write a new track before each season ends.** Season 4 is due before Mon 25 Jan 2027.
 - The last 7 days of a season give double Stars (catch-up week).
 - When a season ends, anything a player reached but didn't claim is given to them the next time they join or finish a game, with a "Last season's unclaimed rewards" toast.
 
@@ -64,6 +64,14 @@ The shop shows pass items with a "🎟️ Season 1 pass" tag instead of a price,
 - Premium: Fireside Rocker chair (1), Title: Cocoa Connoisseur (5), Aurora Card Backs (18), Icicle Nameplate (20), Ski Lodge Table (25).
 - Card backs are hub items (`slot = "cards"`, equipped under `equipped.hub.cards`), so when card backs are drawn the card tables should use the hub one when the game's own shop has none equipped.
 - Themed weekly quests (❄️): Snowed in (15 games), Win 4 card games by the fire, Snowball fight (win 3 with people), Cabin crowd (6 games with people), Warm up the table (25 reactions), Cabin fever (5 different games), Board game blizzard (3 board games), Long winter night (75 minutes).
+
+## Season 3: Countdown
+28 Dec 2026 to 25 Jan 2027. New Year's Eve on the rooftop: counting down to midnight, party poppers, fireworks, then a fresh start. Same Gem and Universal Coin amounts as Seasons 1 and 2 (premium pays back 270 Gems). New pass-only items (`season = 3`):
+- Poses **Countdown** (free, tier 10: point up three times on the ticks, crouch, jump and cheer, sway) and **Party Popper** (premium, tier 10: hold it at your chest, aim up, pull, confetti); win celebration **Grand Finale** (premium, tier 30: slow ball-drop crouch, burst up, throw fireworks right then left, shimmy, spin). New `fireworks` particles in `Showtime.Fx`.
+- Reaction pack **Countdown** (premium, tier 15): fireworks, sparkler, midnight clock, confetti, balloon, sing along, fresh start, "Happy 2027!" (the bubble fits 14 characters). All emoji are older ones Roblox fonts draw.
+- Free: Title: Countdown Crew (5), Sparkler Trail (16), Confetti Card Backs (22), Title: Midnight Legend (30).
+- Premium: Starlight Lounger chair (1), Title: Night Owl (5), Gold Foil Card Backs (18), Fireworks Nameplate (20), Rooftop Party Table (25).
+- Themed weekly quests (🎆): Countdown (15 games), New year, new wins (5 wins), Midnight showdown (win 3 with people), Party of the year (6 games with people), Fireworks show (30 reactions), Fresh start (6 different games), Deal in the new year (5 card games), Up past midnight (90 minutes).
 
 ## Adding a season
 1. Add a track to `Season.Tracks` (a premium reward on every tier, free ones where you like, optional themed `weekly` quests; tests check every item exists, is pass-only, has the track's season number and isn't on an earlier track).

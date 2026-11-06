@@ -133,6 +133,16 @@ return function(T)
 			local move = Showtime.get(id) :: any
 			T.ok(move.fx and Showtime.Fx[move.fx] ~= nil, `{id} has particle colors`)
 		end
+		-- Season 3: Countdown
+		T.ok(#(Reactions.pack("reactions_countdown") :: any).reactions >= 6)
+		T.ok(table.find(Economy.ReactionBundle.items, "reactions_countdown") == nil, "not in the Robux bundle")
+		T.eq(Showtime.kind("pose_countdown"), "pose")
+		T.eq(Showtime.kind("pose_popper"), "pose")
+		T.eq(Showtime.kind("win_grandfinale"), "victory")
+		for _, id in { "pose_countdown", "pose_popper", "win_grandfinale" } do
+			local move = Showtime.get(id) :: any
+			T.ok(move.fx and Showtime.Fx[move.fx] ~= nil, `{id} has particle colors`)
+		end
 	end)
 
 	T.test("Season 2 is written and starts when Season 1 ends", function()
@@ -141,6 +151,11 @@ return function(T)
 		T.ok(not rerun, "season 2 is its own track, not an encore")
 		T.eq(Season.startsAt(2), Season.endsAt(1))
 		T.eq(Season.startsAt(2), 1795996800, "Monday 30 November 2026 00:00 UTC")
+		T.ok(#Season.Tracks >= 3)
+		local _, rerun3 = Season.track(3)
+		T.ok(not rerun3, "season 3 is its own track, not an encore")
+		T.eq(Season.startsAt(3), 1798416000, "Monday 28 December 2026 00:00 UTC")
+		T.ok(Season.Tracks[3].weekly ~= nil, "season 3 has themed weekly quests")
 		-- Every track's last premium reward is new: not on an earlier track.
 		local seen = {}
 		for n, track in Season.Tracks do

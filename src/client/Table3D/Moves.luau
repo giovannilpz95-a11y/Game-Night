@@ -430,6 +430,62 @@ do
 	}
 end
 
+-- Game Night Pass, Season 3 "Countdown": Countdown (free track) and Party Popper (premium).
+do
+	local point = { RS = { 150, 0, 20 }, RE = { 15, 0, 0 }, LS = { 0, 0, -10 }, N = { 12, 0, 0 } }
+	local pump = { RS = { 115, 0, 20 }, RE = { 45, 0, 0 }, LS = { 0, 0, -10 }, N = { 6, 0, 0 } }
+	local load = { RS = { 40, 0, 20 }, LS = { 40, 0, -20 }, RE = { 60, 0, 0 }, LE = { 60, 0, 0 }, N = { -10, 0, 0 } }
+	local cheer = { RS = { 10, 0, 160 }, LS = { 10, 0, -160 }, RE = { 10, 0, 0 }, LE = { 10, 0, 0 }, N = { 20, 0, 0 } }
+	poses.pose_countdown = {
+		length = 2.1,
+		loop = { 1.3, 2.1 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.15, "out", crouch(6), pump),
+			K(0.3, "back", point),
+			K(0.42, "io", pump),
+			K(0.55, "back", point),
+			K(0.67, "io", pump),
+			K(0.8, "back", point),
+			K(0.92, "in", crouch(20), load),
+			K(1.05, "out", cheer, WIDE, root(0, 0, 0, 0, 0.5)),
+			K(1.3, "in", cheer, WIDE),
+			K(1.5, "io", cheer, WIDE, { W = { 0, 0, 6 }, N = { 20, 0, -8 } }),
+			K(1.9, "io", cheer, WIDE, { W = { 0, 0, -6 }, N = { 20, 0, 8 } }),
+			K(2.1, "io", cheer, WIDE),
+		},
+		cues = {
+			{ t = 0.3, sound = "tick" },
+			{ t = 0.55, sound = "tick" },
+			{ t = 0.8, sound = "tick" },
+			{ t = 1.05, sound = "pop", burst = 18 },
+		},
+	}
+end
+
+do
+	local hold = { RS = { 70, 0, -20 }, LS = { 70, 0, 20 }, RE = { 80, 0, 0 }, LE = { 80, 0, 0 }, N = { -6, 0, 0 } }
+	local aim = { LS = { 100, 0, 15 }, LE = { 45, 0, 0 }, RS = { 75, 0, -10 }, RE = { 95, 0, 0 }, N = { 10, 0, 0 } }
+	local pull = { RS = { 55, 0, 45 }, RE = { 10, 0, 0 }, LS = { 115, 0, 10 }, LE = { 20, 0, 0 }, W = { -6, 0, 0 } }
+	local cheer = { N = { 15, -10, 0 } }
+	poses.pose_popper = {
+		length = 1.9,
+		loop = { 1.1, 1.9 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.25, "out", crouch(8), hold),
+			K(0.4, "lin", crouch(8), hold, root(0, 0, 0, 0.04)),
+			K(0.5, "lin", crouch(8), hold, root(0, 0, 0, -0.04)),
+			K(0.7, "in", aim),
+			K(0.85, "back", pull, root(0, 0, 0, 0, 0.12)),
+			K(1.1, "io", pull, cheer),
+			K(1.5, "io", pull, { RS = { 80, 0, 70 }, N = { 12, 10, 0 } }, root(0, 0, 0, 0, 0.05)),
+			K(1.9, "io", pull, cheer),
+		},
+		cues = { { t = 0.5, sound = "tick" }, { t = 0.85, sound = "pop", burst = 22 } },
+	}
+end
+
 ---------------------------------------------------------------- celebrations
 
 local dances: { [string]: Move } = {}
@@ -857,6 +913,41 @@ do
 			{ t = 1.0, sound = "tick", burst = 4 },
 			{ t = 2.55, sound = "callout", burst = 16 },
 			{ t = 3.2, sound = "clap", burst = 20 },
+		},
+	}
+end
+
+-- Grand Finale (Game Night Pass, Season 3 premium tier 30): a slow ball-drop crouch, a
+-- burst up with arms high, fireworks thrown right and left, a shimmy and a spin.
+do
+	local tuck = { RS = { 30, 0, -10 }, LS = { 30, 0, 10 }, RE = { 90, 0, 0 }, LE = { 90, 0, 0 }, N = { -15, 0, 0 } }
+	local up = { RS = { 10, 0, 165 }, LS = { 10, 0, -165 }, RE = { 10, 0, 0 }, LE = { 10, 0, 0 }, N = { 20, 0, 0 } }
+	local throwR = { RS = { 20, 0, 140 }, RE = { 10, 0, 0 }, LS = { 0, 0, -30 }, LE = { 20, 0, 0 }, W = { 0, 0, -10 }, N = { 20, 0, -15 } }
+	local throwL = { LS = { 20, 0, -140 }, LE = { 10, 0, 0 }, RS = { 0, 0, 30 }, RE = { 20, 0, 0 }, W = { 0, 0, 10 }, N = { 20, 0, 15 } }
+	local shimmy = { RS = { 40, 0, 60 }, LS = { 40, 0, -60 }, RE = { 60, 0, 0 }, LE = { 60, 0, 0 } }
+	-- The spin ends a full turn round (yaw 360), the same heading as the loop's start.
+	dances.win_grandfinale = {
+		length = 4.0,
+		loop = { 0, 4.0 },
+		keys = {
+			K(0, "io", crouch(30), tuck),
+			K(0.5, "in", crouch(45), tuck, { N = { -22, 0, 0 } }),
+			K(0.75, "out", up, WIDE, root(0, 0, 0, 0, 0.7)),
+			K(1.0, "in", up, WIDE),
+			K(1.5, "back", throwR, WIDE),
+			K(2.0, "back", throwL, WIDE),
+			K(2.5, "io", crouch(10), shimmy, { W = { 0, 15, 0 } }),
+			K(2.75, "io", crouch(10), shimmy, { W = { 0, -15, 0 } }),
+			K(3.0, "io", crouch(10), shimmy, { W = { 0, 15, 0 } }),
+			K(3.25, "in", crouch(5), up),
+			K(3.6, "out", up, root(0, 270, 0, 0, 0.3)),
+			K(4.0, "io", crouch(30, { 0, 360, 0 }), tuck),
+		},
+		cues = {
+			{ t = 0.75, sound = "callout", burst = 24 },
+			{ t = 1.5, sound = "clap", burst = 16 },
+			{ t = 2.0, sound = "clap", burst = 16 },
+			{ t = 3.6, sound = "pop", burst = 20 },
 		},
 	}
 end

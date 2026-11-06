@@ -130,6 +130,21 @@ local items: { Item } = {
 	{ id = "win_iceskate", name = "Ice Skater", shop = "hub", slot = "victory", tier = "Legendary", notForSale = true, season = 2 },
 	{ id = "reactions_snowedin", name = "Snowed In", shop = "hub", slot = "reactions", tier = "Epic", notForSale = true, season = 2 },
 
+	-- Game Night Pass, Season 3 "Countdown" (shared/Season). Only the pass gives these.
+	{ id = "season3_title_countdown", name = "Title: Countdown Crew", shop = "hub", slot = "title", tier = "Common", notForSale = true, season = 3 },
+	{ id = "season3_trail_sparkler", name = "Sparkler Trail", shop = "hub", slot = "trail", tier = "Rare", notForSale = true, season = 3 },
+	{ id = "season3_cards_confetti", name = "Confetti Card Backs", shop = "hub", slot = "cards", tier = "Rare", notForSale = true, season = 3 },
+	{ id = "season3_title_midnight", name = "Title: Midnight Legend", shop = "hub", slot = "title", tier = "Epic", notForSale = true, season = 3 },
+	{ id = "season3_chair_starlight", name = "Starlight Lounger", shop = "hub", slot = "chair", tier = "Epic", notForSale = true, season = 3 },
+	{ id = "season3_title_nightowl", name = "Title: Night Owl", shop = "hub", slot = "title", tier = "Rare", notForSale = true, season = 3 },
+	{ id = "season3_cards_goldfoil", name = "Gold Foil Card Backs", shop = "hub", slot = "cards", tier = "Epic", notForSale = true, season = 3 },
+	{ id = "season3_nameplate_fireworks", name = "Fireworks Nameplate", shop = "hub", slot = "nameplate", tier = "Epic", notForSale = true, season = 3 },
+	{ id = "season3_table_rooftop", name = "Rooftop Party Table", shop = "hub", slot = "theme", tier = "Legendary", notForSale = true, season = 3 },
+	{ id = "pose_countdown", name = "Countdown", shop = "hub", slot = "pose", tier = "Rare", notForSale = true, season = 3 },
+	{ id = "pose_popper", name = "Party Popper", shop = "hub", slot = "pose", tier = "Epic", notForSale = true, season = 3 },
+	{ id = "win_grandfinale", name = "Grand Finale", shop = "hub", slot = "victory", tier = "Legendary", notForSale = true, season = 3 },
+	{ id = "reactions_countdown", name = "Countdown", shop = "hub", slot = "reactions", tier = "Epic", notForSale = true, season = 3 },
+
 	-- Chess shop
 	{ id = "chess_walnut_board", name = "Walnut Board", shop = "chess", slot = "board", tier = "Common", coins = 400 },
 	{ id = "chess_marble_pieces", name = "Marble Pieces", shop = "chess", slot = "pieces", tier = "Rare", coins = 1500 },

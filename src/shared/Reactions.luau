@@ -214,6 +214,16 @@ local list: { Reaction } = {
 	{ id = "fireside", label = "Fireside", icon = "🪵", style = "fire", pack = "reactions_snowedin" },
 	{ id = "brrr", label = "Brrr!", text = "Brrr!", color = BLUE, style = "shout", pack = "reactions_snowedin" },
 
+	-- Countdown (Game Night Pass, Season 3 premium reward; never sold)
+	{ id = "fireworks", label = "Fireworks", icon = "🎆", style = "burst", pack = "reactions_countdown" },
+	{ id = "sparkler", label = "Sparkler", icon = "🎇", style = "sparkle", pack = "reactions_countdown" },
+	{ id = "midnight", label = "Midnight", icon = "🕛", style = "shake", pack = "reactions_countdown" },
+	{ id = "confettiBall", label = "Confetti", icon = "🎊", style = "confetti", pack = "reactions_countdown" },
+	{ id = "balloon", label = "Balloon", icon = "🎈", style = "bounce", pack = "reactions_countdown" },
+	{ id = "singAlong", label = "Sing along", icon = "🎶", style = "wobble", pack = "reactions_countdown" },
+	{ id = "freshStart", label = "Fresh start", icon = "🌅", style = "pulse", pack = "reactions_countdown" },
+	{ id = "happyNewYear", label = "Happy New Year!", text = "Happy 2027!", color = GOLD, style = "shout", pack = "reactions_countdown" },
+
 	-- Spooky Pack (seasonal: October)
 	{ id = "pumpkin", label = "Pumpkin", icon = "🎃", style = "fire", pack = "reactions_spooky" },
 	{ id = "ghost", label = "Boo!", icon = "👻", style = "float", pack = "reactions_spooky" },
@@ -270,6 +280,7 @@ local packs: { Pack } = {
 	{ id = "reactions_chess", name = "Chess Club", icon = "🤴", reactions = {} },
 	{ id = "reactions_premiere", name = "Premiere Night", icon = "🍿", reactions = {} },
 	{ id = "reactions_snowedin", name = "Snowed In", icon = "🌨️", reactions = {} },
+	{ id = "reactions_countdown", name = "Countdown", icon = "🎆", reactions = {} },
 	{ id = "reactions_spooky", name = "Spooky Pack", icon = "🎃", reactions = {}, months = { 10 }, season = "🎃 Halloween" },
 	{ id = "reactions_winter", name = "Winter Pack", icon = "⛄", reactions = {}, months = { 12, 1 }, season = "❄️ Winter" },
 	{ id = "reactions_love", name = "Sweethearts", icon = "💘", reactions = {}, months = { 2 }, season = "💘 Valentine's" },
