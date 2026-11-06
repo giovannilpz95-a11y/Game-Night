@@ -59,6 +59,27 @@ return function(T)
 		T.eq(Chess.getResult(normal), nil)
 	end)
 
+	T.test("king of the hill and three-check play on without mating material", function()
+		-- White's king takes the last queen: K+N v K is a dead draw normally, but the king
+		-- can still walk to the hill.
+		local fen = "8/8/8/8/8/8/3q4/2N1K2k w - - 0 1"
+		local hill = Chess.new(2, { fen = fen, rules = { kingOfTheHill = true } })
+		apply(Chess, hill, 1, { from = "e1", to = "d2" })
+		T.eq(Chess.getResult(hill), nil, "king of the hill goes on")
+
+		local normal = Chess.new(2, { fen = fen })
+		apply(Chess, normal, 1, { from = "e1", to = "d2" })
+		T.eq((Chess.getResult(normal) :: any).reason, "Not enough pieces to checkmate")
+
+		-- Three-check: a lone knight can still give checks; bare kings are a draw.
+		local checks = Chess.new(2, { fen = fen, rules = { threeCheck = true } })
+		apply(Chess, checks, 1, { from = "e1", to = "d2" })
+		T.eq(Chess.getResult(checks), nil, "three-check goes on with a knight")
+		local bare = Chess.new(2, { fen = "8/8/8/8/8/8/3q4/4K2k w - - 0 1", rules = { threeCheck = true } })
+		apply(Chess, bare, 1, { from = "e1", to = "d2" })
+		T.eq((Chess.getResult(bare) :: any).reason, "Only the kings are left")
+	end)
+
 	-- Checkers ----------------------------------------------------------------------
 
 	local function jumpPosition(rules)
