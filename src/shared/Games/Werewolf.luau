@@ -15,6 +15,11 @@
 --            pass. Talk in voice or chat meanwhile. Ends once everyone has spoken.
 --   vote     each living seat votes a seat out or skips. Votes are public.
 --   verdict  who was voted out (and their role, with the reveal house rule).
+--   lastWords the seat voted out leaves a few last words (typed, filtered) before going.
+--   hunter   a Hunter who just went out (caught at night, poisoned or voted out) takes one
+--            player down with them, or holsters.
+-- The Witch (house rule) has two one-off potions: once all the wolves have picked, she
+-- sees their victim at night and may save them; or she may poison any player instead.
 -- After MAX_DAYS days without a winner the wolves win (the village ran out of time).
 --
 -- Secrets: getView only hands a seat its own role, its packmates (wolves), its checks
@@ -23,10 +28,15 @@
 --
 -- House rules (options.rules): wolves = 0 (auto) | 1 | 2, talkSeconds = 30 | 60 | 90,
 -- reveal = true | false, guardian = true | false (both on by default), seer = true | false
--- (on by default), quietNight (the wolves catch nobody on the first night).
+-- (on by default), quietNight (the wolves catch nobody on the first night),
+-- hunter / witch = 0 (off) | 6 | 7 (from that many players) | 5 (always). Defaults: the
+-- Hunter from 6 players, the Witch from 7.
 --
 -- Moves:
 --   { kind = "night", target = seat }
+--   { kind = "night", target = seat, potion = "heal" | "poison" }   (Witch)
+--   { kind = "lastWords", text = string? }                           (shown = filtered)
+--   { kind = "shoot", target = seat | 0 }                            (Hunter; 0 = holster)
 --   { kind = "accuse", target = seat }
 --   { kind = "claim", target = seat, wolf = boolean }
 --   { kind = "pass" }
@@ -47,6 +57,12 @@ local TALK_SECONDS = 60
 local VOTE_SECONDS = 30
 local VERDICT_SECONDS = 7
 local MAX_DAYS = 8
+local LAST_WORDS_SECONDS = 12
+local HUNTER_SECONDS = 15
+local LAST_WORDS_MAX = 120
+
+-- The voted-out player's last words are typed, so the server filters them (see GameModule).
+Werewolf.textField = "text"
 
 Werewolf.MAX_DAYS = MAX_DAYS
 
@@ -55,6 +71,8 @@ Werewolf.ROLES = {
 	wolf = { name = "Werewolf", icon = "🐺", team = "wolves", color = Color3.fromRGB(230, 84, 84) },
 	seer = { name = "Seer", icon = "🔮", team = "village", color = Color3.fromRGB(160, 120, 255) },
 	guardian = { name = "Guardian", icon = "🛡️", team = "village", color = Color3.fromRGB(90, 190, 255) },
+	hunter = { name = "Hunter", icon = "🏹", team = "village", color = Color3.fromRGB(230, 160, 70) },
+	witch = { name = "Witch", icon = "🧪", team = "village", color = Color3.fromRGB(200, 110, 220) },
 	villager = { name = "Villager", icon = "🧑‍🌾", team = "village", color = Color3.fromRGB(110, 200, 120) },
 }
 
@@ -89,6 +107,13 @@ function Werewolf.new(seatCount: number, options: any?, rng: Random?)
 	local talk = if type(rules.talkSeconds) == "number" then math.clamp(rules.talkSeconds, 15, 180) else TALK_SECONDS
 	local wolves = wolfCountFor(seatCount, rules.wolves)
 	local withGuardian = rules.guardian ~= false
+	-- From how many players a role joins (5 = always, 0 = never).
+	local function from(value: any, default: number): boolean
+		local n = if type(value) == "number" then value else default
+		return n > 0 and seatCount >= n
+	end
+	local withHunter = from(rules.hunter, 6)
+	local withWitch = from(rules.witch, 7)
 
 	local pool = {}
 	for _ = 1, wolves do
@@ -99,6 +124,13 @@ function Werewolf.new(seatCount: number, options: any?, rng: Random?)
 	end
 	if withGuardian then
 		table.insert(pool, "guardian")
+	end
+	-- Specials never crowd out the last plain villager.
+	if withHunter and #pool < seatCount - 1 then
+		table.insert(pool, "hunter")
+	end
+	if withWitch and #pool < seatCount - 1 then
+		table.insert(pool, "witch")
 	end
 	while #pool < seatCount do
 		table.insert(pool, "villager")
@@ -121,6 +153,13 @@ function Werewolf.new(seatCount: number, options: any?, rng: Random?)
 		alive = alive,
 		wolfCount = wolves,
 		withGuardian = withGuardian,
+		withHunter = table.find(pool, "hunter") ~= nil,
+		withWitch = table.find(pool, "witch") ~= nil,
+		potions = { heal = true, poison = true }, -- the Witch's, each usable once
+		hunterPending = nil, -- a Hunter who went out and hasn't shot yet
+		hunterNext = nil, -- "day" | "night": where the game goes after the shot
+		lastShot = nil, -- { hunter = seat, target = seat? }
+		lastWords = nil, -- { seat, text?, day }
 		reveal = rules.reveal ~= false,
 		quietNight = rules.quietNight == true,
 		talkSeconds = talk,
@@ -246,6 +285,19 @@ end
 local function knockOut(state, seat: number, how: string)
 	state.alive[seat] = false
 	table.insert(state.outOrder, { seat = seat, how = how, day = state.day })
+	if state.roles[seat] == "hunter" and how ~= "hunter" then
+		state.hunterPending = seat
+	end
+end
+
+-- The wolves' victim tonight, once every living wolf has picked (what the Witch sees).
+local function wolvesDone(state): boolean
+	for s = 1, state.seatCount do
+		if state.alive[s] and state.roles[s] == "wolf" and state.nightPicks[s] == nil then
+			return false
+		end
+	end
+	return true
 end
 
 -- The wolves' pick: most wolf votes; a tie goes to the lowest-numbered wolf's pick.
@@ -269,6 +321,12 @@ end
 
 local function resolveNight(state)
 	local target = wolfTarget(state)
+	local witchPick = nil
+	for seat = 1, state.seatCount do
+		if state.alive[seat] and state.roles[seat] == "witch" and state.nightPicks[seat] then
+			witchPick = { seat = seat, target = state.nightPicks[seat], potion = state.nightPotion }
+		end
+	end
 	local quiet = state.quietNight and state.day == 1 -- house rule: nobody is caught on night 1
 	if target == nil and not quiet then
 		-- No wolf picked in time: the pack picks someone anyway, so the game moves on.
@@ -304,15 +362,27 @@ local function resolveNight(state)
 			end
 		end
 	end
+	local healed = witchPick ~= nil and witchPick.potion == "heal" and witchPick.target == target
+	if witchPick and witchPick.potion then
+		state.potions[witchPick.potion] = false
+		if healed then
+			GameModule.addStat(state, witchPick.seat, "saves")
+		end
+	end
 	if quiet then
 		state.lastNight = { caught = nil, saved = false }
-	elseif target and target ~= shield then
+	elseif target and target ~= shield and not healed then
 		knockOut(state, target, "night")
 		state.lastNight = { caught = target, saved = false }
 	else
 		state.lastNight = { caught = nil, saved = target ~= nil }
 	end
+	if witchPick and witchPick.potion == "poison" and state.alive[witchPick.target] then
+		knockOut(state, witchPick.target, "poison")
+		state.lastNight.poisoned = witchPick.target
+	end
 	state.nightPicks = {}
+	state.nightPotion = nil
 	setPhase(state, "dawn")
 end
 
@@ -320,6 +390,54 @@ local function startDay(state)
 	state.statements = {}
 	state.votes = {}
 	setPhase(state, "day")
+end
+
+local function startNightOrEnd(state)
+	if checkWin(state) then
+		return
+	end
+	if state.day >= MAX_DAYS then
+		state.winner = "wolves"
+		state.reason = "The wolves outlasted the village!"
+		state.phase = "done"
+		state.finished = true
+		state.timerId += 1
+	else
+		startNight(state)
+	end
+end
+
+-- A Hunter just went out: their shot comes first. `next` is where the game goes after.
+local function hunterOr(state, next: string)
+	if state.hunterPending and not state.finished then
+		state.hunterNext = next
+		setPhase(state, "hunter")
+	elseif next == "day" then
+		if not checkWin(state) then
+			startDay(state)
+		end
+	else
+		startNightOrEnd(state)
+	end
+end
+
+local function shoot(state, target: number?)
+	local hunter = state.hunterPending :: number
+	state.hunterPending = nil
+	state.lastShot = { hunter = hunter, target = target, day = state.day }
+	if target and state.alive[target] then
+		knockOut(state, target, "hunter")
+		GameModule.addStat(state, hunter, "shots")
+	end
+	local next = state.hunterNext
+	state.hunterNext = nil
+	if next == "day" then
+		if not checkWin(state) then
+			startDay(state)
+		end
+	else
+		startNightOrEnd(state)
+	end
 end
 
 local function startVote(state)
@@ -359,6 +477,11 @@ end
 ---------------------------------------------------------------- contract
 
 function Werewolf.getActiveSeats(state): { number }
+	if state.phase == "lastWords" then
+		return if state.lastWords and state.lastWords.text == nil and not state.lastWords.done then { state.lastWords.seat } else {}
+	elseif state.phase == "hunter" then
+		return if state.hunterPending then { state.hunterPending } else {}
+	end
 	local picks = if state.phase == "night"
 		then state.nightPicks
 		elseif state.phase == "day" then state.statements
@@ -376,7 +499,46 @@ function Werewolf.getActiveSeats(state): { number }
 	return seats
 end
 
+local function shotTargets(state, hunter: number): { number }
+	return otherAlive(state, hunter)
+end
+
+-- The Witch's potion moves tonight (the plain hunch moves come from nightTargets).
+local function potionMoves(state, seat: number): { any }
+	local moves = {}
+	if state.roles[seat] ~= "witch" or not state.alive[seat] then
+		return moves
+	end
+	if state.potions.heal and wolvesDone(state) then
+		local victim = wolfTarget(state)
+		if victim then
+			table.insert(moves, { kind = "night", target = victim, potion = "heal" })
+		end
+	end
+	if state.potions.poison then
+		for _, t in otherAlive(state, seat) do
+			table.insert(moves, { kind = "night", target = t, potion = "poison" })
+		end
+	end
+	return moves
+end
+
 function Werewolf.getLegalMoves(state, seat: number): { any }
+	if state.phase == "lastWords" then
+		if table.find(Werewolf.getActiveSeats(state), seat) then
+			return { { kind = "lastWords" } }
+		end
+		return {}
+	elseif state.phase == "hunter" then
+		if seat ~= state.hunterPending then
+			return {}
+		end
+		local moves = { { kind = "shoot", target = 0 } }
+		for _, t in shotTargets(state, seat) do
+			table.insert(moves, { kind = "shoot", target = t })
+		end
+		return moves
+	end
 	if not state.alive[seat] then
 		return {}
 	end
@@ -384,6 +546,9 @@ function Werewolf.getLegalMoves(state, seat: number): { any }
 	if state.phase == "night" and state.nightPicks[seat] == nil then
 		for _, t in nightTargets(state, seat) do
 			table.insert(moves, { kind = "night", target = t })
+		end
+		for _, m in potionMoves(state, seat) do
+			table.insert(moves, m)
 		end
 	elseif state.phase == "day" and state.statements[seat] == nil then
 		table.insert(moves, { kind = "pass" })
@@ -405,17 +570,48 @@ function Werewolf.validateMove(state, seat: number, move: any): (boolean, string
 	if type(move) ~= "table" or type(move.kind) ~= "string" then
 		return false, "Bad move"
 	end
-	if not isInt(seat, 1, state.seatCount) or not state.alive[seat] then
-		return false, "You're out of the game"
+	if not isInt(seat, 1, state.seatCount) then
+		return false, "Bad seat"
 	end
 	local kind = move.kind
 	local target = move.target
+	if state.phase == "lastWords" then
+		if kind ~= "lastWords" or not table.find(Werewolf.getActiveSeats(state), seat) then
+			return false, "Wait for the next phase"
+		end
+		if move.text ~= nil and (type(move.text) ~= "string" or #move.text > LAST_WORDS_MAX) then
+			return false, "Keep it short"
+		end
+		if move.shown ~= nil and type(move.shown) ~= "string" then
+			return false, "Bad move"
+		end
+		return true
+	elseif state.phase == "hunter" then
+		if kind ~= "shoot" or seat ~= state.hunterPending then
+			return false, "Wait for the Hunter"
+		end
+		if target ~= 0 and not (isInt(target, 1, state.seatCount) and table.find(shotTargets(state, seat), target)) then
+			return false, "Pick someone still in the game"
+		end
+		return true
+	end
+	if not state.alive[seat] then
+		return false, "You're out of the game"
+	end
 	if state.phase == "night" then
 		if kind ~= "night" then
 			return false, "It's night: pick someone"
 		end
 		if state.nightPicks[seat] ~= nil then
 			return false, "You already picked"
+		end
+		if move.potion ~= nil then
+			for _, m in potionMoves(state, seat) do
+				if m.potion == move.potion and m.target == target then
+					return true
+				end
+			end
+			return false, if move.potion == "heal" then "There's nobody to save yet" else "You can't use that potion"
 		end
 		if not isInt(target, 1, state.seatCount) or not table.find(nightTargets(state, seat), target) then
 			return false, "You can't pick them"
@@ -457,8 +653,21 @@ function Werewolf.validateMove(state, seat: number, move: any): (boolean, string
 end
 
 function Werewolf.applyMove(state, seat: number, move: any)
+	if state.phase == "lastWords" then
+		local text = if type(move.shown) == "string" then string.sub(move.shown, 1, LAST_WORDS_MAX) else nil
+		state.lastWords.text = text
+		state.lastWords.done = true
+		hunterOr(state, "night")
+		return
+	elseif state.phase == "hunter" then
+		shoot(state, if move.target ~= 0 then move.target else nil)
+		return
+	end
 	if state.phase == "night" then
 		state.nightPicks[seat] = move.target
+		if move.potion and state.roles[seat] == "witch" then
+			state.nightPotion = move.potion
+		end
 		local all = true
 		for s = 1, state.seatCount do
 			if state.alive[s] and state.nightPicks[s] == nil then
@@ -509,6 +718,8 @@ function Werewolf.getTimer(state): { id: number, seconds: number }?
 		elseif state.phase == "day" then state.talkSeconds
 		elseif state.phase == "vote" then VOTE_SECONDS
 		elseif state.phase == "verdict" then VERDICT_SECONDS
+		elseif state.phase == "lastWords" then LAST_WORDS_SECONDS
+		elseif state.phase == "hunter" then HUNTER_SECONDS
 		else nil
 	if not seconds then
 		return nil
@@ -523,26 +734,35 @@ function Werewolf.onTimeout(state)
 	elseif phase == "night" then
 		resolveNight(state)
 	elseif phase == "dawn" then
-		if not checkWin(state) then
-			startDay(state)
-		end
+		hunterOr(state, "day")
 	elseif phase == "day" then
 		startVote(state)
 	elseif phase == "vote" then
 		resolveVote(state)
 	elseif phase == "verdict" then
-		if not checkWin(state) then
-			if state.day >= MAX_DAYS then
-				state.winner = "wolves"
-				state.reason = "The wolves outlasted the village!"
-				state.phase = "done"
-				state.finished = true
-				state.timerId += 1
-			else
-				startNight(state)
-			end
+		local out = state.lastVerdict and state.lastVerdict.out
+		if out then
+			state.lastWords = { seat = out, day = state.day }
+			setPhase(state, "lastWords")
+		else
+			hunterOr(state, "night")
 		end
+	elseif phase == "lastWords" then
+		if state.lastWords then
+			state.lastWords.done = true
+		end
+		hunterOr(state, "night")
+	elseif phase == "hunter" then
+		shoot(state, nil) -- out of time: the Hunter holsters
 	end
+end
+
+-- Party chat: players who are out talk only among themselves until the game ends.
+function Werewolf.getChatGroup(state, seat: number): string?
+	if not state.finished and isInt(seat, 1, state.seatCount) and not state.alive[seat] then
+		return "out"
+	end
+	return nil
 end
 
 function Werewolf.getResult(state): GameModule.Result?
@@ -643,6 +863,11 @@ function Werewolf.getView(state, seat: number?)
 		reveal = state.reveal,
 		wolfCount = state.wolfCount,
 		withGuardian = state.withGuardian,
+		withHunter = state.withHunter,
+		withWitch = state.withWitch,
+		lastWords = GameModule.copy(state.lastWords),
+		lastShot = GameModule.copy(state.lastShot),
+		hunterUp = if state.phase == "hunter" then state.hunterPending else nil,
 		wolvesLeft = if state.reveal or state.finished then wolvesAlive else nil,
 		aliveCount = #aliveSeats(state),
 		acted = acted,
@@ -686,6 +911,17 @@ function Werewolf.getView(state, seat: number?)
 			view.peeks = table.clone(state.peeks)
 		elseif role == "guardian" then
 			view.lastShield = state.lastShield
+		elseif role == "witch" then
+			view.potions = table.clone(state.potions)
+			if state.phase == "night" and state.alive[seat] and state.potions.heal and wolvesDone(state) then
+				view.witchSees = wolfTarget(state)
+			end
+			if state.phase == "night" and state.nightPicks[seat] ~= nil then
+				view.yourPotion = state.nightPotion
+			end
+		end
+		if state.phase == "hunter" and seat == state.hunterPending then
+			view.targets = shotTargets(state, seat)
 		end
 		if state.phase == "night" then
 			view.yourPick = state.nightPicks[seat]
@@ -1004,9 +1240,53 @@ local function botVote(state, seat: number, rng: Random): any
 	return { kind = "vote", target = 0 }
 end
 
+-- Bots' last words: a short line in character (team-honest or not, like real players).
+local LAST_LINES = {
+	village = { "I was on your side! Look at who pushed my vote.", "Wrong person... the wolves are laughing.", "Remember who voted for me." },
+	wolves = { "You got the wrong one, I swear!", "I was just a villager. Good luck.", "You'll regret this tomorrow." },
+}
+
 function Werewolf.chooseBotMove(state, seat: number, rng: Random): any?
+	if state.phase == "lastWords" then
+		if not table.find(Werewolf.getActiveSeats(state), seat) then
+			return nil
+		end
+		local lines = LAST_LINES[team(state, seat)]
+		local line = lines[rng:NextInteger(1, #lines)]
+		return { kind = "lastWords", text = line, shown = line }
+	elseif state.phase == "hunter" then
+		if seat ~= state.hunterPending then
+			return nil
+		end
+		-- Take down the most suspicious player (easy Hunters fire at random).
+		local targets = shotTargets(state, seat)
+		if #targets == 0 then
+			return { kind = "shoot", target = 0 }
+		end
+		if state.botLevel == "easy" then
+			return { kind = "shoot", target = targets[rng:NextInteger(1, #targets)] }
+		end
+		local t = topOf(suspicion(state, seat, rng))
+		return { kind = "shoot", target = t or targets[1] }
+	end
 	if not state.alive[seat] then
 		return nil
+	end
+	if state.phase == "night" and state.nightPicks[seat] == nil and state.roles[seat] == "witch" then
+		-- Save the victim when there is one to see (more often on harder levels), or
+		-- poison someone who looks like a sure wolf.
+		local level = state.botLevel
+		for _, m in potionMoves(state, seat) do
+			if m.potion == "heal" and rng:NextNumber() < (if level == "easy" then 0.5 else 0.8) then
+				return m
+			end
+		end
+		if state.potions.poison and level ~= "easy" and state.day >= 2 then
+			local t, score = topOf(suspicion(state, seat, rng))
+			if t and score >= 3 then
+				return { kind = "night", target = t, potion = "poison" }
+			end
+		end
 	end
 	if state.phase == "night" and state.nightPicks[seat] == nil then
 		return botNight(state, seat, rng)
@@ -1019,6 +1299,9 @@ function Werewolf.chooseBotMove(state, seat: number, rng: Random): any?
 end
 
 function Werewolf.getBotDelay(state, _seat: number, rng: Random): number
+	if state.phase == "lastWords" or state.phase == "hunter" then
+		return rng:NextNumber(3, 6)
+	end
 	local spread = BOT_DELAY[state.phase] or BOT_DELAY.vote
 	return rng:NextNumber(spread[1], spread[2])
 end

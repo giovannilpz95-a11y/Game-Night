@@ -14,3 +14,4 @@ Back to [[Home]] · see [[Tables]].
 - Table (3D): `src/server/Tables/Boards/FiveDice.luau`. Dice tray in the middle, held dice lined up at the rim on the roller's side, a cup before the first roll, a score pad at each seat with the last box floating over it.
 - Stats: `bigFives` (counted on every roll that lands five of a kind), `upperBonus`; best score. Badge `fivedice_big` (10 Big Fives).
 - Tests: `tests/FiveDice.spec.luau`.
+- Holding Roll shakes the cup (the loose dice rattle); letting go rolls them.

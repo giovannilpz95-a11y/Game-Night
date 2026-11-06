@@ -31,7 +31,7 @@ local SIZE = 8
 local NO_PROGRESS_LIMIT = 80 -- plies (40 moves each)
 
 export type Square = { number }
-export type Move = { from: Square, path: { Square } }
+export type Move = { from: Square, path: { Square }, crowned: boolean? }
 
 local function owner(v: number): number
 	return if v == 0 then 0 else (v - 1) % 2 + 1
@@ -325,6 +325,7 @@ function Checkers.applyMove(state, seat: number, move: any)
 	state.lastMove = clean
 	local landed = clean.path[#clean.path]
 	if landed and not isKing(piece) and isKing(state.board[landed[1]][landed[2]]) then
+		clean.crowned = true -- the crowning moment (the table sparkles)
 		GameModule.addStat(state, seat, "kings")
 	end
 	if capture or not isKing(piece) then

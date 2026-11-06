@@ -42,7 +42,7 @@ DressingRoomService.init()
 HostService.init()
 VoiceService.init(PartyService)
 FriendService.init(PartyService)
-PartyChatService.init(PartyService)
+PartyChatService.init(PartyService, MatchService)
 ProgressionService.init(EconomyService)
 DataService.init() -- last, so every onLoaded listener is in place before profiles load
 MatchService.onMatchFinished(EconomyService.onMatchFinished)

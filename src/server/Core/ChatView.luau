@@ -25,9 +25,15 @@ end
 
 -- Should a message from senderId show in recipientId's chat box?
 -- senderId is nil for system messages. members are the userIds in the recipient's party.
-function ChatView.shouldDeliver(senderId: number?, recipientId: number, view: View?, members: { number }?): boolean
+-- senderGroup / recipientGroup: a closed group inside a running game (Werewolf players
+-- who are out talk only among themselves), e.g. "match7:out". A message from someone in
+-- a group reaches only that group, whatever the recipient's view.
+function ChatView.shouldDeliver(senderId: number?, recipientId: number, view: View?, members: { number }?, senderGroup: string?, recipientGroup: string?): boolean
 	if senderId == nil or senderId == recipientId then
 		return true
+	end
+	if senderGroup ~= nil then
+		return senderGroup == recipientGroup
 	end
 	if (view or ChatView.Default) == "all" then
 		return true

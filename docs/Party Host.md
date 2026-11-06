@@ -34,10 +34,10 @@ Each game lists its own rules in `GameCatalog` (`houseRules`), and every game wi
 | Chess | King of the hill, Three-check, Shuffle start, Turn timer |
 | Checkers | Must jump, Flying kings, Men jump backward, Turn timer |
 | Four in a Row | Pop Out, Turn timer |
-| Color Clash | Stack draw cards, Draw until you can play, Chain anything, Force play, 7-0, Starting hand, Turn timer |
+| Color Clash | Stack draw cards, Draw until you can play, Chain anything, Force play, 7-0, Call last card, Jump-in, Starting hand, Turn timer |
 | Sketch & Guess | Rounds, Drawing time, Drawing tools |
-| Trivia Night | Questions, Time to answer, Speed points, Streak bonus, Wrong answers cost |
-| Werewolf | Talk time, Werewolves, Show roles when out, Guardian, Seer, Quiet first night |
+| Trivia Night | Questions, Time to answer, Speed points, Streak bonus, Wrong answers cost, Category vote |
+| Werewolf | Talk time, Werewolves, Show roles when out, Guardian, Seer, Quiet first night, Hunter, Witch |
 | Five Dice | Everyone rolls at once, Score card, Big Five bonus, Turn timer |
 | Sea Strike | Ocean size, Hit again, Salvo, Turn timer |
 | Whodunit | Walk anywhere, Show cards to all, Turn timer |

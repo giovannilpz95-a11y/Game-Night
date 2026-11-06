@@ -8,6 +8,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 
@@ -31,7 +32,7 @@ local FRAME = Color3.fromRGB(28, 52, 84)
 local FITS = Color3.fromRGB(96, 214, 120)
 local BLOCKED = Color3.fromRGB(226, 84, 84)
 
-type Grid = { frame: Frame, n: number, cells: { { any } } }
+type Grid = { frame: Frame, n: number, cells: { { any } }, radar: Frame }
 
 local function makeGrid(parent: Instance, n: number, onClick: (row: number, col: number) -> (), onPress: ((row: number, col: number, input: InputObject) -> ())?): Grid
 	local frame = Kit.new("Frame", {
@@ -83,7 +84,35 @@ local function makeGrid(parent: Instance, n: number, onClick: (row: number, col:
 			cells[r][c] = { button = button, dot = dot, base = button.BackgroundColor3 }
 		end
 	end
-	return { frame = frame, n = n, cells = cells }
+	-- The radar: a green arm sweeping round the ocean, with a fading trail behind it.
+	-- Only shown on the ocean you're firing at, on your turn.
+	-- (Rotated GUI isn't clipped, so the sweep stays inside the ocean's circle.)
+	local radar = Kit.new("Frame", {
+		Name = "Radar",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		ZIndex = 4,
+		Parent = inner,
+	})
+	-- GUI objects turn about their own middle, so each line sits in a full-size square
+	-- that is turned instead.
+	for i = 0, 5 do
+		local turn = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Rotation = -i * 4, ZIndex = 4, Parent = radar })
+		Kit.new("Frame", {
+			BackgroundColor3 = Color3.fromRGB(90, 255, 150),
+			BackgroundTransparency = 0.35 + i * 0.12,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0.5, 0, 0, if i == 0 then 3 else 2),
+			ZIndex = 4,
+			Parent = turn,
+		})
+	end
+	return { frame = frame, n = n, cells = cells, radar = radar }
 end
 
 -- Paints a grid: `ships` (row/col/dir/len, sunk), `shots` codes, `selected` ship id.
@@ -172,6 +201,13 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local bigGrid: Grid? = nil
+	-- Turns the radar arm (when it's showing).
+	local sweep = RunService.RenderStepped:Connect(function()
+		local grid = bigGrid
+		if grid and grid.radar.Visible then
+			grid.radar.Rotation = (os.clock() * 120) % 360
+		end
+	end)
 	local smallGrid: Grid? = nil
 	local render: () -> () = function() end
 
@@ -460,6 +496,30 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			ring:Destroy()
 		end)
 		Juice.bump(cell.dot, 0.4)
+		if color == HIT then
+			-- A hit blows up: sparks fly out of the square.
+			for i = 1, 8 do
+				local angle = (i / 8) * math.pi * 2 + math.random() * 0.4
+				local spark = Kit.new("Frame", {
+					BackgroundColor3 = if i % 2 == 0 then Color3.fromRGB(255, 200, 80) else Color3.fromRGB(255, 110, 60),
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.5),
+					Size = UDim2.fromScale(0.22, 0.22),
+					ZIndex = 6,
+					Parent = cell.button,
+				}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+				local fly = TweenService:Create(spark, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Position = UDim2.fromScale(0.5 + math.cos(angle) * 1.4, 0.5 + math.sin(angle) * 1.4),
+					Size = UDim2.fromScale(0.06, 0.06),
+					BackgroundTransparency = 1,
+				})
+				fly:Play()
+				fly.Completed:Once(function()
+					spark:Destroy()
+				end)
+			end
+		end
 	end
 
 	function render()
@@ -526,6 +586,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			title.Text = `{nameOf(2)}'s ocean · {nameOf(view.turn)} to fire`
 		end
 		HudKit.turnTint(right, view.turn, mine ~= nil and (view.turn == mine or setupActive()))
+		big.radar.Visible = view.phase ~= "setup" and mine ~= nil and view.turn == mine and snapshot.result == nil
 		local editing = setupActive()
 		shuffleButton.Visible = editing
 		turnButton.Visible = editing
@@ -585,6 +646,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			render()
 		end,
 		destroy = function()
+			sweep:Disconnect()
 			for _, connection in connections do
 				connection:Disconnect()
 			end

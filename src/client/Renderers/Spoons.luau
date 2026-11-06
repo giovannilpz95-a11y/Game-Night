@@ -115,6 +115,11 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			local isOut = view.out[tostring(seat)] ~= nil
 			local hasSpoon = view.spoonHolders[tostring(seat)] ~= nil
 			local status = if isOut then "out" elseif hasSpoon then "🥄" elseif view.phase == "pass" and passed[seat] then "passed" else ""
+			-- Letters mode: the letters so far, like a game of HORSE.
+			local letters = view.letters and view.letters[tostring(seat)]
+			if letters and not isOut then
+				status = if status == "" then letters else `{letters} · {status}`
+			end
 			-- A card per player: avatar on the left, name and status beside it.
 			local chip = Kit.new("Frame", {
 				Size = UDim2.new(0, 112, 1, -4),
@@ -168,7 +173,10 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			banner.Text = `{nameOf(view.firstGrab and view.firstGrab.seat)} grabbed a spoon! GRAB ONE!`
 			banner.TextColor3 = Theme.Bad
 		elseif view.phase == "reveal" then
-			banner.Text = if view.lastOut then `{nameOf(view.lastOut)} didn't get a spoon and is out!` else "Round over"
+			local letters = view.lastLetter and view.letters and view.letters[tostring(view.lastLetter)]
+			banner.Text = if view.lastOut then `{nameOf(view.lastOut)} didn't get a spoon and is out!`
+				elseif letters then `{nameOf(view.lastLetter)} didn't get a spoon: {letters}!`
+				else "Round over"
 			banner.TextColor3 = Theme.Accent
 		end
 		if view.revealHand then

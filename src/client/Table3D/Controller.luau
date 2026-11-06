@@ -467,6 +467,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		active = value
 		anyActive = value
+		-- Handlers with their own on-screen bits (chess draw offers) hide them in 2D.
+		if handler and handler.setShown then
+			handler.setShown(value)
+		end
 		if not value then
 			fadeSelf(false)
 			showSign(true)

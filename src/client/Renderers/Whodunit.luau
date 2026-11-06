@@ -5,6 +5,7 @@
 -- mark to note your own guesses (✗ ? ✓). Marks live only on this client.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.Whodunit)
 local Kit = require(script.Parent.Parent.UI.Kit)
@@ -51,6 +52,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	local lastMatchId: string? = nil
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local shownAccusations: number? = nil -- accusations already opened on screen
 	local revealed: any = nil -- the suggestion whose shown card already flipped up
 	local revealedKeys: { [string]: boolean } = {}
 
@@ -1014,6 +1016,161 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		renderShow(view)
 	end
 
+	-- An accusation: the case file envelope in the middle of the screen. Its flap opens,
+	-- the three accused cards slide out and turn over one by one, then the verdict is
+	-- stamped across them. Everyone at the table watches it. Tap to close.
+	local function openCaseFile(accusation: any)
+		local old = root:FindFirstChild("CaseFile")
+		if old then
+			old:Destroy()
+		end
+		local MANILA = Color3.fromRGB(214, 180, 120)
+		local holder = Kit.new("TextButton", {
+			Name = "CaseFile",
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = 0.45,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 60,
+			Parent = root,
+		})
+		holder.Activated:Connect(function()
+			holder:Destroy()
+		end)
+		local stage = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(420, 320),
+			ZIndex = 61,
+			Parent = holder,
+		})
+		Kit.new("UIScale", { Scale = math.clamp((root.AbsoluteSize.X - 20) / 420, 0.5, 1), Parent = stage })
+		Kit.label(`{nameOf(accusation.seat)} opens the case file...`, {
+			TextSize = 18,
+			Font = Theme.FontBold,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Size = UDim2.new(1, 0, 0, 24),
+			ZIndex = 62,
+			Parent = stage,
+		})
+		local envelope = Kit.new("Frame", {
+			BackgroundColor3 = MANILA,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, 0),
+			Size = UDim2.fromOffset(340, 140),
+			ZIndex = 66,
+			Parent = stage,
+		}, { Kit.corner(8), Kit.new("UIStroke", { Color = Color3.fromRGB(120, 90, 50), Thickness = 2 }) })
+		Kit.label("CASE FILE · CONFIDENTIAL", {
+			TextSize = 18,
+			Font = Theme.FontBold,
+			TextColor3 = Color3.fromRGB(150, 40, 40),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.fromScale(0, 0.45),
+			Size = UDim2.new(1, 0, 0, 30),
+			Rotation = -5,
+			ZIndex = 67,
+			Parent = envelope,
+		})
+		-- The flap: a darker strip along the top that folds up and away.
+		local flap = Kit.new("Frame", {
+			BackgroundColor3 = MANILA:Lerp(Color3.new(0, 0, 0), 0.18),
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 0),
+			Size = UDim2.new(1, 0, 0, 46),
+			ZIndex = 68,
+			Parent = envelope,
+		}, { Kit.corner(8) })
+		local names = {
+			cardName(Rules.suspectCard(accusation.suspect)),
+			cardName(Rules.itemCard(accusation.item)),
+			cardName(Rules.roomCard(accusation.room)),
+		}
+		local cards = {}
+		for i, name in names do
+			local card = Kit.new("Frame", {
+				BackgroundColor3 = Color3.fromRGB(70, 48, 96),
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 1),
+				Position = UDim2.new(0.5 + (i - 2) * 0.29, 0, 1, -30),
+				Size = UDim2.fromOffset(112, 150),
+				ZIndex = 64,
+				Parent = stage,
+			}, { Kit.corner(10), Kit.new("UIStroke", { Color = Color3.fromRGB(255, 214, 120), Thickness = 2 }) })
+			local label = Kit.label("?", {
+				TextSize = 40,
+				Font = Theme.FontBold,
+				TextColor3 = Color3.fromRGB(255, 214, 120),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				TextWrapped = true,
+				Size = UDim2.fromScale(1, 1),
+				ZIndex = 65,
+				Parent = card,
+			})
+			cards[i] = { frame = card, label = label, name = name }
+		end
+		local quick = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		task.spawn(function()
+			task.wait(0.4)
+			TweenService:Create(flap, quick, { Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1 }):Play()
+			Audio.play("flip")
+			task.wait(0.35)
+			for _, c in cards do
+				if not holder.Parent then
+					return
+				end
+				-- Up out of the envelope...
+				TweenService:Create(c.frame, quick, { Position = c.frame.Position - UDim2.fromOffset(0, 120) }):Play()
+				task.wait(0.25)
+			end
+			task.wait(0.3)
+			for _, c in cards do
+				if not holder.Parent then
+					return
+				end
+				-- ...and over, one at a time.
+				local half = TweenService:Create(c.frame, TweenInfo.new(0.12), { Size = UDim2.fromOffset(0, 150) })
+				half:Play()
+				half.Completed:Wait()
+				c.frame.BackgroundColor3 = Color3.fromRGB(252, 246, 230)
+				c.label.Text = c.name
+				c.label.TextSize = 17
+				c.label.TextColor3 = Color3.fromRGB(40, 30, 24)
+				Audio.play("flip")
+				TweenService:Create(c.frame, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(112, 150) }):Play()
+				task.wait(0.45)
+			end
+			if not holder.Parent then
+				return
+			end
+			local stamp = Kit.label(if accusation.correct then "SOLVED!" else "WRONG!", {
+				TextSize = 54,
+				Font = Theme.FontBold,
+				TextColor3 = if accusation.correct then Theme.Good else Theme.Bad,
+				TextStrokeTransparency = 0.2,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.42),
+				Size = UDim2.new(1, 0, 0, 70),
+				Rotation = -12,
+				ZIndex = 70,
+				Parent = stage,
+			})
+			local pop = Kit.new("UIScale", { Scale = 2.2, Parent = stamp })
+			TweenService:Create(pop, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+			Audio.play(if accusation.correct then "win" else "caught")
+			task.wait(2.6)
+			if holder.Parent then
+				holder:Destroy()
+			end
+		end)
+	end
+
 	return {
 		setDocked = function(value: boolean)
 			if docked ~= value then
@@ -1035,6 +1192,11 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				showKey = nil
 			end
 			snapshot = newSnapshot
+			local accusations = snapshot.view.accusations or {}
+			if shownAccusations ~= nil and #accusations > shownAccusations then
+				openCaseFile(accusations[#accusations])
+			end
+			shownAccusations = #accusations
 			if snapshot.view.phase == "over" and bottomTab ~= "notes" then
 				selectTab("notes")
 			end

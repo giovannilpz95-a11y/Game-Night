@@ -12,3 +12,4 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Bot: random pick (nothing to know). Levels differ only in pick speed (`getBotDelay`).
 - Stats: pairs made, times stuck with the Old Maid (`getMatchStats`).
 - Tests: `tests/OldMaid.spec.luau`.
+- Teasing: while someone draws from you, you can `shuffle` your hand or `lift` a card (bait) up to 4 times per draw (interrupt seat). Bots tease too, and drawing bots sometimes take the lifted card.

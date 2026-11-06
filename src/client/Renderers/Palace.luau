@@ -11,12 +11,14 @@ local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local CardTable = require(script.Parent.Parent.UI.CardTable)
 local CardFx = require(script.Parent.Parent.UI.CardFx)
 local Rules = require(ReplicatedStorage.Shared.Games.Palace)
+local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Theme = Kit.Theme
 
 local Palace = {}
 
 function Palace.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
+	local shownBurn: string? = nil
 	local selected: { number } = {}
 	local swapFrom: number? = nil
 	local ui = CardTable.layout(container)
@@ -120,6 +122,12 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		end
 		Kit.label(`Pile {view.pileCount} · burned {view.burned}`, { TextSize = 13, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0.42, 0, 0.84, 0), Size = UDim2.new(0.5, 0, 0, 16), ZIndex = 6, Parent = ui.content })
 		local a = view.lastAction
+		-- The burn moment, once per burn.
+		local burnKey = if a and a.burned then `{a.seat}|{view.burned}` else nil
+		if burnKey and burnKey ~= shownBurn and shownBurn ~= nil then
+			HudKit.callout(ui.root, `🔥 BURN!  {nameOf(a.seat)} goes again`, Color3.fromRGB(235, 120, 40))
+		end
+		shownBurn = burnKey or shownBurn or ""
 		local text = ""
 		if a and a.kind == "play" then
 			text = `{nameOf(a.seat)} played {#a.cards} × {PlayingCards.rankShort[PlayingCards.rank(a.cards[1])]}` .. (if a.burned then ". Burn! Goes again." else "")

@@ -233,6 +233,39 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 		Parent = buttons,
 	})
 	Kit.new("UITextSizeConstraint", { MaxTextSize = 26, Parent = rollButton })
+	-- Shake the cup: holding Roll rattles the loose dice, letting go rolls them.
+	local shaking = 0
+	local function stopShake()
+		shaking += 1
+		for _, dv in dieViews do
+			dv.button.Rotation = 0
+		end
+	end
+	rollButton.MouseButton1Down:Connect(function()
+		if not rollButton.Active then
+			return
+		end
+		shaking += 1
+		local token = shaking
+		task.spawn(function()
+			local tick = 0
+			while shaking == token and rollButton.Parent do
+				tick += 1
+				for i, dv in dieViews do
+					if not localHeld[i] then
+						dv.button.Rotation = math.random(-14, 14)
+					end
+				end
+				if tick % 4 == 1 then
+					Audio.play("piece")
+				end
+				task.wait(0.05)
+			end
+		end)
+	end)
+	rollButton.MouseButton1Up:Connect(stopShake)
+	rollButton.MouseLeave:Connect(stopShake)
+	rollButton.Activated:Connect(stopShake)
 	Kit.padding(6).Parent = rollButton
 	local scoreButton = Kit.button("Score", function()
 		if selected then

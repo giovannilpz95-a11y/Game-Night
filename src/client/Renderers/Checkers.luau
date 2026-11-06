@@ -3,6 +3,9 @@
 -- of that route shows as numbered hops. When a capture is forced, only the pieces that
 -- can jump glow. The strip on top counts the pieces each side has taken.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Rules = require(ReplicatedStorage.Shared.Games.Checkers)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
@@ -14,6 +17,7 @@ local LIGHT_SQUARE = Color3.fromRGB(236, 220, 192)
 local DARK_SQUARE = Color3.fromRGB(96, 70, 56)
 local GLOW = Color3.fromRGB(255, 214, 102)
 local LAST_MOVE = Color3.fromRGB(150, 120, 70)
+local HINT = Color3.fromRGB(120, 200, 255)
 
 local DARK_PIECE = Color3.fromRGB(200, 62, 72)
 local LIGHT_PIECE = Color3.fromRGB(245, 236, 214)
@@ -47,6 +51,36 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	})
 	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 1, -30), Parent = root })
+
+	-- 💡 Hint, like the casual apps: a few per game, worked out here with the medium bot.
+	local HINTS = 3
+	local hintsLeft = HINTS
+	local hinted: any = nil -- the suggested move, until you move
+	local hintButton: TextButton
+	hintButton = Kit.button(`💡 Hint ({HINTS})`, function()
+		if not snapshot or hintsLeft <= 0 or not snapshot.view.legalMoves then
+			return
+		end
+		local view = snapshot.view
+		local state = table.clone(view) -- the view is the game state minus the private bits
+		state.botLevel, state.offer = "medium", nil
+		local move = Rules.chooseBotMove(state, snapshot.yourSeat, Random.new())
+		if move then
+			hintsLeft -= 1
+			hinted = move
+			hintButton.Text = `💡 Hint ({hintsLeft})`
+			render()
+		end
+	end, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 0),
+		Size = UDim2.fromOffset(110, 26),
+		TextSize = 14,
+		BackgroundColor3 = Theme.PanelLight,
+		TextColor3 = Theme.Text,
+		Visible = false,
+		Parent = root,
+	})
 
 	local render: () -> ()
 
@@ -138,8 +172,16 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		local taken = `Taken: Dark {12 - left[2]} · Light {12 - left[1]}`
-		hint.Text = if view.mustJump and #legal() > 0 then `You must jump!   {taken}` else taken
+		hint.Text = if view.mustJump and #legal() > 0 then `You must jump!   {taken}` elseif hinted then `💡 Try the glowing move   {taken}` else taken
 		hint.TextColor3 = if view.mustJump and #legal() > 0 then Theme.Accent else Theme.SubText
+		hintButton.Visible = view.legalMoves ~= nil and snapshot.result == nil and hintsLeft > 0
+		local hintSquares: { [number]: boolean } = {}
+		if hinted then
+			hintSquares[hinted.from[1] * 10 + hinted.from[2]] = true
+			for _, sq in hinted.path do
+				hintSquares[sq[1] * 10 + sq[2]] = true
+			end
+		end
 
 		local nextSquares: { [number]: boolean } = {}
 		for _, m in candidates() do
@@ -183,6 +225,8 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 					color = color:Lerp(GLOW, 0.6)
 				elseif view.mustJump and not selected and canMoveFrom(r, c) then
 					color = color:Lerp(GLOW, 0.4)
+				elseif hintSquares[key] then
+					color = color:Lerp(HINT, 0.65)
 				end
 				cell.BackgroundColor3 = color
 
@@ -234,6 +278,12 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
 			selected, partial = nil, {}
+			if not snapshot.view.legalMoves then
+				hinted = nil
+			end
+			if (snapshot.view.moveCount or 0) <= 1 then
+				hintsLeft = HINTS -- a new game
+			end
 			render()
 		end,
 		destroy = function()

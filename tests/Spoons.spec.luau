@@ -66,6 +66,24 @@ return function(T)
 		T.eq(s.out[2], nil)
 	end)
 
+	T.test("letters mode: losing a round earns a letter, spelling the word puts you out", function()
+		local s = Spoons.new(3, { rules = { letters = "PIG" } }, T.Random.new(6))
+		for round = 1, 3 do
+			s.hands[1] = { C(5, 1), C(5, 2), C(5, 3), C(5, 4), C(2, 1) }
+			Spoons.applyMove(s, 1, { kind = "grab" })
+			Spoons.applyMove(s, 2, { kind = "grab" })
+			if round < 3 then
+				T.eq(s.out[3], nil, "only a letter so far")
+				T.eq(Spoons.getView(s, 1).letters["3"], string.sub("PIG", 1, round))
+				T.eq(s.lastLetter, 3)
+				Spoons.onTimeout(s)
+				T.eq(s.spoonsLeft, 2, "still three players")
+			end
+		end
+		T.eq(s.out[3], s.round, "spelled PIG: out")
+		T.eq(s.lastOut, 3)
+	end)
+
 	T.test("other hands stay hidden", function()
 		local s = Spoons.new(3, nil, T.Random.new(5))
 		local view = Spoons.getView(s, 1)

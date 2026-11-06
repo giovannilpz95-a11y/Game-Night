@@ -182,11 +182,18 @@ function scheduleTurn(entry: Entry)
 
 	-- Bots: one pending move per seat. Other moves (a stroke, someone's guess) don't
 	-- cancel it; when it fires the bot looks at the game as it is then.
-	for _, seat in match:getActiveSeats() do
+	-- Seats that may jump in out of turn get a bot try too (it may pass on it).
+	local botSeats = table.clone(match:getActiveSeats())
+	for _, seat in match:getInterruptSeats() do
+		if not table.find(botSeats, seat) then
+			table.insert(botSeats, seat)
+		end
+	end
+	for _, seat in botSeats do
 		if match:isBot(seat) and not entry.botPending[seat] then
 			entry.botPending[seat] = true
 			local delay = match:botDelay(seat, Config.BotMoveDelay)
-			if delay >= 1.2 and not match:getTimer() then
+			if delay >= 1.2 and not match:getTimer() and match:isSeatActive(seat) then
 				TableActionService.thinking(entry.table, match.seats, seat)
 			end
 			task.delay(delay, function()
@@ -619,6 +626,18 @@ function MatchService.matchSeatOf(player: Player): (string?, number?, any?)
 		return nil, nil, nil
 	end
 	return entry.match.id, seat, entry.table
+end
+
+-- A closed chat group the player is in inside their running match (Werewolf: players
+-- who are out), as "<matchId>:<group>", or nil. See Core/ChatView.
+function MatchService.chatGroupOf(player: Player): string?
+	local entry = entryFor(player)
+	if not entry or entry.ended or entry.match:isOver() or not entry.match.rules.getChatGroup then
+		return nil
+	end
+	local seat = entry.match:seatOf(player.UserId)
+	local group = seat and entry.match.rules.getChatGroup(entry.match.state, seat)
+	return if group then `{entry.match.id}:{group}` else nil
 end
 
 function MatchService.handleRequest(player: Player, request: any)

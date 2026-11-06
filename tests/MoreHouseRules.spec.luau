@@ -160,7 +160,7 @@ return function(T)
 
 	T.test("trivia: flat points and wrong answers cost", function()
 		local TriviaNight = require(Games.TriviaNight)
-		local s = TriviaNight.new(2, { rules = { speed = false, streaks = false, wrongPenalty = true } }, T.Random.new(1))
+		local s = TriviaNight.new(2, { rules = { speed = false, streaks = false, wrongPenalty = true, categoryVote = false } }, T.Random.new(1))
 		apply(TriviaNight, s, 1, { kind = "answer", choice = s.correct })
 		apply(TriviaNight, s, 2, { kind = "answer", choice = s.correct % 4 + 1 })
 		T.eq(s.scores[1], 1000)

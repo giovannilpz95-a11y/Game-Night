@@ -11,4 +11,5 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Table: `src/client/Renderers/Palace.luau`. Your table cards sit at the bottom of the felt. Setup: tap a hand card, then a face-up card to swap.
 - 3D table: the middle pile is a messy stack with every card turned toward the player who played it (`Cards.messyPile`).
 - Bot: puts 10s, 2s and high cards face up. Plays the lowest rank it can (all copies), saves 2s and 10s, uses a 10 on a big pile. Easy plays a random card 30% of the time and judges the rest roughly (fully random play made 2-player games last 7-10 minutes).
+- Burns: burned cards go to a face-down pile beside the table; a burn flares fire on the pile with a "Burn! Again!" bubble, and the 2D view shows a 🔥 BURN call-out.
 - Tests: `tests/Palace.spec.luau`.

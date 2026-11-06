@@ -20,3 +20,4 @@ Back to [[Home]].
   - Premoves: `Chess.premoves(fen, seat)` lists moves as if it were that seat's turn, including onto its own pieces (recaptures). The 2D and 3D boards queue one and send it when the turn comes if it's legal.
   - Drag to move on the 2D board, dots for quiet moves and rings for captures, coordinates on the edge squares.
   - Move list: every move is a button; `view.past[i]` is the FEN after move i, `view.startFen` the start. `<`, `>` and Live step through.
+- Right-click marks on the 2D board: right-click a square for a ring, right-drag for an arrow; any left click clears them. Only you see them.

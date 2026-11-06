@@ -18,3 +18,4 @@ Back to [[Home]].
   - Hard: depth 9 within 0.9 s.
 - Models: `ReplicatedStorage.Assets.Checkers.<Man|King>_<Dark|Light>`.
 - Online extras: draw offers and takebacks (one move each side, 3 per player) through `src/shared/Offers.luau`, the same as Chess. The 2D board finishes a multi-jump once only one route is left, numbers the remaining hops, and counts the pieces each side has taken.
+- 💡 Hint (client only, 3 per game): highlights the medium bot's move.

@@ -341,7 +341,12 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end))
 
-	grid = BoardGrid.create(boardArea, 8, onClick)
+	local clearMarks: () -> ()
+	local shownFlipped: boolean? = nil
+	grid = BoardGrid.create(boardArea, 8, function(row, col)
+		clearMarks()
+		onClick(row, col)
+	end)
 	for r = 1, 8 do
 		for c = 1, 8 do
 			local cell = grid.cell(r, c)
@@ -378,6 +383,92 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Right-click marks, like the big chess sites: right-click a square to ring it, or
+	-- right-drag from one square to another for an arrow. Any left click clears them.
+	-- Only you see them.
+	local MARK = Color3.fromRGB(255, 160, 40)
+	local inner = grid.cell(1, 1).Parent :: Frame
+	local markLayer = Kit.new("Frame", { Name = "Marks", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = inner })
+	local marks: { [string]: boolean } = {} -- "a1" (ring) or "a1>c3" (arrow)
+	local function center(row: number, col: number): Vector2
+		local p = grid.cell(row, col).Position
+		return Vector2.new(p.X.Scale + 1 / 16, p.Y.Scale + 1 / 16)
+	end
+	local function drawMarks()
+		Kit.clear(markLayer)
+		for key in marks do
+			local from, to = string.match(key, "^(%w+)>(%w+)$")
+			if from and to then
+				local a = center(cellOf(from))
+				local b = center(cellOf(to))
+				local d = b - a
+				local angle = math.deg(math.atan2(d.Y, d.X))
+				local tip = b - d.Unit * 0.03
+				Kit.new("Frame", {
+					BackgroundColor3 = MARK,
+					BackgroundTransparency = 0.2,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale((a.X + tip.X) / 2, (a.Y + tip.Y) / 2),
+					Size = UDim2.fromScale((tip - a).Magnitude, 0.022),
+					Rotation = angle,
+					ZIndex = 8,
+					Parent = markLayer,
+				}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+				Kit.label("▶", {
+					TextScaled = true,
+					TextColor3 = MARK,
+					TextTransparency = 0.1,
+					TextXAlignment = Enum.TextXAlignment.Center,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(tip.X, tip.Y),
+					Size = UDim2.fromScale(0.07, 0.07),
+					Rotation = angle,
+					ZIndex = 9,
+					Parent = markLayer,
+				})
+			else
+				local c = center(cellOf(key))
+				Kit.new("Frame", {
+					BackgroundTransparency = 1,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(c.X, c.Y),
+					Size = UDim2.fromScale(0.115, 0.115),
+					ZIndex = 8,
+					Parent = markLayer,
+				}, {
+					Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+					Kit.new("UIStroke", { Color = MARK, Thickness = 4, Transparency = 0.15 }),
+				})
+			end
+		end
+	end
+	function clearMarks()
+		if next(marks) then
+			table.clear(marks)
+			drawMarks()
+		end
+	end
+	local dragFrom: string? = nil
+	for row = 1, 8 do
+		for col = 1, 8 do
+			local cell = grid.cell(row, col)
+			cell.MouseButton2Down:Connect(function()
+				dragFrom = squareOf(row, col)
+			end)
+			cell.MouseButton2Up:Connect(function()
+				local from, to = dragFrom, squareOf(row, col)
+				dragFrom = nil
+				if not from then
+					return
+				end
+				local key = if from == to then to else `{from}>{to}`
+				marks[key] = if marks[key] then nil else true
+				drawMarks()
+			end)
+		end
+	end
+
 	function stepTo(index: number?)
 		local total = snapshot and #snapshot.view.past or 0
 		if index ~= nil and index >= total then
@@ -398,6 +489,10 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end
 		local view = snapshot.view
 		local flipped = snapshot.yourSeat == 2
+		if flipped ~= shownFlipped then
+			shownFlipped = flipped
+			clearMarks()
+		end
 		grid.setFlipped(flipped)
 		local over = snapshot.result ~= nil or snapshot.aborted == true
 		local acting = if over then nil else snapshot.activeSeats[1]

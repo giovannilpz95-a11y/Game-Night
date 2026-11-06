@@ -13,4 +13,5 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Table: `src/client/Renderers/Spoons.luau`. Tap a card to pass it; cards you hold 3+ of glow. GRAB button appears with four of a kind or during the scramble.
 - Bot: passes a card of the rank it holds fewest of (easy sometimes passes at random). Grab reaction by level (hard ~0.3-0.9 s, easy up to ~2.5 s).
 - Tests: `tests/Spoons.spec.luau`.
-- Not yet: the classic "S-P-O-O-N letters" mode as a Party Host house rule, real spoon models in the 3D table.
+- Letters (house rule `letters`: off, "PIG" or "SPOON"): the player left without a spoon earns the next letter (`state.letters[seat]`, `lastLetter`) and is out only once they've spelled the word. The view sends each seat's letters as a string.
+- Not yet: real spoon models in the 3D table.
