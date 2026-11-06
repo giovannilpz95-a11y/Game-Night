@@ -13,3 +13,4 @@ Back to [[Home]] · shared deck: [[Card games]].
 - Bot: takes the discard only when it makes or grows a meld and lowers deadwood; throws the card leaving least deadwood, highest first. Easy sometimes throws a random deadwood card and knocks at once. Medium knocks at 6 or less (any legal knock late). Hard knocks at 3 or less early, avoids feeding ranks the opponent picked up.
 - Stats: gins, undercuts (`addStat` in the showdown), best score.
 - Tests: `tests/GinRummy.spec.luau`.
+- Drag a card along your hand to reorder it (your order stays until the next deal; new cards join on the right).
