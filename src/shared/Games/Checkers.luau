@@ -15,6 +15,8 @@
 -- is started still has to be finished).
 -- House rule "flyingKings": kings slide any distance along a diagonal and can jump a
 -- piece from far away, landing on any empty square beyond it (international draughts).
+-- Jumped pieces stay on the board until the capture ends, so none is taken twice, and the
+-- king must land where the capture can go on if it can.
 -- House rule "backCaptures": men may jump backward too (they still step forward only).
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -109,6 +111,11 @@ local function captureDirections(v: number, opts: Opts?): { { number } }
 	return directions(v)
 end
 
+-- A piece already jumped in this capture (flying kings only). It stays on the board until
+-- the capture ends, the way International and Russian draughts play it: it blocks the
+-- king's path and can't be jumped a second time.
+local DEAD = -1
+
 -- All jump sequences for the piece at (r, c). `board` is modified during the search
 -- and restored before returning.
 local function jumpsFrom(board, r: number, c: number, v: number, path: { Square }, out: { Move }, origin: Square, opts: Opts?)
@@ -127,11 +134,48 @@ local function jumpsFrom(board, r: number, c: number, v: number, path: { Square 
 			continue
 		end
 		local middle = board[mr][mc]
-		if middle == 0 or owner(middle) == seat then
+		if middle == 0 or middle == DEAD or owner(middle) == seat then
 			continue
 		end
 		local lr, lc = mr + d[1], mc + d[2]
-		while onBoard(lr, lc) and board[lr][lc] == 0 do
+		if flying then
+			-- Every empty square past the piece is a landing spot, but if the capture can go
+			-- on from some of them, the king has to land on one of those.
+			local landings = {}
+			while onBoard(lr, lc) and board[lr][lc] == 0 do
+				table.insert(landings, { lr, lc })
+				lr, lc = lr + d[1], lc + d[2]
+			end
+			if #landings == 0 then
+				continue
+			end
+			found = true
+			board[mr][mc] = DEAD
+			board[r][c] = 0
+			local results = {}
+			local anyGoesOn = false
+			for _, land in landings do
+				local newPath = table.clone(path)
+				table.insert(newPath, land)
+				local further: { Move } = {}
+				board[land[1]][land[2]] = v
+				local goesOn = jumpsFrom(board, land[1], land[2], v, newPath, further, origin, opts)
+				board[land[1]][land[2]] = 0
+				anyGoesOn = anyGoesOn or goesOn
+				table.insert(results, { goesOn = goesOn, further = further, path = newPath })
+			end
+			board[r][c] = v
+			board[mr][mc] = middle
+			for _, result in results do
+				if result.goesOn then
+					table.move(result.further, 1, #result.further, #out + 1, out)
+				elseif not anyGoesOn then
+					table.insert(out, { from = origin, path = result.path })
+				end
+			end
+			continue
+		end
+		if onBoard(lr, lc) and board[lr][lc] == 0 then
 			found = true
 			local newPath = table.clone(path)
 			table.insert(newPath, { lr, lc })
@@ -150,10 +194,6 @@ local function jumpsFrom(board, r: number, c: number, v: number, path: { Square 
 			end
 			board[r][c] = v
 			board[mr][mc] = middle
-			if not flying then
-				break -- a plain jump lands right behind the piece
-			end
-			lr, lc = lr + d[1], lc + d[2]
 		end
 	end
 	return found

@@ -49,6 +49,38 @@ return function(T)
 		T.eq((m:playForSeat(1)), false, "seat 1 has nothing to jump with")
 	end)
 
+	T.test("an away player's clock turns down draw and takeback offers", function()
+		for _, name in { "Checkers", "Chess" } do
+			local rules = require(ReplicatedStorage.Shared.Games[name])
+			for _, kind in { "draw", "takeback" } do
+				local m = Match.new("m-" .. name, rules, {
+					{ kind = "player", userId = 10, name = "Gio" },
+					{ kind = "player", userId = 11, name = "Sam" },
+				}, nil, T.Random.new(5))
+				-- Two moves each so offers are allowed.
+				for _ = 1, 4 do
+					local seat = m:getActiveSeats()[1]
+					local played = false
+					for _, move in rules.getLegalMoves(m.state, seat) do
+						if type(move) == "table" and move.type ~= "offer" and m:submitMove(seat, move) then
+							played = true
+							break
+						end
+					end
+					T.ok(played, `{name}: a normal move`)
+				end
+				local asker = m:getActiveSeats()[1]
+				T.ok(m:submitMove(asker, { type = "offer", kind = kind }), `{name}: {kind} offered`)
+				local moves = m.moveNumber
+				T.ok(m:playForSeat(3 - asker), `{name}: the clock answers`)
+				T.ok(not m:isOver(), `{name}: an away player never agrees to a draw`)
+				T.eq(m.state.offer, nil, `{name}: the offer is closed`)
+				T.eq(m.moveNumber, moves + 1, `{name}: {kind} was turned down, no takeback`)
+				T.eq(m:getActiveSeats()[1], asker, `{name}: back to the player who asked`)
+			end
+		end
+	end)
+
 	T.test("bot plays its turn", function()
 		local m = newMatch()
 		m:submitMove(1, { cell = 1 })
