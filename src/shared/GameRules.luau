@@ -332,6 +332,7 @@ rules.ColorClash = {
 			"Draw Two: the next player draws 2 and misses their turn.",
 			"Wild Draw Four: pick a color; the next player draws 4 and misses their turn.",
 			"Stacking: answer a Draw card with another one to pass the penalty on.",
+			"Challenge: hit by a Wild Draw Four? Challenge it. If they had a card of the color in play they draw 4; if not, you draw 6.",
 		} },
 		{ title = "Winning", lines = { "First to empty their hand wins. If a game drags on too long, fewest cards wins." } },
 	},

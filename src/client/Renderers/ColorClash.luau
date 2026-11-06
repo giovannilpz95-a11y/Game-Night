@@ -379,6 +379,10 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	end, { Size = UDim2.new(0, 190, 1, 0), BackgroundColor3 = Theme.Bad, TextColor3 = Color3.new(1, 1, 1), LayoutOrder = -1, Visible = false, Parent = actions })
 	local catchStroke = Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = catchAction })
 	HudKit.pulse(catchStroke)
+	-- Hit by a lone Wild +4: challenge it, like the official game (UNO! mobile's prompt).
+	local challengeAction = Kit.button("Challenge the +4!", function()
+		sendMove({ kind = "challenge" })
+	end, { Size = UDim2.new(0, 190, 1, 0), BackgroundColor3 = Color3.fromRGB(150, 90, 230), TextColor3 = Color3.new(1, 1, 1), LayoutOrder = 3, Visible = false, Parent = actions })
 	local shownAction: string? = nil
 	local shownJump: string? = nil
 	-- Call-outs float over the middle of the whole screen (in Table view this board is
@@ -814,6 +818,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			return `{who} passed`
 		elseif action.kind == "catch" then
 			return `{who} caught {nameOf(action.target)}: +2 cards`
+		elseif action.kind == "challenge" then
+			return if action.guilty then `{who} challenged {nameOf(action.target)}'s +4 and won: they draw 4` else `{who} challenged {nameOf(action.target)}'s +4 and lost: +6 cards`
 		end
 		return ""
 	end
@@ -974,7 +980,11 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				if action.jumped then
 					say(if action.seat == snapshot.yourSeat then "YOU JUMPED IN!" else `{string.upper(nameOf(action.seat))} JUMPED IN!`, Color3.fromRGB(255, 220, 60), 0.36)
 				end
-				if action.kind == "catch" then
+				if action.kind == "challenge" then
+					local loser = if action.guilty then action.target else action.seat
+					local you = loser == snapshot.yourSeat
+					say(if action.guilty then `GUILTY! {if you then "You draw" else nameOf(loser) .. " draws"} 4` else `NOT GUILTY! {if you then "You draw" else nameOf(loser) .. " draws"} 6`, Color3.fromRGB(190, 120, 255))
+				elseif action.kind == "catch" then
 					say(if action.target == snapshot.yourSeat then "CAUGHT! You draw 2" else `CAUGHT! {nameOf(action.target)} draws 2`, Theme.Bad)
 				elseif action.kind == "play" and action.victim then
 					local card = Rules.cards[action.card]
@@ -999,8 +1009,9 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		callAction.Visible = canCall
 		paintCall()
 		catchAction.Visible = view.canCatch == true
+		challengeAction.Visible = view.canChallenge == true
 		catchAction.Text = if view.exposed then `CATCH {string.upper(nameOf(view.exposed))}!` else "CATCH!"
-		pendingLabel.Text = if view.pendingDraw > 0 then `+{view.pendingDraw} waiting! Stack a draw card or take them.` else ""
+		pendingLabel.Text = if view.canChallenge then `+4 waiting! Stack, take them, or challenge.` elseif view.pendingDraw > 0 then `+{view.pendingDraw} waiting! Stack a draw card or take them.` else ""
 
 		drawAction.Visible = myTurn and not view.canPass
 		drawAction.Text = if view.pendingDraw > 0 then `Take {view.pendingDraw} cards` else "Draw a card"

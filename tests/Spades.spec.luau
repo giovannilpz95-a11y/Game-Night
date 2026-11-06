@@ -74,6 +74,47 @@ return function(T)
 		T.eq(set.scores[2], 42)
 	end)
 
+	T.test("blind nil: only when 100 behind, before looking, worth 200", function()
+		local s = Spades.new(4, { rules = { blindNil = true } }, T.Random.new(2))
+		local bidder = s.turn
+		T.eq(Spades.canBlindNil(s, bidder), false, "scores level: no blind nil")
+		T.eq((Spades.validateMove(s, bidder, { kind = "bid", bid = 0, blind = true })), false)
+		s.scores[3 - Spades.teamOf(bidder)] = 150
+		T.ok(Spades.canBlindNil(s, bidder), "100+ behind")
+		local view = Spades.getView(s, bidder)
+		T.eq(#view.hand, 0, "cards stay face down")
+		T.ok(view.faceDown)
+		T.eq((Spades.validateMove(s, bidder, { kind = "bid", bid = 2, blind = true })), false, "only nil is blind")
+		apply(s, bidder, { kind = "bid", bid = 0, blind = true })
+		T.ok(s.blind[bidder])
+		T.eq(#Spades.getView(s, bidder).hand, 13, "cards turn up after bidding")
+		-- Looking first rules it out.
+		local t = Spades.new(4, { rules = { blindNil = true } }, T.Random.new(3))
+		local seat = t.turn
+		t.scores[3 - Spades.teamOf(seat)] = 200
+		apply(t, seat, { kind = "look" })
+		T.eq(Spades.canBlindNil(t, seat), false)
+		T.eq(#Spades.getView(t, seat).hand, 13)
+		-- Off by default.
+		local u = Spades.new(4, nil, T.Random.new(4))
+		u.scores[3 - Spades.teamOf(u.turn)] = 300
+		T.eq(Spades.canBlindNil(u, u.turn), false)
+	end)
+
+	T.test("blind nil scores 200 made or lost", function()
+		local s = Spades.new(4, { rules = { blindNil = true } }, T.Random.new(5))
+		s.bids = { 0, 3, 4, 3 }
+		s.blind = { [1] = true }
+		s.tricks = { 0, 3, 4, 6 }
+		s.tricksPlayed = 13
+		local before = s.scores[1]
+		local summary = Spades._scoreTeam(s, 1)
+		T.eq(summary.points, 200 + 40, "blind nil made + partner's 4")
+		s.tricks[1] = 1
+		T.eq(Spades._scoreTeam(s, 1).points, -200 + 40)
+		T.eq(s.scores[1], before)
+	end)
+
 	T.test("ten bags cost 100", function()
 		local s = playing({ {}, {}, {}, {} })
 		s.bags = { 9, 0 }

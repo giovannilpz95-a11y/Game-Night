@@ -259,6 +259,63 @@ return function(T)
 		T.ok(self.moonSelf)
 	end)
 
+	T.test("president: four of a kind starts a revolution", function()
+		local President = require(Games.President)
+		local s = President.new(3, { rules = { revolution = true, swaps = false } }, T.Random.new(1))
+		s.turn = 1
+		s.pile = nil
+		s.hands[1] = { C(9, 1), C(9, 2), C(9, 3), C(9, 4), C(3, 1) }
+		apply(President, s, 1, { kind = "play", cards = { C(9, 1), C(9, 2), C(9, 3), C(9, 4) } })
+		T.ok(s.revolution, "the order flipped")
+		T.ok(President.beats(1, 5, true), "a 3 beats a 7 now")
+		T.eq(President.beats(1, 5, false), false)
+		-- During the revolution a higher single can't beat a lower one.
+		s.pile = { cards = { C(5, 1) }, count = 1, power = 3, seat = 3 }
+		s.turn = 2
+		s.hands[2] = { C(8, 1), C(4, 2) }
+		T.eq((President.validateMove(s, 2, { kind = "play", cards = { C(8, 1) } })), false)
+		T.ok(President.validateMove(s, 2, { kind = "play", cards = { C(4, 2) } }))
+		-- Off by default.
+		local plain = President.new(3, nil, T.Random.new(1))
+		plain.turn = 1
+		plain.pile = nil
+		plain.hands[1] = { C(9, 1), C(9, 2), C(9, 3), C(9, 4), C(3, 1) }
+		apply(President, plain, 1, { kind = "play", cards = { C(9, 1), C(9, 2), C(9, 3), C(9, 4) } })
+		T.eq(plain.revolution, false)
+	end)
+
+	T.test("slap stack: a bad slap can cost two cards", function()
+		local SlapStack = require(Games.SlapStack)
+		local s = SlapStack.new(2, { rules = { penalty = 2, sandwich = false } }, T.Random.new(1))
+		s.center = { C(2, 1), C(9, 2) }
+		local before = #s.piles[2]
+		apply(SlapStack, s, 2, { kind = "slap" })
+		T.eq(#s.piles[2], before - 2)
+		T.eq(s.lastAction.count, 2)
+		local one = SlapStack.new(2, nil, T.Random.new(1))
+		one.center = { C(2, 1), C(9, 2) }
+		local n = #one.piles[2]
+		apply(SlapStack, one, 2, { kind = "slap" })
+		T.eq(#one.piles[2], n - 1, "one card by default")
+	end)
+
+	T.test("hearts: the Queen of Spades can break hearts", function()
+		local Hearts = require(Games.Hearts)
+		local PlayingCards = require(game:GetService("ReplicatedStorage").Shared.Cards.PlayingCards)
+		local function queenFirst(rules)
+			local s = Hearts.new(4, { rules = rules }, T.Random.new(1))
+			s.phase = "play"
+			s.trick = {}
+			s.turn = 1
+			s.heartsBroken = false
+			s.hands[1] = { Hearts.QUEEN_OF_SPADES, PlayingCards.make(5, 2) }
+			Hearts.applyMove(s, 1, { kind = "play", card = Hearts.QUEEN_OF_SPADES })
+			return s.heartsBroken
+		end
+		T.eq(queenFirst({ passing = false, queenBreaks = true }), true)
+		T.eq(queenFirst({ passing = false }), false, "off by default")
+	end)
+
 	T.test("spades: Nil can be turned off", function()
 		local Spades = require(Games.Spades)
 		local s = Spades.new(4, { rules = { nilBids = false } }, T.Random.new(1))

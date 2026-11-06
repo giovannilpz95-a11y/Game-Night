@@ -11,7 +11,8 @@
 --
 -- House rules (options.rules): passing (default on; off skips the pass every round),
 -- moon ("others": everyone else takes 26, "self": you take -26 instead), jackDiamonds
--- (whoever takes the Jack of Diamonds scores -10).
+-- (whoever takes the Jack of Diamonds scores -10), queenBreaks (playing the Queen of
+-- Spades breaks hearts too).
 --
 -- Moves: { kind = "pass", cards = { id, id, id } }  (pass phase, everyone at once)
 --        { kind = "play", card = id }               (your turn)
@@ -116,6 +117,7 @@ function Hearts.new(seatCount: number, options: any?, rng: Random?)
 		noPassing = rules.passing == false,
 		moonSelf = rules.moon == "self",
 		jackDiamonds = rules.jackDiamonds == true,
+		queenBreaks = rules.queenBreaks == true,
 		jackTaker = nil,
 		target = if type(rules.target) == "number" and rules.target > 0 then rules.target else Hearts.TARGET,
 		botLevel = (options and options.botLevel) or "medium",
@@ -311,7 +313,7 @@ function Hearts.applyMove(state, seat: number, move: any)
 	local hand = state.hands[seat]
 	table.remove(hand, table.find(hand, move.card) :: number)
 	table.insert(state.trick, { seat = seat, card = move.card })
-	if suit(move.card) == HEARTS then
+	if suit(move.card) == HEARTS or (state.queenBreaks and move.card == QUEEN_OF_SPADES) then
 		state.heartsBroken = true
 	end
 	if #state.trick < 4 then

@@ -14,7 +14,9 @@
 -- Points each round: (players - place). After the last round the most points wins.
 --
 -- House rules (options.rules): swaps (default on: the card swap between rounds),
--- twoClears (playing 2s clears the pile and you lead again).
+-- twoClears (playing 2s clears the pile and you lead again), revolution (Daifugō: playing
+-- four of a kind flips the card order, so lower beats higher, until the round ends or
+-- someone plays another four).
 --
 -- Moves: { kind = "play", cards = { id, ... } }  |  { kind = "pass" }
 
@@ -40,6 +42,14 @@ local function power(id: number): number
 end
 President.power = power
 
+-- Does a set of this power beat the pile? Higher wins, or lower during a revolution.
+local function beats(state, p: number, pile: number): boolean
+	return if state.revolution then p < pile else p > pile
+end
+President.beats = function(p: number, pile: number, revolution: boolean?): boolean
+	return beats({ revolution = revolution }, p, pile)
+end
+
 local function sorted(hand: { number }): { number }
 	return PlayingCards.sortBy(hand, power)
 end
@@ -58,6 +68,7 @@ local function deal(state)
 	state.pile = nil
 	state.lastAction = nil
 	state.exchange = {}
+	state.revolution = false
 	if state.round == 1 or #state.order == 0 or state.swaps == false then
 		local three = PlayingCards.make(3, 4)
 		for seat = 1, state.seatCount do
@@ -126,6 +137,8 @@ function President.new(seatCount: number, options: any?, rng: Random?)
 		over = false,
 		swaps = rules.swaps ~= false,
 		twoClears = rules.twoClears == true,
+		revolutions = rules.revolution == true,
+		revolution = false,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	deal(state)
@@ -243,7 +256,7 @@ function President.getLegalMoves(state, seat: number): { any }
 			for k = 1, #ids do
 				table.insert(moves, { kind = "play", cards = table.move(ids, 1, k, 1, {}) })
 			end
-		elseif p > state.pile.power and #ids >= state.pile.count then
+		elseif beats(state, p, state.pile.power) and #ids >= state.pile.count then
 			table.insert(moves, { kind = "play", cards = table.move(ids, 1, state.pile.count, 1, {}) })
 		end
 	end
@@ -285,8 +298,8 @@ function President.validateMove(state, seat: number, move: any): (boolean, strin
 			if #move.cards ~= state.pile.count then
 				return false, `Play {state.pile.count} {if state.pile.count == 1 then "card" else "cards"}`
 			end
-			if power(move.cards[1]) <= state.pile.power then
-				return false, "Play a higher rank, or pass"
+			if not beats(state, power(move.cards[1]), state.pile.power) then
+				return false, if state.revolution then "Revolution! Play a lower rank, or pass" else "Play a higher rank, or pass"
 			end
 		end
 		return true
@@ -305,6 +318,11 @@ function President.applyMove(state, seat: number, move: any)
 	PlayingCards.removeCards(state.hands[seat], move.cards)
 	state.pile = { cards = table.clone(move.cards), count = #move.cards, power = power(move.cards[1]), seat = seat }
 	state.lastAction = { kind = "play", seat = seat, cards = table.clone(move.cards) }
+	if state.revolutions and #move.cards == 4 then
+		state.revolution = not state.revolution
+		state.lastAction.revolution = state.revolution
+		state.lastAction.flipped = true
+	end
 	if not hasCards(state, seat) then
 		table.insert(state.finished, seat)
 		state.lastAction.out = #state.finished
@@ -399,6 +417,7 @@ function President.getView(state, seat: number?)
 		phase = state.phase,
 		exchange = exchange,
 		lastAction = GameModule.copy(state.lastAction),
+		revolution = state.revolution == true,
 	}
 end
 
@@ -435,7 +454,8 @@ function President.chooseBotMove(state, seat: number, rng: Random): any?
 			score = 100
 		else
 			local p = power(move.cards[1])
-			score = p
+			-- During a revolution low cards are the strong ones.
+			score = if state.revolution then 14 - p else p
 			if state.pile == nil then
 				-- Leading: dump low cards, as many of them as we have.
 				score -= #move.cards * 0.6
@@ -447,7 +467,7 @@ function President.chooseBotMove(state, seat: number, rng: Random): any?
 					score += if state.botLevel == "hard" then 6 else 2 -- breaking a pair/triple
 				end
 				-- Hard: hold back 2s and Aces while the hand is still big.
-				if state.botLevel == "hard" and p >= 12 and #hand > 5 then
+				if state.botLevel == "hard" and (if state.revolution then p <= 2 else p >= 12) and #hand > 5 then
 					score += 90
 				end
 			end

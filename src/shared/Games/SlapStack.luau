@@ -13,7 +13,8 @@
 -- player with the most cards wins.
 --
 -- More slap house rules (off by default): topBottom (top card matches the bottom card),
--- marriage (a King and Queen together), tens (the top two cards add up to 10, Ace = 1).
+-- marriage (a King and Queen together), tens (the top two cards add up to 10, Ace = 1),
+-- penalty (2: a bad slap burns two cards).
 --
 -- Moves: { kind = "flip" } (your turn)  |  { kind = "slap" } (anyone with cards, any time)
 
@@ -62,6 +63,7 @@ function SlapStack.new(seatCount: number, options: any?, rng: Random?)
 		winners = nil,
 		reason = nil,
 		sandwich = rules.sandwich ~= false,
+		penalty = if rules.penalty == 2 then 2 else 1,
 		topBottom = rules.topBottom == true,
 		marriage = rules.marriage == true,
 		tens = rules.tens == true,
@@ -224,10 +226,18 @@ function SlapStack.applyMove(state, seat: number, move: any)
 			state.lastAction = { kind = "slap", seat = seat, count = n }
 			take(state, seat)
 		else
-			-- Bad slap: one card goes face up under the pile.
-			local burned = table.remove(state.piles[seat]) :: number
-			table.insert(state.center, 1, burned)
-			state.lastAction = { kind = "badSlap", seat = seat, card = burned }
+			-- Bad slap: one card (two with the house rule) goes face up under the pile.
+			local burned = nil
+			local n = 0
+			for _ = 1, state.penalty or 1 do
+				if count(state, seat) == 0 then
+					break
+				end
+				burned = table.remove(state.piles[seat]) :: number
+				table.insert(state.center, 1, burned)
+				n += 1
+			end
+			state.lastAction = { kind = "badSlap", seat = seat, card = burned, count = n }
 			if count(state, seat) == 0 and state.turn == seat and not state.collect then
 				if state.challenge then
 					-- Out of cards while answering a challenge: the challenger wins it.
