@@ -24,6 +24,15 @@ return function(T)
 		Spades.applyMove(s, seat, move)
 	end
 
+	T.test("the hand limit scales with the target and is in the view", function()
+		T.eq(Spades.maxRoundsFor(200), 20)
+		T.eq(Spades.maxRoundsFor(300), 30)
+		T.eq(Spades.maxRoundsFor(500), 50)
+		T.eq(Spades.maxRoundsFor(100), 15, "never under 15")
+		local s = Spades.new(4, { rules = { target = 500 } }, T.Random.new(1))
+		T.eq(Spades.getView(s, 1).maxRounds, 50)
+	end)
+
 	T.test("partners sit across", function()
 		T.eq(Spades.teamOf(1), Spades.teamOf(3))
 		T.eq(Spades.teamOf(2), Spades.teamOf(4))

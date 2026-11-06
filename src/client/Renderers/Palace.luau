@@ -28,6 +28,9 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 	local drawSlot: Frame? = nil
 	local tableRow: Frame? = nil
 	local lastDrawCount: number? = nil
+	-- Table view hides the felt, so there your table cards sit on the screen itself: in
+	-- the bottom-left corner beside your hand, or in the hand's place once it's empty.
+	local docked = false
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -105,6 +108,9 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		CardTable.seatChips(ui.seats, snapshot, chips)
 
 		Kit.clear(ui.content)
+		if tableRow then
+			tableRow:Destroy() -- in Table view it lives outside the felt
+		end
 		local draw = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.25, 0.52), Size = UDim2.fromScale(1, 0.55), Parent = ui.content })
 		drawSlot = draw
 		tableRow = nil
@@ -138,12 +144,34 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		end
 		CardTable.feltText(ui.content, text, 0.02, 14)
 
-		-- Your table cards: face-down slots with face-up cards on top, along the felt bottom.
+		-- Your table cards: face-down slots with face-up cards on top, along the felt bottom
+		-- (in Table view: on screen, see `docked`).
 		if me then
-			local row = Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.fromScale(0.5, 0.3), ZIndex = 6, Parent = ui.content })
+			local row = Kit.new("Frame", { Name = "TableCards", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.fromScale(0.5, 0.3), ZIndex = 6, Parent = ui.content })
 			tableRow = row
+			if docked then
+				-- A holder on the screen (not the hidden felt) with a caption over the row.
+				local handEmpty = #(view.hand or {}) == 0
+				local holder = Kit.new("Frame", { Name = "TableCards", BackgroundTransparency = 1, ZIndex = 6, Parent = ui.root })
+				if handEmpty then
+					holder.AnchorPoint = Vector2.new(0.5, 1)
+					holder.Position = UDim2.new(0.5, 0, 1, -16)
+					holder.Size = UDim2.fromScale(0.6, 0.3)
+				else
+					holder.AnchorPoint = Vector2.new(0, 1)
+					holder.Position = UDim2.new(0, 12, 1, -14)
+					holder.Size = UDim2.fromScale(0.13, 0.13)
+				end
+				Kit.label("Your table", { TextSize = 13, Font = Theme.FontBold, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.4, TextXAlignment = if handEmpty then Enum.TextXAlignment.Center else Enum.TextXAlignment.Left, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 0, -2), Size = UDim2.new(1, 0, 0, 16), ZIndex = 6, Parent = holder })
+				row.Parent = holder
+				row.AnchorPoint = Vector2.new(0, 0)
+				row.Position = UDim2.fromScale(0, 0)
+				row.Size = UDim2.fromScale(1, 1)
+				row:SetAttribute("Left", not handEmpty)
+				tableRow = holder
+			end
 			local list = Kit.list(6, true)
-			list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			list.HorizontalAlignment = if row:GetAttribute("Left") then Enum.HorizontalAlignment.Left else Enum.HorizontalAlignment.Center
 			list.Parent = row
 			local ups = view.up[me] or {}
 			for i, here in view.down[me] or {} do
@@ -264,7 +292,13 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 			snapshot = newSnapshot
 			render()
 		end,
-		setDocked = ui.setDocked,
+		setDocked = function(isDocked: boolean)
+			docked = isDocked
+			ui.setDocked(isDocked)
+			if snapshot then
+				render()
+			end
+		end,
 		destroy = function()
 			ui.root:Destroy()
 		end,
