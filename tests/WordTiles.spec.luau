@@ -123,6 +123,22 @@ return function(T)
 		T.ok(WordTiles.validateMove(s, 1, { kind = "place", tiles = tilesOf(6, 5, "cat") }), "valid")
 	end)
 
+	T.test("hindsight names a better play, only to its player", function()
+		WordTiles.useDictionary(SMALL)
+		local s = setup({ { "t", "a", "x", "e", "s", "q", "i" }, { "a", "t", "a", "t", "a", "t", "a" } })
+		place(s, 1, tilesOf(6, 6, "at"))
+		local hint = WordTiles.getView(s, 1).hindsight
+		T.ok(hint and hint.word, "a better play existed")
+		T.ok(hint.score > hint.played, "it scores more")
+		T.eq(hint.played, s.lastPlay.score)
+		T.eq(WordTiles.getView(s, 2).hindsight, nil, "the other player can't see it")
+		T.eq(WordTiles.getView(s, nil).hindsight, nil, "spectators can't either")
+		T.eq(s.biggestMiss[1].word, hint.word)
+		-- Bots get no hindsight.
+		local b = WordTiles.new(2, { bots = { 1 } }, Random.new(1))
+		T.ok(b.bots[1] == true)
+	end)
+
 	T.test("scores letters, premiums and every crossing word", function()
 		WordTiles.useDictionary(SMALL)
 		local s = setup({ { "c", "a", "t", "s", "x", "o", "i" }, { "t", "a", "x", "e", "s", "i", "q" } })
