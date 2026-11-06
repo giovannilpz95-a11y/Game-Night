@@ -551,13 +551,33 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local model = tableModel :: Model
 			local reach = toSeat.Magnitude
 			local flat = -toSeat.Unit -- from your seat toward the middle
+			local gameBoard = model:FindFirstChild("GameBoard")
+			if gameBoard and gameBoard:IsA("Model") then
+				-- Square to the board's own edges, so a chair set a touch off the table's
+				-- axis doesn't leave the board looking turned.
+				local axes, area = CFrame.identity, -1
+				for _, d in gameBoard:GetDescendants() do
+					if d:IsA("BasePart") and d.Size.X * d.Size.Z > area then
+						axes, area = d.CFrame, d.Size.X * d.Size.Z
+					end
+				end
+				local best, bestDot = flat, -2
+				for _, axis in { axes.LookVector, -axes.LookVector, axes.RightVector, -axes.RightVector } do
+					local a = (axis * Vector3.new(1, 0, 1))
+					if a.Magnitude > 0.01 and a.Unit:Dot(flat) > bestDot then
+						best, bestDot = a.Unit, a.Unit:Dot(flat)
+					end
+				end
+				if bestDot > 0.9 then
+					flat = best
+				end
+			end
 			local right = flat:Cross(Vector3.yAxis)
 			local function local3(p: Vector3): SeatView.Point
 				local d = p - anchor
 				return { x = d:Dot(right), y = d.Y, z = d:Dot(flat) }
 			end
 			local boardPoints: { SeatView.Point } = {}
-			local gameBoard = model:FindFirstChild("GameBoard")
 			if gameBoard and gameBoard:IsA("Model") then
 				-- Measured once per match (and screen layout), with half a stud of room around
 				-- it for what lands beside the board later (taken pieces, rolled dice), so
@@ -733,7 +753,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		local target = home
 		if not calm then
-			local lean = activePoint()
+			-- Seated at a board the view never turns (Giovanni: centered and straight). Leaning
+			-- toward whoever's turn it is turned it, since the eye slides beside your seat.
+			local lean = if seatedBoard then nil else activePoint()
 			if lean then
 				target = turnToward(target, lean, LEAN)
 			end
@@ -742,7 +764,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 				if w <= 0 and os.clock() - moment.at > MOMENT_TIME then
 					moment = nil
 				elseif w > 0 then
-					target = turnToward(target, moment.point, MOMENT_TURN * w)
+					if not seatedBoard then
+						target = turnToward(target, moment.point, MOMENT_TURN * w)
+					end
 					-- From your own eyes a lean in, not a dolly across the table.
 					target += target.LookVector * MOMENT_PUSH * w * (if firstPerson then 0.35 else 1)
 				end
