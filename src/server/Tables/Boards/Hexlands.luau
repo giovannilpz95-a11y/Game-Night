@@ -110,30 +110,64 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 	local tiles = Instance.new("Folder")
 	tiles.Name = "Tiles"
 	tiles.Parent = model
+	-- Invisible spots on every corner and road edge: tap them in Table view to build
+	-- (renderer tapTable "v:<vertex>" / "e:<edge>"; the client glows the ones you can use).
+	local spots = Instance.new("Folder")
+	spots.Name = "Spots"
+	spots.Parent = model
+	local function spot(name: string, id: string, size: Vector3, cf: CFrame, shape: Enum.PartType)
+		local part = Instance.new("Part")
+		part.Name = name
+		part.Shape = shape
+		part.Size = size
+		part.CFrame = cf
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CastShadow = false
+		part.Transparency = 1
+		part.Parent = spots
+		Scene.tappable(part, id)
+	end
+	for e, edge in Rules.edges do
+		local a, b = Rules.vertices[edge.a], Rules.vertices[edge.b]
+		local pa = at(boardCF, a.x, a.y, TOP_Y + 0.08).Position
+		local pb = at(boardCF, b.x, b.y, TOP_Y + 0.08).Position
+		spot("EdgeSpot", `e:{e}`, Vector3.new(0.2, 0.12, (pb - pa).Magnitude * 0.5), CFrame.lookAt((pa + pb) / 2, pb, boardCF.UpVector), Enum.PartType.Block)
+	end
+	for v, vertex in Rules.vertices do
+		spot("CornerSpot", `v:{v}`, Vector3.one * 0.36, at(boardCF, vertex.x, vertex.y, TOP_Y + 0.12), Enum.PartType.Ball)
+	end
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent
 	local built = false
 	local memo = {}
 
 	-- A pointy-top hex: three overlapping bars turned 0, 60 and 120 degrees.
-	local function hex(h: number, color: Color3)
+	-- Each tile's parts sit in their own model, so Table view outlines the whole tile.
+	local function hex(h: number, color: Color3): Model
 		local center = Rules.hexes[h]
 		local cf = at(boardCF, center.x, center.y, TILE_Y)
+		local tile = Instance.new("Model")
+		tile.Name = `Tile_{h}`
+		tile.Parent = tiles
 		-- One beveled hex mesh when it's imported (docs/Meshes.md), else three bars.
-		if Models.mesh(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2, 2 * S * 0.96), cf, color, Enum.Material.Grass) then
-			return
+		if Models.mesh(tile, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2, 2 * S * 0.96), cf, color, Enum.Material.Grass) then
+			return tile
 		end
 		-- Each bar's top and bottom sit 0.025 inside the last one's, so where they overlap
 		-- no two faces share a plane and fight (flicker).
 		for i = 0, 2 do
-			Models.block(tiles, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2 - 0.05 * i, S * 0.96), cf * CFrame.Angles(0, math.rad(60 * i), 0), color, Enum.Material.Grass)
+			Models.block(tile, `Hex_{h}`, Vector3.new(math.sqrt(3) * S * 0.96, 0.2 - 0.05 * i, S * 0.96), cf * CFrame.Angles(0, math.rad(60 * i), 0), color, Enum.Material.Grass)
 		end
+		return tile
 	end
 
 	local function buildTiles(view: any)
 		tiles:ClearAllChildren()
 		for h, tile in view.tiles or {} do
-			hex(h, landColor(tile.land))
+			-- Tap a land in Table view to move the bandit there (renderer tapTable "h:<hex>").
+			Scene.tappable(hex(h, landColor(tile.land)), `h:{h}`)
 			local center = Rules.hexes[h]
 			local top = at(boardCF, center.x, center.y, TOP_Y)
 			local decor = DECOR[tile.land]

@@ -63,7 +63,8 @@ function WordTiles.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 		for r = 1, size do
 			for c = 1, size do
 				local kind = def.premium[r] and def.premium[r][c] or "."
-				Models.block(squares, "Square", Vector3.new(cell * 0.92, 0.04, cell * 0.92), cellCF(r, c, 0.22), PREMIUM[kind] or SQUARE)
+				-- Tap a square in Table view to put your picked tile there (renderer tapTable "sq:<r>:<c>").
+				Scene.tappable(Models.block(squares, "Square", Vector3.new(cell * 0.92, 0.04, cell * 0.92), cellCF(r, c, 0.22), PREMIUM[kind] or SQUARE), `sq:{r}:{c}`)
 				if PREMIUM_TEXT[kind] then
 					Scene.flatText(squares, cellCF(r, c, 0.26), cell * 0.8, cell * 0.8, PREMIUM_TEXT[kind], { TextColor3 = Color3.new(1, 1, 1), TextTransparency = 0.15 })
 				end

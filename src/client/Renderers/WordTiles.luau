@@ -305,6 +305,15 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		return nil
 	end
 
+	-- "sq:<row>:<col>" (a square on the table in Table view) -> row, col.
+	local function cellOfId(id: any): (number?, number?)
+		if type(id) ~= "string" then
+			return nil, nil
+		end
+		local r, c = string.match(id, "^sq:(%d+):(%d+)$")
+		return tonumber(r), tonumber(c)
+	end
+
 	local function onCell(row: number, col: number)
 		if not snapshot or snapshot.yourSeat == nil or swapMode or snapshot.result or snapshot.aborted then
 			return
@@ -738,6 +747,28 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 				passConfirm = false
 			end
 			render()
+		end,
+		-- Table view (Table3D/SceneTap): pick a tile on your rack, then tap a square on the
+		-- table. Tiles you've laid out glow on their squares with their letter.
+		canTap = function(id: any): boolean
+			local r, c = cellOfId(id)
+			if not (r and c) or not snapshot or snapshot.yourSeat == nil or swapMode or snapshot.result then
+				return false
+			end
+			return pendingAt(r, c) ~= nil or not (board[r] and board[r][c])
+		end,
+		tapTable = function(id: any)
+			local r, c = cellOfId(id)
+			if r and c then
+				onCell(r, c)
+			end
+		end,
+		tableMarks = function(): { [any]: any }?
+			local marks = {}
+			for _, p in placed do
+				marks[`sq:{p.row}:{p.col}`] = { kind = "picked", text = p.letter }
+			end
+			return marks
 		end,
 		destroy = function()
 			root:Destroy()

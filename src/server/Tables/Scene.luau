@@ -297,6 +297,21 @@ function Scene.sign(parent: Instance, cf: CFrame, width: number, height: number,
 end
 
 -- A folder of pieces that change with the game; redraw it with Scene.redraw.
+-- Makes `inst` (a part, or every part of a model) a spot players tap in Table view to
+-- play: the client's Table3D/SceneTap raycasts parts with a TapId and hands the id to the
+-- game's 2D renderer (tapTable). Ids are strings like "die:1:3" that the renderer reads.
+function Scene.tappable(inst: Instance, id: string | number): Instance
+	local list = inst:GetDescendants()
+	table.insert(list, inst)
+	for _, d in list do
+		if d:IsA("BasePart") then
+			d.CanQuery = true
+			d:SetAttribute("TapId", id)
+		end
+	end
+	return inst
+end
+
 function Scene.dynamic(parent: Instance): Folder
 	local folder = Instance.new("Folder")
 	folder.Name = "Dynamic"

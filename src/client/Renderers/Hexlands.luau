@@ -129,6 +129,10 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 
 	-- Hexes: three rotated rectangles make a pointy-top hexagon.
 	local hexViews = {}
+	-- What tapping each land, road edge and corner does (the map's buttons and Table view).
+	local hexActs: { [number]: () -> () } = {}
+	local edgeActs: { [number]: () -> () } = {}
+	local vertexActs: { [number]: () -> () } = {}
 	for h, hex in Rules.hexes do
 		local holder = Kit.new("Frame", {
 			BackgroundTransparency = 1,
@@ -226,7 +230,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			ZIndex = 8,
 			Parent = holder,
 		})
-		button.Activated:Connect(function()
+		hexActs[h] = function()
 			if not snapshot then
 				return
 			end
@@ -241,7 +245,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 					rerender()
 				end
 			end
-		end)
+		end
+		button.Activated:Connect(hexActs[h])
 		hexViews[h] = { parts = parts, icon = icon, token = token, tokenStroke = tokenStroke, number = number, pips = pips, bandit = bandit }
 	end
 
@@ -318,10 +323,11 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			Parent = board,
 		})
 		Kit.new("UIStroke", { Thickness = 2, Color = Theme.Accent, Parent = dot })
-		dot.Activated:Connect(function()
+		edgeActs[e] = function()
 			sendMove({ kind = "road", edge = e })
 			mode = nil
-		end)
+		end
+		dot.Activated:Connect(edgeActs[e])
 		edgeViews[e] = { bar = bar, dot = dot }
 	end
 
@@ -361,7 +367,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			Parent = board,
 		})
 		Kit.new("UIStroke", { Thickness = 2, Color = Theme.Accent, Parent = dot })
-		dot.Activated:Connect(function()
+		vertexActs[v] = function()
 			if not snapshot then
 				return
 			end
@@ -374,7 +380,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				sendMove({ kind = "camp", vertex = v })
 			end
 			mode = nil
-		end)
+		end
+		dot.Activated:Connect(vertexActs[v])
 		vertexViews[v] = { piece = piece, star = star, dot = dot }
 	end
 
@@ -1208,10 +1215,73 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Table view (Table3D/SceneTap): the corners, road edges and lands on the table work
+	-- like the map's dots and tiles. Spots you can use glow.
+	local function banditHexes(): { [number]: boolean }
+		local out = {}
+		local view = snapshot and snapshot.view
+		if view and view.phase == "bandit" and view.turn == snapshot.yourSeat and view.options and view.options.hexes then
+			for _, h in view.options.hexes do
+				out[h] = true
+			end
+		end
+		return out
+	end
+	local function usable(id: any): (() -> ())?
+		if type(id) ~= "string" or not snapshot then
+			return nil
+		end
+		local kind, n = string.match(id, "^(%a):(%d+)$")
+		local i = tonumber(n)
+		if not i then
+			return nil
+		end
+		if kind == "v" and vertexViews[i] and vertexViews[i].dot.Visible then
+			return vertexActs[i]
+		elseif kind == "e" and edgeViews[i] and edgeViews[i].dot.Visible then
+			return edgeActs[i]
+		elseif kind == "h" and banditHexes()[i] then
+			return hexActs[i]
+		end
+		return nil
+	end
+
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
 			render()
+		end,
+		canTap = function(id: any): boolean
+			return usable(id) ~= nil
+		end,
+		tapTable = function(id: any)
+			local act = usable(id)
+			if act then
+				act()
+			end
+		end,
+		tableMarks = function(): { [any]: string }?
+			if not snapshot then
+				return nil
+			end
+			local marks = {}
+			for v, view in vertexViews do
+				if view.dot.Visible then
+					marks[`v:{v}`] = "target"
+				end
+			end
+			for e, view in edgeViews do
+				if view.dot.Visible then
+					marks[`e:{e}`] = "target"
+				end
+			end
+			for h in banditHexes() do
+				marks[`h:{h}`] = "target"
+			end
+			if banditHex then
+				marks[`h:{banditHex}`] = "picked"
+			end
+			return marks
 		end,
 		destroy = function()
 			root:Destroy()

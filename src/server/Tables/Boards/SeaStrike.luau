@@ -80,7 +80,11 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			-- Target board standing up, its grid side facing the seat (+Z).
 			local tspan = n * TARGET_CELL
 			local height = tspan + 0.2
-			Models.block(model, "TargetBoard", Vector3.new(tspan + 0.2, height, PANEL_T), target * CFrame.new(0, height / 2, 0), PANEL)
+			local targetBoard = Models.block(model, "TargetBoard", Vector3.new(tspan + 0.2, height, PANEL_T), target * CFrame.new(0, height / 2, 0), PANEL)
+			-- Tap it in Table view to fire (renderer tapTable "target:<seat>"). The grid sits
+			-- TapMargin (a share of the board's width and height) in from each edge.
+			Scene.tappable(targetBoard, `target:{seat}`)
+			targetBoard:SetAttribute("TapMargin", 0.1 / height)
 			Models.block(model, "TargetFoot", Vector3.new(tspan + 0.3, 0.05, 0.16), target * CFrame.new(0, 0.025, 0.13), CASE)
 			-- Faint grid lines on the target board: thin strips just in front of its face.
 			for i = 0, n do
