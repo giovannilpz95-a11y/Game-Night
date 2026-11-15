@@ -52,6 +52,18 @@
 	      The AFK turn clock starts once per key instead of after every move, and when it
 	      runs out the bot plays the rest of that turn. Without it every move is a new turn.
 
+	  chooseAfkMove(state, seat, rng) -> move?
+	      What to play for a person whose turn clock ran out, or who is marked away
+	      after timing out twice in a row. Keep it safe: roll, pass, end the turn,
+	      turn offers down; never bid, build, accept or accuse for someone who isn't
+	      there. nil falls back to chooseBotMove. Games that have it get the rest of the
+	      timed-out seat's turn played at once (while that seat stays active), instead
+	      of one move per clock.
+
+	  turnClock = true
+	      For games whose getTimer is really a per-turn clock (Conquest): a person who
+	      makes no move before it runs out counts as timed out, like the AFK clock.
+
 	  getBotDelay(state, seat, rng) -> seconds
 	      How long a bot waits before moving. Config.BotMoveDelay if missing.
 

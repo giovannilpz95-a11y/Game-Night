@@ -131,7 +131,7 @@ local function stateFromView(view: any): any
 	end
 	local players = {}
 	for seat, p in view.players do
-		players[seat] = { cash = p.cash, cards = table.create(p.cards, "card"), bankrupt = p.bankrupt }
+		players[seat] = { cash = p.cash, cards = table.create(p.cards, "card"), bankrupt = p.bankrupt, laps = p.laps }
 	end
 	return {
 		owner = owner,
@@ -140,6 +140,7 @@ local function stateFromView(view: any): any
 		housesLeft = view.housesLeft,
 		hotelsLeft = view.hotelsLeft,
 		players = players,
+		firstLap = view.firstLap,
 	}
 end
 
@@ -177,7 +178,7 @@ local function rentLines(pos: number): { { string } }
 	return { { "1 utility", "4x the dice" }, { "Both utilities", "10x the dice" } }
 end
 
-function Estates.create(container: Frame, sendMove: (any) -> ())
+function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((any) -> ())?)
 	local snapshot: any = nil
 	local docked = false
 	-- Table view without the board or players list: the action panel becomes a bar along
@@ -853,6 +854,11 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			tradeDraft.get[wantPos] = true
 		end
 		userPopup = { kind = "trade" }
+		-- Drafting isn't a move: ask the server for more time so the turn clock doesn't
+		-- run out behind the pop-up.
+		if sendRequest then
+			sendRequest({ action = "drafting" })
+		end
 		rerender()
 	end
 
@@ -872,6 +878,9 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		tradeDraft.giveCards, tradeDraft.getCards = t.get.cards, t.give.cards
 		tradeDraft.counter = true
 		userPopup = { kind = "trade" }
+		if sendRequest then
+			sendRequest({ action = "drafting" })
+		end
 		rerender()
 	end
 
@@ -1568,7 +1577,8 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 				end)
 			end
 		else
-			actionText.Text = "Build, trade, or end your turn."
+			local firstLap = view.firstLap and me and view.players[me] and (view.players[me].laps or 0) < 1
+			actionText.Text = if firstLap then "Trade or end your turn. You can build once you pass Start." else "Build, trade, or end your turn."
 			endTurnButton = primary("End turn", function()
 				sendMove({ kind = "endTurn" })
 			end)

@@ -224,6 +224,16 @@ local list: { Reaction } = {
 	{ id = "freshStart", label = "Fresh start", icon = "🌅", style = "pulse", pack = "reactions_countdown" },
 	{ id = "happyNewYear", label = "Happy New Year!", text = "Happy 2027!", color = GOLD, style = "shout", pack = "reactions_countdown" },
 
+	-- Frost Fair (Game Night Pass, Season 4 premium reward; never sold)
+	{ id = "ferrisWheel", label = "Ferris wheel", icon = "🎡", style = "spin", pack = "reactions_frostfair" },
+	{ id = "lantern", label = "Lantern", icon = "🏮", style = "float", pack = "reactions_frostfair" },
+	{ id = "carousel", label = "Carousel", icon = "🎠", style = "bounce", pack = "reactions_frostfair" },
+	{ id = "bigTop", label = "Big top", icon = "🎪", style = "pulse", pack = "reactions_frostfair" },
+	{ id = "pretzel", label = "Pretzel", icon = "🥨", style = "pop", pack = "reactions_frostfair" },
+	{ id = "hockey", label = "Hockey", icon = "🏒", style = "shake", pack = "reactions_frostfair" },
+	{ id = "firstPrize", label = "First prize", icon = "🥇", style = "sparkle", pack = "reactions_frostfair" },
+	{ id = "stepRightUp", label = "Step right up!", text = "Step right up!", color = ORANGE, style = "shout", pack = "reactions_frostfair" },
+
 	-- Spooky Pack (seasonal: October)
 	{ id = "pumpkin", label = "Pumpkin", icon = "🎃", style = "fire", pack = "reactions_spooky" },
 	{ id = "ghost", label = "Boo!", icon = "👻", style = "float", pack = "reactions_spooky" },
@@ -281,6 +291,7 @@ local packs: { Pack } = {
 	{ id = "reactions_premiere", name = "Premiere Night", icon = "🍿", reactions = {} },
 	{ id = "reactions_snowedin", name = "Snowed In", icon = "🌨️", reactions = {} },
 	{ id = "reactions_countdown", name = "Countdown", icon = "🎆", reactions = {} },
+	{ id = "reactions_frostfair", name = "Frost Fair", icon = "🎡", reactions = {} },
 	{ id = "reactions_spooky", name = "Spooky Pack", icon = "🎃", reactions = {}, months = { 10 }, season = "🎃 Halloween" },
 	{ id = "reactions_winter", name = "Winter Pack", icon = "⛄", reactions = {}, months = { 12, 1 }, season = "❄️ Winter" },
 	{ id = "reactions_love", name = "Sweethearts", icon = "💘", reactions = {}, months = { 2 }, season = "💘 Valentine's" },
