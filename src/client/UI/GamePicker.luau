@@ -2,7 +2,7 @@
 -- empty seats get bots. Everyone else sees what's available while they wait.
 -- Party Hosts can also change house rules and pick their own word list or quiz deck.
 --
--- In the Game Café look (Kit.cafe) on a wide window, the picked game opens in a felt
+-- In the redesigned looks (Kit.rich: Café, Lounge) on a wide window, the picked game opens in a felt
 -- panel on the right: it plays live with bots, with its description, seats, bots, house
 -- rules and a big START (mockup: project files ui-mockups/a-cafe-picker.jpg). Everyone
 -- can look at any game there; only the leader can start one. Narrow windows keep the
@@ -363,8 +363,8 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			startButton.Font = Theme.FontBold
 			startButton.TextSize = 18
 			startButton.Text = "Start"
-			startButton.BackgroundColor3 = if Kit.cafe then Theme.Accent else Theme.Good
-			startButton.TextColor3 = if Kit.cafe then Theme.AccentText else Theme.Text
+			startButton.BackgroundColor3 = if Kit.rich then Theme.Accent else Theme.Good
+			startButton.TextColor3 = if Kit.rich then Theme.AccentText else Theme.Text
 		end
 		detail.Visible = wide
 	end
@@ -816,7 +816,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 				Name = entry.id,
 				Text = "",
 				AutoButtonColor = ready and (isLeader or wide),
-				BackgroundColor3 = if selected then Theme.Accent elseif Kit.cafe then Theme.Paper else Theme.PanelLight,
+				BackgroundColor3 = if selected then Theme.Accent elseif Kit.rich then Theme.Paper else Theme.PanelLight,
 				BackgroundTransparency = if ready then 0 else 0.35,
 				BorderSizePixel = 0,
 				LayoutOrder = if ready then index else 100 + index,
@@ -883,7 +883,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 				Parent = card,
 			})
 			Kit.corner(8).Parent = icon
-			local textColor = if selected then Theme.AccentText elseif Kit.cafe then Theme.Ink else Theme.Text
+			local textColor = if selected then Theme.AccentText elseif Kit.rich then Theme.Ink else Theme.Text
 			Kit.label(entry.name, {
 				Font = Theme.FontBold,
 				TextSize = 16,
@@ -898,7 +898,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			Kit.label(players .. minutes, {
 				Font = Theme.FontBold,
 				TextSize = 12,
-				TextColor3 = if selected then Theme.AccentText elseif Kit.cafe then Theme.Ink2 else Theme.SubText,
+				TextColor3 = if selected then Theme.AccentText elseif Kit.rich then Theme.Ink2 else Theme.SubText,
 				Position = UDim2.new(0, 2, 1, -18),
 				Size = UDim2.new(1, -4, 0, 18),
 				TextWrapped = false,
@@ -916,7 +916,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 					Position = UDim2.new(1, 4, 0, -4),
 					Size = UDim2.fromOffset(28, 28),
 					TextSize = 15,
-					BackgroundColor3 = if selected then Theme.AccentText elseif Kit.cafe then Theme.Wood else Theme.Panel,
+					BackgroundColor3 = if selected then Theme.AccentText elseif Kit.rich then Theme.Wood else Theme.Panel,
 					TextColor3 = if selected then Theme.Accent else Theme.Text,
 					ZIndex = 2,
 					Parent = card,
@@ -995,7 +995,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 
 	-- Wide (Café) or narrow layout, decided by the window's width.
 	local function checkWide()
-		local now = Kit.cafe and root.AbsoluteSize.X >= DETAIL_MIN_WIDTH
+		local now = Kit.rich and root.AbsoluteSize.X >= DETAIL_MIN_WIDTH
 		if now ~= wide then
 			wide = now
 			placeControls()

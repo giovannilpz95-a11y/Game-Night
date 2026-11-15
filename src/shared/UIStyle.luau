@@ -2,12 +2,15 @@
 -- Kit.Theme), so screens built from tokens work in any of them. Pure data, unit tested.
 --
 -- Pick the style in shared/Config (UIStyle). In Studio you can also set a string attribute
--- "UIStyle" on Workspace ("Cafe" or "Classic") before pressing Play to compare the two
--- without touching code.
+-- "UIStyle" on Workspace ("Lounge", "Cafe" or "Classic") before pressing Play to compare
+-- them without touching code.
 --
 --   Classic: the dark plum night the game launched with.
 --   Cafe:    "Game Café" — walnut wood frames, cream paper cards, felt green and gold, to
 --            match the 3D tables (mockups in project files ui-mockups/a-cafe).
+--   Lounge:  "Midnight Lounge" — the plum night grown up: dark glass, one neon-yellow
+--            accent, Oswald headings, a tab bar along the top (ui-mockups/c-lounge).
+--            Giovanni picked it on 2026-11-15.
 --
 -- Token meanings:
 --   Background / Panel / PanelLight  window and card backgrounds, darkest to lightest.
@@ -22,7 +25,7 @@ local UIStyle = {}
 
 export type RGB = { number }
 
-UIStyle.Default = "Cafe"
+UIStyle.Default = "Lounge"
 
 UIStyle.Styles = {
 	Classic = {
@@ -82,6 +85,37 @@ UIStyle.Styles = {
 		edge = 2.5,
 		-- Builder Sans: Roblox's own UI font, made for small screens.
 		fonts = { body = "BuilderSansBold", bold = "BuilderSansExtraBold", title = "FredokaOne" },
+	},
+	Lounge = {
+		label = "Midnight Lounge",
+		colors = {
+			Background = { 14, 11, 28 },
+			Panel = { 24, 19, 44 },
+			PanelLight = { 40, 33, 72 },
+			Accent = { 255, 216, 74 },
+			AccentText = { 34, 26, 0 },
+			Good = { 78, 227, 138 },
+			Bad = { 255, 79, 110 },
+			Warn = { 255, 150, 60 },
+			Text = { 244, 241, 255 },
+			SubText = { 169, 161, 207 },
+			Gem = { 56, 225, 255 },
+			Stroke = { 104, 92, 160 },
+			-- Cards are a lighter glass, with the same light text as windows.
+			Paper = { 34, 28, 62 },
+			Paper2 = { 28, 23, 52 },
+			Ink = { 244, 241, 255 },
+			Ink2 = { 169, 161, 207 },
+			-- "Wood" frames become the neon violet line; "Felt" a deep indigo.
+			Wood = { 124, 92, 255 },
+			WoodDark = { 8, 6, 18 },
+			Felt = { 36, 28, 80 },
+			FeltDark = { 22, 17, 50 },
+		},
+		frame = 1,
+		edge = 1,
+		-- Gotham is drawn as Montserrat now; Oswald for the tall headings.
+		fonts = { body = "GothamMedium", bold = "GothamBold", title = "Oswald" },
 	},
 }
 

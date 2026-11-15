@@ -28,7 +28,7 @@ function Kit.hotkeyArea(gui: GuiObject): GuiObject
 end
 
 -- The look comes from shared/UIStyle (Config.UIStyle, or a "UIStyle" attribute on
--- Workspace in Studio). Kit.Style is its name ("Cafe" or "Classic").
+-- Workspace in Studio). Kit.Style is its name ("Lounge", "Cafe" or "Classic").
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIStyle = require(ReplicatedStorage.Shared.UIStyle)
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -38,6 +38,11 @@ local style = UIStyle.Styles[Kit.Style]
 Kit.StyleInfo = style
 -- True for the Game Café look (wood, paper, felt): screens that have a Café layout check it.
 Kit.cafe = Kit.Style == "Cafe"
+-- True for the Midnight Lounge look (dark glass, neon accent, tab bar on top).
+Kit.lounge = Kit.Style == "Lounge"
+-- True for the redesigned looks (Café and Lounge): screens with a new layout (the picker's
+-- game panel, the shop's Featured page, paper cards) check this; Classic keeps the old one.
+Kit.rich = Kit.Style ~= "Classic"
 
 local function font(name: string, fallback: Enum.Font): Enum.Font
 	local ok, value = pcall(function()
@@ -136,8 +141,40 @@ end
 function Kit.frameStroke(): UIStroke
 	if Kit.cafe then
 		return Kit.stroke(Kit.Theme.WoodDark, 0, Kit.Theme.Frame)
+	elseif Kit.lounge then
+		-- Glass: a hairline of light around the edge.
+		return Kit.stroke(Color3.new(1, 1, 1), 0.84, 1)
 	end
 	return Kit.stroke()
+end
+
+-- The Lounge's tall headline face (Oswald Bold); nil in the other looks. Kit.headline
+-- puts it on a label.
+Kit.HeadlineFace = if Kit.lounge then Font.new("rbxasset://fonts/families/Oswald.json", Enum.FontWeight.Bold) else nil
+function Kit.headline(label: TextLabel | TextButton, upper: boolean?)
+	if Kit.HeadlineFace then
+		label.FontFace = Kit.HeadlineFace
+		if upper ~= false then
+			label.Text = label.Text:upper()
+		end
+	end
+end
+
+-- A dark glass panel (the Lounge's cards and bars): see-through dark plum with a hairline
+-- edge. In the other looks it's a plain panel.
+function Kit.glass(props: { [string]: any }?, radius: number?): Frame
+	local frame = Kit.new("Frame", {
+		BackgroundColor3 = Kit.Theme.Panel,
+		BackgroundTransparency = if Kit.lounge then 0.18 else 0,
+		BorderSizePixel = 0,
+	}, {
+		Kit.corner(radius or 14),
+		Kit.frameStroke(),
+	})
+	for key, value in props or {} do
+		(frame :: any)[key] = value
+	end
+	return frame
 end
 
 -- The Café's thin gold line just inside a window's rim (nothing in Classic). `inset` is
@@ -348,7 +385,8 @@ function Kit.title(text: string, props: { [string]: any }?): TextLabel
 	local label = Kit.label(text, {
 		Name = "Title",
 		Font = Kit.Theme.FontTitle,
-		TextSize = Kit.Theme.TextSize.Title,
+		-- Oswald is narrow, so the Lounge's titles go a little bigger.
+		TextSize = Kit.Theme.TextSize.Title + (if Kit.lounge then 4 else 0),
 		Size = UDim2.new(1, -48, 0, 28),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextWrapped = false,
@@ -356,6 +394,7 @@ function Kit.title(text: string, props: { [string]: any }?): TextLabel
 	for key, value in props or {} do
 		(label :: any)[key] = value
 	end
+	Kit.headline(label)
 	return label
 end
 
@@ -426,13 +465,17 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 		ZIndex = z,
 		Parent = overlay,
 	}, {
-		Kit.corner(if Kit.cafe then 18 else 14),
+		Kit.corner(if Kit.cafe then 18 elseif Kit.lounge then 16 else 14),
 		Kit.padding(12),
 		Kit.frameStroke(),
 		Kit.shade(),
 		Kit.new("UISizeConstraint", { MaxSize = opts.maxSize or Vector2.new(900, 640) }),
 	})
 	Kit.innerRim(panel, 12, 14)
+	if Kit.lounge then
+		-- Dark glass: the dimmed room shows faintly through.
+		panel.BackgroundTransparency = 0.06
+	end
 	local body = Kit.new("Frame", {
 		Name = "Body",
 		BackgroundTransparency = 1,

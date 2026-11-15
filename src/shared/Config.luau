@@ -1,9 +1,10 @@
 -- Tunable numbers for the whole experience. Change values here, not in the services.
 
 local Config = {
-	-- The menus' look (shared/UIStyle): "Cafe" (wood, paper, felt and gold) or "Classic"
-	-- (the dark plum launch look). In Studio, a "UIStyle" attribute on Workspace overrides it.
-	UIStyle = "Cafe",
+	-- The menus' look (shared/UIStyle): "Lounge" (dark glass, neon yellow, tab bar on top),
+	-- "Cafe" (wood, paper, felt and gold) or "Classic" (the dark plum launch look). In
+	-- Studio, a "UIStyle" attribute on Workspace overrides it.
+	UIStyle = "Lounge",
 
 	-- Party
 	MaxPartySize = 8,

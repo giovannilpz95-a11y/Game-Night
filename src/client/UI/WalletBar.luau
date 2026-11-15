@@ -27,6 +27,12 @@ local function chip(parent: Instance, order: number): (Frame, TextLabel, Frame)
 		LayoutOrder = order,
 		Parent = parent,
 	}, { Kit.corner(10), layout, Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }) })
+	if Kit.lounge then
+		-- Dark glass chips, like the tab bar beside them.
+		frame.BackgroundColor3 = Theme.Panel
+		frame.BackgroundTransparency = 0.15
+		Kit.frameStroke().Parent = frame
+	end
 	local dot = Kit.new("Frame", {
 		BorderSizePixel = 0,
 		Size = UDim2.new(0, 14, 0, 14),
