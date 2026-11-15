@@ -438,7 +438,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		for i, choice in choices do
 			Kit.button(tostring(choice.label), function()
 				askPanel.Visible = false
-				sendMatch({ action = "move", move = choice.move })
+				sendMatch(if type(choice.request) == "table" then choice.request else { action = "move", move = choice.move })
 			end, {
 				BackgroundColor3 = if i == 1 then Theme.Good else Theme.Panel,
 				TextColor3 = Theme.Text,
@@ -1096,7 +1096,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			local s = snapshot.seats[active[1]]
 			local name = esc(s.name)
 			local dots = string.rep(".", 1 + math.floor(os.clock() * 2.5) % 3)
-			text = if s.kind == "bot" then `{name} is thinking{dots}` else `Waiting for {name}{dots}`
+			text = if s.kind == "bot" then `{name} is thinking{dots}` elseif s.away then `{name} is away (auto moves){dots}` else `Waiting for {name}{dots}`
 		else
 			text = "Waiting for other players..."
 		end
@@ -1612,9 +1612,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				gameBadge.BackgroundColor3 = Color3.fromRGB(rgb[1], rgb[2], rgb[3])
 				local moduleScript = entry and entry.module and Renderers:FindFirstChild(entry.module)
 				if moduleScript then
+					-- The third argument sends other match requests (a trade screen opening
+					-- asks for drafting time: { action = "drafting" }).
 					renderer = (require(moduleScript) :: any).create(board, function(move: any)
 						sendMatch({ action = "move", move = move })
-					end)
+					end, sendMatch)
 				end
 			end
 
@@ -1625,7 +1627,16 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			menuButton.Visible = not over
 			local gameView = if type(snapshot.view) == "table" then snapshot.view else {}
 			renderMenuActions(if over then nil else gameView.menuActions)
-			renderAsk(if over then nil else gameView.ask)
+			-- Marked away after timing out: one tap takes the seat back.
+			local mine = snapshot.yourSeat and snapshot.seats[snapshot.yourSeat]
+			if not over and mine and mine.away then
+				renderAsk({
+					text = "You're away, so safe moves are being made for you.",
+					choices = { { label = "I'm back", request = { action = "back" } } },
+				})
+			else
+				renderAsk(if over then nil else gameView.ask)
+			end
 			rulesButton.Visible = openRules ~= nil and not over
 			if over then
 				closeMenu()

@@ -36,6 +36,10 @@ type Entry = {
 	intro: boolean, -- the Showtime intro is on: no turns yet (startPlay ends it)
 	introSkips: { [number]: boolean }, -- userIds who skipped the intro
 	ownMoves: { [number]: number }, -- moves each seat's player made themselves (not bots or the turn timer)
+	strikes: { [number]: number }, -- timeouts in a row per seat (Config.AwayAfterTimeouts marks them away)
+	clockId: number, -- bumped whenever the turn clock restarts (stale clocks do nothing)
+	drafted: any?, -- the turn key that already got the drafting extension
+	timerOwn: { [number]: number }?, -- turnClock games: ownMoves when the current phase clock started
 }
 
 local partyService: any = nil
@@ -150,6 +154,8 @@ local function emit(name: string, event: any)
 end
 
 local scheduleTurn: (Entry) -> ()
+local strike: (Entry, number) -> ()
+local startClock: (Entry, any, number) -> ()
 
 -- The intro is over (or everyone skipped it): the first turn starts now.
 local function startPlay(entry: Entry)
@@ -186,6 +192,85 @@ local function turnKeyOf(match: any): any
 	return match.moveNumber
 end
 
+-- A player ran out of time. Twice in a row (Config.AwayAfterTimeouts) and they're marked
+-- away: their seat plays at bot speed until they move or tap "I'm back".
+function strike(entry: Entry, seat: number)
+	local match = entry.match
+	if match:isBot(seat) then
+		return
+	end
+	entry.strikes[seat] = (entry.strikes[seat] or 0) + 1
+	if entry.strikes[seat] >= Config.AwayAfterTimeouts and not match:isAway(seat) then
+		match:setAway(seat, true)
+		local s = match.seats[seat]
+		local player = s and s.userId and Players:GetPlayerByUserId(s.userId)
+		if player then
+			notify(player, "You're marked away, so safe moves are made for you. Tap I'm back to play again.")
+		end
+	end
+end
+
+-- The player is here: clear their timeouts and the away mark.
+local function present(entry: Entry, seat: number): boolean
+	entry.strikes[seat] = 0
+	if entry.match:isAway(seat) then
+		entry.match:setAway(seat, false)
+		return true
+	end
+	return false
+end
+
+-- Starts (or restarts) the AFK clock for `key`. When it runs out, every person still
+-- thinking gets the game's safe AFK move (see chooseAfkMove in GameModule): games with
+-- that hook or a turn key have the whole rest of the turn played at once.
+function startClock(entry: Entry, key: any, seconds: number)
+	local match = entry.match
+	entry.clockId += 1
+	local clockId = entry.clockId
+	entry.turnEndsAt = workspace:GetServerTimeNow() + seconds
+	task.delay(seconds, function()
+		if entry.ended or entry.clockId ~= clockId or entry.turnKey ~= key or turnKeyOf(match) ~= key then
+			return
+		end
+		local wholeTurn = match.rules.chooseAfkMove ~= nil or match.rules.getTurnKey ~= nil
+		local played = false
+		local seats = {}
+		for _, seat in match:getActiveSeats() do
+			if not match:isBot(seat) and not match:isAway(seat) then
+				table.insert(seats, seat)
+			end
+		end
+		-- Everyone who's still thinking (simultaneous discards, say) is handled at once.
+		for _, seat in seats do
+			local steps = 0
+			while steps < 40 and not entry.ended and not match:isOver() and match:isSeatActive(seat) do
+				if match.rules.getTurnKey and turnKeyOf(match) ~= key then
+					break
+				end
+				if not match:playForSeat(seat, true) then
+					break
+				end
+				steps += 1
+				afterMove(entry)
+				if not wholeTurn then
+					break
+				end
+			end
+			if steps > 0 then
+				played = true
+				strike(entry, seat)
+			end
+		end
+		if played and not entry.ended and not match:isOver() then
+			-- Whatever comes next (someone else's step, or a seat just marked away) gets a
+			-- fresh clock or a bot-speed move.
+			entry.turnKey = nil
+			scheduleTurn(entry)
+			broadcast(entry)
+		end
+	end)
+end
+
 function scheduleTurn(entry: Entry)
 	local match = entry.match
 	if match:isOver() or entry.intro then
@@ -202,7 +287,8 @@ function scheduleTurn(entry: Entry)
 		end
 	end
 	for _, seat in botSeats do
-		if match:isBot(seat) and not entry.botPending[seat] then
+		local away = match:isAway(seat)
+		if (match:isBot(seat) or away) and not entry.botPending[seat] then
 			entry.botPending[seat] = true
 			local delay = match:botDelay(seat, Config.BotMoveDelay)
 			if delay >= 1.2 and not match:getTimer() and match:isSeatActive(seat) then
@@ -213,7 +299,11 @@ function scheduleTurn(entry: Entry)
 				if entry.ended then
 					return
 				end
-				if match:playForSeat(seat) then
+				-- An away player may have come back while the bot was thinking.
+				if not match:isBot(seat) and not match:isAway(seat) then
+					return
+				end
+				if match:playForSeat(seat, away) then
 					afterMove(entry)
 				end
 			end)
@@ -228,9 +318,26 @@ function scheduleTurn(entry: Entry)
 			local timerId = timer.id
 			entry.timerId = timerId
 			entry.turnEndsAt = workspace:GetServerTimeNow() + (timer.displaySeconds or timer.seconds)
+			-- Games whose phase clock is a turn clock (Conquest): note who still has to move.
+			local timed: { number } = {}
+			if match.rules.turnClock then
+				for _, seat in match:getActiveSeats() do
+					if not match:isBot(seat) and not match:isAway(seat) then
+						table.insert(timed, seat)
+					end
+				end
+				entry.timerOwn = table.clone(entry.ownMoves)
+			end
+			local ownAtStart = entry.timerOwn
 			task.delay(timer.seconds, function()
 				if entry.ended or entry.timerId ~= timerId then
 					return
+				end
+				-- Nobody touched it: that's a timeout for each of those players.
+				for _, seat in timed do
+					if ownAtStart and (entry.ownMoves[seat] or 0) == (ownAtStart[seat] or 0) then
+						strike(entry, seat)
+					end
 				end
 				if match:timeout(timerId) then
 					afterMove(entry)
@@ -249,7 +356,7 @@ function scheduleTurn(entry: Entry)
 	local hasHumanTurn = false
 	local seconds = entry.turnSeconds
 	for _, seat in match:getActiveSeats() do
-		if not match:isBot(seat) then
+		if not match:isBot(seat) and not match:isAway(seat) then
 			hasHumanTurn = true
 			-- A player's first turn is longer: the how-to-play card is up at the start.
 			if not entry.graced[seat] then
@@ -263,34 +370,7 @@ function scheduleTurn(entry: Entry)
 			return -- same turn, its clock is already running
 		end
 		entry.turnKey = key
-		entry.turnEndsAt = workspace:GetServerTimeNow() + seconds
-		task.delay(seconds, function()
-			if entry.ended or entry.turnKey ~= key or turnKeyOf(match) ~= key then
-				return
-			end
-			-- Out of time: a bot moves for whoever is still thinking, to the end of the turn.
-			for _, seat in match:getActiveSeats() do
-				if not match:isBot(seat) then
-					local steps = 0
-					while steps < 40 and not entry.ended and not match:isOver() and turnKeyOf(match) == key and match:isSeatActive(seat) do
-						if not match:playForSeat(seat) then
-							break
-						end
-						steps += 1
-						afterMove(entry)
-					end
-					if steps > 0 then
-						if not entry.ended and not match:isOver() and turnKeyOf(match) == key then
-							-- The bot couldn't finish the turn: give the player a fresh clock.
-							entry.turnKey = nil
-							scheduleTurn(entry)
-							broadcast(entry)
-						end
-						return
-					end
-				end
-			end
-		end)
+		startClock(entry, key, seconds)
 	else
 		entry.turnKey = nil
 		entry.turnEndsAt = nil
@@ -399,6 +479,8 @@ local function startMatch(leader: Player, request: any)
 		intro = false,
 		introSkips = {},
 		ownMoves = {},
+		strikes = {},
+		clockId = 0,
 	}
 	matches[matchId] = entry
 	for _, userId in party.members do
@@ -555,6 +637,7 @@ function handlers.move(player: Player, request: any)
 		return notify(player, err :: string)
 	end
 	entry.ownMoves[seat] = (entry.ownMoves[seat] or 0) + 1
+	present(entry, seat)
 	afterMove(entry)
 	emit("moved", { player = player, matchId = entry.match.id, gameId = entry.match.gameId })
 end
@@ -597,6 +680,42 @@ function handlers.resign(player: Player, _request: any)
 		return notify(player, err :: string)
 	end
 	afterMove(entry)
+end
+
+-- "I'm back": an away player takes their seat again (and gets a fresh clock).
+function handlers.back(player: Player, _request: any)
+	local entry = entryFor(player)
+	local seat = entry and entry.match:seatOf(player.UserId)
+	if not entry or not seat or entry.ended then
+		return
+	end
+	if present(entry, seat) then
+		entry.turnKey = nil
+		scheduleTurn(entry)
+		broadcast(entry)
+	end
+end
+
+-- The player opened a trade screen (drafting isn't a move): their clock gets
+-- Config.DraftSeconds, once per turn, so the AFK move doesn't land behind the pop-up.
+function handlers.drafting(player: Player, _request: any)
+	local entry = entryFor(player)
+	local seat = entry and entry.match:seatOf(player.UserId)
+	if not entry or not seat or entry.ended or entry.intro or entry.timerId then
+		return
+	end
+	local match = entry.match
+	local key = entry.turnKey
+	if key == nil or entry.drafted == key or not match:isSeatActive(seat) or match:isAway(seat) then
+		return
+	end
+	local left = (entry.turnEndsAt or 0) - workspace:GetServerTimeNow()
+	if left >= Config.DraftSeconds then
+		return
+	end
+	entry.drafted = key
+	startClock(entry, key, Config.DraftSeconds)
+	broadcast(entry)
 end
 
 function handlers.leave(player: Player, _request: any)

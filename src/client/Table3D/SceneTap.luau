@@ -4,8 +4,10 @@
 -- game's 2D renderer gets the taps and says what's tappable right now:
 --   renderer.tapTable(id, uv, part)  -- uv: where on the part, 0..1 along its X, Y and Z
 --   renderer.canTap(id) -> boolean  -- optional: hover outline only when true
---   renderer.tableMarks() -> { [id]: "picked" | "target" | { kind: string, text: string } }
---     optional: outlined spots, and a label over them (a Word Tiles letter you laid out)
+--   renderer.tableMarks() -> { [id]: "picked" | "target" | { kind: string, text: string, color: Color3? } }
+--     optional: outlined spots, and a label over them (a Word Tiles letter you laid out).
+--     kind "label" is a label with no outline (Conquest's armies under fog of war); color
+--     tints the label's background.
 -- Everything drawn here (outlines) is local to your screen.
 
 local Audio = require(script.Parent.Parent.Audio)
@@ -46,7 +48,7 @@ end
 -- An outline around `adornee`. An invisible spot (a corner of the Hexlands map, where
 -- nothing stands yet) has nothing to outline, so it gets a glowing copy of its shape.
 -- A letter floating just over a marked spot (only on your screen).
-local function label(parent: Instance, adornee: Instance, text: string): BillboardGui
+local function label(parent: Instance, adornee: Instance, text: string, color: Color3?): BillboardGui
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "TapLabel"
 	gui.Adornee = adornee
@@ -56,8 +58,11 @@ local function label(parent: Instance, adornee: Instance, text: string): Billboa
 	gui.LightInfluence = 0
 	local box = Instance.new("TextLabel")
 	box.Size = UDim2.fromScale(1, 1)
-	box.BackgroundColor3 = Color3.fromRGB(250, 236, 200)
-	box.TextColor3 = Color3.fromRGB(40, 30, 24)
+	box.BackgroundColor3 = color or Color3.fromRGB(250, 236, 200)
+	box.TextColor3 = if color then Color3.new(1, 1, 1) else Color3.fromRGB(40, 30, 24)
+	if color then
+		box.TextStrokeTransparency = 0.3
+	end
 	box.Font = Enum.Font.GothamBlack
 	box.TextScaled = true
 	box.Text = text
@@ -278,7 +283,7 @@ function SceneTap.new(camera: Camera, folder: Instance)
 		local keys = {}
 		for id, mark in marks do
 			if type(mark) == "table" then
-				table.insert(keys, `{id}={mark.kind}:{mark.text}`)
+				table.insert(keys, `{id}={mark.kind}:{mark.text}:{if typeof(mark.color) == "Color3" then mark.color:ToHex() else ""}`)
 			else
 				table.insert(keys, `{id}={mark}`)
 			end
@@ -294,7 +299,16 @@ function SceneTap.new(camera: Camera, folder: Instance)
 		for id, mark in marks do
 			local kind = if type(mark) == "table" then mark.kind else mark
 			local text = if type(mark) == "table" then mark.text else nil
+			local color = if type(mark) == "table" and typeof(mark.color) == "Color3" then mark.color else nil
 			local seen = {}
+			if kind == "label" then
+				-- Just the label, once, over the spot's first part.
+				local part = (byId[id] or {})[1]
+				if part and type(text) == "string" and text ~= "" then
+					table.insert(markLights, label(folder, part, text, color))
+				end
+				continue
+			end
 			for _, part in byId[id] or {} do
 				local group = groupOf(part, id)
 				local glow = group:IsA("BasePart") and group.Transparency >= 0.98
@@ -305,7 +319,7 @@ function SceneTap.new(camera: Camera, folder: Instance)
 					end
 					table.insert(markLights, highlight(folder, group, if kind == "picked" then PICKED else TARGET, if kind == "picked" then 0.55 else 0.8))
 					if type(text) == "string" and text ~= "" then
-						table.insert(markLights, label(folder, group, text))
+						table.insert(markLights, label(folder, group, text, color))
 					end
 				end
 			end
