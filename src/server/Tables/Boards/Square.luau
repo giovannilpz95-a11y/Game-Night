@@ -91,6 +91,59 @@ function Square.create(boardCF: CFrame, parent: Instance, size: number, boardSiz
 	}
 end
 
+-- Board coordinates on the frame, like a real tournament board: colText(c) along both
+-- row edges and rowText(r) along both column edges, each label upright for the player
+-- sitting on that side. Returns the folder.
+function Square.coordinates(board: Board, boardCF: CFrame, size: number, colText: (number) -> string, rowText: (number) -> string, color: Color3?): Folder
+	local folder = Instance.new("Folder")
+	folder.Name = "Coordinates"
+	local center = boardCF.Position
+	local up = boardCF.UpVector
+	local function label(text: string, cell: BasePart, outward: Vector3)
+		local pos = cell.Position + outward * (board.cellSize / 2 + 0.16)
+		pos = pos - up * (pos - center):Dot(up) + up * 0.335 -- just over the frame's lip and inlay
+		local part = Instance.new("Part")
+		part.Name = "Coord_" .. text
+		part.Anchored, part.CanCollide, part.CanQuery, part.CanTouch = true, false, false, false
+		part.Transparency = 1
+		part.Size = Vector3.new(0.26, 0.02, 0.26)
+		-- -Z points at the board, so the text reads upright from outside this edge.
+		part.CFrame = CFrame.lookAt(pos, pos - outward, up)
+		local gui = Instance.new("SurfaceGui")
+		gui.Face = Enum.NormalId.Top
+		gui.LightInfluence = 0.3
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 200
+		gui.Parent = part
+		local t = Instance.new("TextLabel")
+		t.BackgroundTransparency = 1
+		t.Size = UDim2.fromScale(1, 1)
+		t.Font = Enum.Font.GothamBold
+		t.TextScaled = true
+		t.Text = text
+		t.TextColor3 = color or Color3.fromRGB(240, 222, 170)
+		t.Parent = gui
+		part.Parent = folder
+	end
+	local function outwardOf(cell: BasePart, other: BasePart): Vector3
+		local d = cell.Position - other.Position
+		d -= up * d:Dot(up)
+		return if d.Magnitude > 0 then d.Unit else Vector3.zero
+	end
+	for c = 1, size do
+		local a, b = board.cell(1, c), board.cell(size, c)
+		label(colText(c), a, outwardOf(a, b))
+		label(colText(c), b, outwardOf(b, a))
+	end
+	for r = 1, size do
+		local a, b = board.cell(r, 1), board.cell(r, size)
+		label(rowText(r), a, outwardOf(a, b))
+		label(rowText(r), b, outwardOf(b, a))
+	end
+	folder.Parent = board.model
+	return folder
+end
+
 -- Resets every cell to its base color, then tints the ones in `tints` ({ [key] = Color3 },
 -- key = row * 100 + col).
 function Square.tint(board: Board, size: number, tints: { [number]: Color3 })

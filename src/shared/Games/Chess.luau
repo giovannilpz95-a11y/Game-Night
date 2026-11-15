@@ -15,12 +15,18 @@
 local GameModule = require(script.Parent.Parent.GameModule)
 local Offers = require(script.Parent.Parent.Offers)
 local BotThink = require(script.Parent.Parent.BotThink)
+local GameClock = require(script.Parent.Parent.GameClock)
 
 local Chess = {}
 
 Chess.id = "Chess"
 Chess.minSeats = 2
 Chess.maxSeats = 2
+-- House rule "timeControl": real chess clocks (shared/GameClock). Moves carry the server
+-- time, the side to move's bank is the phase clock, and a fallen flag loses (a draw if the
+-- other side couldn't mate anyway). "casual" keeps the per-move turn timer.
+Chess.clock = true
+Chess.turnClock = true
 
 local PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING = 1, 2, 3, 4, 5, 6
 Chess.Pieces = { PAWN = PAWN, KNIGHT = KNIGHT, BISHOP = BISHOP, ROOK = ROOK, QUEEN = QUEEN, KING = KING }
@@ -596,6 +602,41 @@ function Chess.findLegal(pos: Pos, move: any): Move?
 	return nil
 end
 
+-- The game as PGN, for "Copy PGN" (paste it into Lichess or chess.com to analyse).
+-- sans: the move list; startFen: where it began; result: "1-0" | "0-1" | "1/2-1/2" | "*".
+function Chess.pgn(sans: { string }, startFen: string?, result: string?, white: string?, black: string?): string
+	local res = result or "*"
+	local lines = {
+		`[Event "Game Night"]`,
+		`[White "{white or "White"}"]`,
+		`[Black "{black or "Black"}"]`,
+		`[Result "{res}"]`,
+	}
+	local fen = startFen or START_FEN
+	local pos = Chess.fromFen(fen)
+	if fen ~= START_FEN then
+		table.insert(lines, `[SetUp "1"]`)
+		table.insert(lines, `[FEN "{fen}"]`)
+	end
+	local body = {}
+	local number, side = pos.fullmove, pos.side
+	for i, san in sans do
+		if side == 1 then
+			table.insert(body, `{number}. {san}`)
+		elseif i == 1 then
+			table.insert(body, `{number}... {san}`)
+		else
+			table.insert(body, san)
+		end
+		if side == -1 then
+			number += 1
+		end
+		side = -side
+	end
+	table.insert(body, res)
+	return table.concat(lines, "\n") .. "\n\n" .. table.concat(body, " ")
+end
+
 -- Game module -------------------------------------------------------------------
 
 local HILL = { [27] = true, [28] = true, [35] = true, [36] = true } -- d4, e4, d5, e5
@@ -650,6 +691,7 @@ function Chess.new(seatCount: number, options: any?, rng: Random?)
 		kingOfTheHill = rules.kingOfTheHill == true,
 		threeCheck = rules.threeCheck == true,
 		checks = { 0, 0 }, -- checks each seat has given (three-check)
+		clock = GameClock.new(rules.timeControl), -- nil = casual (the turn timer)
 	}
 	state.history[positionKey(pos)] = 1
 	Offers.init(state)
@@ -673,6 +715,16 @@ end
 
 local function turnSeat(state): number?
 	return if isOver(state) then nil else sideToSeat(state.pos.side)
+end
+
+-- Right after your move you may offer a draw or ask to undo it (Offers).
+function Chess.getInterruptSeats(state): { number }
+	return Offers.interruptSeats(state, turnSeat(state))
+end
+
+-- One turn per move: draw offers and their answers don't restart the turn clock.
+function Chess.getTurnKey(state): any
+	return #state.undo
 end
 
 -- Puts the game back to before its last move (takebacks).
@@ -717,33 +769,72 @@ function Chess.getLegalMoves(state, seat: number): { any }
 	return out
 end
 
--- Moves a seat could queue as a premove while the other side thinks (Lichess style): any
--- move its pieces could make if it were its turn, including onto squares its own pieces
--- hold now (the opponent may capture there first). Checked against the real legal moves
--- when the turn comes. One entry per from/to; promotions queue as a queen.
+-- Moves a seat could queue as a premove while the other side thinks, the way Lichess's
+-- board does it: piece geometry only, ignoring what stands in the way (the opponent's move
+-- may clear the path or put a piece there to capture). Pawns may premove either diagonal.
+-- Castling can be queued while the king and rook are home and none of your own pieces
+-- stand between them; checks and attacked squares are only looked at when the turn comes,
+-- against the real legal moves. One entry per from/to; promotions queue as a queen.
 function Chess.premoves(fen: string, seat: number): { any }
 	local pos = Chess.fromFen(fen)
 	local side = seatToSide(seat)
-	pos.side = side
-	pos.ep = -1
+	local board = pos.board
 	local out, seen = {}, {}
+	local function add(from: number, to: number?)
+		if to == nil then
+			return
+		end
+		local key = from * 64 + to
+		if not seen[key] then
+			seen[key] = true
+			table.insert(out, { from = Chess.squareName(from), to = Chess.squareName(to) })
+		end
+	end
 	for from = 0, 63 do
-		local v = pos.board[from]
+		local v = board[from]
 		if v ~= 0 and (v > 0) == (side > 0) then
-			local trial = table.clone(pos)
-			trial.board = table.clone(pos.board)
-			for sq = 0, 63 do
-				local w = trial.board[sq]
-				if sq ~= from and w ~= 0 and (w > 0) == (side > 0) and math.abs(w) ~= KING and math.abs(w) ~= ROOK then
-					-- (kings and rooks stay, so castling can still be queued)
-					trial.board[sq] = -side * PAWN
+			local kind = math.abs(v)
+			local file, rank = from % 8, from // 8
+			if kind == PAWN then
+				add(from, sqAt(file, rank + side))
+				if rank == (if side == 1 then 1 else 6) then
+					add(from, sqAt(file, rank + 2 * side))
 				end
-			end
-			for _, m in pseudoMoves(trial) do
-				local key = m.from * 64 + m.to
-				if m.from == from and not seen[key] then
-					seen[key] = true
-					table.insert(out, { from = Chess.squareName(m.from), to = Chess.squareName(m.to) })
+				add(from, sqAt(file - 1, rank + side))
+				add(from, sqAt(file + 1, rank + side))
+			elseif kind == KNIGHT or kind == KING then
+				for _, d in (if kind == KNIGHT then KNIGHT_STEPS else KING_STEPS) do
+					add(from, sqAt(file + d[1], rank + d[2]))
+				end
+				if kind == KING then
+					local home = if side == 1 then 4 else 60
+					if from == home then
+						local function clear(a: number, b: number): boolean
+							for sq = math.min(a, b), math.max(a, b) do
+								local w = board[sq]
+								if w ~= 0 and (w > 0) == (side > 0) then
+									return false
+								end
+							end
+							return true
+						end
+						if bit32.btest(pos.castle, if side == 1 then WK else BK) and board[home + 3] == ROOK * side and clear(home + 1, home + 2) then
+							add(from, home + 2)
+						end
+						if bit32.btest(pos.castle, if side == 1 then WQ else BQ) and board[home - 4] == ROOK * side and clear(home - 3, home - 1) then
+							add(from, home - 2)
+						end
+					end
+				end
+			else
+				local dirs = if kind == BISHOP then DIAGONALS elseif kind == ROOK then STRAIGHTS else KING_STEPS
+				for _, d in dirs do
+					local f, r = file + d[1], rank + d[2]
+					while f >= 0 and f <= 7 and r >= 0 and r <= 7 do
+						add(from, r * 8 + f)
+						f += d[1]
+						r += d[2]
+					end
 				end
 			end
 		end
@@ -759,7 +850,14 @@ local function findMove(state, move: any): Move?
 	if not from or not to then
 		return nil
 	end
-	local promo = if type(move.promotion) == "string" then LETTER_TO_PIECE[string.lower(move.promotion)] else nil
+	-- The promotion field must be missing or one of q/r/b/n (it comes from the network).
+	local promo = nil
+	if move.promotion ~= nil then
+		promo = if type(move.promotion) == "string" then LETTER_TO_PIECE[move.promotion] else nil
+		if promo == nil or promo == PAWN or promo == KING then
+			return nil
+		end
+	end
 	for _, m in legalMoves(state.pos) do
 		if m.from == from and m.to == to then
 			if m.promo == nil then
@@ -793,14 +891,31 @@ end
 
 function Chess.applyMove(state, seat: number, move: any)
 	if Offers.isMove(move) then
-		if Offers.apply(state, seat, move, undoOne) == "draw" then
+		-- The side to move's clock keeps running through offers: settle it now.
+		local turn = turnSeat(state)
+		if state.clock and turn and GameClock.settle(state.clock, turn, move.at, #state.undo) then
+			Chess.flag(state, turn)
+			return
+		end
+		local accepted = Offers.apply(state, seat, move, undoOne, turn)
+		if accepted == "takeback" and state.clock then
+			GameClock.restart(state.clock, move.at)
+		end
+		if accepted == "draw" then
 			state.isDraw = true
 			state.reason = "Draw agreed"
+		elseif accepted == "abort" then
+			state.isDraw = true
+			state.reason = "Game aborted"
 		end
 		return
 	end
 	local pos = state.pos
 	local m = findMove(state, move) :: Move
+	if state.clock and GameClock.onMove(state.clock, seat, move.at, #state.undo) then
+		Chess.flag(state, seat) -- out of time before the move landed
+		return
+	end
 	table.insert(state.undo, {
 		fen = Chess.toFen(pos),
 		lastMove = state.lastMove,
@@ -850,6 +965,60 @@ function Chess.applyMove(state, seat: number, move: any)
 	end
 end
 
+-- Can this side (1 White, -1 Black) still mate at all? A lone king or king and one minor
+-- piece can't, so flagging against it is a draw (FIDE 6.9, chess.com, Lichess).
+local function canMate(board, side: number): boolean
+	local minors = 0
+	for sq = 0, 63 do
+		local v = board[sq] * side
+		if v == PAWN or v == ROOK or v == QUEEN then
+			return true
+		elseif v == KNIGHT or v == BISHOP then
+			minors += 1
+		end
+	end
+	return minors >= 2
+end
+
+-- `seat` ran out of time.
+function Chess.flag(state, seat: number)
+	if isOver(state) then
+		return
+	end
+	if state.clock then
+		state.clock.bank[seat] = 0
+	end
+	state.offer = nil
+	local other = 3 - seat
+	if canMate(state.pos.board, seatToSide(other)) then
+		state.winner = other
+		state.reason = "Time out"
+	else
+		state.isDraw = true
+		state.reason = "Time out, but no mating material"
+	end
+end
+
+-- The chess clock (only with a time control, and only once both sides have moved).
+function Chess.getTimer(state): { id: number, seconds: number }?
+	if isOver(state) then
+		return nil
+	end
+	return GameClock.timer(state.clock, #state.undo, turnSeat(state), state.offer ~= nil)
+end
+
+function Chess.onTimeout(state)
+	local turn = turnSeat(state)
+	if not turn or not state.clock then
+		return
+	end
+	if state.offer and GameClock.offerTimedOut(state.clock, turn) == "decline" then
+		state.offer = nil -- no answer in time: turned down
+		return
+	end
+	Chess.flag(state, turn)
+end
+
 function Chess.getResult(state): GameModule.Result?
 	if state.winner then
 		return { winners = { state.winner }, isDraw = false, reason = state.reason }
@@ -857,6 +1026,20 @@ function Chess.getResult(state): GameModule.Result?
 		return { winners = {}, isDraw = true, reason = state.reason }
 	end
 	return nil
+end
+
+local LEAD_VALUE = { 1, 3, 3, 5, 9, 0 }
+
+-- { white lead, black lead } in pawns (one of them is 0).
+function Chess.materialLead(board): { number }
+	local sum = 0
+	for sq = 0, 63 do
+		local v = board[sq]
+		if v ~= 0 then
+			sum += (if v > 0 then 1 else -1) * LEAD_VALUE[math.abs(v)]
+		end
+	end
+	return { math.max(0, sum), math.max(0, -sum) }
 end
 
 function Chess.getView(state, seat: number?): any
@@ -875,6 +1058,10 @@ function Chess.getView(state, seat: number?): any
 		captured = GameModule.copy(state.captured),
 		fen = Chess.toFen(pos),
 		checks = if state.threeCheck then table.clone(state.checks) else nil,
+		-- Material lead in pawns from what is on the board (so promotions count), as
+		-- chess.com and Lichess show it: lead[seat] is 0 unless that seat is ahead.
+		lead = Chess.materialLead(pos.board),
+		clock = GameClock.view(state.clock, #state.undo, turnSeat(state)),
 		-- Every earlier position, for stepping back through the move list:
 		-- past[i] is the board after move i (and that move's squares).
 		past = {},
@@ -894,8 +1081,10 @@ function Chess.getView(state, seat: number?): any
 end
 
 -- Bot ---------------------------------------------------------------------------
--- Negamax with alpha-beta, quiescence search on captures, MVV-LVA move ordering,
--- iterative deepening under a time budget. Material + piece-square tables.
+-- Negamax with alpha-beta, quiescence search on captures, a transposition table, killer
+-- moves and MVV-LVA ordering, iterative deepening under a time budget, repetition checks
+-- inside the search. Material + piece-square tables, an endgame king table and a mop-up
+-- term so won endings get converted.
 
 local VALUE = { 100, 320, 330, 500, 900, 0 }
 
@@ -963,53 +1152,218 @@ local PST = {
 	},
 }
 
+local KING_END = {
+	-50, -40, -30, -20, -20, -30, -40, -50,
+	-30, -20, -10, 0, 0, -10, -20, -30,
+	-30, -10, 20, 30, 30, 20, -10, -30,
+	-30, -10, 30, 40, 40, 30, -10, -30,
+	-30, -10, 30, 40, 40, 30, -10, -30,
+	-30, -10, 20, 30, 30, 20, -10, -30,
+	-30, -30, 0, 0, 0, 0, -30, -30,
+	-50, -30, -30, -30, -30, -30, -30, -50,
+}
+
+-- Non-pawn material (both sides) at or under which the kings walk to the centre.
+local ENDGAME_MATERIAL = 1300
+
 local function evaluate(pos: Pos): number
 	local score = 0
 	local board = pos.board
+	local nonPawn = 0
+	local whiteMat, blackMat, whitePawns, blackPawns = 0, 0, 0, 0
 	for sq = 0, 63 do
 		local v = board[sq]
 		if v ~= 0 then
-			local kind = math.abs(v)
-			local file, rank = sq % 8, sq // 8
 			if v > 0 then
-				score += VALUE[kind] + PST[kind][(7 - rank) * 8 + file + 1]
-			else
-				score -= VALUE[kind] + PST[kind][rank * 8 + file + 1]
+				if v ~= KING then
+					local value = VALUE[v]
+					whiteMat += value
+					if v == PAWN then
+						whitePawns += 1
+					else
+						nonPawn += value
+					end
+					score += value + PST[v][(7 - sq // 8) * 8 + sq % 8 + 1]
+				end
+			elseif v ~= -KING then
+				local kind = -v
+				local value = VALUE[kind]
+				blackMat += value
+				if kind == PAWN then
+					blackPawns += 1
+				else
+					nonPawn += value
+				end
+				score -= value + PST[kind][(sq // 8) * 8 + sq % 8 + 1]
 			end
 		end
+	end
+	local endgame = nonPawn <= ENDGAME_MATERIAL
+	local kingTable = if endgame then KING_END else PST[KING]
+	local wk, bk = pos.kings[1], pos.kings[-1]
+	score += kingTable[(7 - wk // 8) * 8 + wk % 8 + 1]
+	score -= kingTable[(bk // 8) * 8 + bk % 8 + 1]
+	-- Mop-up: when one side is clearly ahead and the other has no pawns left, drive the
+	-- lone king to the edge and bring your own king close, so K+Q v K and K+R v K get mated
+	-- instead of shuffled into a 50-move draw.
+	local diff = whiteMat - blackMat
+	if endgame and (diff >= 300 and blackPawns == 0 or diff <= -300 and whitePawns == 0) then
+		local winner = if diff > 0 then 1 else -1
+		local loserK = pos.kings[-winner]
+		local winnerK = pos.kings[winner]
+		local lf, lr = loserK % 8, loserK // 8
+		local centre = math.max(3 - lf, lf - 4) + math.max(3 - lr, lr - 4)
+		local apart = math.abs(lf - winnerK % 8) + math.abs(lr - winnerK // 8)
+		score += winner * (12 * centre + 5 * (14 - apart))
 	end
 	return score * pos.side
 end
 
-local function orderMoves(moves: { Move }, first: Move?)
-	local function key(m: Move): number
-		if first and m.from == first.from and m.to == first.to and m.promo == first.promo then
-			return 100000
+Chess.evaluate = evaluate
+
+-- Zobrist hashing for the transposition table and repetition checks: two independent
+-- 32-bit keys per position (a collision needs both to match).
+local zSeed = 0x2545F491
+local function rand32(): number
+	zSeed = bit32.bxor(zSeed, bit32.lshift(zSeed, 13))
+	zSeed = bit32.bxor(zSeed, bit32.rshift(zSeed, 17))
+	zSeed = bit32.bxor(zSeed, bit32.lshift(zSeed, 5))
+	return zSeed
+end
+local ZP1, ZP2 = {}, {}
+for code = -6, 6 do
+	ZP1[code + 7], ZP2[code + 7] = {}, {}
+	for sq = 0, 63 do
+		ZP1[code + 7][sq] = rand32()
+		ZP2[code + 7][sq] = rand32()
+	end
+end
+local ZSIDE1, ZSIDE2 = rand32(), rand32()
+local ZC1, ZC2, ZE1, ZE2 = {}, {}, {}, {}
+for c = 0, 15 do
+	ZC1[c], ZC2[c] = rand32(), rand32()
+end
+for f = 0, 7 do
+	ZE1[f], ZE2[f] = rand32(), rand32()
+end
+
+local function hashPos(pos: Pos): (number, number)
+	local h1, h2 = ZC1[pos.castle], ZC2[pos.castle]
+	local board = pos.board
+	for sq = 0, 63 do
+		local v = board[sq]
+		if v ~= 0 then
+			h1 = bit32.bxor(h1, ZP1[v + 7][sq])
+			h2 = bit32.bxor(h2, ZP2[v + 7][sq])
 		end
+	end
+	if pos.side == -1 then
+		h1, h2 = bit32.bxor(h1, ZSIDE1), bit32.bxor(h2, ZSIDE2)
+	end
+	if pos.ep >= 0 then
+		h1, h2 = bit32.bxor(h1, ZE1[pos.ep % 8]), bit32.bxor(h2, ZE2[pos.ep % 8])
+	end
+	return h1, h2
+end
+
+Chess.hashPos = hashPos
+
+local function moveCode(m: Move): number
+	return m.from * 64 + m.to + (m.promo or 0) * 4096
+end
+
+local function orderMoves(moves: { Move }, first: Move? | number?, killers: { number }?)
+	local firstCode = if type(first) == "table" then moveCode(first) else first
+	local k1 = killers and killers[1]
+	local k2 = killers and killers[2]
+	local keys = {}
+	for _, m in moves do
+		local code = moveCode(m)
 		local k = 0
-		if m.captured ~= 0 then
-			k += 10 * VALUE[math.abs(m.captured)] - VALUE[math.abs(m.piece)] + 1000
+		if code == firstCode then
+			k = 1000000
+		else
+			if m.captured ~= 0 then
+				k += 10 * VALUE[math.abs(m.captured)] - VALUE[math.abs(m.piece)] + 10000
+			end
+			if m.promo then
+				k += VALUE[m.promo] + 9000
+			end
+			if k == 0 then
+				if code == k1 then
+					k = 5000
+				elseif code == k2 then
+					k = 4900
+				end
+			end
 		end
-		if m.promo then
-			k += VALUE[m.promo]
-		end
-		return k
+		keys[m] = k
 	end
 	table.sort(moves, function(a, b)
-		return key(a) > key(b)
+		return keys[a] > keys[b]
 	end)
 end
 
 local MATE = 100000
 Chess.MATE = MATE
 
-type Search = { nodes: number, deadline: number, outOfTime: boolean }
+-- Transposition table (shared by every search on this machine; keyed by both hashes).
+local TT_EXACT, TT_LOWER, TT_UPPER = 0, 1, 2
+local ttCheck: { [number]: number } = {}
+local ttDepth: { [number]: number } = {}
+local ttScore: { [number]: number } = {}
+local ttFlag: { [number]: number } = {}
+local ttMove: { [number]: number } = {}
+local ttCount = 0
+local TT_MAX = 200000
+
+local function ttStore(h1: number, h2: number, depth: number, score: number, flag: number, move: number?, ply: number)
+	if ttCheck[h1] == nil then
+		ttCount += 1
+		if ttCount > TT_MAX then
+			ttCheck, ttDepth, ttScore, ttFlag, ttMove = {}, {}, {}, {}, {}
+			ttCount = 1
+		end
+	elseif ttCheck[h1] == h2 and ttDepth[h1] > depth then
+		return -- keep the deeper result
+	end
+	-- Mate scores are stored relative to this node, not the root.
+	if score > MATE - 1000 then
+		score += ply
+	elseif score < -MATE + 1000 then
+		score -= ply
+	end
+	ttCheck[h1], ttDepth[h1], ttScore[h1], ttFlag[h1], ttMove[h1] = h2, depth, score, flag, move or 0
+end
+
+type Search = {
+	nodes: number,
+	deadline: number,
+	maxNodes: number?,
+	tick: (() -> ())?,
+	outOfTime: boolean,
+	seen: { [number]: number }, -- positions in the game so far and on the current line (by h1)
+	killers: { [number]: { number } },
+}
+
+local function checkTime(s: Search)
+	if s.nodes % 64 == 0 then
+		if s.maxNodes then
+			if s.nodes >= s.maxNodes then
+				s.outOfTime = true
+			end
+		elseif os.clock() > s.deadline then
+			s.outOfTime = true
+		end
+		if s.tick and s.nodes % 512 == 0 then
+			s.tick()
+		end
+	end
+end
 
 local function quiesce(s: Search, pos: Pos, alpha: number, beta: number, depthLeft: number): number
 	s.nodes += 1
-	if s.nodes % 256 == 0 and os.clock() > s.deadline then
-		s.outOfTime = true
-	end
+	checkTime(s)
 	local standPat = evaluate(pos)
 	if standPat >= beta then
 		return beta
@@ -1020,10 +1374,15 @@ local function quiesce(s: Search, pos: Pos, alpha: number, beta: number, depthLe
 	if depthLeft <= 0 or s.outOfTime then
 		return alpha
 	end
-	local moves = legalMoves(pos, true)
+	local moves = pseudoMoves(pos, true)
 	orderMoves(moves)
+	local side = pos.side
 	for _, m in moves do
 		local undo = makeMove(pos, m)
+		if attacked(pos.board, pos.kings[side], -side) then
+			unmakeMove(pos, m, undo)
+			continue -- not legal: it leaves the king in check
+		end
 		local score = -quiesce(s, pos, -beta, -alpha, depthLeft - 1)
 		unmakeMove(pos, m, undo)
 		if score >= beta then
@@ -1038,58 +1397,150 @@ end
 
 local function search(s: Search, pos: Pos, depth: number, alpha: number, beta: number, ply: number): number
 	s.nodes += 1
-	if s.nodes % 256 == 0 and os.clock() > s.deadline then
-		s.outOfTime = true
-	end
+	checkTime(s)
 	if s.outOfTime then
 		return 0
 	end
 	if pos.halfmove >= 100 then
 		return 0
 	end
-	local moves = legalMoves(pos)
-	if #moves == 0 then
-		return if Chess.inCheck(pos) then -MATE + ply else 0
+	local h1, h2 = hashPos(pos)
+	-- A position already seen in the game or on this line: heading for a repetition draw.
+	if (s.seen[h1] or 0) > 0 then
+		return 0
 	end
+	local firstMove = nil
+	if ttCheck[h1] == h2 then
+		firstMove = ttMove[h1]
+		if ttDepth[h1] >= depth then
+			local score = ttScore[h1]
+			if score > MATE - 1000 then
+				score -= ply
+			elseif score < -MATE + 1000 then
+				score += ply
+			end
+			local flag = ttFlag[h1]
+			if flag == TT_EXACT then
+				return score
+			elseif flag == TT_LOWER and score >= beta then
+				return score
+			elseif flag == TT_UPPER and score <= alpha then
+				return score
+			end
+		end
+	end
+	local side = pos.side
+	local inCheck = attacked(pos.board, pos.kings[side], -side)
 	if depth <= 0 then
-		return quiesce(s, pos, alpha, beta, 4)
+		if not inCheck then
+			return quiesce(s, pos, alpha, beta, 4)
+		end
+		depth = 1 -- in check at the horizon: look one move further (finds mates)
 	end
-	orderMoves(moves)
+	local moves = pseudoMoves(pos)
+	local killers = s.killers[ply]
+	orderMoves(moves, firstMove, killers)
+	local alphaStart = alpha
+	local best, bestMove = -MATE - 1, nil
+	s.seen[h1] = (s.seen[h1] or 0) + 1
+	local index = 0
 	for _, m in moves do
 		local undo = makeMove(pos, m)
-		local score = -search(s, pos, depth - 1, -beta, -alpha, ply + 1)
+		if attacked(pos.board, pos.kings[side], -side) then
+			unmakeMove(pos, m, undo)
+			continue -- not legal: it leaves the king in check
+		end
+		index += 1
+		local score
+		if index == 1 then
+			score = -search(s, pos, depth - 1, -beta, -alpha, ply + 1)
+		else
+			-- Principal variation search with late move reductions: later quiet moves are
+			-- first checked shallower with a null window, and only searched fully if they
+			-- might beat the best so far.
+			local reduce = if depth >= 3 and index > 3 and m.captured == 0 and not m.promo and not inCheck then 1 else 0
+			score = -search(s, pos, depth - 1 - reduce, -alpha - 1, -alpha, ply + 1)
+			if score > alpha and not s.outOfTime then
+				score = -search(s, pos, depth - 1, -beta, -alpha, ply + 1)
+			end
+		end
 		unmakeMove(pos, m, undo)
-		if score >= beta then
-			return beta
+		if s.outOfTime then
+			break
+		end
+		if score > best then
+			best, bestMove = score, m
 		end
 		if score > alpha then
 			alpha = score
 		end
+		if alpha >= beta then
+			if m.captured == 0 and not m.promo then
+				local code = moveCode(m)
+				if not killers then
+					killers = {}
+					s.killers[ply] = killers
+				end
+				if killers[1] ~= code then
+					killers[2] = killers[1]
+					killers[1] = code
+				end
+			end
+			break
+		end
 	end
-	return alpha
+	s.seen[h1] -= 1
+	if s.outOfTime then
+		return 0
+	end
+	if index == 0 then
+		return if inCheck then -MATE + ply else 0 -- checkmate or stalemate
+	end
+	local flag = if best <= alphaStart then TT_UPPER elseif best >= beta then TT_LOWER else TT_EXACT
+	ttStore(h1, h2, depth, best, flag, if bestMove then moveCode(bestMove) else nil, ply)
+	return best
 end
 
 -- seconds caps the search: it runs on the server in one go, so every table on the server
 -- waits while a bot thinks. Keep it well under a second.
+-- blunder: chance that an easy bot just plays any move that doesn't lose at once, like a
+-- beginner who misses things.
 local LEVELS = {
-	easy = { depth = 1, seconds = 0.08, slack = 120 },
+	easy = { depth = 1, seconds = 0.08, slack = 120, blunder = 0.15 },
 	medium = { depth = 3, seconds = 0.25, slack = 10 },
-	hard = { depth = 6, seconds = 0.45, slack = 0 },
+	hard = { depth = 12, seconds = 0.45, slack = 0 },
+}
+Chess.LEVELS = LEVELS
+
+export type RankOptions = {
+	seen: { [number]: number }?, -- earlier positions of the game (hashPos h1 -> count)
+	nodes: number?, -- stop after this many nodes instead of after `seconds`
+	tick: (() -> ())?, -- called every few hundred nodes (the review yields here)
 }
 
 -- Scores every legal move for the side to move, best first.
 -- With exact = false only the best move's score is exact (others are just "worse"),
 -- which is much faster. Easy bots need exact scores to pick a "close enough" move.
-function Chess.rankMoves(pos: Pos, maxDepth: number, seconds: number, exact: boolean?): { { move: Move, score: number } }
+function Chess.rankMoves(pos: Pos, maxDepth: number, seconds: number, exact: boolean?, opts: RankOptions?): { { move: Move, score: number } }
 	local moves = legalMoves(pos)
-	local s: Search = { nodes = 0, deadline = os.clock() + seconds, outOfTime = false }
+	local s: Search = {
+		nodes = 0,
+		deadline = os.clock() + seconds,
+		maxNodes = opts and opts.nodes,
+		tick = opts and opts.tick,
+		outOfTime = false,
+		seen = if opts and opts.seen then table.clone(opts.seen) else {},
+		killers = {},
+	}
+	local rootH1 = hashPos(pos)
+	s.seen[rootH1] = (s.seen[rootH1] or 0) + 1
 	local ranked: { { move: Move, score: number } } = {}
 	for _, m in moves do
 		table.insert(ranked, { move = m, score = 0 })
 	end
 	local bestFirst: Move? = nil
 	for depth = 1, maxDepth do
-		orderMoves(moves, bestFirst)
+		orderMoves(moves, bestFirst, nil)
 		local current = {}
 		local alpha = -MATE - 1
 		for _, m in moves do
@@ -1137,44 +1588,50 @@ function Chess.rankMoves(pos: Pos, maxDepth: number, seconds: number, exact: boo
 	return ranked
 end
 
+-- The game's earlier positions since the last pawn move or capture, for repetition checks.
+local function seenPositions(state): { [number]: number }
+	local seen = {}
+	for i = #state.undo, 1, -1 do
+		local pos = Chess.fromFen(state.undo[i].fen)
+		local h1 = hashPos(pos)
+		seen[h1] = (seen[h1] or 0) + 1
+		if pos.halfmove == 0 then
+			break
+		end
+	end
+	return seen
+end
+
 function Chess.chooseBotMove(state, seat: number, rng: Random): any?
 	if state.offer and not isOver(state) then
 		if seat ~= Offers.answerer(state) then
 			return nil
 		end
 		-- Bots are good sports about takebacks. They take a draw when they aren't
-		-- winning: the asker is on move, so a positive score means the asker is ahead.
-		local accept = state.offer.kind == "takeback" or evaluate(state.pos) > -60
+		-- winning (the score is for the side on move, which may be either player).
+		local forBot = evaluate(state.pos) * (if seatToSide(seat) == state.pos.side then 1 else -1)
+		local accept = state.offer.kind == "takeback" or forBot < 60
 		return { type = "answer", accept = accept }
 	end
 	if isOver(state) or seatToSide(seat) ~= state.pos.side then
 		return nil
 	end
 	local level = LEVELS[state.botLevel] or LEVELS.medium
-	local ranked = Chess.rankMoves(state.pos, level.depth, level.seconds, level.slack > 0)
+	local ranked = Chess.rankMoves(state.pos, level.depth, level.seconds, level.slack > 0, { seen = seenPositions(state) })
 	if #ranked == 0 then
 		return nil
 	end
 	local best = ranked[1].score
-	-- When ahead, don't walk into a repeated position (a draw by repetition throws the
-	-- win away). Only the best score is exact, so re-rank shallowly with exact scores and
-	-- take the best new position that isn't much worse.
-	local function repeats(m: Move): boolean
-		local undo = makeMove(state.pos, m)
-		local seen = state.history[positionKey(state.pos)] or 0
-		unmakeMove(state.pos, m, undo)
-		return seen > 0
-	end
-	if best > 50 and best < MATE - 100 and repeats(ranked[1].move) then
-		local alt = Chess.rankMoves(state.pos, 2, 0.1, true)
-		local altBest = if alt[1] then alt[1].score else 0
-		for _, entry in alt do
-			if entry.score < altBest - 100 then
-				break
+	if level.blunder and rng:NextNumber() < level.blunder and best < MATE - 100 then
+		-- A beginner's slip: any move that doesn't get mated or hang the game at once.
+		local pool = {}
+		for _, entry in ranked do
+			if entry.score > -MATE + 100 then
+				table.insert(pool, entry.move)
 			end
-			if not repeats(entry.move) then
-				return toWire(entry.move)
-			end
+		end
+		if #pool > 0 then
+			return toWire(pool[rng:NextInteger(1, #pool)])
 		end
 	end
 	local pool = {}

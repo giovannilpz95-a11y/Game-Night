@@ -60,6 +60,11 @@
 	      timed-out seat's turn played at once (while that seat stays active), instead
 	      of one move per clock.
 
+	  clock = true
+	      Chess clocks (shared/GameClock): Match.submitMove stamps every move with
+	      move.at = server time in seconds (overwriting the client's), so the game can
+	      take the time used off the mover's bank. Pair it with getTimer/onTimeout.
+
 	  turnClock = true
 	      For games whose getTimer is really a per-turn clock (Conquest): a person who
 	      makes no move before it runs out counts as timed out, like the AFK clock.
