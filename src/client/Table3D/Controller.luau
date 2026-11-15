@@ -25,6 +25,7 @@ local KeyPick = require(script.Parent.Parent.UI.KeyPick)
 local Hotkeys = require(script.Parent.Parent.UI.Hotkeys)
 local Lift = require(script.Parent.Lift)
 local SceneTap = require(script.Parent.SceneTap)
+local SeatLabels = require(script.Parent.SeatLabels)
 local Audio = require(script.Parent.Parent.Audio)
 local TweenService = game:GetService("TweenService")
 local SeatView = require(ReplicatedStorage.Shared.SeatView)
@@ -1353,6 +1354,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		setSnapshot = function(newSnapshot: any, use3D: boolean)
 			local newMatch = newSnapshot == nil or snapshot == nil or newSnapshot.matchId ~= snapshot.matchId
 			snapshot = newSnapshot
+			SeatLabels.setSeat(if snapshot then snapshot.yourSeat else nil)
 			if newMatch then
 				wasMine = false
 				FreeLook.recenter(true)

@@ -405,7 +405,7 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 				end
 			end
 			table.insert(lines, `{nameOf(show.winner)} +{show.points}` .. (if show.doubled then " (spade upcard: doubled)" else ""))
-			local title = if show.kind == "bigGin" then `{nameOf(show.knocker)} went Big Gin!` elseif show.kind == "gin" then `{nameOf(show.knocker)} went Gin!` elseif show.kind == "undercut" then `Undercut! {nameOf(show.winner)} wins the hand` else `{nameOf(show.knocker)} knocked`
+			local title = if show.kind == "bigGin" then `{nameOf(show.knocker)} went Big Gin!` elseif show.kind == "gin" then `{nameOf(show.knocker)} went Gin!` elseif show.kind == "undercut" then `Undercut! {nameOf(show.winner)} {if show.winner == snapshot.yourSeat then "win" else "wins"} the hand` else `{nameOf(show.knocker)} knocked`
 			CardTable.notice(ui, title, lines, if show.kind == "knock" then nil else Theme.Good)
 		else
 			CardTable.notice(ui, nil)

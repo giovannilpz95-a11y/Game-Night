@@ -12,7 +12,7 @@ function SlapStack.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 	local history = Cards.pileHistory()
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
 		for seat, count in view.pileCounts or {} do
-			Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 0.9), count, true)
+			Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 0.9), count, true, false, seat)
 		end
 		local said = view.lastAction
 		if view.finalBeat then
