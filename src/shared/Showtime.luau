@@ -32,6 +32,7 @@ Showtime.Fx = {
 	bubbles = { { 150, 220, 255 }, { 220, 250, 255 } },
 	frost = { { 235, 245, 255 }, { 170, 215, 255 }, { 255, 255, 255 } },
 	fireworks = { { 255, 80, 90 }, { 255, 210, 70 }, { 90, 200, 255 }, { 200, 120, 255 } },
+	lanterns = { { 255, 170, 70 }, { 255, 110, 60 }, { 255, 220, 120 }, { 160, 215, 255 } },
 }
 
 -- Order matters: the shop lists them in this order, and the first free one is the default.
@@ -51,6 +52,8 @@ Showtime.Poses = {
 	{ id = "pose_warmhands", name = "Warm Hands", icon = "🧤", blurb = "Shiver, then blow on your hands", fx = "frost" },
 	{ id = "pose_countdown", name = "Countdown", icon = "🕛", blurb = "Count down three, two, one, then jump and cheer", fx = "fireworks" },
 	{ id = "pose_popper", name = "Party Popper", icon = "🎉", blurb = "Aim the popper, pull, confetti everywhere", fx = "confetti" },
+	{ id = "pose_icesculptor", name = "Ice Sculptor", icon = "🔨", blurb = "Chip, chip, chip, then step back and admire", fx = "frost" },
+	{ id = "pose_ringtoss", name = "Ring Toss", icon = "🎯", blurb = "Toss, toss, ringer! Then a fist pump", fx = "lanterns" },
 	{ id = "pose_peace", name = "Peace Out", icon = "✌️", blurb = "Peace sign and a head tilt", fx = "stars" },
 	{ id = "pose_superstar", name = "Superstar", icon = "🌟", blurb = "Crouch, then point to the sky", fx = "stars" },
 	{ id = "pose_cool", name = "Too Cool", icon = "😎", blurb = "Arms crossed, leaning back", fx = "disco" },
@@ -86,6 +89,7 @@ Showtime.Dances = {
 	{ id = "win_showstopper", name = "Showstopper", icon = "🎭", blurb = "Kick line, jazz hands, take a bow", fx = "gold" },
 	{ id = "win_iceskate", name = "Ice Skater", icon = "⛸️", blurb = "Glide, glide, double spin, arabesque", fx = "frost" },
 	{ id = "win_grandfinale", name = "Grand Finale", icon = "🎆", blurb = "Ball drop crouch, burst up, throw fireworks, spin", fx = "fireworks" },
+	{ id = "win_toboggan", name = "Toboggan Run", icon = "🛷", blurb = "Tuck in, lean through the turns, jump off and spin", fx = "lanterns" },
 } :: { Move }
 
 local byId: { [string]: Move } = {}

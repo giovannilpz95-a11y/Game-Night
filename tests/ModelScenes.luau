@@ -126,6 +126,12 @@ function Scenes.lobby(): { Scene }
 	return { { name = "Lobby room", root = lobby } }
 end
 
+-- House rules that change what a table board draws (Conquest's fog clouds and capital
+-- keeps): each gets one more mid-game scene with them on.
+local MODES = {
+	Conquest = { fog = true, capitals = true, missions = true },
+}
+
 -- Every game with a table scene, early (a few bot moves in) and late (or over).
 function Scenes.games(only: string?): { Scene }
 	local out = {}
@@ -142,14 +148,18 @@ function Scenes.games(only: string?): { Scene }
 		end
 		local rules = require(rulesModule)
 		local players = math.clamp(4, entry.minSeats or 2, entry.maxSeats or 4)
-		for _, stage in { { label = "mid-game", events = 12 }, { label = "late", events = 300 } } do
+		local stages = { { label = "mid-game", events = 12 }, { label = "late", events = 300 } }
+		if MODES[entry.id] then
+			table.insert(stages, { label = "house rules", events = 12, rules = MODES[entry.id] })
+		end
+		for _, stage in stages do
 			local shape = if players > 4 then "Round8" else "Square4"
 			local model = furnished(shape, Vector3.zero)
 			local anchor = Builder.anchorPosition(model)
 			local boardCF = CFrame.lookAt(anchor, anchor - Vector3.zAxis)
 			local board = require(boardModule).create(boardCF, model, layoutFor(model, boardCF, players))
 			-- Easy bots: the scene only needs a plausible position, and hard chess bots are slow.
-			local report = BotSim(rules, { seats = players, levels = "easy", seed = 7, maxEvents = stage.events })
+			local report = BotSim(rules, { seats = players, levels = "easy", seed = 7, maxEvents = stage.events, options = if stage.rules then { rules = stage.rules } else nil })
 			if board and board.update then
 				board.update(snapshotOf(rules, report.state, players).view, snapshotOf(rules, report.state, players))
 			end

@@ -468,6 +468,10 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		for _, note in view.notes do
 			known[note.card] = note.by
 		end
+		-- Leftover cards lie face up for everyone: nobody has them (0 = the table).
+		for _, id in view.leftover or {} do
+			known[id] = 0
+		end
 		-- Public: seats that couldn't disprove a suggestion hold none of its cards.
 		local lacks: { [number]: { [number]: boolean } } = {}
 		for _, pair in view.lacks or {} do
@@ -498,6 +502,14 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				LayoutOrder = order,
 				Parent = notes,
 			})
+		end
+		if view.leftover and #view.leftover > 0 then
+			local names = {}
+			for _, id in view.leftover do
+				table.insert(names, Rules.cards[id].name)
+			end
+			order += 1
+			text(notes, `Face up on the table (not in the case file): {table.concat(names, ", ")}`, order, { TextColor3 = Theme.SubText, TextSize = 12 })
 		end
 		-- Header: each player's initial in their color.
 		local head = row(24)
@@ -546,7 +558,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				}, { Kit.corner(6) })
 				local card = Rules.cards[id]
 				local name = if card.category == "item" then `{ITEM_ICONS[card.index]} {card.name}` else card.name
-				local shown = if by == me and me ~= nil then `{name} (yours)` else name
+				local shown = if by == me and me ~= nil then `{name} (yours)` elseif by == 0 then `{name} (face up)` else name
 				-- Crossed off like the paper notepad once you know someone holds it.
 				Kit.label(if cleared then `<s>{shown}</s>` else shown, {
 					RichText = true,

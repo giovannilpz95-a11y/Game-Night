@@ -9,6 +9,8 @@ local Config = {
 	MaxSeats = 8, -- hard cap on seats at any table (players + bots)
 	BotMoveDelay = 1.2, -- seconds a bot "thinks" before moving
 	TurnSeconds = 45, -- a player who takes longer has a bot move for them
+	AwayAfterTimeouts = 2, -- timeouts in a row before a player is marked away (bot-speed safe moves)
+	DraftSeconds = 60, -- a player drafting a trade gets this much clock, once per turn
 	FirstTurnGrace = 30, -- extra seconds on each player's first turn (time to read how to play)
 	MaxTypedText = 60, -- longest typed guess the server will filter
 

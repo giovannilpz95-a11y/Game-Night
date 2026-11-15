@@ -2128,6 +2128,25 @@ function Hexlands.chooseBotMove(state: any, seat: number, rng: any): any?
 	return nil
 end
 
+-- A person's clock ran out (or they're away): finish their turn the way Colonist does.
+-- Roll, discard, move the Bandit, turn trades down (or cancel their own), end the turn.
+-- Never build, buy, play cards or trade with their hand. Set-up spots still get placed.
+function Hexlands.chooseAfkMove(state: any, seat: number, rng: any): any?
+	local phase = state.phase
+	if phase == "setup" or phase == "bandit" or phase == "roads" then
+		return Hexlands.chooseBotMove(state, seat, rng)
+	elseif phase == "discard" then
+		return Hexlands.getLegalMoves(state, seat)[1]
+	elseif phase == "trade" then
+		return { kind = if seat == state.trade.from then "cancel" else "reject" }
+	elseif phase == "roll" then
+		return { kind = "roll" }
+	elseif phase == "main" then
+		return { kind = "endTurn" }
+	end
+	return nil
+end
+
 -- Stats for the profile (see shared/StatsCatalog.luau).
 function Hexlands.getMatchStats(state: any): { [number]: { [string]: number } }
 	local out = {}
