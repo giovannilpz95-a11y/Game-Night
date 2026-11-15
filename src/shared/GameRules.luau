@@ -25,12 +25,13 @@ rules.TicTacToe = {
 	goal = "Get three of your marks in a row: across, down or diagonal.",
 	card = {
 		"Tap an empty square to place your mark.",
-		"You only keep 3 marks. Placing a 4th removes your oldest one.",
-		"The mark about to vanish fades the turn before, so plan ahead.",
+		"You only keep 3 marks: placing a 4th removes your oldest (it fades the turn before).",
+		"With Vanishing marks off it's the classic game: marks stay, and it can be a draw.",
 	},
 	sections = {
-		{ title = "Your turn", lines = { "Tap any empty square.", "Once you have 3 marks, your oldest one disappears when you place a new one. The board never fills up, so there are no ties." } },
+		{ title = "Your turn", lines = { "Tap any empty square. You can't place on your fading mark's square: it's still taken.", "Once you have 3 marks, your oldest one disappears when you place a new one. The board never fills up, so there are no ties." } },
 		{ title = "Winning", lines = { "Three in a row wins straight away.", "A very long game (60 moves) ends in a draw." } },
+		{ title = "Classic (Vanishing marks off)", lines = { "Marks stay where they are.", "As soon as no line can be made by either player, it's a draw." } },
 	},
 }
 
@@ -43,6 +44,7 @@ rules.FourInARow = {
 	sections = {
 		{ title = "Your turn", lines = { "Drop one disc into any column that isn't full." } },
 		{ title = "Winning", lines = { "Four in a row in any direction wins.", "If the grid fills up with no four, it's a draw." } },
+		{ title = "Pop Out (house rule)", lines = { "On your turn you may instead pull one of your own discs out of the bottom row. Everything above it drops down one.", "If a pop makes four for both players, the one who popped wins.", "A full grid isn't a draw: you can still pop." } },
 		{ title = "Tip", lines = { "The middle column is part of the most lines. Start there." } },
 	},
 }
@@ -143,12 +145,12 @@ rules.WordTiles = {
 	sections = {
 		{ title = "Your turn", lines = { "Place 1-7 tiles in one row or column with no gaps, touching the tiles already down.", "Every word you make (the main one and any crossing ones) must be a real word.", "Or swap tiles with the bag (needs 7+ in the bag), or pass." } },
 		{ title = "Scoring", lines = { "Add up the letter values. A letter square multiplies that letter; a word square multiplies the whole word.", "Squares only count the turn you cover them.", "Use all 7 tiles in one turn for 50 bonus points.", "Blank tiles can be any letter and score 0." } },
-		{ title = "Game end", lines = { "When someone plays their last tile and the bag is empty, they get the points left on everyone else's racks.", "Too many turns in a row without points also ends it. Top score wins." } },
+		{ title = "Game end", lines = { "When someone plays their last tile and the bag is empty, they get the points left on everyone else's racks, and everyone else loses theirs.", "Six turns in a row without points (eight with 4 players) also end it, and everyone loses what's left on their rack.", "Top score wins. A tie goes to whoever was ahead before the leftover tiles were counted.", "If your turn timer runs out, you pass." } },
 	},
 }
 
 rules.Hexlands = {
-	goal = "Be the first to reach 8 points on your own turn.",
+	goal = "Be the first to reach the points target (8, or 10 classic; the table shows it) on your own turn.",
 	card = {
 		"Roll the dice: every hex with that number pays the camps and towns around it.",
 		"Spend resources to build roads, camps (1 point) and towns (2 points).",
@@ -156,21 +158,34 @@ rules.Hexlands = {
 	},
 	sections = {
 		{ title = "Setup", lines = { "Everyone places two camps and two roads, in snake order. Your second camp pays one card for each hex around it." } },
-		{ title = "Your turn", lines = { "Roll. Each hex with that number pays its corners: 1 card per camp, 2 per town.", "Then trade and build as much as you like, and end your turn." } },
+		{ title = "Your turn", lines = {
+			"You may play one action card before you roll.",
+			"Roll. Each hex with that number pays its corners: 1 card per camp, 2 per town.",
+			"Then trade and build as much as you like, and end your turn. The clock is for the whole turn.",
+			"The bank has 19 of each resource. If it can't pay everyone a resource, nobody gets that one (unless only one player is owed).",
+		} },
 		{ title = "Trading", lines = {
 			"Offer a trade to everyone (or one player): what you give and what you want. Up to 3 offers a turn.",
-			"Each player says yes, no, or sends a counter-offer. You pick who to trade with, or call it off.",
-			"The bank trades 4 of one resource for 1 of any other; harbors make it 3:1 or 2:1.",
+			"Each player says yes, no, or sends a counter-offer. Once someone says yes the rest have 8 seconds. You pick who to trade with, or call it off.",
+			"The bank trades 4 of one resource for 1 of any other. A harbor (3:1, or 2:1 for one resource) works once you have a camp or town on one of its two corners.",
 		} },
 		{ title = "Costs", lines = {
 			"Road: Lumber + Clay.",
 			"Camp: Lumber + Clay + Wool + Grain. Must be on your road, two corners from any other camp.",
 			"Town: 2 Grain + 3 Stone. Upgrades one of your camps.",
 			"Action card: Wool + Grain + Stone.",
+			"Each player has 15 roads, 5 camps and 4 towns.",
 		} },
-		{ title = "Rolling a 7", lines = { "Nothing pays. Anyone holding more than 7 cards discards half.", "The roller moves the Bandit (that hex stops paying) and steals a card from someone next to it." } },
+		{ title = "Rolling a 7", lines = {
+			"Nothing pays. Anyone holding more than the safe hand (7 cards, or 9 with that house rule) discards half.",
+			"The roller moves the Bandit (that hex stops paying) and steals a card from someone next to it.",
+		} },
 		{ title = "Action cards", lines = { "Guard moves the Bandit. Monument is a hidden point. Road Crew builds 2 free roads. Harvest takes any 2 cards. Hoard takes everyone's cards of one resource.", "Play one per turn, not on the turn you bought it." } },
-		{ title = "Points", lines = { "Camp 1, town 2, Monument 1.", "Longest Road (5+ roads) and Biggest Guard (3+ Guards played) are worth 2 each.", "After the round limit the most points wins." } },
+		{ title = "Points", lines = {
+			"Camp 1, town 2, Monument 1.",
+			"Longest Road (5+ roads) and Biggest Guard (3+ Guards played) are worth 2 each. A tie keeps them with whoever had them first.",
+			"After the round limit (40 rounds with 2 players, 27 with 3, 20 with 4) the most points wins; a tie goes to more towns, then Longest Road, then Biggest Guard.",
+		} },
 	},
 }
 
@@ -228,9 +243,29 @@ rules.TriviaNight = {
 		"Keep a streak of right answers going for bonus points.",
 	},
 	sections = {
-		{ title = "Each question", lines = { "Pick one of four answers before the clock runs out.", "Then the right answer and the points are shown." } },
-		{ title = "Scoring", lines = { "A right answer scores 500 to 1000: the faster you answer, the more you get.", "Streaks of right answers add a bonus.", "After each question you see your place on the scoreboard." } },
-		{ title = "Winning", lines = { "Highest score after the last question wins. Ties share the win." } },
+		{
+			title = "Each question",
+			lines = {
+				"Pick an answer before the clock runs out: four choices, or True / False.",
+				"In Table view, tap one of your colored answer pads on the table or a button at the bottom.",
+				"Then the right answer, how many picked each one and the points are shown.",
+				"Questions start easy and get harder as the game goes on.",
+			},
+		},
+		{
+			title = "Categories",
+			lines = { "Every 3 questions everyone votes for the next category. Votes are public; a tie is settled at random." },
+		},
+		{
+			title = "Scoring",
+			lines = {
+				"A right answer scores 500 to 1000: the faster you answer, the more you get.",
+				"A streak of right answers adds +100 for 2 in a row, +200 for 3, up to +300.",
+				"With the \"Wrong answers cost\" house rule, a wrong answer loses 250 points (no answer loses nothing).",
+				"Points show at the reveal, then your place on the scoreboard.",
+			},
+		},
+		{ title = "Winning", lines = { "Highest score after the last question wins. A tie goes to whoever was faster over their right answers." } },
 	},
 }
 
@@ -250,7 +285,7 @@ rules.Werewolf = {
 				"🔮 Seer: each night, learn whether one player is a werewolf.",
 				"🛡️ Guardian: each night, shield one player (you can shield yourself, but not the same player two nights running).",
 				"🏹 Hunter (6+ players): when you go out, take one player down with you.",
-				"🧪 Witch (7+ players): two potions, once each. Once the wolves have picked, see who they went for and save them; or poison anyone.",
+				"🧪 Witch (7+ players): two potions, once each. After the night picks, see who the wolves went for and save them, and/or poison another player (not yourself).",
 				"🧑‍🌾 Villager: no power at night, just a hunch. Your vote is your power.",
 			},
 		},
@@ -266,7 +301,8 @@ rules.Werewolf = {
 			title = "Day",
 			lines = {
 				"See who was caught, then talk. Make one statement: suspect someone, claim the Seer saw something, or pass.",
-				"The day ends early once everyone has spoken.",
+				"The day ends once everyone has spoken, but with two or more players it lasts at least 20 seconds so the talk isn't cut short.",
+				"Tap \"Log\" any time for the village log: who went out, when and how, and every day's statements and votes.",
 			},
 		},
 		{
@@ -274,7 +310,7 @@ rules.Werewolf = {
 			lines = {
 				"Vote a player out or skip. Votes are public.",
 				"The player with the most votes is out, unless there's a tie or more skips than votes for them.",
-				"Whoever is voted out gets a few seconds for last words.",
+				"Whoever is voted out gets 20 seconds for last words.",
 				"Players who are out can only chat with each other until the game ends.",
 			},
 		},

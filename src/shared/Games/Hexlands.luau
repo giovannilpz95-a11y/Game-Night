@@ -62,6 +62,12 @@ Hexlands.BANK_EACH = 19
 Hexlands.HAND_LIMIT = 7 -- more than this when a 7 is rolled: discard half
 Hexlands.TRADES_PER_TURN = 3
 Hexlands.PIECES = { road = 15, camp = 5, town = 4 }
+Hexlands.LOG_SIZE = 50 -- the game log the table can scroll back through
+Hexlands.TRADE_SECONDS = 20 -- to answer an offer
+Hexlands.HURRY_SECONDS = 8 -- left for the rest once someone says yes (or only people are left to a bot's offer)
+Hexlands.PICK_SECONDS = 12 -- for the offerer to pick, once the answer clock runs out with a yes
+Hexlands.BOT_OFFERS_PER_TURN = 2
+Hexlands.DUEL_TARGET = 10
 local MOVE_LIMIT = 6000
 
 -- Resources in display order. `key` is internal; `name` is what players see.
@@ -251,7 +257,7 @@ end
 -- `target` is a second seat the client names after the text ("took a card from Ava").
 local function log(state: any, seat: number?, text: string, target: number?)
 	table.insert(state.log, { seat = seat, text = text, target = target })
-	while #state.log > 8 do
+	while #state.log > Hexlands.LOG_SIZE do
 		table.remove(state.log, 1)
 	end
 end
@@ -293,7 +299,111 @@ end
 
 -- Map ---------------------------------------------------------------------------
 
-local function makeMap(rng: any): ({ any }, { any })
+-- Number tokens in the classic spiral order (skipping the dunes), and the hexes in spiral
+-- order from each of the 6 outer corners: round the coast, then the middle ring, then
+-- the centre.
+local SPIRAL_NUMBERS = { 5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11 }
+local spiralOrders: { { number } } = {}
+do
+	local function ring(hex: any): number
+		return math.max(math.abs(hex.q), math.abs(hex.r), math.abs(hex.q + hex.r))
+	end
+	local function angleOf(hex: any): number
+		return math.atan2(hex.y, hex.x)
+	end
+	local outer, middle, centre = {}, {}, nil
+	for h, hex in hexes do
+		local n = ring(hex)
+		if n == 2 then
+			table.insert(outer, h)
+		elseif n == 1 then
+			table.insert(middle, h)
+		else
+			centre = h
+		end
+	end
+	local function byAngle(a: number, b: number): boolean
+		return angleOf(hexes[a]) < angleOf(hexes[b])
+	end
+	table.sort(outer, byAngle)
+	table.sort(middle, byAngle)
+	for i, h in outer do
+		local hex = hexes[h]
+		local isCorner = (hex.q == 0 or hex.r == 0 or hex.q + hex.r == 0)
+		if isCorner then
+			local order = {}
+			for k = 0, #outer - 1 do
+				table.insert(order, outer[(i - 1 + k) % #outer + 1])
+			end
+			-- The middle ring starts at the hex on the same side as the outer corner.
+			local start = 1
+			for j, m in middle do
+				local mh = hexes[m]
+				if mh.q * 2 == hex.q and mh.r * 2 == hex.r then
+					start = j
+				end
+			end
+			for k = 0, #middle - 1 do
+				table.insert(order, middle[(start - 1 + k) % #middle + 1])
+			end
+			table.insert(order, centre :: number)
+			table.insert(spiralOrders, order)
+		end
+	end
+end
+Hexlands.spiralOrders = spiralOrders
+
+-- Beginner island: a fixed, fair layout (lands in hex order, numbers by the spiral).
+Hexlands.BEGINNER_LANDS = {
+	"stone", "lumber", "stone",
+	"grain", "clay", "grain", "lumber",
+	"wool", "lumber", "dunes", "clay", "grain",
+	"clay", "grain", "lumber", "wool",
+	"wool", "stone", "wool",
+}
+Hexlands.BEGINNER_CORNER = 1
+
+-- How unfair a layout is: 6s and 8s next to each other count most, then equal numbers
+-- side by side, then a 2 next to a 12. 0 is a fair map.
+local function unfairness(tiles: { any }): number
+	local score = 0
+	for h, t in tiles do
+		for _, n in hexNeighbors[h] do
+			if n > h then
+				local a, b = t.number, tiles[n].number
+				if a > 0 and b > 0 then
+					if (a == 6 or a == 8) and (b == 6 or b == 8) then
+						score += 100
+					elseif a == b then
+						score += 10
+					elseif (a == 2 and b == 12) or (a == 12 and b == 2) then
+						score += 1
+					end
+				end
+			end
+		end
+	end
+	return score
+end
+Hexlands.unfairness = unfairness
+
+local function spiralTiles(lands: { string }, order: { number }): { any }
+	local tiles = {}
+	local i = 0
+	for _, h in order do
+		if lands[h] == "dunes" then
+			tiles[h] = { land = "dunes", number = 0 }
+		else
+			i += 1
+			tiles[h] = { land = lands[h], number = SPIRAL_NUMBERS[i] }
+		end
+	end
+	return tiles
+end
+
+-- mode: "random" (default: shuffled numbers, re-dealt until fair), "spiral" (shuffled
+-- lands, numbers laid in the spiral) or "beginner" (one fixed fair island).
+local function makeMap(rng: any, mode: any): ({ any }, { any })
 	local lands = {}
 	for _, pair in { { "lumber", 4 }, { "clay", 3 }, { "wool", 4 }, { "grain", 4 }, { "stone", 3 }, { "dunes", 1 } } do
 		for _ = 1, pair[2] do
@@ -301,33 +411,47 @@ local function makeMap(rng: any): ({ any }, { any })
 		end
 	end
 	local tiles
-	for _ = 1, 500 do
-		shuffle(lands, rng)
-		local numbers = { 2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12 }
-		shuffle(numbers, rng)
-		tiles = {}
-		local i = 0
-		for h = 1, #hexes do
-			if lands[h] == "dunes" then
-				tiles[h] = { land = "dunes", number = 0 }
-			else
-				i += 1
-				tiles[h] = { land = lands[h], number = numbers[i] }
+	if mode == "beginner" then
+		tiles = spiralTiles(Hexlands.BEGINNER_LANDS, spiralOrders[Hexlands.BEGINNER_CORNER])
+	elseif mode == "spiral" then
+		local best, bestScore = nil, math.huge
+		for _ = 1, 200 do
+			shuffle(lands, rng)
+			local candidate = spiralTiles(lands, spiralOrders[rng:NextInteger(1, #spiralOrders)])
+			local score = unfairness(candidate)
+			if score < bestScore then
+				best, bestScore = candidate, score
+			end
+			if score < 100 then
+				break -- the spiral spreads numbers by itself; only red numbers touching is redealt
 			end
 		end
-		local fair = true
-		for h, t in tiles do
-			if t.number == 6 or t.number == 8 then
-				for _, n in hexNeighbors[h] do
-					if tiles[n].number == 6 or tiles[n].number == 8 then
-						fair = false
-					end
+		tiles = best
+	else
+		local best, bestScore = nil, math.huge
+		for _ = 1, 600 do
+			shuffle(lands, rng)
+			local numbers = { 2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12 }
+			shuffle(numbers, rng)
+			local candidate = {}
+			local i = 0
+			for h = 1, #hexes do
+				if lands[h] == "dunes" then
+					candidate[h] = { land = "dunes", number = 0 }
+				else
+					i += 1
+					candidate[h] = { land = lands[h], number = numbers[i] }
 				end
 			end
+			local score = unfairness(candidate)
+			if score < bestScore then
+				best, bestScore = candidate, score
+			end
+			if score == 0 then
+				break
+			end
 		end
-		if fair then
-			break
-		end
+		tiles = best
 	end
 	local kinds = { "any", "any", "any", "any", "lumber", "clay", "wool", "grain", "stone" }
 	shuffle(kinds, rng)
@@ -341,7 +465,8 @@ end
 -- State ---------------------------------------------------------------------------
 
 function Hexlands.new(seatCount: number, options: any, rng: any)
-	local tiles, harbors = makeMap(rng)
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	local tiles, harbors = makeMap(rng, rules.map)
 	local bandit = 1
 	for h, t in tiles do
 		if t.land == "dunes" then
@@ -429,7 +554,6 @@ function Hexlands.new(seatCount: number, options: any, rng: any)
 		-- total has come up (the "dice stats" the big online versions show).
 		lastGain = nil, -- { turn, roll, gains = { ["seat"] = { [res] = n } }, hexes = { h } }
 		rollCounts = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, -- [total] for 2..12 (1 unused)
-		botOffered = false,
 		tradeId = 0,
 		target = Hexlands.TARGET_POINTS,
 		handLimit = Hexlands.HAND_LIMIT,
@@ -437,7 +561,6 @@ function Hexlands.new(seatCount: number, options: any, rng: any)
 		balancedDice = false,
 		diceDeck = nil, -- balancedDice: the dice pairs left, { { a, b } }
 	}
-	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	if type(rules.target) == "number" and rules.target >= 5 and rules.target <= 15 then
 		state.target = math.floor(rules.target)
 	end
@@ -446,6 +569,15 @@ function Hexlands.new(seatCount: number, options: any, rng: any)
 	end
 	state.friendly = rules.friendly == true
 	state.balancedDice = rules.balancedDice == true
+	-- Duel rules for 2 players, like ranked 1v1 online: a longer race, a bigger safe hand,
+	-- nobody gets robbed early, and dice that follow the odds.
+	if rules.duel == true and seatCount == 2 then
+		state.duel = true
+		state.target = math.max(state.target, Hexlands.DUEL_TARGET)
+		state.handLimit = math.max(state.handLimit, 9)
+		state.friendly = true
+		state.balancedDice = true
+	end
 	log(state, nil, "Place your first camp and road")
 	return state
 end
@@ -666,12 +798,42 @@ local function setupRoads(state: any): { number }
 	return out
 end
 
+-- Friendly Bandit: players with 2 public points or fewer can't be blocked or robbed.
+local function isProtected(state: any, seat: number): boolean
+	return state.friendly == true and publicPoints(state, seat) <= 2
+end
+
+-- Where `seat` may move the Bandit: any other hex, except (Friendly Bandit) hexes that
+-- touch a protected player. If that rules out every hex, any other hex will do.
+local function banditHexes(state: any, seat: number): { number }
+	local out, any = {}, {}
+	for h in hexes do
+		if h ~= state.bandit then
+			table.insert(any, h)
+			local blocked = false
+			if state.friendly then
+				for _, v in hexVertices[h] do
+					local owner = state.owner[v]
+					if owner and owner ~= seat and isProtected(state, owner) then
+						blocked = true
+					end
+				end
+			end
+			if not blocked then
+				table.insert(out, h)
+			end
+		end
+	end
+	return if #out > 0 then out else any
+end
+Hexlands.banditHexes = banditHexes
+
 local function banditVictims(state: any, seat: number, h: number): { number }
 	local out = {}
 	for _, v in hexVertices[h] do
 		local owner = state.owner[v]
 		if owner and owner ~= seat and not table.find(out, owner) and handSize(state.players[owner].hand) > 0
-			and not (state.friendly and publicPoints(state, owner) <= 2) then
+			and not isProtected(state, owner) then
 			table.insert(out, owner)
 		end
 	end
@@ -751,19 +913,42 @@ local function nextTurn(state: any)
 	state.dice = nil
 	state.cardPlayed = false
 	state.tradesThisTurn = 0
-	state.botOffered = false
 	if state.round > state.maxRounds then
-		local best, winners = -1, {}
+		-- Most points; a tie goes to more towns, then Longest Road, then Biggest Guard.
+		local function rank(seat: number): { number }
+			return {
+				points(state, seat),
+				Hexlands.PIECES.town - state.players[seat].towns,
+				if state.longestRoad == seat then 1 else 0,
+				if state.biggestGuard == seat then 1 else 0,
+			}
+		end
+		local function compare(a: { number }, b: { number }): number
+			for i = 1, #a do
+				if a[i] ~= b[i] then
+					return if a[i] > b[i] then 1 else -1
+				end
+			end
+			return 0
+		end
+		local best, winners = nil, {}
 		for seat = 1, state.seatCount do
-			local p = points(state, seat)
-			if p > best then
-				best, winners = p, { seat }
-			elseif p == best then
+			local r = rank(seat)
+			local c = if best then compare(r, best) else 1
+			if c > 0 then
+				best, winners = r, { seat }
+			elseif c == 0 then
 				table.insert(winners, seat)
 			end
 		end
+		local tied = 0
+		for seat = 1, state.seatCount do
+			if points(state, seat) == (best :: { number })[1] then
+				tied += 1
+			end
+		end
 		state.winner = winners
-		state.endReason = "Most points after the last round"
+		state.endReason = if tied > 1 and #winners == 1 then "Most points after the last round (tie-break)" else "Most points after the last round"
 		state.phase = "over"
 	end
 end
@@ -846,7 +1031,9 @@ function Hexlands.getActiveSeats(state: any): { number }
 				anyYes = true
 			end
 		end
-		if anyYes or #out == 0 then
+		-- A bot offerer waits for every answer (or the clock), so people get a fair chance.
+		local waits = state.bots[t.from] and #out > 0 and not t.picking
+		if (anyYes and not waits) or #out == 0 then
 			table.insert(out, t.from)
 		end
 		return out
@@ -919,6 +1106,9 @@ function Hexlands.validateMove(state: any, seat: number, move: any): (boolean, s
 		if h == state.bandit then
 			return false, "The Bandit has to move to a new hex"
 		end
+		if not table.find(banditHexes(state, seat), h) then
+			return false, "Friendly Bandit: that hex touches a player with 2 points or fewer"
+		end
 		local victims = banditVictims(state, seat, h)
 		if #victims > 0 then
 			if not table.find(victims, move.victim) then
@@ -989,6 +1179,9 @@ function Hexlands.validateMove(state: any, seat: number, move: any): (boolean, s
 			if not canPay(p.hand, get) then
 				return false, "You don't have those cards"
 			end
+			if not canPay(state.players[t.from].hand, give) then
+				return false, "They don't have those cards"
+			end
 			return true
 		end
 		return false, "Answer the trade"
@@ -1014,9 +1207,6 @@ function Hexlands.validateMove(state: any, seat: number, move: any): (boolean, s
 		local card = move.card
 		if type(card) ~= "string" or not Hexlands.cards[card] then
 			return false, "Bad card"
-		end
-		if phase == "roll" and card ~= "guard" then
-			return false, "Roll first (only Guards can be played before rolling)"
 		end
 		if state.cardPlayed then
 			return false, "One action card per turn"
@@ -1223,7 +1413,7 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 			hand[r] -= 1
 			p.hand[r] += 1
 			log(state, seat, "moved the Bandit and took a card from", victim)
-			state.lastSteal = { from = victim, to = seat, res = r, n = state.moves }
+			state.lastSteal = { from = victim, to = seat, res = r, n = state.moves, turn = state.turnNumber }
 		else
 			log(state, seat, "moved the Bandit")
 		end
@@ -1260,7 +1450,7 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 		end
 	elseif kind == "endTurn" or kind == "doneRoads" then
 		if kind == "doneRoads" then
-			state.phase = "main"
+			state.phase = state.roadsReturn or "main"
 		else
 			nextTurn(state)
 		end
@@ -1274,7 +1464,7 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 		p.roads -= 1
 		updateLongestRoad(state)
 		if state.phase == "roads" and (state.freeRoads <= 0 or p.roads <= 0 or #legalEdges(state, seat) == 0) then
-			state.phase = "main"
+			state.phase = state.roadsReturn or "main"
 		end
 	elseif kind == "camp" then
 		pay(state, seat, Hexlands.costs.camp)
@@ -1313,9 +1503,11 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 			startBandit(state, state.phase)
 		elseif card == "roadcrew" then
 			state.freeRoads = 2
+			state.roadsReturn = state.phase -- before the roll, back to rolling afterwards
 			state.phase = "roads"
 		elseif card == "harvest" then
-			for _, r in move.res do
+			-- Only the two picks (a crafted table with extra keys must not pay out more).
+			for _, r in { move.res[1], move.res[2] } do
 				p.hand[r] += 1
 				state.bank[r] -= 1
 			end
@@ -1377,6 +1569,12 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 				yes += 1
 			end
 		end
+		local pendingBots = 0
+		for _, other in Hexlands.tradeAsked(state) do
+			if t.answers[other] == 0 and state.bots[other] then
+				pendingBots += 1
+			end
+		end
 		if pending == 0 and yes == 0 then
 			state.trade = nil
 			state.phase = "main"
@@ -1386,6 +1584,12 @@ function Hexlands.applyMove(state: any, seat: number, move: any)
 		elseif pending == 0 or (kind ~= "reject" and t.to ~= 0) then
 			-- Everyone has answered: a fresh clock for the offerer to pick.
 			state.tradeId += 1
+			t.hurry = false
+			t.picking = true
+		elseif not t.hurry and (yes > 0 or (state.bots[t.from] and pendingBots == 0)) then
+			-- Someone's in (or only people are left to answer a bot): a short clock for the rest.
+			state.tradeId += 1
+			t.hurry = true
 		end
 	elseif kind == "confirm" then
 		local give, get = tradeTerms(state.trade, move.with)
@@ -1432,11 +1636,7 @@ local function options(state: any, seat: number?): any
 	elseif state.phase == "roads" then
 		out.edges = legalEdges(state, seat)
 	elseif state.phase == "bandit" then
-		for h in hexes do
-			if h ~= state.bandit then
-				table.insert(out.hexes, h)
-			end
-		end
+		out.hexes = banditHexes(state, seat)
 	elseif state.phase == "main" then
 		if p.roads > 0 and canPay(p.hand, Hexlands.costs.road) then
 			out.edges = legalEdges(state, seat)
@@ -1568,6 +1768,24 @@ function Hexlands.getView(state: any, seat: number?): any
 		-- end, so this matches the seat bar, which everyone sees.
 		if state.phase == "over" then
 			entry.points = points(state, s)
+			-- Where the points came from, for the end screen (Monuments revealed).
+			local camps, towns = 0, 0
+			for v, owner in state.owner do
+				if owner == s then
+					if state.town[v] then
+						towns += 1
+					else
+						camps += 1
+					end
+				end
+			end
+			entry.breakdown = {
+				camps = camps,
+				towns = towns,
+				road = state.longestRoad == s,
+				guard = state.biggestGuard == s,
+				monuments = monuments(state, s),
+			}
 		end
 		players[s] = entry
 	end
@@ -1597,10 +1815,12 @@ function Hexlands.getView(state: any, seat: number?): any
 				table.insert(counters, { seat = other, give = table.clone(c.give), get = table.clone(c.get) })
 			end
 		end
-		trade = { id = state.tradeId, from = t.from, to = t.to, give = table.clone(t.give), get = table.clone(t.get), answers = answers, counters = counters }
+		trade = { id = state.tradeId, from = t.from, to = t.to, give = table.clone(t.give), get = table.clone(t.get), answers = answers, counters = counters, picking = t.picking == true }
 	end
 	local steal = nil
-	if state.lastSteal and seat and (state.lastSteal.from == seat or state.lastSteal.to == seat) then
+	-- Only for the turn it happened, so the note doesn't hang around for the rest of the game.
+	local stolen = state.lastSteal
+	if stolen and seat and (stolen.from == seat or stolen.to == seat) and (stolen.turn == nil or stolen.turn == state.turnNumber) then
 		steal = table.clone(state.lastSteal)
 	end
 	local opt = options(state, seat)
@@ -1609,7 +1829,7 @@ function Hexlands.getView(state: any, seat: number?): any
 		for _, kind in CARD_ORDER do
 			canPlay[kind] = table.find(Hexlands.getActiveSeats(state), seat) ~= nil
 				and seat == state.turn
-				and (state.phase == "main" or (state.phase == "roll" and kind == "guard"))
+				and (state.phase == "main" or state.phase == "roll")
 				and playableCard(state, seat, kind)
 		end
 	end
@@ -1622,6 +1842,14 @@ function Hexlands.getView(state: any, seat: number?): any
 		target = state.target or Hexlands.TARGET_POINTS,
 		handLimit = state.handLimit or Hexlands.HAND_LIMIT,
 		friendly = state.friendly,
+		duel = state.duel == true,
+		protected = if state.friendly then (function()
+			local out = {}
+			for s = 1, state.seatCount do
+				out[s] = isProtected(state, s)
+			end
+			return out
+		end)() else nil,
 		tiles = GameModule.copy(state.tiles),
 		harbors = GameModule.copy(state.harbors),
 		bandit = state.bandit,
@@ -1668,22 +1896,52 @@ function Hexlands.getScores(state: any): { [number]: number }
 	return out
 end
 
--- A trade offer waits TRADE_SECONDS for an answer, then counts as turned down. Other
--- phases use the normal per-turn clock.
-Hexlands.TRADE_SECONDS = 20
+-- A trade offer waits TRADE_SECONDS for answers (HURRY_SECONDS once someone is in). When
+-- it runs out with a yes, the offerer gets PICK_SECONDS to choose; otherwise it's off.
+-- Other phases use the normal per-turn clock.
 function Hexlands.getTimer(state: any): any
-	if state.phase == "trade" then
-		return { id = state.tradeId, seconds = Hexlands.TRADE_SECONDS }
+	local t = state.trade
+	if state.phase == "trade" and t then
+		local seconds = if t.picking then Hexlands.PICK_SECONDS elseif t.hurry then Hexlands.HURRY_SECONDS else Hexlands.TRADE_SECONDS
+		return { id = state.tradeId, seconds = seconds }
 	end
 	return nil
 end
 
 function Hexlands.onTimeout(state: any)
-	if state.phase == "trade" then
+	local t = state.trade
+	if state.phase == "trade" and t then
+		local yes = false
+		for _, other in Hexlands.tradeAsked(state) do
+			local a = t.answers[other]
+			if a == 1 or a == 3 then
+				yes = true
+			elseif a == 0 then
+				t.answers[other] = 2 -- no answer counts as no
+			end
+		end
+		if yes and not t.picking then
+			t.picking = true
+			t.hurry = false
+			state.tradeId += 1
+			log(state, nil, "Answers are in: pick who to trade with")
+			return
+		end
 		state.trade = nil
 		state.phase = "main"
 		log(state, nil, "The trade offer ran out of time")
 	end
+end
+
+-- The AFK turn clock runs once per turn (and once per set-up step, and for the discards
+-- after a 7), so a slow player gets the whole clock for the turn, not per move.
+function Hexlands.getTurnKey(state: any): any
+	if state.phase == "setup" then
+		return `setup:{state.setupIndex}`
+	elseif state.phase == "discard" then
+		return `{state.turnNumber}:discard`
+	end
+	return state.turnNumber
 end
 
 function Hexlands.getBotDelay(state: any, seat: number, rng: any): number
@@ -1892,6 +2150,26 @@ local function bestRoad(state: any, seat: number, edgesToTry: { number }, rng: a
 	end, state.botLevel, rng)
 end
 
+-- What the other players probably hold, in total per resource, from public information
+-- only: each one's hand size spread by what their buildings produce.
+function Hexlands.guessHands(state: any, seat: number): { [string]: number }
+	local out = emptyHand()
+	for other, op in state.players do
+		if other ~= seat then
+			local size = handSize(op.hand)
+			local prod = production(state, other)
+			local total = 0
+			for _, r in RES do
+				total += prod[r]
+			end
+			for _, r in RES do
+				out[r] += if total > 0 then size * prod[r] / total else size / #RES
+			end
+		end
+	end
+	return out
+end
+
 local function chooseMain(state: any, seat: number, rng: any): any
 	local p = state.players[seat]
 	local hand = p.hand
@@ -1901,17 +2179,13 @@ local function chooseMain(state: any, seat: number, rng: any): any
 	-- Play an action card when it helps.
 	if not state.cardPlayed then
 		if playableCard(state, seat, "hoard") then
-			-- Name the resource the others hold most of.
+			-- Name the resource the others probably hold most of, from what everyone can
+			-- see: hand sizes and what their buildings produce (never their actual hands).
+			local guess = Hexlands.guessHands(state, seat)
 			local best, bestN = nil, 0
 			for _, r in RES do
-				local n = 0
-				for other, op in state.players do
-					if other ~= seat then
-						n += op.hand[r]
-					end
-				end
-				if n > bestN then
-					best, bestN = r, n
+				if guess[r] > bestN then
+					best, bestN = r, guess[r]
 				end
 			end
 			if best and bestN >= 3 then
@@ -1992,8 +2266,11 @@ local function chooseMain(state: any, seat: number, rng: any): any
 		end
 	end
 
-	-- Offer another player a 1-for-1 when one card short of a camp or town.
-	if not state.botOffered and state.tradesThisTurn < Hexlands.TRADES_PER_TURN and level ~= "easy" then
+	-- Offer the table a 1-for-1 when one card short of a camp or town (hard bots try a
+	-- 2-for-1 next if nobody bit).
+	local offers = state.tradesThisTurn
+	local maxOffers = if level == "hard" then Hexlands.BOT_OFFERS_PER_TURN else 1
+	if offers < maxOffers and state.tradesThisTurn < Hexlands.TRADES_PER_TURN and level ~= "easy" then
 		for _, goal in goals do
 			if missing(hand, goal) == 1 then
 				local want = nil
@@ -2002,26 +2279,18 @@ local function chooseMain(state: any, seat: number, rng: any): any
 						want = r
 					end
 				end
-				local spare = nil
+				local count = if offers >= 1 then 2 else 1
+				local spare, spareN = nil, 0
 				for _, r in RES do
-					if hand[r] - (goal[r] or 0) >= 1 and r ~= want then
-						spare = r
+					local extra = hand[r] - (goal[r] or 0)
+					if r ~= want and extra >= count and extra > spareN then
+						spare, spareN = r, extra
 					end
 				end
 				if want and spare then
-					local others = {}
-					for other, op in state.players do
-						if other ~= seat and op.hand[want] > 0 then
-							table.insert(others, other)
-						end
-					end
-					state.botOffered = true
-					if #others > 0 then
-						-- Like the online versions: medium and hard put it to the whole table
-						-- and trade with whoever says yes first.
-						local to = if level == "hard" or #others > 1 then 0 else others[1]
-						return { kind = "offer", to = to, give = { [spare] = 1 }, get = { [want] = 1 } }
-					end
+					-- Like the online versions: put it to the whole table (nobody's hand is
+					-- peeked at) and pick from whoever says yes.
+					return { kind = "offer", to = 0, give = { [spare] = count }, get = { [want] = 1 } }
 				end
 				break
 			end
@@ -2069,11 +2338,15 @@ function Hexlands.chooseBotMove(state: any, seat: number, rng: any): any?
 		local t = state.trade
 		local hand = state.players[seat].hand
 		if seat == t.from then
-			-- Our own offer: take the first plain yes; a counter only if it still helps.
+			-- Our own offer: a plain yes (people first, then bots); a counter only if it
+			-- still helps.
 			local before = handNeed(state, seat, hand)
-			for _, other in Hexlands.tradeAsked(state) do
-				if t.answers[other] == 1 and Hexlands.validateMove(state, seat, { kind = "confirm", with = other }) then
-					return { kind = "confirm", with = other }
+			for pass = 1, 2 do
+				for _, other in Hexlands.tradeAsked(state) do
+					local person = not state.bots[other]
+					if t.answers[other] == 1 and person == (pass == 1) and Hexlands.validateMove(state, seat, { kind = "confirm", with = other }) then
+						return { kind = "confirm", with = other }
+					end
 				end
 			end
 			for _, other in Hexlands.tradeAsked(state) do

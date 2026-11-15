@@ -239,13 +239,93 @@ return function(T)
 	T.test("too many scoreless turns end the game", function()
 		WordTiles.useDictionary(SMALL)
 		local s = setup({ { "a" }, { "e" } }, true)
+		s.scores = { 10, 10 }
 		for _ = 1, 6 do
 			local seat = s.turn
 			WordTiles.applyMove(s, seat, { kind = "pass" })
 		end
 		local result = WordTiles.getResult(s)
-		T.ok(result and result.isDraw, "a tie on -1 each")
-		T.eq(s.scores[1], -1)
+		T.ok(result and result.isDraw, "a tie on 9 each")
+		T.eq(s.scores[1], 9)
+	end)
+
+	T.test("a game still at 0-0 doesn't end on six passes", function()
+		WordTiles.useDictionary(SMALL)
+		local s = setup({ { "a" }, { "e" } }, true)
+		for _ = 1, 6 do
+			WordTiles.applyMove(s, s.turn, { kind = "pass" })
+		end
+		T.eq(WordTiles.getResult(s), nil, "keeps going")
+		for _ = 1, 12 do
+			WordTiles.applyMove(s, s.turn, { kind = "pass" })
+		end
+		T.ok(WordTiles.getResult(s), "but not forever")
+	end)
+
+	T.test("a tie goes to whoever led before the leftover tiles", function()
+		WordTiles.useDictionary(SMALL)
+		local s = setup({ { "c", "a", "t", "s" }, { "b" } }, true)
+		s.scores = { 100, 97 }
+		for _ = 1, 6 do
+			WordTiles.applyMove(s, s.turn, { kind = "pass" })
+		end
+		local result = WordTiles.getResult(s) :: any
+		T.eq(s.scores[1], 94)
+		T.eq(s.scores[2], 94)
+		T.eq(#result.winners, 1)
+		T.eq(result.winners[1], 1)
+		T.eq(result.isDraw, false)
+	end)
+
+	T.test("a timed-out person passes; nobody plays a word for them", function()
+		WordTiles.useDictionary(SMALL)
+		local s = setup({ { "c", "a", "t" }, { "b" } })
+		local move = WordTiles.chooseAfkMove(s, 1, Random.new(1))
+		T.eq(move.kind, "pass")
+		T.eq(WordTiles.chooseAfkMove(s, 2, Random.new(1)), nil, "not their turn")
+	end)
+
+	T.test("the quick board has no 9x lines; the bag has three U's", function()
+		local premium = WordTiles.boards.quick.premium
+		local triples = {}
+		for r = 1, 11 do
+			for c = 1, 11 do
+				if premium[r][c] == "W" then
+					table.insert(triples, { r, c })
+				end
+			end
+		end
+		T.eq(#triples, 4)
+		for i, a in triples do
+			for j, b in triples do
+				if i ~= j then
+					-- On one line they must be a whole board apart (a 9x would need 11 letters).
+					local apart = if a[1] == b[1] then math.abs(a[2] - b[2]) elseif a[2] == b[2] then math.abs(a[1] - b[1]) else 99
+					T.ok(apart >= 10, "two triple words close on one line")
+				end
+			end
+		end
+		T.eq(WordTiles.boards.quick.bag.u, 3)
+		-- Classic: triple words along an edge are 8 apart.
+		local row = WordTiles.boards.classic.premium[1]
+		local cols = {}
+		for c = 1, 15 do
+			if row[c] == "W" then
+				table.insert(cols, c)
+			end
+		end
+		T.eq(cols[2] - cols[1], 8)
+	end)
+
+	T.test("hard swaps a hopeless rack instead of a small play", function()
+		WordTiles.useDictionary(Dictionary.get())
+		local s = setup({ { "v", "v", "w", "w", "u", "u", "q" }, { "e" } })
+		for i, letter in { "c", "a", "t" } do
+			s.board[6][4 + i] = letter
+		end
+		local move = WordTiles.chooseBotMove(s, 1, Random.new(1))
+		T.eq(move.kind, "exchange")
+		T.ok(WordTiles.validateMove(s, 1, move))
 	end)
 
 	T.test("bot plays agree with the referee on every candidate", function()

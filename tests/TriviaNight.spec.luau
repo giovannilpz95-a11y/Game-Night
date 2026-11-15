@@ -209,11 +209,20 @@ return function(T)
 	end)
 
 	T.test("question bank is well formed", function()
-		T.ok(#Questions >= 100)
+		T.ok(#Questions >= 300)
 		local seen = {}
+		local byDifficulty, trueFalse = { 0, 0, 0 }, 0
 		for i, q in Questions do
 			T.ok(type(q.c) == "string" and type(q.q) == "string", `question {i}`)
-			T.eq(#q.a, 4, `question {i} needs 4 answers`)
+			T.ok(q.d == nil or q.d == 1 or q.d == 2 or q.d == 3, `question {i} difficulty`)
+			local d = TriviaNight.difficultyOf(q)
+			byDifficulty[d] += 1
+			if #q.a == 2 then
+				T.ok(TriviaNight.isTrueFalse(q), `question {i}: 2 answers must be True / False`)
+				trueFalse += 1
+			else
+				T.eq(#q.a, 4, `question {i} needs 4 answers`)
+			end
 			T.ok(not seen[q.q], `duplicate question {i}`)
 			seen[q.q] = true
 			local answers = {}
@@ -222,5 +231,94 @@ return function(T)
 				answers[a] = true
 			end
 		end
+		T.ok(byDifficulty[2] >= 50 and byDifficulty[3] >= 50, "plenty of medium and hard questions")
+		T.ok(trueFalse >= 25, "True / False questions")
+	end)
+
+	T.test("True / False: two answers, True on the left", function()
+		local tf = {
+			{ c = "Science", q = "True or false: water is wet?", a = { "False", "True" } },
+		}
+		local s = TriviaNight.new(2, { questionBank = tf, rules = { categoryVote = false, questions = 1 } }, T.Random.new(1))
+		local view = TriviaNight.getView(s, 1)
+		T.eq(#view.answers, 2)
+		T.eq(view.answers[1], "True")
+		T.eq(s.correct, 2, "False is right, shown second")
+		T.eq((TriviaNight.validateMove(s, 1, { kind = "answer", choice = 3 })), false, "only 2 answers")
+		T.eq(#TriviaNight.getLegalMoves(s, 1), 2)
+		for seed = 1, 20 do
+			local m = TriviaNight.chooseBotMove(s, 2, T.Random.new(seed))
+			T.ok(m.choice == 1 or m.choice == 2)
+		end
+	end)
+
+	T.test("a game runs easy to hard", function()
+		T.eq(TriviaNight.targetDifficulty(1, 9), 1)
+		T.eq(TriviaNight.targetDifficulty(5, 9), 2)
+		T.eq(TriviaNight.targetDifficulty(9, 9), 3)
+		for seed = 1, 10 do
+			local s = TriviaNight.new(2, { questionBank = Questions, rules = { categoryVote = false, questions = 9 } }, T.Random.new(seed))
+			for slot, index in s.questions do
+				T.eq(TriviaNight.difficultyOf(Questions[index]), TriviaNight.targetDifficulty(slot, 9), `seed {seed} slot {slot}`)
+			end
+		end
+	end)
+
+	T.test("scores stay hidden while a question is open", function()
+		local s = newGame(2, T.Random.new(7))
+		apply(s, 1, { kind = "answer", choice = s.correct, elapsed = 1 })
+		local view = TriviaNight.getView(s, 2)
+		T.eq(view.scores[1], 0, "seat 1's points wait for the reveal")
+		T.eq(TriviaNight.getSeatInfo(s)[1], "0 pts  ✓ answered")
+		TriviaNight.onTimeout(s)
+		T.ok(TriviaNight.getView(s, 2).scores[1] > 0, "shown at the reveal")
+	end)
+
+	T.test("a tie on points goes to the faster player", function()
+		local s = TriviaNight.new(2, { questionBank = Questions, rules = { categoryVote = false, questions = 1, speed = false } }, T.Random.new(8))
+		apply(s, 1, { kind = "answer", choice = s.correct, elapsed = 6 })
+		apply(s, 2, { kind = "answer", choice = s.correct, elapsed = 2 })
+		TriviaNight.onTimeout(s)
+		local r = TriviaNight.getResult(s)
+		T.eq(#r.winners, 1)
+		T.eq(r.winners[1], 2)
+	end)
+
+	T.test("bots always answer before the clock runs out", function()
+		for _, seconds in { 10, 15, 25 } do
+			for _, level in { "easy", "medium", "hard" } do
+				local s = TriviaNight.new(2, { questionBank = Questions, botLevel = level, rules = { categoryVote = false, answerSeconds = seconds } }, T.Random.new(1))
+				local rng = T.Random.new(2)
+				for _ = 1, 200 do
+					T.ok(TriviaNight.getBotDelay(s, 2, rng) < seconds, `{level} at {seconds} s`)
+				end
+			end
+		end
+	end)
+
+	T.test("questions this server asked lately are skipped", function()
+		local recent = {}
+		for i = 1, 200 do
+			recent[i] = true
+		end
+		local s = TriviaNight.new(2, { questionBank = Questions, recent = recent, rules = { categoryVote = false } }, T.Random.new(4))
+		for _, index in s.questions do
+			T.ok(index > 200, "a fresh question")
+		end
+	end)
+
+	T.test("no category vote for a single last question", function()
+		local s = TriviaNight.new(1, { questionBank = Questions, rules = { questions = 10 } }, T.Random.new(3))
+		local picks = 0
+		for _ = 1, 40 do
+			if s.phase == "pick" then
+				picks += 1
+			end
+			if s.finished then
+				break
+			end
+			TriviaNight.onTimeout(s)
+		end
+		T.eq(picks, 3, "before questions 1, 4 and 7 only")
 	end)
 end

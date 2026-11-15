@@ -3,13 +3,16 @@
 --
 -- Tap a rack tile, then tap a square to put it there (blanks ask which letter). Tap a tile
 -- you just placed to take it back. You can lay tiles out while others are playing; Play
--- only works on your turn, and laid-out tiles go back to the rack whenever the board changes. The preview checks shape and score here, and the server checks
--- the words. Premium squares use our own layout and colors.
+-- only works on your turn, and laid-out tiles go back to the rack whenever the board changes.
+-- The preview checks shape and score here and asks the server whether the words are real
+-- (the WordCheck remote, like the red/green word in the apps), so "XQZ isn't a word" shows
+-- before you press Play. Premium squares use our own layout and colors.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.WordTiles)
+local Net = require(ReplicatedStorage.Shared.Net)
 local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
@@ -79,6 +82,71 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	local grid: BoardGrid.Grid? = nil
 	local premium: { { string } } = {}
 	local board: Rules.Board = {}
+	local render: () -> ()
+
+	-- Live word check: answers cached per word; one request per change, after a pause.
+	local known: { [string]: boolean } = {}
+	local askId = 0
+	local asking: { [number]: { string } } = {}
+	local checkRemote = Net.event(Net.Names.WordCheck)
+	local checkConnection = checkRemote.OnClientEvent:Connect(function(reply: any)
+		local words = type(reply) == "table" and asking[reply.id]
+		if not words or type(reply.valid) ~= "table" then
+			return
+		end
+		asking[reply.id] = nil
+		for i, word in words do
+			if type(reply.valid[i]) == "boolean" then
+				known[word] = reply.valid[i]
+			end
+		end
+		if snapshot then
+			render()
+		end
+	end)
+	local wanted = "" -- the words the latest preview needs checked
+	local function checkWords(words: { string })
+		local unknown = {}
+		for _, word in words do
+			if known[word] == nil and not table.find(unknown, word) then
+				table.insert(unknown, word)
+			end
+		end
+		local key = table.concat(unknown, ",")
+		if #unknown == 0 or key == wanted then
+			return
+		end
+		wanted = key
+		task.delay(0.3, function()
+			if wanted ~= key then
+				return -- changed again while we waited
+			end
+			wanted = ""
+			askId += 1
+			asking[askId] = unknown
+			checkRemote:FireServer({ id = askId, words = unknown })
+		end)
+	end
+	-- For a shape that works: "ok", "bad" (with the first bad word) or "checking".
+	local function wordStatus(result: any): (string, string?)
+		local words = {}
+		for _, w in result.words do
+			table.insert(words, w.word)
+		end
+		local pending = false
+		for _, word in words do
+			if known[word] == false then
+				return "bad", word
+			elseif known[word] == nil then
+				pending = true
+			end
+		end
+		if pending then
+			checkWords(words)
+			return "checking"
+		end
+		return "ok"
+	end
 
 	-- Your rack, with ids that stay put while you shuffle and place tiles.
 	local rackKey = ""
@@ -99,7 +167,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	local prompt = TablePrompt.new(container)
 	prompt.setVisible(false)
 	local calledPlay: string? = nil -- the last play already seen (nil until the first update)
-	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.66, -8, 1, -96), Parent = root })
+	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, ClipsDescendants = true, Size = UDim2.new(0.66, -8, 1, -96), Parent = root })
 
 	local side = Kit.panel({ Position = UDim2.new(0.66, 8, 0, 0), Size = UDim2.new(0.34, -8, 1, -96), Parent = root })
 	local sideList = Kit.list(8)
@@ -154,8 +222,16 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 	})
 	grid2.Parent = buttons
 
-	local render: () -> ()
 	local placeTile: (id: number, row: number, col: number) -> ()
+	-- Table view hides the side panel; this opens it (scores, unseen tiles, hindsight and
+	-- every play so far) in a window over the table.
+	local logButton = Kit.button("Log", function()
+		if prompt.sheetOpen() then
+			prompt.sheet(nil)
+		else
+			prompt.sheet(side, "Plays and tiles")
+		end
+	end, { LayoutOrder = 6, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Visible = false, Parent = buttons })
 
 	local function myTurn(): boolean
 		return snapshot ~= nil and table.find(snapshot.activeSeats, snapshot.yourSeat) ~= nil
@@ -282,6 +358,9 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		if not snapshot then
 			return
 		end
+		if prompt.sheetOpen() then
+			prompt.sheet(nil) -- opened from the Table-view sheet: show the list on its own
+		end
 		local view = snapshot.view
 		local left = Rules.unseen(view.board, view.rows, view.rack)
 		local parts, total = {}, 0
@@ -321,7 +400,12 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		return tonumber(r), tonumber(c)
 	end
 
+	local panUntil = 0 -- taps right after panning the zoomed board are ignored
+	local pan: { input: InputObject?, start: Vector2, focus: Vector2, moved: boolean }? = nil
 	local function onCell(row: number, col: number)
+		if os.clock() < panUntil or (pan and pan.moved) then
+			return
+		end
 		if not snapshot or snapshot.yourSeat == nil or swapMode or snapshot.result or snapshot.aborted then
 			return
 		end
@@ -490,6 +574,132 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Zoom for small screens (the apps' pinch zoom): pinch or the Zoom button doubles the
+	-- board around where you last tapped, and dragging the zoomed board pans it.
+	local zoom = 1
+	local focus = Vector2.new(0.5, 0.5) -- the board point (0-1) at the centre of the view
+	local zoomConnections: { RBXScriptConnection } = {}
+	local zoomButton: TextButton
+	local function applyZoom()
+		if not grid then
+			return
+		end
+		local frame = grid.frame
+		if zoom == 1 then
+			frame.Size = UDim2.fromScale(1, 1)
+			frame.Position = UDim2.fromScale(0.5, 0.5)
+		else
+			local area = boardArea.AbsoluteSize
+			local side = math.min(area.X, area.Y) * zoom
+			-- Keep the board covering the view (no empty margin past its edges).
+			local half = Vector2.new(math.min(0.5, area.X / side / 2), math.min(0.5, area.Y / side / 2))
+			focus = Vector2.new(math.clamp(focus.X, half.X, 1 - half.X), math.clamp(focus.Y, half.Y, 1 - half.Y))
+			frame.Size = UDim2.fromOffset(side, side)
+			frame.Position = UDim2.fromOffset(area.X / 2 + (0.5 - focus.X) * side, area.Y / 2 + (0.5 - focus.Y) * side)
+		end
+		zoomButton.Text = if zoom == 1 then "Zoom +" else "Zoom -"
+	end
+	local function setZoom(value: number, at: Vector2?)
+		if grid and at then
+			local p, sz = grid.frame.AbsolutePosition, grid.frame.AbsoluteSize
+			if sz.X > 0 then
+				focus = Vector2.new((at.X - p.X) / sz.X, (at.Y - p.Y) / sz.Y)
+			end
+		end
+		zoom = value
+		applyZoom()
+	end
+	zoomButton = Kit.button("Zoom +", function()
+		local at = nil
+		if grid then
+			-- Zoom in on your laid-out tiles, if any.
+			for _, p in placed do
+				local cell = grid.cell(p.row, p.col)
+				at = cell.AbsolutePosition + cell.AbsoluteSize / 2
+				break
+			end
+		end
+		setZoom(if zoom == 1 then 2 else 1, at)
+	end, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -4, 0, 4),
+		Size = UDim2.fromOffset(76, 28),
+		TextSize = 14,
+		BackgroundColor3 = Theme.PanelLight,
+		TextColor3 = Theme.Text,
+		ZIndex = 20,
+		Visible = false,
+		Parent = boardArea,
+	})
+	-- The button shows when squares get small (phones, the classic board).
+	local function fitZoomButton()
+		local def = boardKey and Rules.boards[boardKey]
+		local area = boardArea.AbsoluteSize
+		local square = if def then math.min(area.X, area.Y) / def.size else 99
+		zoomButton.Visible = square < 36 or zoom > 1
+		if zoom > 1 then
+			applyZoom()
+		end
+	end
+	table.insert(zoomConnections, boardArea:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitZoomButton))
+	local function inBoard(pos: Vector2): boolean
+		local p, sz = boardArea.AbsolutePosition, boardArea.AbsoluteSize
+		return boardArea.Visible and pos.X >= p.X and pos.X <= p.X + sz.X and pos.Y >= p.Y and pos.Y <= p.Y + sz.Y
+	end
+	table.insert(zoomConnections, UserInputService.TouchPinch:Connect(function(positions, scale, _velocity, state)
+		if state ~= Enum.UserInputState.Change or not grid or #positions < 2 then
+			return
+		end
+		local centre = (positions[1] + positions[2]) / 2
+		if not inBoard(centre) then
+			return
+		end
+		if scale > 1.25 and zoom == 1 then
+			setZoom(2, centre)
+		elseif scale < 0.8 and zoom > 1 then
+			setZoom(1)
+		end
+	end))
+	table.insert(zoomConnections, UserInputService.InputBegan:Connect(function(input)
+		local kind = input.UserInputType
+		if zoom == 1 or pan or not (kind == Enum.UserInputType.Touch or kind == Enum.UserInputType.MouseButton1) then
+			return
+		end
+		local pos = Vector2.new(input.Position.X, input.Position.Y)
+		if inBoard(pos) and not drag then
+			pan = { input = if kind == Enum.UserInputType.Touch then input else nil, start = pos, focus = focus, moved = false }
+		end
+	end))
+	table.insert(zoomConnections, UserInputService.InputChanged:Connect(function(input)
+		if not pan or not grid or drag then
+			return
+		end
+		local touch = input.UserInputType == Enum.UserInputType.Touch
+		if (pan.input and input ~= pan.input) or (not pan.input and input.UserInputType ~= Enum.UserInputType.MouseMovement) or (pan.input and not touch) then
+			return
+		end
+		local delta = Vector2.new(input.Position.X, input.Position.Y) - pan.start
+		if delta.Magnitude > 10 then
+			pan.moved = true
+		end
+		if pan.moved then
+			local side = grid.frame.AbsoluteSize.X
+			focus = pan.focus - delta / math.max(1, side)
+			applyZoom()
+		end
+	end))
+	table.insert(zoomConnections, UserInputService.InputEnded:Connect(function(input)
+		if not pan then
+			return
+		end
+		if (pan.input and input == pan.input) or (not pan.input and input.UserInputType == Enum.UserInputType.MouseButton1) then
+			if pan.moved then
+				panUntil = os.clock() + 0.15
+			end
+			pan = nil
+		end
+	end))
+
 	local function nameOf(seat: number): string
 		if seat == snapshot.yourSeat then
 			return "You"
@@ -593,11 +803,12 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 				end
 			end
 			local result = Rules.evaluate(board, premium, pendingNow, nil)
-			local bubble = Kit.label(if result then `+{result.score}` else "✗", {
+			local status = if result then wordStatus(result) else "bad"
+			local bubble = Kit.label(if result and status ~= "bad" then `+{result.score}` else "X", {
 				Font = Theme.FontBold,
 				TextScaled = true,
 				TextColor3 = Color3.new(1, 1, 1),
-				BackgroundColor3 = if result then Color3.fromRGB(60, 170, 90) else Theme.Bad,
+				BackgroundColor3 = if status == "ok" then Color3.fromRGB(60, 170, 90) elseif status == "checking" then Color3.fromRGB(120, 120, 140) else Theme.Bad,
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(1, 0),
 				Size = UDim2.fromScale(0.9, 0.55),
@@ -691,7 +902,14 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 			previewLabel.TextColor3 = Theme.Text
 		elseif #tiles > 0 then
 			local result, err = Rules.evaluate(board, premium, tiles, nil)
+			local status, badWord = "ok", nil
 			if result then
+				status, badWord = wordStatus(result)
+			end
+			if result and status == "bad" then
+				previewLabel.Text = `{string.upper(badWord or "")} isn't in the word list`
+				previewLabel.TextColor3 = Theme.Bad
+			elseif result then
 				local words = {}
 				for _, w in result.words do
 					table.insert(words, `{string.upper(w.word)} {w.score}`)
@@ -738,6 +956,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		swapButton.Visible = view.canExchange and canAct
 		swapButton.Text = if swapMode then "Swap now" else "Swap"
 		passButton.Visible = canAct
+		logButton.Visible = tableMode
 		passButton.Text = if swapMode then "Cancel" elseif passConfirm then "Sure? Pass" else "Pass"
 		rackFrame.Visible = snapshot.yourSeat ~= nil
 
@@ -763,6 +982,8 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 			if boardKey ~= view.board then
 				boardKey = view.board
 				buildBoard(view.board)
+				zoom = 1
+				fitZoomButton()
 			end
 			board = Rules.boardFromRows(view.rows)
 			-- Someone played: take back any laid-out tiles, so the preview never mixes them
@@ -797,7 +1018,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		tableMarks = function(): { [any]: any }?
 			local marks = {}
 			for _, p in placed do
-				marks[`sq:{p.row}:{p.col}`] = { kind = "picked", text = p.letter }
+				marks[`sq:{p.row}:{p.col}`] = { kind = "picked", text = string.upper(p.letter) }
 			end
 			return marks
 		end,
@@ -806,14 +1027,18 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 				return
 			end
 			tableMode = value
+			prompt.setVisible(value) -- first: closing its sheet puts the side panel back
 			boardArea.Visible = not value
 			side.Visible = not value
-			prompt.setVisible(value)
 			if snapshot then
 				render()
 			end
 		end,
 		destroy = function()
+			checkConnection:Disconnect()
+			for _, connection in zoomConnections do
+				connection:Disconnect()
+			end
 			root:Destroy()
 		end,
 	}

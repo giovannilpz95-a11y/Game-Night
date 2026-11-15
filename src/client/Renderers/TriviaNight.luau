@@ -1,6 +1,11 @@
 -- Trivia Night: the question, a draining timer bar and four big answer buttons (2x2, so
 -- they work on phones). After the reveal: the right answer glows, yours shows if it was
 -- wrong, and your points pop up.
+--
+-- Table view (setTableMode): no panel. The screen over the table shows the question,
+-- the answers and the clock to the room. You lock in by tapping one of your four answer
+-- pads on the table (legal pads glow) or a colored button in the bar along the bottom;
+-- the line above it repeats the question, then says how you did at the reveal.
 
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -8,6 +13,8 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Kit = require(script.Parent.Parent.UI.Kit)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
+local Audio = require(script.Parent.Parent.Audio)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Rules = require(ReplicatedStorage.Shared.Games.TriviaNight)
 local Theme = Kit.Theme
@@ -23,6 +30,32 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 	local timerStart: number? = nil
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local tableMode = false
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
+	local pending: number? = nil -- the answer you just tapped, until the server confirms
+
+	-- Can you lock in answer i right now?
+	local function canAnswer(i: number): boolean
+		local view = snapshot and snapshot.view
+		return view ~= nil
+			and (view.phase == "question" or view.phase == "pick")
+			and view.yourAnswer == nil
+			and pending == nil
+			and view.answers ~= nil
+			and view.answers[i] ~= nil
+			and snapshot.yourSeat ~= nil
+			and table.find(snapshot.activeSeats, snapshot.yourSeat) ~= nil
+	end
+
+	local function answer(i: number)
+		if not canAnswer(i) then
+			return
+		end
+		local view = snapshot.view
+		pending = i
+		sendMove({ kind = if view.phase == "pick" then "pick" else "answer", choice = i })
+	end
 
 	local top = Kit.panel({ Size = UDim2.new(1, 0, 0.36, 0), Parent = root })
 	local category = Kit.label("", {
@@ -120,10 +153,8 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		})
 		Kit.new("UIStroke", { Name = "Ring", Color = Color3.new(1, 1, 1), Thickness = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
 		Kit.onPress(button, function()
-			local view = snapshot and snapshot.view
-			local voting = view and view.phase == "pick"
-			if view and (view.phase == "question" or voting) and view.yourAnswer == nil and view.answers and view.answers[i] and table.find(snapshot.activeSeats, snapshot.yourSeat) then
-				sendMove({ kind = if voting then "pick" else "answer", choice = i })
+			if canAnswer(i) then
+				answer(i)
 				-- Show the pick right away; the server confirms with the next snapshot.
 				for j, b in buttons do
 					b.BackgroundTransparency = if j == i then 0 else 0.6
@@ -144,15 +175,27 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	})
 
+	local lastTick = 0
 	local heartbeat = RunService.Heartbeat:Connect(function()
 		if not snapshot or not snapshot.turnEndsAt or not timerStart then
 			fill.Size = UDim2.fromScale(0, 1)
 			return
 		end
 		local left = snapshot.turnEndsAt - workspace:GetServerTimeNow()
-		local total = math.max(0.1, snapshot.turnEndsAt - timerStart)
+		-- The phase's real length (a late or rejoining client still drains at the right speed).
+		local seconds = snapshot.view and snapshot.view.timerSeconds
+		local total = if type(seconds) == "number" and seconds > 0 then seconds else math.max(0.1, snapshot.turnEndsAt - timerStart)
 		fill.Size = UDim2.fromScale(math.clamp(left / total, 0, 1), 1)
 		fill.BackgroundColor3 = if left < 5 then Theme.Bad else Theme.Accent
+		-- The last five seconds of a question tick, unless you've answered.
+		local whole = math.ceil(left)
+		local view = snapshot.view
+		if view and view.phase == "question" and view.yourAnswer == nil and snapshot.yourSeat and whole >= 1 and whole <= 5 and whole ~= lastTick then
+			lastTick = whole
+			Audio.play("tick")
+		elseif whole > 5 then
+			lastTick = 0
+		end
 	end)
 
 	local lastPhaseKey = ""
@@ -172,11 +215,102 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		return `You're {Rules.ordinal(view.place)}`
 	end
 
+	-- How many seats picked answer i (votes in a category vote, picks at the reveal).
+	local function countFor(view: any, i: number): number
+		local tally = if view.phase == "pick" then view.votesBySeat elseif view.phase == "reveal" then view.answersBySeat else nil
+		local n = 0
+		for _, choice in tally or {} do
+			if choice == i then
+				n += 1
+			end
+		end
+		return n
+	end
+
+	local function renderTable(view: any)
+		if not tableMode then
+			return
+		end
+		local chips = {}
+		if view.phase ~= "done" then
+			local cat = if view.category then string.upper(view.category) else "TRIVIA"
+			table.insert(chips, TablePrompt.chip(`{cat} · {view.number}/{view.total}`))
+			if view.streak and view.streak >= 2 then
+				table.insert(chips, TablePrompt.chip(`🔥 {view.streak} in a row`, Theme.Bad))
+			end
+			local me = snapshot.yourSeat
+			if me and view.scores and view.scores[me] then
+				table.insert(chips, TablePrompt.chip(`⭐ {view.scores[me]} pts`, Theme.Accent))
+			end
+			local place = placeText(view)
+			if place and view.phase ~= "pick" then
+				table.insert(chips, TablePrompt.chip(place))
+			end
+		end
+		prompt.chips(`chips:{view.phase}:{view.number}`, chips)
+		prompt.ask(nil)
+
+		if snapshot.result or view.phase == "done" then
+			prompt.bar(nil)
+			return
+		end
+		local me = snapshot.yourSeat
+		local count = if view.answers then #view.answers else 0
+		local mine = view.yourAnswer or pending
+		if view.phase == "question" or view.phase == "pick" then
+			local voting = view.phase == "pick"
+			local buttons = {}
+			if me and mine == nil and table.find(snapshot.activeSeats, me) then
+				for i = 1, count do
+					local votes = if voting then countFor(view, i) else 0
+					table.insert(buttons, {
+						text = `{LETTERS[i]}  {view.answers[i]}{if votes > 0 then `  🗳{votes}` else ""}`,
+						color = ANSWER_COLORS[i],
+						onClick = function()
+							answer(i)
+						end,
+					})
+				end
+			end
+			local line
+			if me == nil then
+				line = view.question or ""
+			elseif mine ~= nil then
+				line = `🔒 {LETTERS[mine]}  {view.answers and view.answers[mine] or ""} · {view.answeredCount} of {#snapshot.seats} {if voting then "voted" else "answered"}`
+			else
+				line = if voting then `🎯 {view.question}` else view.question or ""
+			end
+			prompt.bar(`{view.phase}:{view.number}:{mine or ""}`, line, buttons)
+		elseif view.phase == "reveal" then
+			local line
+			local right = view.correct and view.answers and view.answers[view.correct] or ""
+			if me == nil then
+				line = `✓ {LETTERS[view.correct or 1] or ""}  {right}`
+			elseif view.yourAnswer == nil then
+				line = `⏰ Out of time · it was {LETTERS[view.correct or 1] or ""}  {right}`
+			else
+				local gained = view.lastPoints and view.lastPoints[me] or 0
+				if view.yourAnswer == view.correct then
+					line = `✅ Right! +{gained}`
+				else
+					line = `❌ It was {LETTERS[view.correct or 1] or ""}  {right}{if gained < 0 then `  ({gained})` else ""}`
+				end
+			end
+			prompt.bar(`reveal:{view.number}`, line, {})
+		else
+			prompt.bar(nil)
+		end
+	end
+
 	local function render()
 		local view = snapshot.view
 		local phaseKey = `{view.phase}:{view.number}`
 		if phaseKey ~= lastPhaseKey then
 			lastPhaseKey = phaseKey
+			pending = nil
+			if view.phase == "reveal" and snapshot.yourSeat and view.yourAnswer ~= nil then
+				Audio.play(if view.yourAnswer == view.correct then "coin" else "buzz")
+			end
 			timerStart = workspace:GetServerTimeNow()
 			if view.phase == "question" or view.phase == "pick" then
 				-- Pop the new question in.
@@ -190,7 +324,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 			wasPick = view.phase == "pick"
 			-- Table view hides the footer, so the place pops up once per reveal instead.
 			local place = placeText(view)
-			if view.phase == "reveal" and isDocked and place then
+			if view.phase == "reveal" and (isDocked or tableMode) and place then
 				HudKit.callout((if Kit.inPreview(container) then nil else container:FindFirstAncestorWhichIsA("ScreenGui")) or root, place, Theme.Accent)
 			end
 		end
@@ -201,6 +335,11 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 			category.Text ..= `   🔥 {view.streak} in a row`
 		end
 
+		if view.yourAnswer ~= nil then
+			pending = nil
+		end
+		renderTable(view)
+
 		if view.phase == "done" then
 			question.Text = "That's the game!"
 			grid.Visible = false
@@ -210,6 +349,13 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		end
 		grid.Visible = true
 		track.Visible = view.phase == "question" or view.phase == "pick"
+		-- Two answers (True / False) take the whole grid.
+		local count = if view.answers then #view.answers else 4
+		if isDocked then
+			gridLayout.CellSize = UDim2.new(if count == 2 then 0.5 else 0.25, -9, 1, 0)
+		else
+			gridLayout.CellSize = if count == 2 then UDim2.new(0.5, -6, 1, 0) else UDim2.new(0.5, -6, 0.5, -6)
+		end
 		question.Text = view.question or ""
 
 		local reveal = view.phase == "reveal"
@@ -303,8 +449,58 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 				gridLayout.CellSize = UDim2.new(0.5, -6, 0.5, -6)
 			end
 		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			root.Visible = not value
+			prompt.setVisible(value)
+			if snapshot then
+				render()
+			end
+		end,
+		-- Table view (Table3D/SceneTap): your answer pads are "ans:<seat>:<n>".
+		canTap = function(id: any): boolean
+			local seat, i = nil, nil
+			if type(id) == "string" then
+				local a, b = string.match(id, "^ans:(%d+):(%d+)$")
+				seat, i = tonumber(a), tonumber(b)
+			end
+			return snapshot ~= nil and seat ~= nil and i ~= nil and seat == snapshot.yourSeat and canAnswer(i)
+		end,
+		tapTable = function(id: any)
+			local a, b = string.match(if type(id) == "string" then id else "", "^ans:(%d+):(%d+)$")
+			local seat, i = tonumber(a), tonumber(b)
+			if snapshot and seat == snapshot.yourSeat and i and canAnswer(i) then
+				answer(i)
+				Audio.play("cardHover")
+				render()
+			end
+		end,
+		tableMarks = function(): { [any]: any }?
+			if not (tableMode and snapshot) then
+				return nil
+			end
+			local me = snapshot.yourSeat
+			local view = snapshot.view
+			local marks = {}
+			if me and view.answers then
+				local mine = view.yourAnswer or pending
+				for i = 1, #view.answers do
+					local id = `ans:{me}:{i}`
+					if mine == i then
+						marks[id] = "picked"
+					elseif canAnswer(i) then
+						marks[id] = "target"
+					end
+				end
+			end
+			return marks
+		end,
 		destroy = function()
 			heartbeat:Disconnect()
+			prompt.layer:Destroy()
 			root:Destroy()
 		end,
 	}

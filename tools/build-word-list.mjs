@@ -42,9 +42,12 @@ for (const line of readFileSync(join(root, 'tools', 'word-blocklist.rot13.txt'),
     else throw new Error(`word-blocklist: unknown kind "${kind}"`)
   }
 }
+// Words ENABLE lacks that today's tournament list (NWL2023) has and players reach for first,
+// mostly two-letter "power" words like QI and ZA.
+const EXTRA = ['qi', 'qis', 'za', 'zas', 'ki', 'kis', 'oi', 'fe', 'te', 'tes', 'ok', 'ew', 'da', 'gi', 'gis', 'po', 'pos']
 const blocked = (w) => !keep.has(w) && (family.has(w) || contains.some((bad) => w.includes(bad)))
 
-const words = [...new Set(readFileSync(source, 'utf8').split(/\r?\n/).map((w) => w.trim().toLowerCase()))]
+const words = [...new Set([...readFileSync(source, 'utf8').split(/\r?\n/), ...EXTRA].map((w) => w.trim().toLowerCase()))]
   .filter((w) => /^[a-z]{2,}$/.test(w) && w.length <= MAX_LENGTH)
   .filter((w) => !blocked(w))
   .sort()
