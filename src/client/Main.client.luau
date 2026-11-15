@@ -21,6 +21,8 @@ local VoicePanel = require(script.Parent.UI.VoicePanel)
 local FriendsPanel = require(script.Parent.UI.FriendsPanel)
 local DailyRewardCard = require(script.Parent.UI.DailyRewardCard)
 local StatsPanel = require(script.Parent.UI.StatsPanel)
+local AchievementsPanel = require(script.Parent.UI.AchievementsPanel)
+local Achievements = require(ReplicatedStorage.Shared.Achievements)
 local SeasonPanel = require(script.Parent.UI.SeasonPanel)
 local Layout = require(script.Parent.UI.Layout)
 local LobbyHud = require(script.Parent.UI.LobbyHud)
@@ -133,8 +135,15 @@ function hostHooks.viewStats(userId: number)
 	openStats(userId)
 end
 
-local statsPanel = StatsPanel.create(lobby, function(request)
+local achievementsPanel = AchievementsPanel.create(lobby, function(request)
 	statsRequest:FireServer(request)
+end)
+local statsPanel: any
+statsPanel = StatsPanel.create(lobby, function(request)
+	statsRequest:FireServer(request)
+end, function()
+	statsPanel.close()
+	achievementsPanel.open()
 end)
 
 local partyWindow = Kit.modal(lobby, { name = "PartyWindow", maxSize = Vector2.new(420, 600) })
@@ -180,6 +189,7 @@ local function closeWindows()
 	pickerWindow.close()
 	tableList.close()
 	statsPanel.close()
+	achievementsPanel.close()
 	seasonPanel.close()
 	dressingRoom.close()
 	shopPanel.root.Visible = false
@@ -264,6 +274,10 @@ local hud = hudModule.create(lobby, {
 		closeWindows()
 		statsPanel.open()
 	end,
+	achievements = function()
+		closeWindows()
+		achievementsPanel.open()
+	end,
 	shop = function()
 		closeWindows()
 		shopPanel.open(nil)
@@ -331,7 +345,7 @@ function startTour()
 		railStep("Play", "Play", "Pick a game here. Empty seats are filled with bots, so you can play alone or with friends."),
 		railStep("Party", "Party", "Invite friends to your party. The party leader picks the game and everyone plays together."),
 		railStep("Tables", "Tables", "See other tables in this server and join one."),
-		railStep("Stats", "Stats", "Your level, badges, every game's record and this week's leaderboards."),
+		railStep("Stats", "Stats", "Your level, achievements, every game's record and this week's leaderboards."),
 		railStep("Pass", "Game Night Pass", "Daily and weekly quests earn ⭐ Stars. Climb the season's tiers to unlock poses, dances and more."),
 		{
 			target = function()
@@ -555,7 +569,49 @@ end)
 
 Net.event(Net.Names.PartyList).OnClientEvent:Connect(tableList.setRows)
 
+-- Achievement tiers: the "it's yours!" moment (client/UI/Unlock), a banner at a table. The
+-- two best tiers get their own moment; the rest are summed into one.
+local UNLOCK_RARITY = { "Common", "Rare", "Rare", "Epic", "Legendary" }
+local function celebrateAchievements(unlocks: { any })
+	local compact = matchView.isOpen()
+	local list = table.clone(unlocks)
+	table.sort(list, function(a, b)
+		if (a.mastery ~= nil) ~= (b.mastery ~= nil) then
+			return a.mastery ~= nil
+		end
+		return (a.tier or 0) > (b.tier or 0)
+	end)
+	for i, unlock in list do
+		if i > 2 and #list > 3 then
+			Unlock.show({
+				heading = "BADGES EARNED",
+				title = `+{#list - 2} more badges`,
+				icon = "🏅",
+				color = Kit.Theme.Accent,
+				subtitle = "See them all in 🏆 Achievements",
+				compact = compact,
+			})
+			break
+		end
+		local tier = math.clamp(tonumber(unlock.tier) or 1, 1, Achievements.MaxTier)
+		local tierName = if unlock.mastery then "Mastered" else Achievements.TierNames[tier]
+		Unlock.show({
+			heading = if unlock.mastery then "GAME MASTERED!" else "BADGE EARNED",
+			title = tostring(unlock.name),
+			icon = tostring(unlock.icon),
+			color = if unlock.mastery then Kit.Theme.Accent else Achievements.TierColors[tier],
+			tier = if unlock.mastery then "Legendary" else UNLOCK_RARITY[tier],
+			subtitle = `{tierName} · {unlock.reward or ""}{if unlock.title then `\nUnlocked {unlock.title}` else ""}`,
+			compact = compact,
+		})
+	end
+end
+
 Net.event(Net.Names.Reward).OnClientEvent:Connect(function(reward)
+	if type(reward.achievements) == "table" and #reward.achievements > 0 then
+		celebrateAchievements(reward.achievements)
+		return
+	end
 	if reward.daily and not matchView.isOpen() then
 		dailyCard.show(reward) -- mid-game (a new day started) it's just a toast
 		return
@@ -602,7 +658,10 @@ Net.event(Net.Names.PartyState).OnClientEvent:Connect(function(party)
 end)
 
 Net.event(Net.Names.VoiceState).OnClientEvent:Connect(voicePanel.setState)
-Net.event(Net.Names.StatsState).OnClientEvent:Connect(statsPanel.setState)
+Net.event(Net.Names.StatsState).OnClientEvent:Connect(function(message)
+	statsPanel.setState(message)
+	achievementsPanel.setState(message)
+end)
 
 -- Friends: who's here, "Let Sam join?" for leaders, and "Join Leo's table?" on arrival.
 Net.event(Net.Names.FriendState).OnClientEvent:Connect(friendsPanel.setHere)
