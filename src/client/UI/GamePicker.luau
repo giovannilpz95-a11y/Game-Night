@@ -1,6 +1,12 @@
 -- Center panel: the shelf of games. The party leader picks a game and a table size,
 -- empty seats get bots. Everyone else sees what's available while they wait.
 -- Party Hosts can also change house rules and pick their own word list or quiz deck.
+--
+-- In the Game Café look (Kit.cafe) on a wide window, the picked game opens in a felt
+-- panel on the right: it plays live with bots, with its description, seats, bots, house
+-- rules and a big START (mockup: project files ui-mockups/a-cafe-picker.jpg). Everyone
+-- can look at any game there; only the leader can start one. Narrow windows keep the
+-- bottom bar.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,6 +35,8 @@ local GRID_TOP = 94 -- title, status line, filter chips
 
 local HOVER_DELAY = 1 -- seconds resting on a tile before its hover card plays the game
 local NAME_H = 42 -- the name and player count under each tile's picture
+local DETAIL_W = 300 -- the Café's game panel on the right
+local DETAIL_MIN_WIDTH = 720 -- narrower windows keep the bottom bar
 
 local function rgb(list: { number }): Color3
 	return Color3.fromRGB(list[1], list[2], list[3])
@@ -232,6 +240,123 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		botLevel = Config.BotLevels[index % #Config.BotLevels + 1]
 		render()
 	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 112, 0, 40), TextSize = 14, LayoutOrder = 5, Parent = bar })
+
+	------------------------------------------------------------------------------
+	-- The Café's game panel (wide windows only): built once, filled by renderDetail.
+	------------------------------------------------------------------------------
+	local wide = false
+	local inspected: any = nil -- the game a non-leader is looking at
+	local detail = Kit.new("Frame", {
+		Name = "Detail",
+		BackgroundColor3 = Theme.Felt,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 40),
+		Size = UDim2.new(0, DETAIL_W, 1, -40),
+		Visible = false,
+		Parent = root,
+	}, {
+		Kit.corner(14),
+		Kit.new("UIStroke", { Name = "Outline", Color = Theme.WoodDark, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+		Kit.new("UIGradient", { Name = "Shade", Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200)) }),
+	})
+	local detailInfo = Kit.new("ScrollingFrame", {
+		Name = "Info",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(12, 12),
+		Size = UDim2.new(1, -24, 1, -24),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(),
+		ScrollBarThickness = 3,
+		Parent = detail,
+	}, { Kit.list(6) })
+	local artH = math.floor((DETAIL_W - 24) * 9 / 16)
+	local art = Kit.new("Frame", {
+		Name = "Art",
+		BackgroundColor3 = Theme.FeltDark,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Size = UDim2.new(1, -4, 0, artH),
+		LayoutOrder = 1,
+		Parent = detailInfo,
+	}, { Kit.corner(10), Kit.new("UIStroke", { Color = Theme.WoodDark, Thickness = 2, Transparency = 0.3 }) })
+	local detailName = Kit.label("", { Font = Theme.FontTitle, TextSize = 24, Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = detailInfo })
+	local detailMeta = Kit.label("", { Font = Theme.FontBold, TextSize = 13, TextColor3 = Color3.fromRGB(200, 232, 214), Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = detailInfo })
+	local detailText = Kit.label("", { TextSize = 14, TextColor3 = Theme.Text, Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4, Parent = detailInfo })
+	local detailRules = Kit.label("", { Font = Theme.FontBold, TextSize = 12, TextColor3 = Theme.Accent, Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = detailInfo })
+	local howTo = Kit.new("TextButton", {
+		Name = "HowToPlay",
+		Text = "📖  How to play",
+		Font = Theme.FontBold,
+		TextSize = 14,
+		TextColor3 = Theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -4, 0, 22),
+		LayoutOrder = 6,
+		Parent = detailInfo,
+	})
+	-- Controls at the bottom of the panel (the bar's own buttons move in here).
+	local controls = Kit.new("Frame", {
+		Name = "Controls",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 12, 1, -12),
+		Size = UDim2.new(1, -24, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = detail,
+	}, { Kit.list(8) })
+	local seatsRow = Kit.new("Frame", { Name = "Seats", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 1, Parent = controls })
+	local seatsList = Kit.list(8, true)
+	seatsList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	seatsList.VerticalAlignment = Enum.VerticalAlignment.Center
+	seatsList.Parent = seatsRow
+	local optsRow = Kit.new("Frame", { Name = "Options", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 2, Parent = controls })
+	Kit.list(8, true).Parent = optsRow
+	local waiting = Kit.label("", { Font = Theme.FontBold, TextSize = 14, TextColor3 = Theme.Text, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = controls })
+	local detailPreview: GamePreview.Preview? = nil
+	local detailId: string? = nil
+	local detailPlaying = false
+
+	-- Moves the seat stepper, bots, house rules and Start between the bottom bar and the
+	-- Café panel.
+	local function placeControls()
+		if wide then
+			minus.Parent, seatsLabel.Parent, plus.Parent = seatsRow, seatsRow, seatsRow
+			minus.Size, plus.Size = UDim2.fromOffset(44, 44), UDim2.fromOffset(44, 44)
+			seatsLabel.Size = UDim2.new(0, 120, 1, 0)
+			seatsLabel.Font = Theme.FontTitle
+			seatsLabel.TextSize = 20
+			rulesRow.Parent, levelButton.Parent = optsRow, optsRow
+			rulesRow.Size = UDim2.new(0.5, -4, 1, 0)
+			levelButton.Size = UDim2.new(0.5, -4, 1, 0)
+			startButton.Parent = controls
+			startButton.Size = UDim2.new(1, 0, 0, 56)
+			startButton.Font = Theme.FontTitle
+			startButton.TextSize = 28
+			startButton.Text = "START"
+			startButton.BackgroundColor3 = Theme.Accent
+			startButton.TextColor3 = Theme.AccentText
+		else
+			minus.Parent, seatsLabel.Parent, plus.Parent = bar, bar, bar
+			minus.Size, plus.Size = UDim2.fromOffset(40, 40), UDim2.fromOffset(40, 40)
+			seatsLabel.Size = UDim2.new(0, 72, 1, 0)
+			seatsLabel.Font = Theme.Font
+			seatsLabel.TextSize = 15
+			rulesRow.Parent, levelButton.Parent = bar, bar
+			rulesRow.Size = UDim2.new(0, 112, 0, 40)
+			levelButton.Size = UDim2.new(0, 112, 0, 40)
+			startButton.Parent = bar
+			startButton.Size = UDim2.new(0, 110, 0, 40)
+			startButton.Font = Theme.FontBold
+			startButton.TextSize = 18
+			startButton.Text = "Start"
+			startButton.BackgroundColor3 = if Kit.cafe then Theme.Accent else Theme.Good
+			startButton.TextColor3 = if Kit.cafe then Theme.AccentText else Theme.Text
+		end
+		detail.Visible = wide
+	end
 
 	local function savedLists(kind: string): { any }
 		local out = {}
@@ -485,8 +610,20 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			local thumb = thumbs[entry.id]
 			if thumb then
 				thumb.preview = GamePreview.new(entry, thumb.holder)
-				if thumb.preview and chosen and chosen.id == entry.id then
+				if thumb.preview and chosen and chosen.id == entry.id and not wide then
 					thumb.preview.play()
+				end
+			end
+		end
+		-- The Café panel's game plays only while it's on screen.
+		if detailPreview then
+			local want = shown(detail)
+			if want ~= detailPlaying then
+				detailPlaying = want
+				if want then
+					detailPreview.play()
+				else
+					detailPreview.pause()
 				end
 			end
 		end
@@ -536,10 +673,89 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		local isLeader = party ~= nil and party.leaderId == localPlayer.UserId
 		if isLeader and entry.status == "ready" then
 			pick(entry)
+		elseif wide and entry.status == "ready" then
+			inspected = entry
+			render()
 		else
 			Kit.nope(card)
 		end
 	end
+
+	-- Fills the Café panel with the shown game: the picked one, or the one being looked at.
+	local function renderDetail(isLeader: boolean)
+		if not wide then
+			return
+		end
+		local entry: any = if isLeader then chosen else (inspected or chosen)
+		local id = entry and entry.id or nil
+		if id ~= detailId then
+			detailId = id
+			if detailPreview then
+				detailPreview.destroy()
+				detailPreview = nil
+			end
+			detailPlaying = false
+			for _, child in art:GetChildren() do
+				if not child:IsA("UICorner") and not child:IsA("UIStroke") then
+					child:Destroy()
+				end
+			end
+			if entry then
+				local image = GameArt.thumbnail(entry.id)
+				if image then
+					Kit.new("ImageLabel", { BackgroundTransparency = 1, Image = image, ScaleType = Enum.ScaleType.Crop, Size = UDim2.fromScale(1, 1), Parent = art }, { Kit.corner(10) })
+				else
+					poster(entry, art)
+					if entry.status == "ready" and not Perf.isLow() then
+						detailPreview = GamePreview.new(entry, art)
+						if detailPreview then
+							detailPreview.root.GroupTransparency = 1
+							TweenService:Create(detailPreview.root, TweenInfo.new(0.35), { GroupTransparency = 0 }):Play()
+						end
+					end
+				end
+			else
+				Kit.label("🎲", { TextSize = 56, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = art })
+			end
+		end
+		if entry then
+			detailName.Text = entry.name
+			local category = GameArt.category(entry.category)
+			local players = if entry.minSeats == entry.maxSeats then `{entry.maxSeats} players` else `{entry.minSeats}-{entry.maxSeats} players`
+			local minutes = if entry.typicalMinutes then `  ·  about {entry.typicalMinutes} min` else ""
+			detailMeta.Text = `{if category then category.icon .. " " .. category.name .. "  ·  " else ""}{players}{minutes}`
+			detailText.Text = entry.description
+			local hasRules = isLeader and chosen ~= nil and (#HouseRules.list(chosen) > 0 or chosen.custom ~= nil)
+			detailRules.Text = if hasRules and chosen then `House rules: {rulesText(chosen)}` else ""
+			detailRules.Visible = hasRules
+			howTo.Visible = entry.status == "ready" and hooks.showRules ~= nil
+		else
+			detailName.Text = if isLeader then "Pick a game" else "Look around"
+			detailMeta.Text = ""
+			detailText.Text = if isLeader then "Tap any game to see it play here. Empty seats are filled with bots, so you can play alone or with friends." else "Tap any game to see it play here."
+			detailRules.Visible = false
+			howTo.Visible = false
+		end
+		seatsRow.Visible = isLeader and chosen ~= nil
+		optsRow.Visible = isLeader and chosen ~= nil and (rulesRow.Visible or levelButton.Visible)
+		levelButton.Size = if rulesRow.Visible then UDim2.new(0.5, -4, 1, 0) else UDim2.new(1, 0, 1, 0)
+		rulesRow.Size = if levelButton.Visible then UDim2.new(0.5, -4, 1, 0) else UDim2.new(1, 0, 1, 0)
+		waiting.Visible = not isLeader
+		if not isLeader and party then
+			local leaderName = "the leader"
+			for _, member in party.members do
+				if member.userId == party.leaderId then
+					leaderName = member.name
+				end
+			end
+			waiting.Text = `{leaderName} picks the game`
+		end
+	end
+	howTo.Activated:Connect(function()
+		if detailId and hooks.showRules then
+			hooks.showRules(detailId)
+		end
+	end)
 
 	function render()
 		local isLeader = party ~= nil and party.leaderId == localPlayer.UserId
@@ -581,12 +797,15 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			end
 			local ready = entry.status == "ready"
 			local selected = chosen ~= nil and chosen.id == entry.id
+			if wide and not isLeader and inspected then
+				selected = inspected.id == entry.id
+			end
 			local tint = rgb(GameArt.rgb(entry.category))
 			local card = Kit.new("TextButton", {
 				Name = entry.id,
 				Text = "",
-				AutoButtonColor = ready and isLeader,
-				BackgroundColor3 = if selected then Theme.Accent else Theme.PanelLight,
+				AutoButtonColor = ready and (isLeader or wide),
+				BackgroundColor3 = if selected then Theme.Accent elseif Kit.cafe then Theme.Paper else Theme.PanelLight,
 				BackgroundTransparency = if ready then 0 else 0.35,
 				BorderSizePixel = 0,
 				LayoutOrder = if ready then index else 100 + index,
@@ -594,10 +813,19 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			}, {
 				Kit.corner(12),
 				Kit.padding(6),
-				Kit.stroke(if selected then Color3.new(1, 1, 1) else tint, if selected then 0.2 else 0.6, if selected then 2 else 1),
+				if Kit.cafe
+					then Kit.stroke(if selected then Theme.WoodDark else Theme.Wood, 0, if selected then 3 else 2.5)
+					else Kit.stroke(if selected then Color3.new(1, 1, 1) else tint, if selected then 0.2 else 0.6, if selected then 2 else 1),
 			})
 			if ready and isLeader then
 				Kit.pressable(card)
+			elseif ready and wide then
+				-- Not the leader: look at it in the panel.
+				Kit.pressable(card)
+				card.Activated:Connect(function()
+					inspected = entry
+					render()
+				end)
 			else
 				-- Coming soon, or not the leader: a wobble says "not now".
 				card.Activated:Connect(function()
@@ -644,7 +872,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 				Parent = card,
 			})
 			Kit.corner(8).Parent = icon
-			local textColor = if selected then Theme.AccentText else Theme.Text
+			local textColor = if selected then Theme.AccentText elseif Kit.cafe then Theme.Ink else Theme.Text
 			Kit.label(entry.name, {
 				Font = Theme.FontBold,
 				TextSize = 16,
@@ -659,7 +887,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			Kit.label(players .. minutes, {
 				Font = Theme.FontBold,
 				TextSize = 12,
-				TextColor3 = if selected then Theme.AccentText else Theme.SubText,
+				TextColor3 = if selected then Theme.AccentText elseif Kit.cafe then Theme.Ink2 else Theme.SubText,
 				Position = UDim2.new(0, 2, 1, -18),
 				Size = UDim2.new(1, -4, 0, 18),
 				TextWrapped = false,
@@ -677,7 +905,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 					Position = UDim2.new(1, 4, 0, -4),
 					Size = UDim2.fromOffset(28, 28),
 					TextSize = 15,
-					BackgroundColor3 = if selected then Theme.AccentText else Theme.Panel,
+					BackgroundColor3 = if selected then Theme.AccentText elseif Kit.cafe then Theme.Wood else Theme.Panel,
 					TextColor3 = if selected then Theme.Accent else Theme.Text,
 					ZIndex = 2,
 					Parent = card,
@@ -697,7 +925,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		-- The picked game plays on its own tile (how phones, with no hover, see it move).
 		for id, thumb in thumbs do
 			if thumb.preview then
-				if chosen and chosen.id == id then
+				if chosen and chosen.id == id and not wide then
 					thumb.preview.play()
 				else
 					thumb.preview.pause()
@@ -712,9 +940,14 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		end
 		bumpedId = if picked then picked.Name else nil
 
-		bar.Visible = isLeader
-		-- Non-leaders don't get the bar, so the grid can use its space.
-		grid.Size = if isLeader then UDim2.new(1, 0, 1, -GRID_TOP - BAR_H - 8) else UDim2.new(1, 0, 1, -GRID_TOP)
+		-- Non-leaders don't get the bar, so the grid can use its space. The Café panel
+		-- takes the right side on a wide window (and the bar's buttons).
+		bar.Visible = isLeader and not wide
+		local side = if wide then -(DETAIL_W + 12) else 0
+		grid.Size = if bar.Visible then UDim2.new(1, side, 1, -GRID_TOP - BAR_H - 8) else UDim2.new(1, side, 1, -GRID_TOP)
+		sheet.Size = grid.Size
+		chipRow.Size = UDim2.new(1, side, 0, 32)
+		status.Size = UDim2.new(1, if wide then side else -48, 0, 20)
 		local hasRules = chosen ~= nil and (#HouseRules.list(chosen) > 0 or chosen.custom ~= nil)
 		rulesRow.Visible = isLeader and hasRules
 		if not rulesRow.Visible then
@@ -725,6 +958,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			renderSheet()
 		end
 		renderBar()
+		renderDetail(isLeader)
 	end
 
 	function renderBar()
@@ -745,10 +979,54 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		end
 	end
 
+	-- Wide (Café) or narrow layout, decided by the window's width.
+	local function checkWide()
+		local now = Kit.cafe and root.AbsoluteSize.X >= DETAIL_MIN_WIDTH
+		if now ~= wide then
+			wide = now
+			placeControls()
+			render()
+		end
+	end
+	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(checkWide)
+	-- The description scrolls in whatever room the controls leave.
+	local function fitInfo()
+		detailInfo.Size = UDim2.new(1, -24, 1, -24 - controls.AbsoluteSize.Y - 8)
+	end
+	controls:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitInfo)
+	placeControls()
 	render()
+	checkWide()
+	fitInfo()
 
 	return {
 		root = root,
+		-- Opens on a game (the lobby's "Up next" PLAY): the leader picks it, anyone else
+		-- looks at it; the shelf scrolls to its tile.
+		select = function(gameId: string)
+			local entry = GameCatalog.get(gameId)
+			if not entry or entry.status ~= "ready" then
+				return
+			end
+			filter = ALL
+			local isLeader = party ~= nil and party.leaderId == localPlayer.UserId
+			if isLeader then
+				pick(entry)
+			else
+				inspected = entry
+				render()
+			end
+			task.defer(function()
+				local tile = grid:FindFirstChild(gameId) :: GuiObject?
+				if tile then
+					local y = tile.AbsolutePosition.Y - grid.AbsolutePosition.Y + grid.CanvasPosition.Y
+					grid.CanvasPosition = Vector2.new(0, math.max(0, y - 8))
+				end
+			end)
+		end,
+		chosenId = function(): string?
+			return if chosen then chosen.id else nil
+		end,
 		setParty = function(newParty: any)
 			party = newParty
 			Analytics.step("SawLobby") -- the picker is up and showing games

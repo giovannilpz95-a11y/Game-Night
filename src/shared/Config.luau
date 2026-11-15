@@ -1,6 +1,10 @@
 -- Tunable numbers for the whole experience. Change values here, not in the services.
 
 local Config = {
+	-- The menus' look (shared/UIStyle): "Cafe" (wood, paper, felt and gold) or "Classic"
+	-- (the dark plum launch look). In Studio, a "UIStyle" attribute on Workspace overrides it.
+	UIStyle = "Cafe",
+
 	-- Party
 	MaxPartySize = 8,
 	InviteSeconds = 30, -- how long an invite stays valid

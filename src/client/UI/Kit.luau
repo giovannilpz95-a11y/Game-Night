@@ -27,17 +27,26 @@ function Kit.hotkeyArea(gui: GuiObject): GuiObject
 	return gui
 end
 
-Kit.Theme = {
-	Background = Color3.fromRGB(24, 22, 38),
-	Panel = Color3.fromRGB(38, 34, 60),
-	PanelLight = Color3.fromRGB(54, 49, 84),
-	Accent = Color3.fromRGB(255, 196, 64),
-	AccentText = Color3.fromRGB(40, 28, 0),
-	Good = Color3.fromRGB(88, 204, 120),
-	Bad = Color3.fromRGB(235, 87, 87),
-	Warn = Color3.fromRGB(255, 150, 60),
-	Text = Color3.fromRGB(245, 243, 255),
-	SubText = Color3.fromRGB(176, 170, 204),
+-- The look comes from shared/UIStyle (Config.UIStyle, or a "UIStyle" attribute on
+-- Workspace in Studio). Kit.Style is its name ("Cafe" or "Classic").
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UIStyle = require(ReplicatedStorage.Shared.UIStyle)
+local Config = require(ReplicatedStorage.Shared.Config)
+
+Kit.Style = UIStyle.pick(workspace:GetAttribute("UIStyle") or Config.UIStyle)
+local style = UIStyle.Styles[Kit.Style]
+Kit.StyleInfo = style
+-- True for the Game Café look (wood, paper, felt): screens that have a Café layout check it.
+Kit.cafe = Kit.Style == "Cafe"
+
+local function font(name: string, fallback: Enum.Font): Enum.Font
+	local ok, value = pcall(function()
+		return (Enum.Font :: any)[name]
+	end)
+	return if ok and value then value else fallback
+end
+
+local theme: any = {
 	Seat = {
 		Color3.fromRGB(255, 99, 132),
 		Color3.fromRGB(54, 162, 235),
@@ -48,17 +57,24 @@ Kit.Theme = {
 		Color3.fromRGB(102, 255, 153),
 		Color3.fromRGB(255, 102, 204),
 	},
-	Font = Enum.Font.GothamMedium,
-	FontBold = Enum.Font.GothamBold,
+	Font = font(style.fonts.body, Enum.Font.GothamMedium),
+	FontBold = font(style.fonts.bold, Enum.Font.GothamBold),
 	-- Rounded, playful face for window titles and big calls to action.
-	FontTitle = Enum.Font.FredokaOne,
-	Gem = Color3.fromRGB(110, 220, 255),
-	-- Thin outline on windows and cards, so they separate from the 3D room behind them.
-	Stroke = Color3.fromRGB(120, 110, 170),
+	FontTitle = font(style.fonts.title, Enum.Font.FredokaOne),
 	-- Type scale: window title, section heading, body text, small notes, tiny captions.
 	TextSize = { Title = 22, Heading = 18, Body = 16, Small = 14, Tiny = 12 },
 	Radius = { Small = 8, Medium = 10, Large = 14 },
+	-- Window outline thickness and the dark edge under buttons (chunkier in the Café).
+	Frame = style.frame,
+	Edge = style.edge,
 }
+-- Colors: Background, Panel, PanelLight, Accent, AccentText, Good, Bad, Warn, Text,
+-- SubText, Gem, Stroke (thin outline between windows and the 3D room), and the Café's
+-- Paper/Paper2/Ink/Ink2 (light cards and their text), Wood/WoodDark, Felt/FeltDark.
+for token, rgb in style.colors do
+	theme[token] = Color3.fromRGB(rgb[1], rgb[2], rgb[3])
+end
+Kit.Theme = theme
 
 Kit.Juice = Juice
 
@@ -116,6 +132,61 @@ function Kit.stroke(color: Color3?, transparency: number?, thickness: number?): 
 	})
 end
 
+-- A window's outline: the thin line in Classic, a dark wood rim in the Café.
+function Kit.frameStroke(): UIStroke
+	if Kit.cafe then
+		return Kit.stroke(Kit.Theme.WoodDark, 0, Kit.Theme.Frame)
+	end
+	return Kit.stroke()
+end
+
+-- The Café's thin gold line just inside a window's rim (nothing in Classic). `inset` is
+-- the parent's UIPadding, so the line sits 4 px in from the real edge.
+function Kit.innerRim(parent: GuiObject, inset: number?, radius: number?)
+	if not Kit.cafe then
+		return
+	end
+	local pad = (inset or 0) - 4
+	Kit.new("Frame", {
+		Name = "Rim",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(-pad, -pad),
+		Size = UDim2.new(1, pad * 2, 1, pad * 2),
+		ZIndex = parent.ZIndex,
+		Parent = parent,
+	}, {
+		Kit.new("UICorner", { CornerRadius = UDim.new(0, radius or 10) }),
+		Kit.new("UIStroke", { Color = Kit.Theme.Accent, Transparency = 0.55, Thickness = 1.5 }),
+	})
+end
+
+-- A light "paper" card (game tiles, shop items, settings groups) with a wood frame in the
+-- Café; a lighter panel card in Classic. Text on it uses Theme.Ink / Theme.Ink2.
+function Kit.paper(props: { [string]: any }?): Frame
+	local frame = Kit.new("Frame", {
+		BackgroundColor3 = Kit.Theme.Paper,
+		BorderSizePixel = 0,
+	}, {
+		Kit.corner(12),
+		Kit.new("UIStroke", {
+			Name = "Outline",
+			Color = Kit.Theme.Wood,
+			Transparency = if Kit.cafe then 0 else 0.55,
+			Thickness = if Kit.cafe then 2.5 else 1,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+		Kit.new("UIGradient", {
+			Name = "Shade",
+			Rotation = 90,
+			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(238, 232, 222)),
+		}),
+	})
+	for key, value in props or {} do
+		(frame :: any)[key] = value
+	end
+	return frame
+end
+
 -- A soft top-to-bottom shade on a window or card background (it only tints the
 -- object's own background, never its children or text-free buttons' labels).
 function Kit.shade(amount: number?): UIGradient
@@ -143,7 +214,7 @@ function Kit.panel(props: { [string]: any }): Frame
 	local frame = Kit.new("Frame", {
 		BackgroundColor3 = Kit.Theme.Panel,
 		BorderSizePixel = 0,
-	}, { Kit.corner(14), Kit.padding(12), Kit.stroke(), Kit.shade() })
+	}, { Kit.corner(14), Kit.padding(12), Kit.frameStroke(), Kit.shade() })
 	-- A panel that brings its own outline (an accent ring) drops the default one.
 	frame.ChildAdded:Connect(function(child)
 		if child:IsA("UIStroke") and child.Name ~= "Outline" then
@@ -201,12 +272,12 @@ end
 function Kit.edge(button: GuiObject)
 	local edge = Kit.new("UIStroke", {
 		Name = "Edge",
-		Thickness = 1.5,
+		Thickness = Kit.Theme.Edge,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = button,
 	})
 	local function sync()
-		edge.Color = button.BackgroundColor3:Lerp(Color3.new(0, 0, 0), 0.35)
+		edge.Color = button.BackgroundColor3:Lerp(Color3.new(0, 0, 0), if Kit.cafe then 0.5 else 0.35)
 		edge.Transparency = math.max(button.BackgroundTransparency, 0.15)
 	end
 	sync()
@@ -355,12 +426,13 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 		ZIndex = z,
 		Parent = overlay,
 	}, {
-		Kit.corner(14),
+		Kit.corner(if Kit.cafe then 18 else 14),
 		Kit.padding(12),
-		Kit.stroke(),
+		Kit.frameStroke(),
 		Kit.shade(),
 		Kit.new("UISizeConstraint", { MaxSize = opts.maxSize or Vector2.new(900, 640) }),
 	})
+	Kit.innerRim(panel, 12, 14)
 	local body = Kit.new("Frame", {
 		Name = "Body",
 		BackgroundTransparency = 1,
