@@ -185,8 +185,24 @@ function Match.getMatchStats(self: Match): { [number]: { [string]: number } }
 	return out
 end
 
+-- A player who keeps timing out is marked away: their seat plays at bot speed, with the
+-- game's safe AFK move, until they move again or tap "I'm back" (MatchService).
+function Match.isAway(self: Match, seat: number): boolean
+	local s = self.seats[seat]
+	return s ~= nil and s.kind == "player" and s.away == true
+end
+
+function Match.setAway(self: Match, seat: number, away: boolean)
+	local s = self.seats[seat]
+	if s and s.kind == "player" then
+		s.away = if away then true else nil
+	end
+end
+
 -- Lets a bot (or the AFK timer) move for a seat. Returns true if a move was made.
-function Match.playForSeat(self: Match, seat: number): boolean
+-- afk = a person's clock ran out (or they're away): the game's chooseAfkMove picks a safe
+-- move if it has one (never accepting, bidding or accusing for someone who isn't there).
+function Match.playForSeat(self: Match, seat: number, afk: boolean?): boolean
 	if not self:isSeatActive(seat) then
 		-- Out of turn the game's own bot decides, and nil means "let it go".
 		if not self:canMove(seat) or not self.rules.chooseBotMove then
@@ -203,7 +219,13 @@ function Match.playForSeat(self: Match, seat: number): boolean
 			return true
 		end
 	end
-	local move = GameModule.chooseBotMove(self.rules, self.state, seat, self.rng)
+	local move = nil
+	if afk and s and s.kind == "player" and self.rules.chooseAfkMove then
+		move = self.rules.chooseAfkMove(self.state, seat, self.rng)
+	end
+	if move == nil then
+		move = GameModule.chooseBotMove(self.rules, self.state, seat, self.rng)
+	end
 	if move == nil then
 		return false
 	end
@@ -256,7 +278,7 @@ end
 function Match.getSnapshot(self: Match, seat: number?): any
 	local seats = {}
 	for index, s in self.seats do
-		seats[index] = { kind = s.kind, name = s.name, userId = s.userId }
+		seats[index] = { kind = s.kind, name = s.name, userId = s.userId, away = s.away }
 	end
 	return {
 		matchId = self.id,

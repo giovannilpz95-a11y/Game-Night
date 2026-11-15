@@ -345,6 +345,7 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "anyRoom", name = "Walk anywhere", hint = "Move to any room on your turn, not just the next one.", choices = Toggle, default = 1 },
 			{ key = "openShow", name = "Show cards to all", hint = "A card shown to answer a suggestion is shown to everyone. Easier, faster games.", choices = Toggle, default = 1 },
+			{ key = "leftover", name = "Leftover cards face up", hint = "With 4 or 5 players, the cards that don't deal evenly lie face up for everyone instead of making some hands bigger.", choices = Toggle, default = 2 },
 		},
 	},
 	{
@@ -373,6 +374,7 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "jailRent", name = "Rent from Jail", hint = "Off: owners sitting in Jail can't collect rent.", choices = Toggle, default = 2 },
+			{ key = "firstLap", name = "No houses on the first lap", hint = "Nobody can build until they've gone around the board and passed Start once.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -435,6 +437,9 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "earlyLimit", name = "Slow start", hint = "Only 1-2 conquests a turn in the first rounds, so nobody runs away early.", choices = Toggle, default = 2 },
+			{ key = "fog", name = "Fog of war", hint = "You only see lands that are yours or touch yours.", choices = Toggle, default = 1 },
+			{ key = "missions", name = "Secret missions", hint = "Everyone gets a secret mission. Finish yours on your turn to win at once.", choices = Toggle, default = 1 },
+			{ key = "capitals", name = "Capitals", hint = "Your strongest starting land is your capital. Hold enough capitals to win at once.", choices = Toggle, default = 1 },
 		},
 	},
 	{

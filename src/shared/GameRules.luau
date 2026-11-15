@@ -107,6 +107,11 @@ rules.Conquest = {
 		{ title = "2. Attack", lines = { "Pick one of your territories with 2+ armies, then a neighbour.", "You roll up to 3 dice, the defender up to 2. Highest dice are compared in pairs; ties go to the defender.", "Blitz keeps rolling until it falls or you're down to 1 army.", "Take it and move armies in. In the first rounds you can only take a few territories per turn." } },
 		{ title = "3. Fortify", lines = { "Move armies once between two of your territories joined by your land, or just end the turn.", "Conquer at least one territory to earn a card." } },
 		{ title = "Winning", lines = { "Take every territory, or have the most when the round limit is reached.", "Knock a player out and you get their cards." } },
+		{ title = "Modes (house rules)", lines = {
+			"Fog of war: you only see who holds a land, and its armies, when it's yours or touches yours.",
+			"Secret missions: finish your mission on your turn (hold two regions, hold lots of lands, knock someone out) and you win at once. Nobody else sees it until the end.",
+			"Capitals: your strongest starting land is your capital (the star). Hold all capitals with 2-3 players, 3 with 4, or 4 with 5-6 to win at once.",
+		} },
 	},
 }
 
@@ -205,7 +210,7 @@ rules.Whodunit = {
 		"Sure of all three? Accuse. Right wins; wrong puts you out.",
 	},
 	sections = {
-		{ title = "The mystery", lines = { "One suspect, one item and one room are hidden in the case file. All the other cards are dealt to players.", "Any card you see can't be in the case file." } },
+		{ title = "The mystery", lines = { "One suspect, one item and one room are hidden in the case file. All the other cards are dealt to players.", "With 4 or 5 players the cards that don't deal evenly lie face up beside the board for everyone.", "Any card you see can't be in the case file." } },
 		{ title = "Your turn", lines = { "Move to a room next to yours, or take a secret passage between opposite corners.", "Suggest a suspect and an item. Their pawn and the item move into your room.", "Going round the table, the first player with any of those cards shows you one in secret." } },
 		{ title = "Accusing", lines = { "Any time on your turn you can accuse: name a suspect, item and room.", "Right: you win. Wrong: you're out, but you still show cards to others." } },
 		{ title = "Tip", lines = { "Open Detective notes to track what you've seen." } },

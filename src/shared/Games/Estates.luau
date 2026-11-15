@@ -26,6 +26,7 @@
 --   { kind = "counter", give = Side, get = Side }            (...or sends one back)
 --
 -- House rules (options.rules): fast (deal 2 deeds each, quicker auctions, fewer rounds),
+-- firstLap (no building until you've passed Start once, like Monopoly Plus),
 -- jackpot (taxes and fees pile up on Rest Stop for whoever lands there), doubleStart
 -- ($400 for landing right on Start), auctions (false: a declined deed stays unsold).
 
@@ -366,7 +367,7 @@ function Estates.new(seatCount: number, options: any?, rng: Random?)
 	local startCash = if type(opts.startCash) == "number" and opts.startCash >= 500 and opts.startCash <= 5000 then math.floor(opts.startCash) else Estates.START_CASH
 	local players = {}
 	for seat = 1, seatCount do
-		players[seat] = { cash = startCash, pos = 1, inJail = false, jailTries = 0, bankrupt = false, cards = {} }
+		players[seat] = { cash = startCash, pos = 1, inJail = false, jailTries = 0, bankrupt = false, cards = {}, laps = 0 }
 	end
 	local decks = {}
 	for key, deck in Estates.decks do
@@ -438,6 +439,7 @@ function Estates.new(seatCount: number, options: any?, rng: Random?)
 		doubleStart = rules.doubleStart == true,
 		auctions = rules.auctions ~= false,
 		jailRent = rules.jailRent ~= false, -- house rule: off means owners in Jail collect no rent
+		firstLap = rules.firstLap == true, -- house rule: no building until you've passed Start once
 		pot = 0, -- jackpot rule: cash waiting on Rest Stop
 		clock = 0, -- bumped whenever a phase clock (the auction countdown) restarts
 		phase = "turn", -- turn | buy | auction | debt | trade | over
@@ -636,6 +638,7 @@ local resolveSpace: (any, number, string?) -> ()
 local function moveTo(state, seat: number, target: number, special: string?)
 	local p = state.players[seat]
 	if target < p.pos or target == 1 and p.pos ~= 1 then
+		p.laps = (p.laps or 0) + 1
 		if target == 1 and state.doubleStart then
 			p.cash += Estates.PASS_START * 2
 			log(state, seat, `landed right on Start and collected {money(Estates.PASS_START * 2)}`)
@@ -867,6 +870,9 @@ function Estates.canBuild(state, seat: number, pos: number): (boolean, string?)
 	end
 	if groupHasMortgage(state, g) then
 		return false, "Pay off the mortgages in this color first"
+	end
+	if state.firstLap and (state.players[seat].laps or 0) < 1 then
+		return false, "Go around the board once before building"
 	end
 	local h = state.houses[pos]
 	if h >= 5 then
@@ -1369,6 +1375,7 @@ function Estates.getView(state, seat: number?)
 			jailTries = p.jailTries,
 			bankrupt = p.bankrupt,
 			cards = #p.cards,
+			laps = p.laps or 0,
 			worth = Estates.netWorth(state, s),
 		}
 	end
@@ -1403,6 +1410,7 @@ function Estates.getView(state, seat: number?)
 		fast = state.fast,
 		jackpot = state.jackpot,
 		auctions = state.auctions,
+		firstLap = state.firstLap,
 		auctionSeconds = Estates.auctionSeconds(state),
 		log = GameModule.copy(state.log),
 		yourSeat = seat,
@@ -1774,6 +1782,30 @@ function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 		return { kind = "roll" }
 	end
 	return { kind = "endTurn" }
+end
+
+-- A person's clock ran out (or they're away): only the moves Rich Up's auto-play makes.
+-- Roll and end the turn, send a deed to auction and never bid, turn trades down, and pay
+-- a debt (raising the cash the way a bot would, since the game can't wait). Never build,
+-- unmortgage, buy or offer with someone else's money.
+function Estates.chooseAfkMove(state, seat: number, _rng: Random): any?
+	local phase = state.phase
+	local p = state.players[seat]
+	if phase == "trade" then
+		return { kind = "reject" }
+	elseif phase == "auction" then
+		return { kind = "pass" }
+	elseif phase == "buy" then
+		return { kind = "decline" }
+	elseif phase == "debt" then
+		if p.cash >= state.debt.amount then
+			return { kind = "payDebt" }
+		end
+		return botRaise(state, seat) or { kind = "bankrupt" }
+	elseif phase == "turn" then
+		return { kind = if state.canRoll then "roll" else "endTurn" }
+	end
+	return nil
 end
 
 -- Stats for the profile (see shared/StatsCatalog.luau).
