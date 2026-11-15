@@ -67,6 +67,9 @@ local ROUND = 3 -- questions per category vote
 
 TriviaNight.questionCount = QUESTIONS
 TriviaNight.elapsedField = "elapsed"
+-- MatchService remembers the questions each server asked lately and passes them back as
+-- options.recent (a set of bank numbers), so regulars don't get repeats.
+TriviaNight.recentField = "questions"
 TriviaNight.SAMPLE = SAMPLE
 
 -- Kahoot's formula: 1000 for an instant answer, 500 for one on the buzzer.
@@ -129,10 +132,20 @@ function TriviaNight.new(seatCount: number, options: any?, rng: Random?)
 	if options and type(options.customQuestions) == "table" and #options.customQuestions > 0 then
 		bank = options.customQuestions
 	end
-	-- Pick distinct questions, easy first and harder later.
+	-- Pick distinct questions, easy first and harder later, skipping ones this server
+	-- asked lately while there are plenty of others.
+	local recent = if options and type(options.recent) == "table" and bank ~= SAMPLE then options.recent else {}
 	local pool = {}
 	for i = 1, #bank do
-		pool[i] = i
+		if not recent[i] then
+			table.insert(pool, i)
+		end
+	end
+	if #pool < count * 3 then
+		pool = {}
+		for i = 1, #bank do
+			pool[i] = i
+		end
 	end
 	local total = math.min(count, #pool)
 	local picked = {}
@@ -460,6 +473,19 @@ function TriviaNight.getResult(state): GameModule.Result?
 	for seat = 1, state.seatCount do
 		best = math.max(best, state.scores[seat])
 	end
+	-- Everyone by score (then speed, then seat), for the result card.
+	local ranking = {}
+	for seat = 1, state.seatCount do
+		ranking[seat] = seat
+	end
+	table.sort(ranking, function(a, b)
+		if state.scores[a] ~= state.scores[b] then
+			return state.scores[a] > state.scores[b]
+		elseif state.rightTime[a] ~= state.rightTime[b] then
+			return state.rightTime[a] < state.rightTime[b]
+		end
+		return a < b
+	end)
 	local tied = {}
 	for seat = 1, state.seatCount do
 		if state.scores[seat] == best then
@@ -467,7 +493,7 @@ function TriviaNight.getResult(state): GameModule.Result?
 		end
 	end
 	if #tied == 1 then
-		return { winners = tied, isDraw = false, reason = `Top score: {best} points` }
+		return { winners = tied, isDraw = false, reason = `Top score: {best} points`, ranking = ranking }
 	end
 	-- A tie on points: the quickest over their right answers wins.
 	local fastest = math.huge
@@ -481,9 +507,9 @@ function TriviaNight.getResult(state): GameModule.Result?
 		end
 	end
 	if #winners < #tied then
-		return { winners = winners, isDraw = false, reason = `Tied on {best} points: won on speed` }
+		return { winners = winners, isDraw = false, reason = `Tied on {best} points: won on speed`, ranking = ranking }
 	end
-	return { winners = winners, isDraw = false, reason = `Top score: {best} points` }
+	return { winners = winners, isDraw = false, reason = `Top score: {best} points`, ranking = ranking }
 end
 
 function TriviaNight.getScores(state): { [number]: number }

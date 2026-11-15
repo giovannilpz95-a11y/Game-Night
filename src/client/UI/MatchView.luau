@@ -1417,17 +1417,25 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			end
 		end
 
-		-- Standings: winners first, then everyone else in seat order, with their last
-		-- seat line (points, cards left...).
+		-- Standings: winners first, then everyone else in seat order (or the game's own
+		-- ranking, best first, when it gives one), with their last seat line.
 		Kit.clear(standings)
 		local order = {}
 		for index in snapshot.seats do
 			table.insert(order, index)
 		end
+		local rankOf = {}
+		for place, index in (result and result.ranking) or {} do
+			rankOf[index] = place
+		end
 		table.sort(order, function(a, b)
 			local wa, wb = winners[a] == true, winners[b] == true
 			if wa ~= wb then
 				return wa
+			end
+			local ra, rb = rankOf[a] or math.huge, rankOf[b] or math.huge
+			if ra ~= rb then
+				return ra < rb
 			end
 			return a < b
 		end)

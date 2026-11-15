@@ -243,9 +243,29 @@ rules.TriviaNight = {
 		"Keep a streak of right answers going for bonus points.",
 	},
 	sections = {
-		{ title = "Each question", lines = { "Pick one of four answers before the clock runs out.", "Then the right answer and the points are shown." } },
-		{ title = "Scoring", lines = { "A right answer scores 500 to 1000: the faster you answer, the more you get.", "Streaks of right answers add a bonus.", "After each question you see your place on the scoreboard." } },
-		{ title = "Winning", lines = { "Highest score after the last question wins. Ties share the win." } },
+		{
+			title = "Each question",
+			lines = {
+				"Pick an answer before the clock runs out: four choices, or True / False.",
+				"In Table view, tap one of your colored answer pads on the table or a button at the bottom.",
+				"Then the right answer, how many picked each one and the points are shown.",
+				"Questions start easy and get harder as the game goes on.",
+			},
+		},
+		{
+			title = "Categories",
+			lines = { "Every 3 questions everyone votes for the next category. Votes are public; a tie is settled at random." },
+		},
+		{
+			title = "Scoring",
+			lines = {
+				"A right answer scores 500 to 1000: the faster you answer, the more you get.",
+				"A streak of right answers adds +100 for 2 in a row, +200 for 3, up to +300.",
+				"With the \"Wrong answers cost\" house rule, a wrong answer loses 250 points (no answer loses nothing).",
+				"Points show at the reveal, then your place on the scoreboard.",
+			},
+		},
+		{ title = "Winning", lines = { "Highest score after the last question wins. A tie goes to whoever was faster over their right answers." } },
 	},
 }
 
