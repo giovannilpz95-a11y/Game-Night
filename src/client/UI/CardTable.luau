@@ -49,7 +49,7 @@ function CardTable.layout(container: Instance): Layout
 		TextWrapped = false,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		Size = UDim2.new(1, 0, 0, 22),
-		ZIndex = 3,
+		ZIndex = 7, -- over the hand, so a lifted card never covers what to do
 		Parent = root,
 	})
 	-- A dark pill behind the prompt, sized to its text, so it reads over the felt and the
@@ -62,7 +62,7 @@ function CardTable.layout(container: Instance): Layout
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.62, -2),
 		Visible = false,
-		ZIndex = 2,
+		ZIndex = 6,
 		Parent = root,
 	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Color = Theme.Accent, Transparency = 0.6 }) })
 	local function fitPill()
@@ -77,12 +77,13 @@ function CardTable.layout(container: Instance): Layout
 		BackgroundTransparency = 1,
 		Position = UDim2.new(0, 0, 0.62, 24),
 		Size = UDim2.new(1, 0, 0, 38),
+		ZIndex = 6, -- over the hand: held, the corner buttons overlap the fan's right end
 		Parent = root,
 	})
 	local buttonList = Kit.list(8, true)
 	buttonList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	buttonList.Parent = buttons
-	local hand = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.62, 66), Size = UDim2.new(1, 0, 0.38, -66), Parent = root })
+	local hand = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.62, 66), Size = UDim2.new(1, 0, 0.38, -66), ZIndex = 4, Parent = root })
 	local ui: Layout
 	-- Redraw once the hand has its new size (a docked layout, a resized screen), so the
 	-- cards are measured against the right frame.

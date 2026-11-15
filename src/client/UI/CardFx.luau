@@ -107,7 +107,9 @@ function popNow(text: string, color: Color3, fallback: Instance?)
 	local up = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	local height = if wide > 1 then 3.2 / wide * 1.4 else 3.2
 	TweenService:Create(board, up, { Size = UDim2.fromScale(3.2 * math.min(wide, 2.2), math.max(height, 1.3)) }):Play()
-	TweenService:Create(anchor, up, { Position = base + Vector3.new(0, 1.8, 0) + focus.toYou * 0.5 }):Play()
+	-- Up and a little away from you: coming toward you dropped it low on the screen,
+	-- behind the held hand.
+	TweenService:Create(anchor, up, { Position = base + Vector3.new(0, 2, 0) - focus.toYou * 0.3 }):Play()
 	task.delay(1.0, function()
 		if not anchor.Parent then
 			return

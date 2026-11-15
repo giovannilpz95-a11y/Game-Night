@@ -5,7 +5,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Scene = require(script.Parent.Parent.Scene)
 local Cards = require(script.Parent._Cards)
-local Models = require(script.Parent.Parent.Models)
 
 local SlapStack = {}
 
@@ -41,15 +40,29 @@ function SlapStack.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 		end
 		history.fit(count)
 		history.setTop(top)
+		local before = {}
+		for _, child in folder:GetChildren() do
+			before[child] = true
+		end
 		Cards.messyPile(folder, boardCF, layout, Cards.center(boardCF, 0), history.items, function(id)
 			return Scene.playingFront(PlayingCards, id)
 		end)
-		-- Tap or click the middle pile to slap (Table3D/SceneTap -> renderer.tapTable).
-		local pad = Models.block(folder, "SlapPad", Vector3.new(2.6, 0.5, 2.6), Cards.center(boardCF, 0) * CFrame.new(0, 0.25, 0), Color3.new(1, 1, 1))
-		pad.Transparency = 1
-		pad.CanCollide = false
-		pad.CanQuery = true
-		pad:SetAttribute("TapId", "pile")
+		-- Tap or click a card of the middle pile to slap (Table3D/SceneTap ->
+		-- renderer.tapTable). The cards themselves carry the tap, so hovering outlines the
+		-- card instead of a glowing block over the pile.
+		for _, child in folder:GetChildren() do
+			if not before[child] then
+				for _, part in if child:IsA("BasePart") then { child } else child:GetDescendants() do
+					if part:IsA("BasePart") then
+						part.CanQuery = true
+						part:SetAttribute("TapId", "pile")
+					end
+				end
+				if child:IsA("Model") then
+					child:SetAttribute("TapId", "pile")
+				end
+			end
+		end
 	end, Color3.fromRGB(130, 46, 52))
 end
 

@@ -61,6 +61,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0.65, 0),
 		Size = UDim2.new(1, 0, 0, 22),
+		ZIndex = 9,
 		Parent = root,
 	})
 	local myBooks = Kit.label("", {
@@ -69,6 +70,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0.65, 22),
 		Size = UDim2.new(1, 0, 0, 18),
+		ZIndex = 9,
 		Parent = root,
 	})
 	-- "Ask <name>" buttons in the same spot as your books line, once you've picked a rank,
@@ -367,12 +369,11 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		PlayingCard.setHeld(hand, docked)
 		hand.Position = if docked then UDim2.new(0.14, 0, 0.74, 0) else UDim2.new(0, 0, 0.74, 0)
 		hand.Size = if docked then UDim2.new(0.72, 0, 0.4, 0) else UDim2.new(1, 0, 0.26, 0)
-		-- Held, the picked rank's cards lift up out of the fan: the prompt and the Ask
-		-- buttons move up out of their way.
-		local y = if docked then 0.565 else 0.65
-		prompt.Position = UDim2.new(0, 0, y, 0)
-		myBooks.Position = UDim2.new(0, 0, y, 22)
-		askRow.Position = UDim2.new(0, 0, y, 24)
+		-- The held strip only shows the bottom of the screen from about 0.64 down, so the
+		-- prompt and the Ask row stay at the top of it; they draw over the lifted cards.
+		prompt.Position = UDim2.new(0, 0, 0.65, 0)
+		myBooks.Position = UDim2.new(0, 0, 0.65, 22)
+		askRow.Position = UDim2.new(0, 0, 0.65, 24)
 		if snapshot then
 			render()
 		end
