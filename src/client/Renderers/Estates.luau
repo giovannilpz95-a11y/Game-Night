@@ -141,6 +141,7 @@ local function stateFromView(view: any): any
 		hotelsLeft = view.hotelsLeft,
 		players = players,
 		firstLap = view.firstLap,
+		hotelAt = view.hotelAt,
 	}
 end
 
@@ -189,6 +190,8 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 
 	-- What you opened yourself: a deed card, the trade screen or the Manage screen.
 	local userPopup: { kind: string, pos: number? }? = nil
+	local autoEnd = false -- end the turn by itself once there's nothing left to build
+	local autoSentAt: number? = nil -- the move number auto end already ended
 	local bankruptConfirm = false
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
@@ -1003,6 +1006,11 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 			Kit.label(money(draft[cashKey]), z({ TextSize = 15, Font = Theme.FontBold, TextColor3 = Color3.fromRGB(140, 230, 150), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, Size = UDim2.fromOffset(56, 30), LayoutOrder = 3, Parent = cashRow }))
 			step(10, 4)
 			step(100, 5)
+			step(500, 6)
+			Kit.button("All", function()
+				draft[cashKey] = have
+				rerender()
+			end, z({ BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, TextSize = 12, Size = UDim2.fromOffset(30, 30), LayoutOrder = 7, Parent = cashRow }))
 			local cards = view.players[seat].cards
 			draft[cardsKey] = math.clamp(draft[cardsKey], 0, cards)
 			local cardButton = Kit.button(if cards > 0 then `🎟 Jail cards: {draft[cardsKey]} of {cards}` else `Cash: has {money(have)}`, function()
@@ -1040,6 +1048,50 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 	end
 
 	-- Manage screen: every set you own, with build / sell / mortgage on each deed -------------
+	-- The whole game log (the board shows only the last 8 lines).
+	local function buildLog(frame: Frame)
+		local view = snapshot.view
+		local me = snapshot.yourSeat
+		Kit.label("Game log", z({ TextSize = 22, Font = Theme.FontTitle, Size = UDim2.new(1, -40, 0, 26), Parent = frame }))
+		Kit.closeButton(function()
+			userPopup = nil
+			rerender()
+		end, { ZIndex = 45, Parent = frame })
+		local scroll = Kit.new("ScrollingFrame", z({
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(0, 32),
+			Size = UDim2.new(1, 0, 1, -32),
+			CanvasSize = UDim2.new(),
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			ScrollBarThickness = 4,
+			Parent = frame,
+		}))
+		Kit.list(4).Parent = scroll
+		local count = #view.log
+		for i = count, 1, -1 do
+			local entry = view.log[i]
+			local who = if entry.seat then (if entry.seat == me then "You " else nameOf(entry.seat) .. " ") else ""
+			local text = entry.text
+			if entry.seat ~= nil and entry.seat == me then
+				text = string.gsub(text, "^owes ", "owe ")
+			end
+			Kit.label(`{who}{text}`, z({
+				TextSize = 13,
+				TextColor3 = if entry.seat then HudKit.seatColor(entry.seat) else Theme.Text,
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, -8, 0, 0),
+				LayoutOrder = count - i,
+				Parent = scroll,
+			}))
+		end
+	end
+
+	local function openLog()
+		userPopup = { kind = "log" }
+		rerender()
+	end
+
 	local function buildManage(frame: Frame)
 		local view = snapshot.view
 		local me = snapshot.yourSeat :: number
@@ -1189,10 +1241,12 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 				local h = view.houses[pos]
 				local debt = view.phase == "debt"
 				if space.kind == "street" then
-					popButton(bar, if h == 4 then `Hotel {money(space.houseCost)}` else `House {money(space.houseCost)}`, Theme.Good, function()
+					popButton(bar, if h >= (view.hotelAt or 4) then `Hotel {money(space.houseCost)}` else `House {money(space.houseCost)}`, Theme.Good, function()
 						sendMove({ kind = "build", pos = pos })
 					end, (Rules.canBuild(fake, me, pos)) and not debt, 1)
-					popButton(bar, `Sell +{money(space.houseCost // 2)}`, Theme.Warn, function()
+					-- A hotel sold while the bank is short of houses sells the set down evenly.
+					local sale = if h == 5 then Rules.hotelSale(fake, pos).cash else space.houseCost // 2
+					popButton(bar, `Sell +{money(sale)}`, Theme.Warn, function()
 						sendMove({ kind = "sell", pos = pos })
 					end, (Rules.canSell(fake, me, pos)), 2)
 				end
@@ -1212,7 +1266,7 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 				return
 			end
 			local owner = view.owner[pos]
-			local canAsk = me ~= nil and owner ~= 0 and owner ~= me and view.turn == me and (view.phase == "turn" or view.phase == "debt") and view.tradesLeft > 0 and tradable(view, pos)
+			local canAsk = me ~= nil and owner ~= 0 and owner ~= me and view.canOffer and tradable(view, pos)
 			if canAsk then
 				popButton(bar, "Ask to trade", nil, function()
 					openTrade(owner, pos)
@@ -1272,9 +1326,14 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 					sendMove({ kind = "bid", amount = amount })
 				end, amount <= cash, i)
 			end
-			popButton(bar, "Pass", Theme.PanelLight, function()
+			popButton(bar, "Pass (out)", Theme.PanelLight, function()
 				sendMove({ kind = "pass" })
 			end, true, 4)
+			-- Short of cash for a bid: sell or mortgage from the Manage screen.
+			popButton(bar, "Raise cash", Theme.PanelLight, function()
+				userPopup = { kind = "manage" }
+				rerender()
+			end, table.find(view.owner, me) ~= nil, 5)
 		end)
 	end
 
@@ -1532,10 +1591,24 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 				elseif view.phase == "debt" then "is raising cash"
 				else "is taking their turn"
 			actionText.Text = `{nameOf(view.turn)} {doing}...`
+			-- Anyone can send one trade offer while someone else is between actions.
+			if view.canOffer then
+				secondary("Trade", function()
+					openTrade(nil, nil)
+				end, nil, 1, true)
+			end
+			-- Rich Up's "+1 minute": give a slow friend more time (once a turn).
+			local seatInfo = snapshot.seats[view.turn]
+			if me and seatInfo and seatInfo.kind == "player" and snapshot.turnEndsAt and not snapshot.timed and sendRequest then
+				secondary("+30 s", function()
+					sendRequest({ action = "extend" })
+				end, nil, 2, true)
+			end
+			secondary("Log", openLog, nil, 3, true)
 			return
 		end
 
-		local canTrade = view.tradesLeft > 0 and (view.phase == "turn" or view.phase == "debt")
+		local canTrade = view.canOffer
 		local canManage = ownsAny(view, me :: number) and (view.phase == "turn" or view.phase == "buy" or view.phase == "debt")
 		if view.phase == "buy" then
 			local space = spaces[myPlayer.pos]
@@ -1582,7 +1655,32 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 			endTurnButton = primary("End turn", function()
 				sendMove({ kind = "endTurn" })
 			end)
+			-- "Auto end": once there's nothing left to build, end the turn by itself.
+			if autoEnd and not userPopup then
+				local fake = stateFromView(view)
+				local canBuild = false
+				for pos = 1, #spaces do
+					if view.owner[pos] == me and (Rules.canBuild(fake, me :: number, pos)) then
+						canBuild = true
+						break
+					end
+				end
+				if not canBuild then
+					local moveNumber = snapshot.moveNumber
+					actionText.Text = "Nothing left to build: ending your turn..."
+					task.delay(1.5, function()
+						if snapshot and snapshot.moveNumber == moveNumber and autoEnd and not userPopup and autoSentAt ~= moveNumber then
+							autoSentAt = moveNumber
+							sendMove({ kind = "endTurn" })
+						end
+					end)
+				end
+			end
 		end
+		secondary(if autoEnd then "Auto: on" else "Auto: off", function()
+			autoEnd = not autoEnd
+			rerender()
+		end, if autoEnd then Theme.Accent else nil, 3, true)
 		secondary("Manage", function()
 			userPopup = { kind = "manage" }
 			rerender()
@@ -1590,6 +1688,7 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 		secondary("Trade", function()
 			openTrade(nil, nil)
 		end, nil, 2, canTrade)
+		secondary("Log", openLog, nil, 4, true)
 	end
 
 	-- Players panel ------------------------------------------------------------------------
@@ -1689,12 +1788,16 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 		-- What you opened yourself is dropped once it no longer makes sense.
 		if userPopup then
 			local kind = userPopup.kind
+			local bidding = view.phase == "auction" and me ~= nil and table.find(view.auction.bidders, me) ~= nil and view.auction.leader ~= me
 			if (kind == "trade" or kind == "manage") and not (myTurn and (view.phase == "turn" or view.phase == "debt" or (kind == "manage" and view.phase == "buy"))) then
-				if not (kind == "trade" and tradeDraft.counter and view.phase == "trade" and view.trade.to == me) then
+				local counterOpen = kind == "trade" and tradeDraft.counter and view.phase == "trade" and view.trade.to == me
+				local offTurnTrade = kind == "trade" and not tradeDraft.counter and view.canOffer
+				local raising = kind == "manage" and bidding
+				if not (counterOpen or offTurnTrade or raising) then
 					userPopup = nil
 				end
 			end
-			if kind == "trade" and not tradeDraft.counter and view.tradesLeft <= 0 then
+			if kind == "trade" and not tradeDraft.counter and not view.canOffer then
 				userPopup = nil
 			end
 		end
@@ -1702,7 +1805,9 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 		if settling then
 			task.delay(busyUntil - os.clock() + 0.05, rerender)
 		end
-		if view.phase == "auction" then
+		if view.phase == "auction" and userPopup and userPopup.kind == "manage" then
+			openPopup("manage", Vector2.new(620, 520), buildManage)
+		elseif view.phase == "auction" then
 			auctionPopup()
 		elseif view.phase == "trade" and (view.trade.to == me or view.trade.from == me) then
 			if userPopup and userPopup.kind == "trade" and tradeDraft.counter and view.trade.to == me then
@@ -1714,6 +1819,8 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 			openPopup("trade", Vector2.new(640, 500), buildTrade)
 		elseif userPopup and userPopup.kind == "manage" then
 			openPopup("manage", Vector2.new(620, 520), buildManage)
+		elseif userPopup and userPopup.kind == "log" then
+			openPopup("log", Vector2.new(440, 480), buildLog)
 		elseif view.phase == "buy" and myTurn and not settling then
 			-- Your own landing comes before a deed card you had open.
 			if userPopup and userPopup.kind == "deed" then
@@ -1754,7 +1861,9 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 		local me = snapshot.yourSeat
 		attachOverlay()
 
-		roundLabel.Text = `Round {math.min(view.round, view.maxRounds)} of {view.maxRounds}{if view.fast then " · Fast mode" else ""} · richest wins at the end`
+		roundLabel.Text = if view.endless
+			then `Round {view.round}{if view.fast then " · Fast mode" else ""} · {if view.firstBankruptEnds then "first bankruptcy ends it" else "last one standing wins"}`
+			else `Round {math.min(view.round, view.maxRounds)} of {view.maxRounds}{if view.fast then " · Fast mode" else ""} · richest wins at the end`
 		potLabel.Visible = view.jackpot == true
 		potLabel.Text = `Rest Stop jackpot: {money(view.pot or 0)}`
 
@@ -1840,9 +1949,10 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 			busyUntil = math.max(busyUntil, settled)
 		end
 
-		-- News feed.
+		-- News feed: the last 8 lines on the board (the Log button has them all).
 		Kit.clear(logFrame)
-		for i, entry in view.log do
+		for i = math.max(1, #view.log - 7), #view.log do
+			local entry = view.log[i]
 			local who = if entry.seat then nameOf(entry.seat) .. " " else ""
 			local text = entry.text
 			if entry.seat ~= nil and entry.seat == me then
@@ -1870,7 +1980,7 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 					table.insert(chips, TablePrompt.chip(`{nameOf(seat)} {money(p.cash)}`, if seat == view.turn then Theme.Accent else HudKit.seatColor(seat)))
 				end
 			end
-			table.insert(chips, TablePrompt.chip(`Round {math.min(view.round, view.maxRounds)} of {view.maxRounds}`))
+			table.insert(chips, TablePrompt.chip(if view.endless then `Round {view.round}` else `Round {math.min(view.round, view.maxRounds)} of {view.maxRounds}`))
 			tablePrompt.chips(if snapshot.result then nil else "money", chips)
 		end
 		if endTurnButton and not quiet then
