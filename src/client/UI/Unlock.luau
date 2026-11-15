@@ -21,6 +21,7 @@ export type Entry = {
 	icon: string, -- an emoji for the badge
 	color: Color3, -- tier color
 	tier: string?, -- Common | Rare | Epic | Legendary (moving border, tag)
+	tag: string?, -- the tag's text instead of the tier ("GOLD" for an achievement tier)
 	subtitle: string?,
 	compact: boolean?, -- at a table: a banner across the top instead of the full screen
 }
@@ -107,7 +108,7 @@ local function full(parent: Instance, entry: Entry, done: () -> ())
 	Kit.new("UIStroke", { Color = Color3.fromRGB(30, 20, 40), Thickness = 2, Parent = title })
 	local y = 234
 	if entry.tier then
-		Kit.tag(string.upper(entry.tier), entry.color, {
+		Kit.tag(string.upper(entry.tag or entry.tier), entry.color, {
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.new(0.5, 0, 0, y),
 			ZIndex = 84,

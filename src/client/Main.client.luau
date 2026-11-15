@@ -601,7 +601,8 @@ local function celebrateAchievements(unlocks: { any })
 			icon = tostring(unlock.icon),
 			color = if unlock.mastery then Kit.Theme.Accent else Achievements.TierColors[tier],
 			tier = if unlock.mastery then "Legendary" else UNLOCK_RARITY[tier],
-			subtitle = `{tierName} · {unlock.reward or ""}{if unlock.title then `\nUnlocked {unlock.title}` else ""}`,
+			tag = tierName,
+			subtitle = `{unlock.reward or ""}{if unlock.title then `\nUnlocked {unlock.title}` else ""}`,
 			compact = compact,
 		})
 	end
