@@ -4,8 +4,13 @@
 --
 -- Cards show what each seat said today, the open votes, who is out, and what only you
 -- know (your packmates as a wolf, your checks as the Seer, your last shield as the
--- Guardian). In Table view the screen over the table shows the phase, so the dock keeps
--- one row of cards and the buttons.
+-- Guardian).
+--
+-- Table view (setTableMode): no panel. You play on the table: tap a player's lantern to
+-- pick them (legal picks glow), and the buttons for this phase sit in a bar along the
+-- bottom (UI/TablePrompt). Your role pops up as a card at the start, what only you know
+-- floats over the lanterns (your pack, your checks), and "Village" opens the full grid
+-- of player cards in a window.
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,6 +20,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local Layout = require(script.Parent.Parent.UI.Layout)
 local Audio = require(script.Parent.Parent.Audio)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local Theme = Kit.Theme
 
 local Werewolf = {}
@@ -30,7 +36,7 @@ local NIGHT_PROMPT = {
 	guardian = "Pick a player to shield tonight.",
 	villager = "Everyone taps someone at night. Pick who you suspect.",
 	hunter = "Pick who you suspect. If you go out, you take someone with you.",
-	witch = "Pick who you suspect, or use a potion: save the wolves' victim once they pick, or poison someone.",
+	witch = "Pick who you suspect. Your potions come after everyone has picked.",
 }
 
 function Werewolf.create(container: Frame, sendMove: (any) -> ())
@@ -44,6 +50,11 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 	local lastMatchId: string? = nil
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local tableMode = false
+	local villageOpen = false -- the village grid is in the Table view window
+	local revealSeen: string? = nil -- the match whose role card you closed
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
 
 	-- Header ------------------------------------------------------------------------
 	local header = Kit.new("Frame", { BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 70), Parent = root }, { Kit.corner(14) })
@@ -174,9 +185,54 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		return snapshot ~= nil and snapshot.yourSeat ~= nil and snapshot.result == nil and table.find(snapshot.activeSeats, snapshot.yourSeat) ~= nil
 	end
 
+	-- The Witch's step: she moves out of turn, so it isn't in activeSeats.
+	local function witchTurn(): boolean
+		return snapshot ~= nil and snapshot.result == nil and snapshot.view.phase == "witch" and snapshot.view.witchCanAct == true
+	end
+
 	local function canPick(seat: number): boolean
 		local view = snapshot.view
-		return myTurn() and view.targets ~= nil and table.find(view.targets, seat) ~= nil
+		return (myTurn() or witchTurn()) and view.targets ~= nil and table.find(view.targets, seat) ~= nil
+	end
+
+	-- The Witch's buttons: save tonight's victim, poison the picked player, or done.
+	local function witchButtons(view: any): { any }
+		local buttons = {}
+		local who = if selected then nameOf(selected) else nil
+		local victim = view.witchSees
+		if view.potions and view.potions.heal and victim and not view.witchHeal then
+			table.insert(buttons, { text = `🧪 Save {nameOf(victim)}`, color = Theme.Good, textColor = Theme.Text, onClick = function()
+				send({ kind = "potion", potion = "heal", target = victim })
+			end })
+		end
+		if view.potions and view.potions.poison and view.witchPoison == nil then
+			table.insert(buttons, { text = if who then `☠️ Poison {who}` else "☠️ Poison: tap a player", color = if who then Color3.fromRGB(120, 60, 150) else Theme.Panel, textColor = Theme.Text, enabled = who ~= nil, onClick = function()
+				if selected then
+					send({ kind = "potion", potion = "poison", target = selected })
+				end
+			end })
+		end
+		table.insert(buttons, { text = "Done", color = Theme.Panel, textColor = Theme.SubText, onClick = function()
+			send({ kind = "potion", potion = "none" })
+		end })
+		return buttons
+	end
+
+	-- What the Witch reads in her step.
+	local function witchLine(view: any): string
+		local parts = {}
+		if view.witchSees then
+			table.insert(parts, if view.witchHeal then `🧪 You're saving {nameOf(view.witchSees)}.` else `🐺 The wolves picked {nameOf(view.witchSees)}.`)
+		elseif view.potions and view.potions.heal then
+			table.insert(parts, "Nobody is in danger tonight.")
+		end
+		if view.witchPoison then
+			table.insert(parts, `☠️ {nameOf(view.witchPoison)} is poisoned.`)
+		end
+		if view.witchCanAct then
+			table.insert(parts, "Use a potion, or let the night pass.")
+		end
+		return table.concat(parts, " ")
 	end
 
 	local render: () -> ()
@@ -223,7 +279,12 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		local view = snapshot and snapshot.view
 		local n = if view then view.seatCount else 8
 		header.Visible = not docked
-		if docked then
+		if villageOpen then
+			-- In the Table view window: the full grid, sized by the window.
+			local cols = if n <= 6 then 3 else 4
+			local rows = math.ceil(n / cols)
+			grid.CellSize = UDim2.new(1 / cols, -8, 1 / rows, -8)
+		elseif docked then
 			-- The dock shows the bottom 44% of the board (MatchView DOCK).
 			village.Position = UDim2.new(0, 4, 0.57, 0)
 			village.Size = UDim2.new(1, -8, 0.17, 0)
@@ -327,10 +388,13 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		if view.yourPick == seat then
-			table.insert(lines, if view.yourPotion == "heal" then "🧪 Saving them" elseif view.yourPotion == "poison" then "☠️ Poisoned" else `✓ Your pick`)
+			table.insert(lines, `✓ Your pick`)
 		end
 		if view.witchSees == seat then
-			table.insert(lines, "🐺 The wolves' victim")
+			table.insert(lines, if view.witchHeal then "🧪 Saving them" else "🐺 The wolves' victim")
+		end
+		if view.witchPoison == seat then
+			table.insert(lines, "☠️ Poisoned")
 		end
 		if view.lastWords and view.lastWords.seat == seat and view.lastWords.text and view.lastWords.text ~= "" then
 			table.insert(lines, `🕯️ "{view.lastWords.text}"`)
@@ -426,6 +490,8 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			return "🎭 Roles are dealt", "Read your role. Keep it secret!"
 		elseif phase == "night" then
 			return `🌙 Night {view.day}`, `{view.acted} of {view.aliveCount} have picked`
+		elseif phase == "witch" then
+			return `🌙 Night {view.day}`, "The night goes on..."
 		elseif phase == "dawn" then
 			local ln = view.lastNight
 			if ln and ln.poisoned then
@@ -480,6 +546,11 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		elseif view.phase == "roles" then
 			local info = ROLES[role]
 			text = `You are the <b>{roleText(role)}</b>. {if info.team == "wolves" then "Catch villagers without being found." else "Find the werewolves!"}`
+		elseif view.phase == "witch" and role == "witch" then
+			text = witchLine(view)
+			yours = view.witchCanAct == true
+		elseif view.phase == "witch" then
+			text = "The night goes on..."
 		elseif view.phase == "night" then
 			text = if mine then NIGHT_PROMPT[role] or "" else "Done. Waiting for the night to pass..."
 			local packAlive = false
@@ -501,6 +572,10 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		end
 		HudKit.statusCard(text, nil, yours, { Parent = actionArea, LayoutOrder = 1, size = if compact then 13 else 15 })
 
+		if witchTurn() then
+			buttonRow(2, witchButtons(view))
+			return
+		end
 		if not mine then
 			return
 		end
@@ -578,37 +653,6 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 					end,
 				},
 			})
-			if role == "witch" and view.potions then
-				local potions = {}
-				if view.potions.heal then
-					local victim = view.witchSees
-					table.insert(potions, {
-						text = if victim then `🧪 Save {nameOf(victim)}` else "🧪 Save: wolves still picking…",
-						color = if victim then Theme.Good else Theme.Panel,
-						textColor = Theme.Text,
-						onClick = function()
-							if snapshot.view.witchSees then
-								send({ kind = "night", target = snapshot.view.witchSees, potion = "heal" })
-							end
-						end,
-					})
-				end
-				if view.potions.poison then
-					table.insert(potions, {
-						text = if who then `☠️ Poison {who}` else "☠️ Poison: tap a player",
-						color = if who then Color3.fromRGB(120, 60, 150) else Theme.Panel,
-						textColor = Theme.Text,
-						onClick = function()
-							if selected then
-								send({ kind = "night", target = selected, potion = "poison" })
-							end
-						end,
-					})
-				end
-				if #potions > 0 then
-					buttonRow(3, potions)
-				end
-			end
 		elseif view.phase == "day" then
 			if who then
 				buttonRow(2, {
@@ -683,6 +727,260 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		fill.BackgroundColor3 = if left < 5 then Theme.Bad else Theme.Accent
 	end)
 
+	-- Table view ------------------------------------------------------------------------
+
+	-- Your last words in Table view: a box over the bar.
+	local wordsPanel = Kit.new("Frame", {
+		BackgroundColor3 = Theme.Background,
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -140),
+		Size = UDim2.fromOffset(460, 56),
+		Visible = false,
+		ZIndex = 40,
+		Parent = prompt.layer,
+	}, { Kit.corner(14), Kit.stroke(Theme.Accent, 0.2, 2) })
+	local wordsBox = Kit.new("TextBox", {
+		PlaceholderText = "Your last words... (Enter to say them)",
+		Text = "",
+		ClearTextOnFocus = false,
+		TextColor3 = Theme.Text,
+		PlaceholderColor3 = Theme.SubText,
+		BackgroundColor3 = Theme.PanelLight,
+		Font = Theme.Font,
+		TextSize = 18,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(8, 8),
+		Size = UDim2.new(1, -16, 1, -16),
+		ZIndex = 41,
+		Parent = wordsPanel,
+	}, { Kit.corner(10), Kit.padding(6) })
+	local function sayWords()
+		local text = wordsDraft
+		wordsDraft = ""
+		wordsBox.Text = ""
+		send({ kind = "lastWords", text = if text ~= "" then text else nil })
+	end
+	wordsBox:GetPropertyChangedSignal("Text"):Connect(function()
+		if #wordsBox.Text > 120 then
+			wordsBox.Text = string.sub(wordsBox.Text, 1, 120)
+		end
+		wordsDraft = wordsBox.Text
+	end)
+	wordsBox.FocusLost:Connect(function(enter)
+		if enter then
+			sayWords()
+		end
+	end)
+
+	local function openVillage()
+		villageOpen = true
+		prompt.sheet(village, "The village", function()
+			villageOpen = false
+			task.defer(render)
+		end)
+		render()
+	end
+
+	-- What floats over each lantern for you: legal picks glow, your pick is gold, and a
+	-- short label says what you know or what they said today.
+	local function seatLabel(view: any, seat: number): string?
+		if view.witchPoison == seat then
+			return "☠️"
+		end
+		if view.witchSees == seat then
+			return if view.witchHeal then "🧪 saved" else "🐺 victim"
+		end
+		if view.yourPick == seat then
+			return "✓"
+		end
+		if view.peeks and view.peeks[seat] ~= nil and view.phase ~= "done" then
+			return if view.peeks[seat] then "🔮 WOLF" else "🔮 clear"
+		end
+		if view.pack and table.find(view.pack, seat) and view.phase ~= "done" then
+			return "🐺"
+		end
+		if view.votes then
+			local got = 0
+			for _, t in view.votes do
+				if t == seat then
+					got += 1
+				end
+			end
+			if got > 0 then
+				return `🗳 {got}`
+			end
+		end
+		local st = view.statements and view.statements[seat]
+		if st and st.kind == "accuse" then
+			return `💬 {nameOf(st.target)}?`
+		elseif st and st.kind == "claim" then
+			return `🔮 {nameOf(st.target)} {if st.wolf then "🐺" else "✓"}`
+		end
+		return nil
+	end
+
+	local function renderTable(view: any)
+		if not tableMode then
+			return
+		end
+		local me = snapshot.yourSeat
+		local mine = myTurn()
+		local role = view.yourRole
+		local info = role and ROLES[role]
+		local title, sub = headline(view)
+		local villageButton = { text = "Village", color = Theme.PanelLight, onClick = openVillage }
+		wordsPanel.Visible = false
+
+		-- Chips: your role, the phase, your pack.
+		local chips = {}
+		if info and view.phase ~= "done" then
+			table.insert(chips, TablePrompt.chip(`You: {info.icon} {info.name}`, info.color))
+		end
+		table.insert(chips, TablePrompt.chip(title))
+		if view.pack and #view.pack > 0 and view.phase ~= "done" then
+			local names = {}
+			for _, s in view.pack do
+				table.insert(names, nameOf(s))
+			end
+			table.insert(chips, TablePrompt.chip(`🐺 Pack: {table.concat(names, ", ")}`, ROLES.wolf.color))
+		end
+		if view.withWitch and view.potions and role == "witch" then
+			table.insert(chips, TablePrompt.chip(`{if view.potions.heal then "🧪" else ""}{if view.potions.poison then "☠️" else ""} potions`, ROLES.witch.color))
+		end
+		prompt.chips(`chips:{view.phase}`, chips)
+
+		if snapshot.result or view.phase == "done" then
+			prompt.bar(nil)
+			prompt.ask(nil)
+			return
+		end
+
+		-- The role card pops up once at the start (the Town of Salem moment).
+		if view.phase == "roles" and info and revealSeen ~= snapshot.matchId then
+			local line = revealText.Text
+			prompt.ask(`reveal:{snapshot.matchId}`, `{info.icon} You are the {info.name}`, line, {
+				{ text = "Got it", onClick = function()
+					revealSeen = snapshot.matchId
+					prompt.ask(nil)
+					render()
+				end },
+			})
+		else
+			prompt.ask(nil)
+		end
+
+		local who = if selected then nameOf(selected) else nil
+		local tapHint = "Tap a player's lantern"
+		if me == nil then
+			prompt.bar("watch", `{title} · {sub}`, { villageButton })
+		elseif view.phase == "lastWords" and mine then
+			wordsPanel.Visible = true
+			wordsBox.Text = wordsDraft
+			prompt.bar("words", "You were voted out. Any last words? Everyone sees them.", {
+				{ text = "Say it", color = Theme.Accent, onClick = sayWords },
+				{ text = "Stay silent", color = Theme.PanelLight, onClick = function()
+					wordsDraft = ""
+					send({ kind = "lastWords" })
+				end },
+			})
+		elseif view.phase == "hunter" and mine then
+			prompt.bar("hunter", "🏹 You were the Hunter! Tap a lantern to take someone down with you.", {
+				{ text = if who then `🏹 Take down {who}` else tapHint, color = Theme.Bad, enabled = who ~= nil, onClick = function()
+					if selected then
+						send({ kind = "shoot", target = selected })
+					end
+				end },
+				{ text = "Holster", color = Theme.PanelLight, onClick = function()
+					send({ kind = "shoot", target = 0 })
+				end },
+			})
+		elseif not view.youAlive then
+			prompt.bar("out", `You're out ({roleText(role)}). Watch quietly: no spoilers on voice!`, { villageButton })
+		elseif view.phase == "witch" and role == "witch" then
+			local buttons = if witchTurn() then witchButtons(view) else {}
+			table.insert(buttons, villageButton)
+			prompt.bar(`witch:{if view.witchHeal then "h" else ""}{view.witchPoison or ""}{if view.witchCanAct then "a" else ""}`, witchLine(view), buttons)
+		elseif view.phase == "night" and mine then
+			local word = ACTION_WORD[role] or "Pick"
+			local buttons = {
+				{ text = if who then `{word} {who}` else tapHint, color = if role == "wolf" then Theme.Bad else Theme.Accent, enabled = who ~= nil, onClick = function()
+					if selected then
+						send({ kind = "night", target = selected })
+					end
+				end },
+			}
+			table.insert(buttons, villageButton)
+			local line = NIGHT_PROMPT[role] or ""
+			local packAlive = false
+			for _, s in view.pack or {} do
+				packAlive = packAlive or view.alive[s] == true
+			end
+			if role == "wolf" and packAlive then
+				line ..= " Pack chat is on."
+			end
+			prompt.bar(`night:{role}`, line, buttons)
+		elseif view.phase == "day" and mine then
+			if who then
+				prompt.bar("say", `What do you say about {who}?`, {
+					{ text = `Suspect {who}`, onClick = function()
+						if selected then
+							send({ kind = "accuse", target = selected })
+						end
+					end },
+					{ text = `🔮 {who} is a wolf`, color = Theme.Bad, onClick = function()
+						if selected then
+							send({ kind = "claim", target = selected, wolf = true })
+						end
+					end },
+					{ text = `🔮 {who} is clear`, color = Theme.Good, onClick = function()
+						if selected then
+							send({ kind = "claim", target = selected, wolf = false })
+						end
+					end },
+					{ text = "Never mind", color = Theme.PanelLight, onClick = function()
+						selected = nil
+						render()
+					end },
+				})
+			else
+				prompt.bar("day", "Talk it over. Tap a lantern to name someone, or pass.", {
+					{ text = "Nothing to say", color = Theme.PanelLight, onClick = function()
+						send({ kind = "pass" })
+					end },
+					villageButton,
+				})
+			end
+		elseif view.phase == "vote" and mine then
+			prompt.bar("vote", "Tap who to vote out, or skip. Votes are public.", {
+				{ text = if who then `Vote out {who}` else tapHint, color = Theme.Bad, enabled = who ~= nil, onClick = function()
+					if selected then
+						send({ kind = "vote", target = selected })
+					end
+				end },
+				{ text = "Skip", color = Theme.PanelLight, onClick = function()
+					send({ kind = "vote", target = 0 })
+				end },
+				villageButton,
+			})
+		else
+			-- Waiting, or a phase with nothing to do (dawn, verdict, someone's last words).
+			local line = sub
+			if view.phase == "night" or view.phase == "witch" then
+				line = if view.phase == "witch" then "The night goes on..." else "Done. Waiting for the night to pass..."
+			elseif view.phase == "day" then
+				line = "Said! Waiting for the others to speak..."
+			elseif view.phase == "vote" then
+				line = "Voted. Waiting for the others..."
+			elseif view.phase == "lastWords" and view.lastWords and view.lastWords.text then
+				line = `🕯️ {nameOf(view.lastWords.seat)}: "{view.lastWords.text}"`
+			end
+			prompt.bar(`wait:{view.phase}`, line, { villageButton })
+		end
+	end
+
 	render = function()
 		if not snapshot then
 			return
@@ -703,7 +1001,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		local title, sub = headline(view)
 		phaseLabel.Text = title
 		subLabel.Text = sub
-		local night = view.phase == "night" or view.phase == "roles"
+		local night = view.phase == "night" or view.phase == "witch" or view.phase == "roles"
 		local gradient = header:FindFirstChild("HudGradient")
 		if gradient and gradient:IsA("UIGradient") then
 			local tint = if night then NIGHT_TINT elseif view.phase == "done" then Theme.Panel else DAY_TINT
@@ -723,8 +1021,8 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		end
 		renderActions(view)
 
-		reveal.Visible = view.phase == "roles" and role ~= nil and not docked
-		if reveal.Visible and role then
+		reveal.Visible = view.phase == "roles" and role ~= nil and not docked and not tableMode
+		if view.phase == "roles" and role then -- the text also goes on the Table view card
 			revealIcon.Text = role.icon
 			revealName.Text = `You are the {role.name}`
 			revealName.TextColor3 = role.color
@@ -742,6 +1040,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 				revealText.Text = "No power at night. Listen, talk, and vote out the werewolves."
 			end
 		end
+		renderTable(view)
 	end
 
 	local destroyed = false
@@ -767,6 +1066,49 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 				docked = value
 				render()
 			end
+		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			root.Visible = not value
+			prompt.setVisible(value)
+			wordsPanel.Visible = false
+			villageOpen = false
+			render()
+		end,
+		-- Table view (Table3D/SceneTap): each player's lantern is "seat:N".
+		canTap = function(id: any): boolean
+			local seat = type(id) == "string" and tonumber(string.match(id, "^seat:(%d+)$"))
+			return snapshot ~= nil and seat ~= nil and canPick(seat)
+		end,
+		tapTable = function(id: any)
+			local seat = type(id) == "string" and tonumber(string.match(id, "^seat:(%d+)$"))
+			if snapshot and seat and canPick(seat) then
+				selected = if selected == seat then nil else seat
+				Audio.play("cardHover")
+				render()
+			end
+		end,
+		tableMarks = function(): { [any]: any }?
+			if not (tableMode and snapshot) then
+				return nil
+			end
+			local view = snapshot.view
+			local marks = {}
+			for seat = 1, view.seatCount do
+				local text = seatLabel(view, seat)
+				local id = `seat:{seat}`
+				if selected == seat then
+					marks[id] = { kind = "picked", text = text or "" }
+				elseif canPick(seat) then
+					marks[id] = { kind = "target", text = text or "" }
+				elseif text then
+					marks[id] = { kind = "label", text = text }
+				end
+			end
+			return marks
 		end,
 		destroy = function()
 			destroyed = true

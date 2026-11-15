@@ -3,6 +3,8 @@
 -- day, the open vote, who is out). Each seat has a lantern: lit while that player is in,
 -- dark once they're out, with their role card laid face up if roles are shown.
 -- The board only ever gets the spectator view, so nothing secret reaches it.
+-- In Table view each lantern is a tap spot ("seat:N", Scene.tappable): players pick who
+-- to catch, check, shield or vote out by tapping that player's lantern.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Rules = require(ReplicatedStorage.Shared.Games.Werewolf)
@@ -19,7 +21,10 @@ local SCREEN_NIGHT = Color3.fromRGB(18, 20, 48)
 local SCREEN_DAY = Color3.fromRGB(46, 34, 22)
 local SUB = Color3.fromRGB(190, 184, 214)
 
-local function lantern(parent: Instance, cf: CFrame): BasePart
+local function lantern(model: Instance, cf: CFrame, seat: number): BasePart
+	local parent = Instance.new("Model")
+	parent.Name = `Lantern{seat}`
+	parent.Parent = model
 	Models.cyl(parent, "LanternBase", 0.5, 0.08, cf, Models.WALNUT, Enum.Material.Wood)
 	for _, x in { -0.18, 0.18 } do
 		for _, z in { -0.18, 0.18 } do
@@ -28,7 +33,9 @@ local function lantern(parent: Instance, cf: CFrame): BasePart
 	end
 	Models.block(parent, "LanternTop", Vector3.new(0.5, 0.06, 0.5), cf * CFrame.new(0, 0.6, 0), Models.INK, Enum.Material.Metal)
 	Models.cyl(parent, "LanternRing", 0.16, 0.12, cf * CFrame.new(0, 0.63, 0), Models.GOLD, Enum.Material.Metal)
-	return Models.ball(parent, "LanternFlame", 0.26, cf * CFrame.new(0, 0.32, 0), FLAME, Enum.Material.Neon)
+	local flame = Models.ball(parent, "LanternFlame", 0.26, cf * CFrame.new(0, 0.32, 0), FLAME, Enum.Material.Neon)
+	Scene.tappable(parent, `seat:{seat}`)
+	return flame
 end
 
 local function campfire(parent: Instance, cf: CFrame): BasePart
@@ -61,7 +68,7 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 	local cards: { [number]: Instance } = {}
 	for seat in layout.seats do
 		local spot = Scene.seatSpot(boardCF, layout, seat, 0.7)
-		lanterns[seat] = { flame = lantern(model, spot * CFrame.new(-0.55, 0, 0)), spot = spot }
+		lanterns[seat] = { flame = lantern(model, spot * CFrame.new(-0.55, 0, 0), seat), spot = spot }
 	end
 	model.Parent = parent
 
@@ -77,7 +84,7 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 
 	local function fill(frame: Frame, view: any, snapshot: any)
 		frame:ClearAllChildren()
-		local night = view.phase == "night" or view.phase == "roles"
+		local night = view.phase == "night" or view.phase == "witch" or view.phase == "roles"
 		frame.BackgroundColor3 = if night then SCREEN_NIGHT else SCREEN_DAY
 		local function nameOf(seat: number?): string
 			local s = seat and snapshot.seats and snapshot.seats[seat]
@@ -88,6 +95,8 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 			title, sub = "🎭 Roles are dealt", `{view.wolfCount} werewol{if view.wolfCount == 1 then "f hides" else "ves hide"} among you`
 		elseif view.phase == "night" then
 			title, sub = `🌙 Night {view.day}`, `The village sleeps · {view.acted}/{view.aliveCount}`
+		elseif view.phase == "witch" then
+			title, sub = `🌙 Night {view.day}`, "The night goes on..."
 		elseif view.phase == "dawn" then
 			local ln = view.lastNight
 			title = `☀️ Day {view.day}`
@@ -152,7 +161,7 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 			for _, frame in faces do
 				fill(frame, view, snapshot)
 			end
-			local night = view.phase == "night" or view.phase == "roles"
+			local night = view.phase == "night" or view.phase == "witch" or view.phase == "roles"
 			screen.Color = if night then SCREEN_NIGHT else SCREEN_DAY
 			fire.Color = if night then Color3.fromRGB(255, 120, 50) else FLAME
 			fire.Size = if night then Vector3.new(0.4, 0.55, 0.4) else Vector3.new(0.5, 0.75, 0.5)
