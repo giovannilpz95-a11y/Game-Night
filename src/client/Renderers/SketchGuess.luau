@@ -25,6 +25,13 @@
 -- Moderation: anyone can hide a drawing on their own screen (and the screen over the
 -- table), vote to skip it, or report it. Reporting hides that player's drawings for you
 -- for the rest of the match, counts as a skip vote, and can block them through Roblox.
+--
+-- Table view (setTableMode): no side panel. Guessers watch the drawing on the screen over
+-- the table; the hint sits in a bar along the bottom with a guess box over it, the last
+-- few guesses float above it as chips, and the bar has like / dislike / vote skip /
+-- report / hide. The drawer picks a word from a pop-up card, then draws on an easel
+-- window (the canvas and tools) that closes when the turn ends. The reveal is a pop-up
+-- card with the word and the points (and thumbs to rate it); the gallery is a window.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -37,6 +44,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Rules = require(ReplicatedStorage.Shared.Games.SketchGuess)
 local SketchCanvas = require(ReplicatedStorage.Shared.SketchCanvas)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local TablePrompt = require(script.Parent.Parent.UI.TablePrompt)
 local Juice = require(script.Parent.Parent.UI.Juice)
 local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
@@ -83,7 +91,40 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	local stampAction: (string) -> () -- set in the Drawing section
 	local recolorSelected: () -> ()
 
+	-- Table view: the easel window's backing (behind root), the pop-up layer, and the
+	-- guess box that sits over the bar.
+	local tableMode = false
+	local windowBack = Kit.new("Frame", {
+		BackgroundColor3 = Theme.Background,
+		BackgroundTransparency = 0.06,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.46),
+		Size = UDim2.new(0.94, 0, 0.84, 0),
+		Visible = false,
+		Parent = container,
+	}, { Kit.corner(18), Kit.stroke(Theme.Accent, 0.3, 2) })
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	local prompt = TablePrompt.new(container)
+	prompt.setVisible(false)
+	local tableGuess = Kit.new("TextBox", {
+		PlaceholderText = "Type your guess... (Enter)",
+		Text = "",
+		ClearTextOnFocus = false,
+		TextColor3 = Theme.Text,
+		PlaceholderColor3 = Theme.SubText,
+		BackgroundColor3 = Theme.PanelLight,
+		Font = Theme.Font,
+		TextSize = 18,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -TablePrompt.HEIGHT - 8),
+		Size = UDim2.fromOffset(420, 40),
+		Visible = false,
+		ZIndex = 40,
+		Parent = prompt.layer,
+	}, { Kit.corner(10), Kit.padding(8), Kit.stroke(Theme.Accent, 0.2, 2) })
 
 	local wordBar = Kit.label("", {
 		Font = Theme.FontBold,
@@ -374,18 +415,31 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	}, { Kit.corner(10), Kit.padding(8) })
 
 	local lastGuessAt = 0
-	guessBox.FocusLost:Connect(function(enterPressed)
-		if not enterPressed then
-			return
-		end
-		local text = guessBox.Text
-		guessBox.Text = ""
+	local function submitGuess(box: TextBox)
+		local text = box.Text
+		box.Text = ""
 		if #text == 0 or #text > 40 or os.clock() - lastGuessAt < 0.6 then
 			return
 		end
 		lastGuessAt = os.clock()
 		local view = snapshot and snapshot.view
 		sendMove({ kind = if view and view.youGuessed then "chat" else "guess", text = text })
+	end
+	guessBox.FocusLost:Connect(function(enterPressed)
+		if enterPressed then
+			submitGuess(guessBox)
+		end
+	end)
+	tableGuess.FocusLost:Connect(function(enterPressed)
+		if enterPressed then
+			submitGuess(tableGuess)
+			-- Keep typing: the box stays focused for the next guess.
+			task.defer(function()
+				if tableGuess.Visible then
+					tableGuess:CaptureFocus()
+				end
+			end)
+		end
 	end)
 
 	-- Report prompt ---------------------------------------------------------------------
@@ -1328,6 +1382,23 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- One feed entry as a line of text and its color.
+	local function feedText(entry: any): (string, Color3)
+		local who = if entry.seat then nameOf(entry.seat) else ""
+		if entry.kind == "system" then
+			return (if entry.seat then `{who} {entry.text}` else entry.text), Theme.SubText
+		elseif entry.kind == "correct" then
+			return `{who} {entry.text}`, Theme.Good
+		elseif entry.kind == "close" then
+			return entry.text, Theme.Accent
+		elseif entry.kind == "like" then
+			return `👍 {who} {entry.text}`, Theme.SubText
+		elseif entry.kind == "chat" then
+			return `✓ {who}: {entry.text}`, Theme.Good
+		end
+		return `{who}: {entry.text}`, Theme.Text
+	end
+
 	local function renderFeed(view: any)
 		local feed = view.feed
 		local last = feed[#feed]
@@ -1339,28 +1410,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		playFeedSounds(feed)
 		Kit.clear(feedFrame)
 		for i, entry in feed do
-			local who = if entry.seat then nameOf(entry.seat) else ""
-			local color = Theme.Text
-			local text
-			if entry.kind == "system" then
-				text = if entry.seat then `{who} {entry.text}` else entry.text
-				color = Theme.SubText
-			elseif entry.kind == "correct" then
-				text = `{who} {entry.text}`
-				color = Theme.Good
-			elseif entry.kind == "close" then
-				text = entry.text
-				color = Theme.Accent
-			elseif entry.kind == "like" then
-				text = `👍 {who} {entry.text}`
-				color = Theme.SubText
-			elseif entry.kind == "chat" then
-				-- Only players who know the word get these.
-				text = `✓ {who}: {entry.text}`
-				color = Theme.Good
-			else
-				text = `{who}: {entry.text}`
-			end
+			local text, color = feedText(entry) -- "chat" lines only reach players who know the word
 			Kit.label(text, {
 				TextSize = 15,
 				TextColor3 = color,
@@ -1577,6 +1627,147 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Table view: which parts show, and the pop-ups.
+	local windowOn = false
+	local function setWindow(on: boolean)
+		windowOn = on
+		windowBack.Visible = on
+		root.Visible = not tableMode or on
+		if on then
+			root.AnchorPoint = Vector2.new(0.5, 0.5)
+			root.Position = UDim2.fromScale(0.5, 0.46)
+			root.Size = UDim2.new(0.94, -24, 0.84, -24)
+		else
+			root.AnchorPoint = Vector2.zero
+			root.Position = UDim2.fromScale(0, 0)
+			root.Size = UDim2.fromScale(1, 1)
+		end
+	end
+
+	local function renderTable(view: any)
+		if not tableMode then
+			setWindow(false)
+			tableGuess.Visible = false
+			return
+		end
+		local me = snapshot.yourSeat
+		local drawerName = nameOf(view.drawer)
+		local isMine = me ~= nil and me == view.drawer
+		-- The easel for the drawer while drawing; the gallery for everyone at the end.
+		setWindow((isMine and view.phase == "draw") or view.phase == "gallery")
+
+		-- The last few lines of the feed float over the bar.
+		local chips = {}
+		local feed = view.feed or {}
+		if view.phase == "draw" or view.phase == "reveal" then
+			for i = math.max(1, #feed - 2), #feed do
+				local text, color = feedText(feed[i])
+				table.insert(chips, TablePrompt.chip(text, if color == Theme.Text then nil else color))
+			end
+		end
+		prompt.chips(`feed:{#feed}:{feed[#feed] and feed[#feed].text or ""}`, chips)
+
+		local guessing = amGuessing()
+		tableGuess.Visible = guessing
+		if guessing then
+			tableGuess.PlaceholderText = if view.youGuessed then "Chat with players who got it..." else "Type your guess... (Enter)"
+		elseif tableGuess:IsFocused() then
+			tableGuess:ReleaseFocus()
+		end
+
+		if snapshot.result or view.phase == "done" or view.phase == "gallery" then
+			prompt.bar(nil)
+			prompt.ask(nil)
+			return
+		end
+		if view.phase == "choose" then
+			if view.choices then
+				local buttons = {}
+				for i, word in view.choices do
+					local label = string.split(word, "|")[1]
+					local level = view.choiceLevels and view.choiceLevels[i]
+					table.insert(buttons, { text = if level then `{label} ({level})` else label, onClick = function()
+						sendMove({ kind = "choose", index = i })
+					end })
+				end
+				prompt.ask(`choose:{view.turnNumber}`, "✏️ Your turn to draw!", "Pick a word. Nobody else can see it.", buttons)
+			else
+				prompt.ask(nil)
+			end
+			prompt.bar(`choose:{view.turnNumber}`, if isMine then "Pick a word to draw" else `{drawerName} is picking a word...`, {})
+			return
+		elseif view.phase == "reveal" then
+			local order = {}
+			for seat, points in view.lastPoints or {} do
+				table.insert(order, { seat = seat, points = points })
+			end
+			table.sort(order, function(a, b)
+				return a.points > b.points
+			end)
+			local parts = {}
+			for i, row in order do
+				if i > 4 then
+					break
+				end
+				table.insert(parts, `{nameOf(row.seat)} +{row.points}`)
+			end
+			local line = if #parts > 0 then table.concat(parts, " · ") else "Nobody scored this time."
+			local buttons = {}
+			if me ~= nil and not isMine and view.youLiked == nil and #(view.strokes or {}) > 0 then
+				buttons = {
+					{ text = "👍", color = Theme.Good, onClick = function()
+						sendMove({ kind = "rate", up = true })
+					end },
+					{ text = "👎", color = Theme.PanelLight, onClick = function()
+						sendMove({ kind = "rate", up = false })
+					end },
+				}
+			end
+			prompt.ask(`reveal:{view.turnNumber}:{#buttons}`, if view.word then `The word was "{view.word}"` else "Round over", line, buttons)
+			prompt.bar(nil)
+			return
+		end
+		prompt.ask(nil)
+		-- Drawing.
+		if isMine then
+			prompt.bar(nil) -- the easel has everything
+		elseif guessing then
+			local buttons = {
+				{ text = "👍", color = if view.youLiked == true then Theme.Good else Theme.PanelLight, onClick = function()
+					sendMove({ kind = "rate", up = true })
+				end },
+				{ text = "👎", color = if view.youLiked == false then Theme.Bad else Theme.PanelLight, onClick = function()
+					sendMove({ kind = "rate", up = false })
+				end },
+			}
+			if not view.youVotedSkip then
+				table.insert(buttons, { text = "Vote skip", color = Theme.Warn, onClick = function()
+					sendMove({ kind = "voteSkip" })
+				end })
+			end
+			local drawerSeat = snapshot.seats[view.drawer]
+			local drawerIsBot = view.drawerIsBot or (drawerSeat ~= nil and drawerSeat.kind == "bot")
+			if not view.youReported and not drawerIsBot then
+				table.insert(buttons, { text = "Report", color = Theme.Bad, onClick = function()
+					setWindow(true) -- the report prompt lives over the canvas
+					reportPrompt.Visible = true
+				end })
+			end
+			table.insert(buttons, { text = hideButton.Text, color = Theme.PanelLight, onClick = function()
+				local turn = snapshot.view.turnNumber
+				hiddenTurn = if hiddenTurn == turn then nil else turn
+				rerender()
+			end })
+			prompt.bar(`guess:{view.turnNumber}`, wordBar.Text, buttons)
+		else
+			prompt.bar(`watch:{view.turnNumber}`, `{drawerName} is drawing · {wordBar.Text}`, {})
+		end
+		-- The report prompt opened the canvas window; close it with the prompt.
+		if windowOn and not isMine and not reportPrompt.Visible and view.phase == "draw" then
+			setWindow(false)
+		end
+	end
+
 	local function render()
 		local view = snapshot.view
 		local me = snapshot.yourSeat
@@ -1639,6 +1830,10 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			stopDrawing()
 		end
 
+		renderTable(view)
+		if reportPrompt.Visible and tableMode and amGuessing() and not windowOn then
+			setWindow(true)
+		end
 		layout()
 		syncStrokes()
 		renderFeed(view)
@@ -1663,6 +1858,20 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end,
 		setDocked = function(isDocked: boolean)
 			docked = isDocked
+			if snapshot then
+				render()
+			end
+		end,
+		setTableMode = function(value: boolean)
+			if value == tableMode then
+				return
+			end
+			tableMode = value
+			prompt.setVisible(value)
+			if not value then
+				setWindow(false)
+				tableGuess.Visible = false
+			end
 			if snapshot then
 				render()
 			end

@@ -4,6 +4,9 @@
 -- arrows or a D-pad can pick one). A card you draw and can play is
 -- held up in the middle with Play / Keep. Draw / Pass buttons sit beside the piles.
 -- Cards are drawn in code with our own look (Coral, Honey, Teal, Violet).
+-- Every card stays in full color: the ones you can play stand up out of the fan.
+-- In Table view a small card on the left keeps the score, target and house rules, the
+-- round summary comes up over the hand, and the final points open as a sheet.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -16,6 +19,7 @@ local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local Fx = require(script.Parent.ColorClashFx)
 local Audio = require(script.Parent.Parent.Audio)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
+local CardTable = require(script.Parent.Parent.UI.CardTable)
 local Theme = Kit.Theme
 
 local ColorClash = {}
@@ -27,7 +31,8 @@ local COLORS = {
 	Color3.fromRGB(150, 110, 230), -- Violet
 }
 local WILD_COLOR = Color3.fromRGB(40, 36, 56)
-local SYMBOLS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "★", wild4 = "+4" }
+local SYMBOLS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "★", wild4 = "+4", wild6 = "+6", skipall = "⊘⊘", discardall = "ALL" }
+local KIND_NAMES = { skip = "Skip", reverse = "Reverse", draw2 = "+2", skipall = "Skip Everyone", discardall = "Discard All" }
 local CARD_RATIO = 0.68 -- width / height
 -- Card height as a share of the hand strip: the rest is headroom for a hovered card to
 -- rise into (the strip scrolls, so it clips anything above it).
@@ -249,7 +254,7 @@ local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ()):
 end
 
 -- The mark that pops up off the table for each action card (and the 7-0 swaps).
-local POP_MARKS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "★", wild4 = "+4" }
+local POP_MARKS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "★", wild4 = "+4", wild6 = "+6", skipall = "⊘⊘", discardall = "ALL" }
 
 function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
@@ -268,6 +273,10 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
+	-- For the shared Table-view pieces (info card, notices, score sheet).
+	local tableUi: any = { root = root, extras = {}, docked = false }
+	-- Hand order: by color (the server's order) or by number.
+	local sortBy = "color"
 
 	-- Table felt in the middle.
 	local felt = Kit.new("Frame", {
@@ -337,6 +346,16 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		Size = UDim2.new(1, 0, 0, 22),
 		Parent = felt,
 	})
+	-- The 2D view's copy of the Table-view info card (score, target, house rules).
+	local feltInfo = Kit.label("", {
+		TextSize = 13,
+		TextColor3 = Theme.SubText,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped = true,
+		Position = UDim2.new(0, 14, 0, 36),
+		Size = UDim2.new(0.3, 0, 0, 60),
+		Parent = felt,
+	})
 	local pendingLabel = Kit.label("", {
 		TextSize = 20,
 		Font = Theme.FontBold,
@@ -366,13 +385,32 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	-- Say it before you go down to one card, or the next player can catch you.
 	local callAction: TextButton
 	local function paintCall()
-		callAction.Text = if armed then "Last card! ✓" else "Last card!"
-		callAction.BackgroundColor3 = if armed then Color3.fromRGB(70, 170, 100) else Color3.fromRGB(235, 160, 40)
+		callAction.Text = if lateCall then "Say it! LAST CARD!" elseif armed then "Last card! ✓" else "Last card!"
+		callAction.BackgroundColor3 = if armed then Color3.fromRGB(70, 170, 100) elseif lateCall then Theme.Bad else Color3.fromRGB(235, 160, 40)
 	end
+	local lateCall = false -- you forgot: the button says it late instead of arming
+	-- Big, round and pulsing beside your hand (UNO! mobile style), only while it matters.
 	callAction = Kit.button("Last card!", function()
+		if lateCall then
+			sendMove({ kind = "call" })
+			return
+		end
 		armed = not armed
 		paintCall()
-	end, { Size = UDim2.new(0, 150, 1, 0), BackgroundColor3 = Color3.fromRGB(235, 160, 40), TextColor3 = Color3.new(1, 1, 1), LayoutOrder = 0, Visible = false, Parent = actions })
+	end, {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(0.13, 0, 1, -18),
+		Size = UDim2.fromOffset(104, 104),
+		BackgroundColor3 = Color3.fromRGB(235, 160, 40),
+		TextColor3 = Color3.new(1, 1, 1),
+		TextWrapped = true,
+		TextSize = 20,
+		Visible = false,
+		ZIndex = 20,
+		Parent = root,
+	})
+	Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = callAction })
+	HudKit.pulse(Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 4, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = callAction }))
 	-- Someone went down to one card without saying it: catch them before you move.
 	local catchAction = Kit.button("CATCH!", function()
 		sendMove({ kind = "catch" })
@@ -383,6 +421,13 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local challengeAction = Kit.button("Challenge the +4!", function()
 		sendMove({ kind = "challenge" })
 	end, { Size = UDim2.new(0, 190, 1, 0), BackgroundColor3 = Color3.fromRGB(150, 90, 230), TextColor3 = Color3.new(1, 1, 1), LayoutOrder = 3, Visible = false, Parent = actions })
+	local render: () -> ()
+	local sortAction = Kit.button("Sort: color", function()
+		sortBy = if sortBy == "color" then "number" else "color"
+		if snapshot then
+			render()
+		end
+	end, { Size = UDim2.new(0, 120, 1, 0), BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, TextSize = 14, LayoutOrder = 9, Parent = actions })
 	local shownAction: string? = nil
 	local shownJump: string? = nil
 	-- Call-outs float over the whole screen (in Table view this board is only the strip
@@ -807,7 +852,13 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			local what = if card.kind == "number" then `a {Rules.colorNames[card.color]} {card.value}`
 				elseif card.kind == "wild" then `a Wild ({Rules.colorNames[action.color]})`
 				elseif card.kind == "wild4" then `a Wild +4 ({Rules.colorNames[action.color]})`
-				else `a {Rules.colorNames[card.color]} {({ skip = "Skip", reverse = "Reverse", draw2 = "+2" })[card.kind]}`
+				elseif card.kind == "wild6" then `a Wild +6 ({Rules.colorNames[action.color]})`
+				else `a {Rules.colorNames[card.color]} {KIND_NAMES[card.kind] or card.kind}`
+			if action.bounced then
+				return `{who} bounced the draw cards back with {what}`
+			elseif action.discarded and action.discarded > 0 then
+				return `{who} played {what} and {action.discarded} more`
+			end
 			if action.swap then
 				return `{who} played {what} and swapped hands with {nameOf(action.swap)}`
 			elseif action.rotate then
@@ -815,7 +866,13 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			end
 			return `{who} played {what}`
 		elseif action.kind == "draw" then
-			return if action.count == 1 then `{who} drew a card` else `{who} drew {action.count} cards`
+			local text = if action.count == 1 then `{who} drew a card` else `{who} drew {action.count} cards`
+			if action.mercy then
+				text ..= `: {nameOf(action.mercy)} hit 25 and is out!`
+			end
+			return text
+		elseif action.kind == "call" then
+			return `{who} said "Last card!" just in time`
 		elseif action.kind == "pass" then
 			return `{who} passed`
 		elseif action.kind == "catch" then
@@ -908,11 +965,12 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		if a.kind == "play" then
 			local card = Rules.cards[a.card]
 			local color = COLORS[a.color or (card and card.color) or 0] or Theme.Accent
+			-- One call-out per hit: the pill over the table names the victim, so no 3D pop.
 			if a.target then
 				Fx.pop("⇆", color)
 			elseif a.rotated then
 				Fx.pop("⟳", color)
-			elseif card and POP_MARKS[card.kind] then
+			elseif card and POP_MARKS[card.kind] and not a.victim then
 				Fx.pop(POP_MARKS[card.kind], color)
 			end
 		elseif a.kind == "draw" and (a.count or 0) > 0 then
@@ -946,7 +1004,94 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
-	local function render()
+	-- The +4 proof: the challenger sees the other hand for a moment (official rule).
+	local proofShown: string? = nil
+	local function showProof(proof: any)
+		local key = `{proof.by}|{#proof.hand}|{proof.guilty}`
+		if key == proofShown then
+			return
+		end
+		proofShown = key
+		showOverlay()
+		local panel = Kit.new("Frame", {
+			BackgroundColor3 = Color3.fromRGB(30, 26, 46),
+			BackgroundTransparency = 0.1,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.38),
+			Size = UDim2.new(0, math.clamp(#proof.hand * 58 + 40, 260, 760), 0, 170),
+			ZIndex = 56,
+			Parent = overlay,
+		}, { Kit.corner(16), Kit.new("UIStroke", { Color = Color3.fromRGB(190, 120, 255), Thickness = 2 }) })
+		Kit.label(`{nameOf(proof.by)}'s hand: {if proof.guilty then "they had the color!" else "no card of the color"}`, {
+			Font = Theme.FontBold,
+			TextSize = 18,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.fromOffset(0, 8),
+			Size = UDim2.new(1, 0, 0, 24),
+			ZIndex = 57,
+			Parent = panel,
+		})
+		local row = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 40), Size = UDim2.new(1, -32, 0, 112), ZIndex = 57, Parent = panel })
+		local list = Kit.list(6, true)
+		list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		list.Parent = row
+		for i, id in proof.hand do
+			local slot = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(76, 112), LayoutOrder = i, ZIndex = 57, Parent = row })
+			local face = cardVisual(id)
+			face.ZIndex = 58
+			for _, d in face:GetDescendants() do
+				if d:IsA("GuiObject") then
+					d.ZIndex = 59
+				end
+			end
+			face.Parent = slot
+		end
+		Kit.popIn(panel)
+		task.delay(3.2, function()
+			if panel.Parent then
+				panel:Destroy()
+			end
+		end)
+	end
+
+	-- Points: the round summary and the final standings (CC-1 / CC-2).
+	local talliedRound: number? = nil
+	local finalShown = false
+	local function standings(view: any)
+		local r = view.roundResult
+		if not r then
+			return
+		end
+		local rows = {}
+		local order = {}
+		for seat = 1, #(view.handCounts or {}) do
+			table.insert(order, seat)
+		end
+		table.sort(order, function(a, b)
+			if view.target > 0 and view.scores[a] ~= view.scores[b] then
+				return view.scores[a] > view.scores[b]
+			end
+			local ha, hb = r.hands[a] or r.hands[tostring(a)], r.hands[b] or r.hands[tostring(b)]
+			return ((ha and ha.points) or 0) < ((hb and hb.points) or 0)
+		end)
+		for place, seat in order do
+			local h = r.hands[seat] or r.hands[tostring(seat)] or { count = 0, points = 0 }
+			local row = { `{place}. {nameOf(seat)}`, if h.out then "out" else `{h.count} cards`, tostring(h.points) }
+			if view.target > 0 then
+				table.insert(row, tostring(view.scores[seat]))
+			end
+			table.insert(rows, row)
+		end
+		local columns = { "Player", "Left", "Points left" }
+		if view.target > 0 then
+			table.insert(columns, "Score")
+		end
+		local title = if view.target > 0 then `Final scores · played to {view.target}` else `{nameOf(r.winner)} went out: +{r.points}`
+		CardTable.scoreSheet(tableUi, title, columns, rows)
+	end
+
+	function render()
 		local view = snapshot.view
 		local myTurn = table.find(snapshot.activeSeats, snapshot.yourSeat) ~= nil
 
@@ -990,11 +1135,22 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 					say(if action.target == snapshot.yourSeat then "CAUGHT! You draw 2" else `CAUGHT! {nameOf(action.target)} draws 2`, Theme.Bad)
 				elseif action.kind == "play" and action.victim then
 					local card = Rules.cards[action.card]
-					local hit = if card.kind == "skip" or card.kind == "reverse" then "SKIPPED!" elseif card.kind == "draw2" then "+2!" else "+4!"
+					local hit = if action.bounced then "BOUNCED!"
+						elseif card.kind == "skip" or card.kind == "reverse" then "SKIPPED!"
+						elseif card.kind == "draw2" then "+2!"
+						elseif card.kind == "wild6" then "+6!"
+						else "+4!"
 					local you = action.victim == snapshot.yourSeat
 					say(if you then `{hit}  That's you` else `{hit}  {nameOf(action.victim)}`, if card.kind == "wild4" then Color3.fromRGB(190, 120, 255) else Theme.Bad)
 				elseif action.swap or action.rotate then
 					say(if action.rotate then "Hands move along!" else `SWAP! {nameOf(action.seat)} ⇄ {nameOf(action.swap)}`, Color3.fromRGB(120, 210, 255))
+				elseif action.skipAll then
+					say(if action.seat == snapshot.yourSeat then "EVERYONE SKIPPED!  Go again" else `EVERYONE SKIPPED!  {nameOf(action.seat)} goes again`, Theme.Bad)
+				elseif action.discarded and action.discarded > 0 then
+					say(`DISCARD ALL!  {nameOf(action.seat)} dumps {action.discarded + 1}`, Color3.fromRGB(120, 210, 255))
+				end
+				if action.mercy then
+					say(if action.mercy == snapshot.yourSeat then "25 CARDS!  You're out" else `25 CARDS!  {nameOf(action.mercy)} is out`, Theme.Bad, 0.42)
 				end
 				if action.called then
 					say(if action.seat == snapshot.yourSeat then "LAST CARD!" else `{nameOf(action.seat)}: LAST CARD!`, Color3.fromRGB(255, 200, 70), 0.3)
@@ -1008,7 +1164,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		if not canCall then
 			armed = false
 		end
-		callAction.Visible = canCall
+		lateCall = view.canCallLate == true
+		callAction.Visible = canCall or lateCall
 		paintCall()
 		catchAction.Visible = view.canCatch == true
 		challengeAction.Visible = view.canChallenge == true
@@ -1057,6 +1214,23 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				table.insert(held, id)
 			end
 		end
+		if sortBy == "number" then
+			-- Numbers low to high, then actions, then Wilds; color breaks ties.
+			local RANK = { skip = 10, reverse = 11, draw2 = 12, skipall = 13, discardall = 14, wild = 20, wild4 = 21, wild6 = 22 }
+			table.sort(held, function(a, b)
+				local ca, cb = Rules.cards[a], Rules.cards[b]
+				local ra = if ca.kind == "number" then ca.value :: number else RANK[ca.kind] or 30
+				local rb = if cb.kind == "number" then cb.value :: number else RANK[cb.kind] or 30
+				if ra ~= rb then
+					return ra < rb
+				end
+				if ca.color ~= cb.color then
+					return ca.color < cb.color
+				end
+				return a < b
+			end)
+		end
+		sortAction.Text = if sortBy == "color" then "Sort: color" else "Sort: number"
 		local slots: { [number]: { slot: Frame, face: GuiObject } } = {}
 		-- Off your turn the server doesn't say what's playable, so match against the
 		-- pile here: those cards stay lifted, so you can plan your next move.
@@ -1097,18 +1271,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			local rest = UDim2.fromScale(0, drop + (if lifted then -0.18 else 0))
 			face.Position = rest
 			face.Rotation = offset * spread
-			-- Cards you can't play right now are blacked out, and stay so on hover. Off your
-			-- turn that's every card (the ones that would fit are still lifted).
-			if not canPlay then
-				Kit.new("Frame", {
-					BackgroundColor3 = Color3.new(0, 0, 0),
-					BackgroundTransparency = 0.42,
-					BorderSizePixel = 0,
-					Size = UDim2.fromScale(1, 1),
-					ZIndex = 3,
-					Parent = face,
-				}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.12, 0) }) })
-			end
+			-- Nothing is grayed out (Giovanni's note): cards you can play stand up out of
+			-- the fan and the rest stay down, all in full color.
 			if id == view.drawnCard then
 				Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 5, Parent = face })
 			elseif canJump and jumpable[id] then
@@ -1139,6 +1303,83 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		squeezeHand()
 		refitSoon()
 		playEffects(view, slots)
+
+		if view.proof then
+			showProof(view.proof)
+		end
+		-- Table view: running lines on the left, the round summary over the hand.
+		local info = {}
+		if view.target > 0 then
+			local me = snapshot.yourSeat
+			table.insert(info, `Play to {view.target} · round {view.round}`)
+			if me then
+				table.insert(info, `You: {view.scores[me]} pts`)
+			end
+			local best, bestScore = nil, -1
+			for seat, score in view.scores do
+				if seat ~= me and score > bestScore then
+					best, bestScore = seat, score
+				end
+			end
+			if best then
+				table.insert(info, `Leader: {nameOf(best)} {bestScore}`)
+			end
+		end
+		if view.teams and view.partner then
+			table.insert(info, `Partner: {nameOf(view.partner)} ({view.handCounts[view.partner]} cards)`)
+		end
+		local modes = {}
+		if view.stackMode == "off" then
+			table.insert(modes, "No stacking")
+		elseif view.stackMode == "up" then
+			table.insert(modes, "Stack +4 on +2")
+		elseif view.stackMode == "any" then
+			table.insert(modes, "Stack anything")
+		end
+		if view.chaos then
+			table.insert(modes, "Chaos deck")
+		end
+		if view.reverseBounce then
+			table.insert(modes, "Reverse bounces")
+		end
+		if view.noBluff then
+			table.insert(modes, "No bluffing")
+		end
+		if #modes > 0 then
+			table.insert(info, table.concat(modes, " · "))
+		end
+		if #info > 0 and view.target == 0 and not view.teams then
+			table.insert(info, 1, "House rules")
+		end
+		CardTable.info(tableUi, if #info > 0 then info else nil)
+		feltInfo.Text = table.concat(info, "\n")
+		local r = view.roundResult
+		if r and view.phase == "roundEnd" then
+			local lines = { `+{r.points} points from the other hands` }
+			if view.target > 0 then
+				local me = snapshot.yourSeat
+				if me then
+					table.insert(lines, `You: {view.scores[me]} of {view.target}`)
+				end
+			end
+			table.insert(lines, "Next round coming up...")
+			CardTable.notice(tableUi, `{nameOf(r.winner)} won round {r.round}!`, lines, Color3.fromRGB(255, 220, 60))
+			if talliedRound ~= r.round then
+				talliedRound = r.round
+				say(`ROUND {r.round}!  {string.upper(nameOf(r.winner))} +{r.points}`, Color3.fromRGB(255, 220, 60), 0.3)
+			end
+			lastLabel.Text = `{nameOf(r.winner)} won round {r.round}: +{r.points}. Next round soon...`
+		else
+			CardTable.notice(tableUi, nil)
+		end
+		if view.winner and r and not finalShown then
+			finalShown = true
+			task.delay(1.2, function()
+				if root.Parent and snapshot then
+					standings(snapshot.view)
+				end
+			end)
+		end
 	end
 
 	return {
@@ -1155,6 +1396,14 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		-- the screen, and the Draw / Pass buttons in the bottom-right corner.
 		setDocked = function(value: boolean)
 			docked = value
+			tableUi.docked = value
+			if docked then
+				callAction.AnchorPoint = Vector2.new(1, 1)
+				callAction.Position = UDim2.new(0.13, 0, 1, -18)
+			else
+				callAction.AnchorPoint = Vector2.new(0, 1)
+				callAction.Position = UDim2.new(0, 14, 0.6, 40)
+			end
 			felt.Visible = not docked
 			if docked then
 				pendingLabel.Parent = root

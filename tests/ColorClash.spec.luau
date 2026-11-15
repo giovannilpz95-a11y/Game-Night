@@ -26,7 +26,7 @@ return function(T)
 			end
 		end
 		s.deck = {}
-		for id = 1, #cards do
+		for id = 1, ColorClash.deckSize do
 			if not used[id] then
 				table.insert(s.deck, id)
 			end
@@ -180,8 +180,14 @@ return function(T)
 		T.eq(s.turn, 1, "the player who drew is skipped")
 	end)
 
-	T.test("wild draw four stacks on a draw two", function()
+	T.test("stacking: same card only by default; \"+4 on +2\" lets a Wild +4 answer a Draw Two", function()
+		local d = setup(2, { { coralDraw2, teal3 }, { wild4, honey7, tealDraw2 } }, coral5)
+		play(d, 1, { kind = "play", card = coralDraw2 })
+		T.eq((ColorClash.validateMove(d, 2, { kind = "play", card = wild4, color = 2 })), false, "same card only")
+		play(d, 2, { kind = "play", card = tealDraw2 })
+		T.eq(d.pendingDraw, 4)
 		local s = setup(2, { { coralDraw2, teal3 }, { wild4, honey7 } }, coral5)
+		s.stackMode = "up"
 		play(s, 1, { kind = "play", card = coralDraw2 })
 		play(s, 2, { kind = "play", card = wild4, color = 2 })
 		T.eq(s.pendingDraw, 6)
@@ -215,6 +221,7 @@ return function(T)
 
 	T.test("only a lone Wild +4 can be challenged, and only right away", function()
 		local s = setup(2, { { coralDraw2, teal3 }, { wild4, honey7 } }, coral5)
+		s.stackMode = "up"
 		play(s, 1, { kind = "play", card = coralDraw2 })
 		play(s, 2, { kind = "play", card = wild4, color = 2 })
 		T.eq(ColorClash.canChallenge(s, 1), false, "stacked on a +2")
@@ -272,13 +279,15 @@ return function(T)
 		T.eq(ColorClash.getView(s, nil).hand, nil, "spectators see no hand")
 	end)
 
-	T.test("going down to one card without calling it can be caught by the next player", function()
+	T.test("going down to one card without calling it can be caught by anyone", function()
 		local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
 		local s = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip } }, coral9)
 		play(s, 1, { kind = "play", card = coral5 })
 		T.eq(s.exposed, 1)
 		T.ok(s.lastAction.forgot)
-		T.eq((ColorClash.validateMove(s, 3, { kind = "catch" })), false, "only the player on turn")
+		T.ok(ColorClash.validateMove(s, 3, { kind = "catch" }), "anyone, not only the player on turn")
+		T.eq((ColorClash.validateMove(s, 1, { kind = "catch" })), false, "not yourself")
+		T.ok(table.find(ColorClash.getInterruptSeats(s), 3) ~= nil)
 		T.ok(ColorClash.getView(s, 2).canCatch)
 		play(s, 2, { kind = "catch" })
 		T.eq(#s.hands[1], 3)
@@ -355,7 +364,7 @@ return function(T)
 		T.eq(s.turn, 2)
 		T.eq(ColorClash.getJumpIns(s, 3)[1], coral5b)
 		T.eq(#ColorClash.getJumpIns(s, 2), 0, "your own turn: just play")
-		T.eq(ColorClash.getInterruptSeats(s)[1], 3)
+		T.ok(table.find(ColorClash.getInterruptSeats(s), 3) ~= nil)
 		T.eq((ColorClash.validateMove(s, 3, { kind = "jump", card = honey5 })), false, "same number, other color")
 		T.eq((ColorClash.validateMove(s, 3, { kind = "jump", card = wild })), false, "no wilds")
 		T.eq((ColorClash.validateMove(s, 3, { kind = "play", card = coral5b })), false, "a normal play is still out of turn")
@@ -385,7 +394,7 @@ return function(T)
 		for i = 1, 40 do
 			local s = setup(3, { { coral5, honey7 }, { teal3 }, { coral5b, honey5 } }, coral9)
 			s.jumpIn = true
-			play(s, 1, { kind = "play", card = coral5 })
+			play(s, 1, { kind = "play", card = coral5, call = true })
 			local rng = T.Random.new(i)
 			T.eq(ColorClash.chooseBotMove(s, 1, rng), nil, "nothing to jump with")
 			local move = ColorClash.chooseBotMove(s, 3, rng)
@@ -442,6 +451,262 @@ return function(T)
 				end
 				T.eq(total, 108)
 			end
+		end
+	end)
+
+	-- Plays a whole game with bots (out-of-turn moves first), dealing new rounds as the
+	-- round timer runs out. Returns the plies played.
+	local function botGame(s, rng, limit)
+		local plies = 0
+		while not ColorClash.getResult(s) and plies < limit do
+			if ColorClash.getTimer(s) then
+				ColorClash.onTimeout(s)
+			else
+				local seat = ColorClash.getActiveSeats(s)[1]
+				local move = nil
+				for _, other in ColorClash.getInterruptSeats(s) do
+					move = ColorClash.chooseBotMove(s, other, rng)
+					if move then
+						seat = other
+						break
+					end
+				end
+				move = move or GameModule.chooseBotMove(ColorClash, s, seat, rng)
+				local ok, err = ColorClash.validateMove(s, seat, move)
+				assert(ok, `bot made an illegal move: {err}`)
+				ColorClash.applyMove(s, seat, move)
+			end
+			plies += 1
+		end
+		return plies
+	end
+
+	local coral9 = find(function(c) return c.color == 1 and c.value == 9 end)
+
+	T.test("a forgotten call can be said late, until someone catches it", function()
+		local s = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip } }, coral9)
+		play(s, 1, { kind = "play", card = coral5 })
+		T.ok(ColorClash.getView(s, 1).canCallLate)
+		T.ok(table.find(ColorClash.getInterruptSeats(s), 1) ~= nil)
+		play(s, 1, { kind = "call" })
+		T.eq(s.exposed, nil)
+		T.eq(s.lastAction.late, true)
+		T.eq((ColorClash.validateMove(s, 3, { kind = "catch" })), false, "safe now")
+		T.eq(s.turn, 2, "still seat 2's turn")
+		-- Caught first: too late to call.
+		local t = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip } }, coral9)
+		play(t, 1, { kind = "play", card = coral5 })
+		play(t, 3, { kind = "catch" })
+		T.eq(#t.hands[1], 3)
+		T.eq((ColorClash.validateMove(t, 1, { kind = "call" })), false)
+		T.eq(t.turn, 2, "an out-of-turn catch leaves the turn alone")
+	end)
+
+	T.test("a challenge keeps the chance to catch, and only the challenger sees the hand", function()
+		local s = setup(3, { { wild4, teal3 }, { honey7, honey5 }, { coralSkip } }, coral5)
+		play(s, 1, { kind = "play", card = wild4, color = 3 })
+		T.eq(s.exposed, 1, "forgot to call")
+		play(s, 2, { kind = "challenge" })
+		T.eq(#s.hands[2], 2 + 6, "fair +4: the challenger draws 6")
+		T.eq(s.exposed, 1, "the challenge didn't let them off")
+		T.ok(ColorClash.getView(s, 2).proof ~= nil, "the challenger sees the hand")
+		play(s, 3, { kind = "catch" })
+		T.eq(ColorClash.getView(s, 2).proof, nil, "the next move clears it")
+		local t = setup(3, { { wild4, teal3, coralSkip }, { honey7, honey5 }, { honey5 } }, coral5)
+		play(t, 1, { kind = "play", card = wild4, color = 3, call = false })
+		play(t, 2, { kind = "challenge" })
+		local proof = ColorClash.getView(t, 2).proof
+		T.ok(proof ~= nil)
+		T.eq(#proof.hand, 2, "the +4 player's hand as it was")
+		T.eq(proof.guilty, true)
+		T.eq(ColorClash.getView(t, 3).proof, nil, "nobody else sees it")
+	end)
+
+	T.test("house rules: no bluffing, reverse bounces a draw", function()
+		local s = setup(2, { { wild4, coral5 }, { honey7 } }, coral9)
+		s.noBluff = true
+		T.eq((ColorClash.validateMove(s, 1, { kind = "play", card = wild4, color = 2 })), false, "holding coral")
+		T.ok(table.find(ColorClash.getPlayable(s, 1), wild4) == nil)
+		local t = setup(2, { { wild4, teal3 }, { honey7 } }, coral9)
+		t.noBluff = true
+		T.ok(ColorClash.validateMove(t, 1, { kind = "play", card = wild4, color = 2 }))
+
+		local coralReverseB = find(function(c) return c.color == 1 and c.kind == "reverse" end)
+		local b = setup(3, { { coralDraw2, teal3, honey7 }, { coralReverseB, honey5 }, { teal3 } }, coral9)
+		b.reverseBounce = true
+		play(b, 1, { kind = "play", card = coralDraw2 })
+		T.eq(b.turn, 2)
+		play(b, 2, { kind = "play", card = coralReverseB })
+		T.eq(b.lastAction.bounced, true)
+		T.eq(b.turn, 1, "back to whoever played the +2")
+		T.eq(b.pendingDraw, 2)
+		play(b, 1, { kind = "draw" })
+		T.eq(#b.hands[1], 2 + 2)
+	end)
+
+	T.test("jump-in: not on your own card", function()
+		local coral5b = find(function(c) return c.color == 1 and c.value == 5 and c ~= cards[coral5] end)
+		local s = setup(3, { { coral5, coral5b, honey7 }, { teal3 }, { honey5 } }, coral9)
+		s.jumpIn = true
+		play(s, 1, { kind = "play", card = coral5 })
+		T.eq(#ColorClash.getJumpIns(s, 1), 0)
+	end)
+
+	T.test("points: going out scores the other hands, and a last +2 is still drawn", function()
+		T.eq(ColorClash.points(coral5), 5)
+		T.eq(ColorClash.points(coralSkip), 20)
+		T.eq(ColorClash.points(wild4), 50)
+		local s = setup(3, { { coralDraw2 }, { honey7, wild }, { teal3, coralSkip } }, coral9)
+		play(s, 1, { kind = "play", card = coralDraw2 })
+		T.ok(ColorClash.getResult(s) ~= nil)
+		T.eq(#s.hands[2], 4, "seat 2 drew the 2 anyway")
+		local r = s.roundResult
+		T.eq(r.winner, 1)
+		T.eq(r.points, ColorClash.handPoints(s.hands[2]) + 3 + 20)
+		local scores = ColorClash.getScores(s)
+		T.ok(scores[1] > scores[2] and scores[1] > scores[3])
+	end)
+
+	T.test("play to 250: rounds are dealt until someone reaches it", function()
+		local s = setup(2, { { coral5 }, { honey7, wild } }, coral9)
+		s.target = 250
+		play(s, 1, { kind = "play", card = coral5 })
+		T.eq(ColorClash.getResult(s), nil, "not yet")
+		T.eq(s.phase, "roundEnd")
+		T.eq(s.scores[1], 57)
+		T.ok(ColorClash.getTimer(s) ~= nil)
+		T.eq(#ColorClash.getActiveSeats(s), 0)
+		T.eq((ColorClash.validateMove(s, 2, { kind = "draw" })), false)
+		ColorClash.onTimeout(s)
+		T.eq(s.phase, "play")
+		T.eq(s.round, 2)
+		T.eq(#s.hands[1], 7)
+		T.eq(s.turn, 2, "the next player starts")
+		s.scores[2] = 240
+		s.hands[2] = { coral5 }
+		s.discard = { coral9 }
+		s.color = 1
+		play(s, 2, { kind = "play", card = coral5 })
+		T.eq(ColorClash.getResult(s).winners[1], 2)
+		local rng = T.Random.new(5)
+		local g = ColorClash.new(3, { botLevel = "medium", rules = { target = 250 } }, rng)
+		botGame(g, rng, 20000)
+		T.ok(ColorClash.getResult(g) ~= nil)
+		T.ok(g.scores[ColorClash.getResult(g).winners[1]] >= 250)
+	end)
+
+	T.test("2v2 teams: either partner going out wins for both", function()
+		local s = ColorClash.new(4, { rules = { teams = true } }, T.Random.new(3))
+		T.eq(ColorClash.partnerOf(s, 1), 3)
+		T.eq(ColorClash.partnerOf(s, 2), 4)
+		s.hands[2] = { coral5 }
+		s.discard = { coral9 }
+		s.color = 1
+		s.turn = 2
+		s.exposed = nil
+		play(s, 2, { kind = "play", card = coral5 })
+		local result = ColorClash.getResult(s)
+		T.ok(table.find(result.winners, 2) ~= nil and table.find(result.winners, 4) ~= nil)
+		T.eq(#result.winners, 2)
+		-- Partners don't catch each other.
+		local t = ColorClash.new(4, { rules = { teams = true } }, T.Random.new(3))
+		t.hands[1] = { coral5, honey7 }
+		t.discard = { coral9 }
+		t.color = 1
+		play(t, 1, { kind = "play", card = coral5 })
+		T.eq(ColorClash.canCatch(t, 3), false)
+		T.ok(ColorClash.canCatch(t, 2))
+		T.eq(ColorClash.new(3, { rules = { teams = true } }, T.Random.new(1)).teams, false, "4 seats only")
+	end)
+
+	T.test("chaos deck: Skip Everyone, Discard All, Wild +6 and the mercy rule", function()
+		local c = ColorClash.new(3, { rules = { chaos = true } }, T.Random.new(4))
+		local total = #c.deck + #c.discard
+		for _, h in c.hands do
+			total += #h
+		end
+		T.eq(total, #cards, "the chaos cards are in")
+		local classic = ColorClash.new(3, nil, T.Random.new(4))
+		local n = #classic.deck + #classic.discard
+		for _, h in classic.hands do
+			n += #h
+		end
+		T.eq(n, ColorClash.deckSize, "and not in the classic deck")
+
+		local skipAll = find(function(card) return card.kind == "skipall" and card.color == 1 end)
+		local discardAll = find(function(card) return card.kind == "discardall" and card.color == 1 end)
+		local wild6 = find(function(card) return card.kind == "wild6" end)
+		local s = setup(3, { { skipAll, teal3, coral5, honey7 }, { honey5 }, { teal3 } }, coral9)
+		s.chaos = true
+		play(s, 1, { kind = "play", card = skipAll })
+		T.eq(s.turn, 1, "everyone skipped: play again")
+		local d = setup(3, { { discardAll, coral5, coralSkip, honey7, teal3 }, { honey5 }, { teal3 } }, coral9)
+		d.chaos = true
+		play(d, 1, { kind = "play", card = discardAll })
+		T.eq(#d.hands[1], 2, "both coral cards went too")
+		T.eq(d.discard[#d.discard], discardAll, "the Discard All on top")
+		T.eq(d.lastAction.discarded, 2)
+		local w = setup(3, { { wild6, teal3 }, { honey5 }, { teal3 } }, coral9)
+		w.chaos = true
+		play(w, 1, { kind = "play", card = wild6, color = 2, call = true })
+		T.eq(w.pendingDraw, 6)
+		-- Mercy: taking cards up to 25 puts you out.
+		local m = setup(3, { { coralDraw2, teal3 }, { honey5 }, { teal3 } }, coral9)
+		m.chaos = true
+		for _ = 1, 22 do
+			table.insert(m.hands[2], table.remove(m.deck) :: number)
+		end
+		play(m, 1, { kind = "play", card = coralDraw2, call = true })
+		play(m, 2, { kind = "draw" })
+		T.eq(m.out[2], true)
+		T.eq(#m.hands[2], 0)
+		T.eq(m.turn, 3, "play skips the player who is out")
+		T.eq(ColorClash.getSeatInfo(m)[2], "Out (mercy)")
+		-- A whole chaos game with bots.
+		for seed = 1, 3 do
+			local rng = T.Random.new(seed)
+			local g = ColorClash.new(4, { botLevel = "hard", rules = { chaos = true, sevenZero = true, jumpIn = true } }, rng)
+			botGame(g, rng, 20000)
+			T.ok(ColorClash.getResult(g) ~= nil, "chaos game should finish")
+		end
+	end)
+
+	T.test("a timed-out player draws and passes; bots catch out of turn sometimes", function()
+		local s = setup(2, { { teal3, honey7 }, { honey5 } }, coral9)
+		T.eq(ColorClash.chooseAfkMove(s, 1, T.Random.new(1)).kind, "draw")
+		s.drawnCard = s.hands[1][1]
+		T.eq(ColorClash.chooseAfkMove(s, 1, T.Random.new(1)).kind, "pass")
+		local catches = 0
+		for i = 1, 60 do
+			local t = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip } }, coral9)
+			play(t, 1, { kind = "play", card = coral5 })
+			local move = ColorClash.chooseBotMove(t, 3, T.Random.new(i))
+			if move and move.kind == "catch" then
+				catches += 1
+			end
+		end
+		T.ok(catches > 5 and catches < 60, `out-of-turn catches {catches}/60`)
+	end)
+
+	T.test("out of time: fewest cards, then fewest points; a real tie is shared", function()
+		local s = setup(3, { { coral5, honey7 }, { honey5, teal3 }, { coralSkip, wild, wild4 } }, coral9)
+		s.turns = 599
+		play(s, 1, { kind = "draw" })
+		if s.drawnCard then
+			play(s, 1, { kind = "pass" })
+		end
+		local r = ColorClash.getResult(s)
+		T.ok(r ~= nil)
+		T.eq(r.winners[1], 2, "2 cards worth 8 beats 3 cards")
+	end)
+
+	T.test("bots finish games with every new house rule", function()
+		for seed = 1, 4 do
+			local rng = T.Random.new(seed * 3)
+			local rules = { stacking = ({ false, "same", "up", "any" })[seed], noBluff = seed % 2 == 0, reverseBounce = seed % 2 == 1, teams = true, target = if seed == 4 then 250 else 0 }
+			local g = ColorClash.new(4, { botLevel = ({ "easy", "medium", "hard", "hard" })[seed], rules = rules }, rng)
+			botGame(g, rng, 30000)
+			T.ok(ColorClash.getResult(g) ~= nil, `game {seed} should finish`)
 		end
 	end)
 end
