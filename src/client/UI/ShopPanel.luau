@@ -1,4 +1,6 @@
--- The shop window: your wallet and daily challenges, Gems & passes (Robux), the hub shop
+-- The shop window. It opens on Featured (today's offer, today's picks and shortcuts, like
+-- every top Roblox shop's front page), then your wallet and daily challenges, Gems &
+-- passes (Robux), the hub shop
 -- (Gems), reaction packs (Gems, Coins or the Robux bundle) and one shop per kind of Coin.
 -- Wide screens get a tab column on the left; phones get a row of tabs across the top.
 -- The server checks every purchase, this only asks.
@@ -186,11 +188,12 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 	place()
 
 	local wallet: any = nil
-	local tab = "wallet"
+	local tab = "featured"
 	local staggeredTab: string? = nil -- the tab whose tiles last popped in
 	local converter = CoinConvertPanel.create(parent, sendEconomy)
 
 	local tabs = {
+		{ key = "featured", name = "⭐ Featured", short = "⭐ Featured" },
 		{ key = "wallet", name = "👛 Wallet & daily", short = "👛 Wallet" },
 		{ key = "robux", name = "💎 Gems & passes", short = "💎 Gems" },
 		{ key = "hub", name = "🏪 Hub shop", short = "🏪 Hub" },
@@ -464,6 +467,167 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		end
 	end
 
+	-- The move playing on your own avatar on the Poses & wins tab (kept across redraws).
+	local previewId: string? = nil
+	local setPreview: ((string) -> ())? = nil
+
+	-- Featured: the front page. One offer you don't have yet, three moves of the day (they
+	-- change every day, the same for everyone) and big shortcuts to the other tabs. Only
+	-- things that show in the game are featured (poses and wins play on your avatar).
+	local function renderFeatured()
+		Kit.list(12).Parent = content
+		local vip = wallet.vip == true
+		local passes = wallet.passes or {}
+		local order = 1
+
+		-- The offer: Starter Pack while it lasts, else a pass you don't own yet.
+		local offer: any = nil
+		if wallet.starterAvailable then
+			local pack = Economy.StarterPack
+			offer = {
+				icon = "🎁",
+				title = "Starter Pack",
+				tag = "FIRST 3 DAYS",
+				text = `{pack.gems} Gems, the Cozy Cabin table and a nameplate`,
+				robux = pack.robux,
+				ready = pack.productId ~= 0,
+				buy = function()
+					sendPurchase({ action = "buyStarter" })
+				end,
+			}
+		else
+			for _, key in { "vip", "partyHost" } do
+				local pass = Economy.Passes[key]
+				if pass and not passes[key] then
+					offer = {
+						icon = PASS_ICONS[key] or "⭐",
+						title = pass.name,
+						tag = if key == "vip" then "BEST VALUE" else "HOST PERKS",
+						text = table.concat(pass.perks or {}, "  ·  "),
+						robux = pass.robux,
+						ready = pass.gamePassId ~= 0,
+						buy = function()
+							sendPurchase({ action = "buyPass", key = key })
+						end,
+					}
+					break
+				end
+			end
+		end
+		if offer then
+			local hero = Kit.new("Frame", {
+				Name = "Offer",
+				BackgroundColor3 = if Kit.cafe then Theme.Felt else Theme.PanelLight,
+				BorderSizePixel = 0,
+				Size = UDim2.new(1, -8, 0, 128),
+				LayoutOrder = order,
+				Parent = content,
+			}, {
+				Kit.corner(14),
+				Kit.padding(14),
+				Kit.new("UIGradient", { Name = "Shade", Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200)) }),
+			})
+			Flair.spinGradient(Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3, Parent = hero }), Flair.Gold, 90)
+			Kit.label(offer.icon, { TextSize = 64, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(0, 90, 1, 0), Parent = hero })
+			Kit.tag(offer.tag, Theme.Accent, { Position = UDim2.fromOffset(100, 0), Parent = hero })
+			Kit.label(offer.title, { Font = Theme.FontTitle, TextSize = 26, Position = UDim2.fromOffset(100, 20), Size = UDim2.new(1, -260, 0, 32), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero })
+			Kit.label(offer.text, { TextSize = 13, TextColor3 = Theme.Text, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromOffset(100, 54), Size = UDim2.new(1, -260, 0, 46), Parent = hero })
+			local buy = robuxButton(hero, offer.robux, offer.ready, offer.buy, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0, 140, 0, 44) })
+			if offer.ready then
+				Flair.idleShine(buy, 3)
+			end
+			order += 1
+		end
+
+		-- Today's picks: three poses or win dances you don't own, different every day.
+		local pool = {}
+		for _, list in { Showtime.Poses, Showtime.Dances } do
+			for _, move in list do
+				local item = ShopCatalog.get(move.id)
+				if item and not item.free and not item.season and not (wallet.owned and wallet.owned[item.id]) and gemPrice(item, vip) then
+					table.insert(pool, { move = move, item = item })
+				end
+			end
+		end
+		if #pool > 0 then
+			section("🔥 Today's picks", order)
+			order += 1
+			local day = math.floor(os.time() / 86400)
+			local picks = {}
+			for i = 1, math.min(3, #pool) do
+				local index = (day * 7 + i * 5) % #pool + 1
+				-- Skip ahead past ones already picked.
+				while table.find(picks, pool[index]) do
+					index = index % #pool + 1
+				end
+				table.insert(picks, pool[index])
+			end
+			local tiles = grid(order, UDim2.new(if narrow then 0.5 else 1 / 3, -8, 0, 168))
+			order += 1
+			for i, pick in picks do
+				local item, move = pick.item, pick.move
+				local tier = TIER_COLORS[item.tier] or Theme.SubText
+				local c = Kit.card({ LayoutOrder = i, Parent = tiles })
+				Flair.rarityBorder(Kit.new("UIStroke", { Color = tier, Thickness = 2, Transparency = 0.25, Parent = c }), item.tier)
+				local badge = Kit.label(move.icon, { BackgroundColor3 = tier, BackgroundTransparency = 0.7, TextSize = 26, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromOffset(46, 46), Parent = c })
+				Kit.corner(12).Parent = badge
+				Kit.tag(string.upper(item.tier), tier, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = c })
+				Kit.label(move.name, { Font = Theme.FontBold, TextSize = 15, Position = UDim2.new(0, 0, 0, 50), Size = UDim2.new(1, 0, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd, Parent = c })
+				Kit.label(move.blurb, { TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.new(0, 0, 0, 72), Size = UDim2.new(1, 0, 0, 32), TextYAlignment = Enum.TextYAlignment.Top, Parent = c })
+				-- See it on your avatar (the Poses & wins tab's stage), or buy it here.
+				Kit.button("▶ See it", function()
+					tab = "showtime"
+					render()
+					if setPreview then
+						setPreview(move.id)
+					else
+						previewId = move.id
+					end
+				end, { BackgroundColor3 = Theme.Accent, TextColor3 = Theme.AccentText, TextSize = 13, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(0.5, -3, 0, 32), Parent = c })
+				local gems = gemPrice(item, vip) :: number
+				local priceBtn: TextButton
+				priceBtn = priceButton(c, commas(gems), "gem", Theme.Gem, function()
+					if wallet.gems < gems then
+						Kit.nope(priceBtn)
+					end
+					sendEconomy({ action = "buy", itemId = item.id, currency = "gems" })
+				end, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, 0, 1, 0), Size = UDim2.new(0.5, -3, 0, 32) })
+			end
+		end
+
+		-- Shortcuts to the other tabs.
+		section("Browse", order)
+		order += 1
+		local shortcuts = grid(order, UDim2.new(if narrow then 0.5 else 0.25, -8, 0, 88))
+		for i, link in {
+			{ key = "robux", icon = "💎", name = "Gems & passes" },
+			{ key = "showtime", icon = "🕺", name = "Poses & wins" },
+			{ key = "reactions", icon = "😀", name = "Reactions" },
+			{ key = "wallet", icon = "👛", name = "Wallet & daily" },
+		} do
+			local b = Kit.new("TextButton", {
+				Name = link.key,
+				Text = "",
+				AutoButtonColor = true,
+				BackgroundColor3 = if Kit.cafe then Theme.Paper else Theme.PanelLight,
+				BorderSizePixel = 0,
+				LayoutOrder = i,
+				Parent = shortcuts,
+			}, {
+				Kit.corner(12),
+				Kit.new("UIStroke", { Color = if Kit.cafe then Theme.Wood else Theme.Stroke, Thickness = if Kit.cafe then 2.5 else 1, Transparency = if Kit.cafe then 0 else 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+			})
+			Kit.label(link.icon, { TextSize = 30, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 10), Size = UDim2.new(1, 0, 0, 36), Parent = b })
+			Kit.label(link.name, { Font = Theme.FontBold, TextSize = 14, TextColor3 = if Kit.cafe then Theme.Ink else Theme.Text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 4, 0, 52), Size = UDim2.new(1, -8, 0, 20), Parent = b })
+			b.Activated:Connect(function()
+				tab = link.key
+				Analytics.shop("ViewedTab", tab)
+				render()
+			end)
+			Kit.pressable(b)
+		end
+	end
+
 	local function renderItems(shop: string)
 		Kit.new("UIGridLayout", {
 			CellSize = UDim2.new(if narrow then 0.5 else 1 / 3, -8, 0, 176),
@@ -542,9 +706,6 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 	-- Showtime: the pose you strike when the intro camera reaches you, and your celebration
 	-- when you win (shared/Showtime). Free ones just equip; the rest cost Gems or Universal
 	-- Coins. With nothing equipped you get the first free one.
-	-- The move playing on your own avatar at the top of the tab (kept across redraws).
-	local previewId: string? = nil
-	local setPreview: ((string) -> ())? = nil
 
 	-- A little stage with a copy of your avatar doing the picked move, sounds included.
 	local function previewStage(order: number)
@@ -979,7 +1140,10 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			line("Loading your wallet...", 1)
 			return
 		end
-		if tab == "wallet" then
+		if tab == "featured" then
+			title.Text = "🛒 Shop"
+			renderFeatured()
+		elseif tab == "wallet" then
 			title.Text = "👛 Wallet"
 			renderWallet()
 		elseif tab == "robux" then
@@ -1016,12 +1180,13 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 
 	return {
 		root = root,
-		-- Opens on a coin's shop (from a game table), "reactions" (the 😀 wheel) or the wallet.
+		-- Opens on a coin's shop (from a game table), "reactions" (the 😀 wheel), "wallet",
+		-- "robux", or Featured.
 		open = function(coinKey: string?)
-			if coinKey == "reactions" or coinKey == "showtime" then
+			if coinKey == "reactions" or coinKey == "showtime" or coinKey == "wallet" or coinKey == "robux" then
 				tab = coinKey :: string
 			else
-				tab = if coinKey and #ShopCatalog.forShop(coinKey) > 0 then coinKey else "wallet"
+				tab = if coinKey and #ShopCatalog.forShop(coinKey) > 0 then coinKey else "featured"
 			end
 			local wasOpen = root.Visible
 			root.Visible = true

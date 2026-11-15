@@ -37,6 +37,22 @@ function Perf.isLow(): boolean
 	return low
 end
 
+-- Reduce motion (Settings): looping motion (spinning borders and rays, glints, nudging
+-- badges, breathing rings) stops, as in low-detail mode, but the world keeps full detail.
+local reducedMotion = false
+function Perf.setReducedMotion(value: boolean)
+	reducedMotion = value
+end
+
+function Perf.isReducedMotion(): boolean
+	return reducedMotion
+end
+
+-- True when looping UI motion should stay still: low-detail mode or Reduce motion.
+function Perf.stillMotion(): boolean
+	return low or reducedMotion
+end
+
 -- Calls `fn(isLow)` whenever low-detail mode turns on or off.
 function Perf.onChange(fn: (boolean) -> ())
 	table.insert(listeners, fn)

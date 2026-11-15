@@ -288,6 +288,10 @@ Audio.start()
 -- First-time lobby tour. The server remembers it's done (profile tips), so it runs once;
 -- Help > Replay the lobby tour runs it again.
 local tour = LobbyTour.create(screen)
+-- One moment at a time: "it's yours!" moments wait for the daily card and the tour.
+Unlock.setBusy(function()
+	return dailyCard.isOpen() or tour.isRunning()
+end)
 local function railStep(key: string, title: string, text: string): LobbyTour.Step
 	return {
 		target = function()
