@@ -243,9 +243,29 @@ rules.TriviaNight = {
 		"Keep a streak of right answers going for bonus points.",
 	},
 	sections = {
-		{ title = "Each question", lines = { "Pick one of four answers before the clock runs out.", "Then the right answer and the points are shown." } },
-		{ title = "Scoring", lines = { "A right answer scores 500 to 1000: the faster you answer, the more you get.", "Streaks of right answers add a bonus.", "After each question you see your place on the scoreboard." } },
-		{ title = "Winning", lines = { "Highest score after the last question wins. Ties share the win." } },
+		{
+			title = "Each question",
+			lines = {
+				"Pick an answer before the clock runs out: four choices, or True / False.",
+				"In Table view, tap one of your colored answer pads on the table or a button at the bottom.",
+				"Then the right answer, how many picked each one and the points are shown.",
+				"Questions start easy and get harder as the game goes on.",
+			},
+		},
+		{
+			title = "Categories",
+			lines = { "Every 3 questions everyone votes for the next category. Votes are public; a tie is settled at random." },
+		},
+		{
+			title = "Scoring",
+			lines = {
+				"A right answer scores 500 to 1000: the faster you answer, the more you get.",
+				"A streak of right answers adds +100 for 2 in a row, +200 for 3, up to +300.",
+				"With the \"Wrong answers cost\" house rule, a wrong answer loses 250 points (no answer loses nothing).",
+				"Points show at the reveal, then your place on the scoreboard.",
+			},
+		},
+		{ title = "Winning", lines = { "Highest score after the last question wins. A tie goes to whoever was faster over their right answers." } },
 	},
 }
 
@@ -265,7 +285,7 @@ rules.Werewolf = {
 				"🔮 Seer: each night, learn whether one player is a werewolf.",
 				"🛡️ Guardian: each night, shield one player (you can shield yourself, but not the same player two nights running).",
 				"🏹 Hunter (6+ players): when you go out, take one player down with you.",
-				"🧪 Witch (7+ players): two potions, once each. Once the wolves have picked, see who they went for and save them; or poison anyone.",
+				"🧪 Witch (7+ players): two potions, once each. After the night picks, see who the wolves went for and save them, and/or poison another player (not yourself).",
 				"🧑‍🌾 Villager: no power at night, just a hunch. Your vote is your power.",
 			},
 		},
@@ -281,7 +301,8 @@ rules.Werewolf = {
 			title = "Day",
 			lines = {
 				"See who was caught, then talk. Make one statement: suspect someone, claim the Seer saw something, or pass.",
-				"The day ends early once everyone has spoken.",
+				"The day ends once everyone has spoken, but with two or more players it lasts at least 20 seconds so the talk isn't cut short.",
+				"Tap \"Log\" any time for the village log: who went out, when and how, and every day's statements and votes.",
 			},
 		},
 		{
@@ -289,7 +310,7 @@ rules.Werewolf = {
 			lines = {
 				"Vote a player out or skip. Votes are public.",
 				"The player with the most votes is out, unless there's a tie or more skips than votes for them.",
-				"Whoever is voted out gets a few seconds for last words.",
+				"Whoever is voted out gets 20 seconds for last words.",
 				"Players who are out can only chat with each other until the game ends.",
 			},
 		},

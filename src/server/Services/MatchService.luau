@@ -148,7 +148,9 @@ end
 
 local function broadcast(entry: Entry)
 	-- The table shows the spectator view, so nothing hidden ends up in the world.
-	TableService.update(entry.match.id, snapshotFor(entry, nil, nil))
+	local tableSnapshot = snapshotFor(entry, nil, nil)
+	tableSnapshot.turnEndsAt = entry.turnEndsAt -- boards with a clock on screen (Trivia)
+	TableService.update(entry.match.id, tableSnapshot)
 	for index, seat in entry.match.seats do
 		if seat.kind == "player" and seat.userId then
 			local player = Players:GetPlayerByUserId(seat.userId)
@@ -161,6 +163,33 @@ local function broadcast(entry: Entry)
 				matchStateRemote:FireClient(player, snapshot)
 			end
 		end
+	end
+end
+
+-- What each game asked lately on this server (rules.recentField, e.g. Trivia's question
+-- numbers), so regulars don't see the same questions game after game.
+local RECENT_LIMIT = 200
+local recentByGame: { [string]: { any } } = {}
+
+local function recentSet(gameId: string): { [any]: boolean }
+	local set = {}
+	for _, id in recentByGame[gameId] or {} do
+		set[id] = true
+	end
+	return set
+end
+
+local function remember(gameId: string, ids: any)
+	if type(ids) ~= "table" then
+		return
+	end
+	local list = recentByGame[gameId] or {}
+	recentByGame[gameId] = list
+	for _, id in ids do
+		table.insert(list, id)
+	end
+	while #list > RECENT_LIMIT do
+		table.remove(list, 1)
 	end
 end
 
@@ -603,6 +632,10 @@ local function startMatch(leader: Player, request: any, rematch: boolean?)
 			options.cosmetics[index] = mine
 		end
 	end
+	local recentField = (rules :: any).recentField
+	if recentField and not customContent then
+		options.recent = recentSet(catalogEntry.id)
+	end
 
 	local matchId = HttpService:GenerateGUID(false)
 	local entry: Entry = {
@@ -634,6 +667,9 @@ local function startMatch(leader: Player, request: any, rematch: boolean?)
 	end
 	if rules.textField then
 		task.spawn(warmChatPairs, entry)
+	end
+	if options.recent then
+		remember(catalogEntry.id, entry.match.state[recentField])
 	end
 	matches[matchId] = entry
 	for _, userId in party.members do

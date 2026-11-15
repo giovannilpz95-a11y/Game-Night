@@ -96,6 +96,12 @@
 	      validateMove, overwriting anything the client sent. nil when no clock is known
 	      (tests), so treat nil as instant.
 
+	recentField = "<field>"
+	      For games that draw from a big bank (Trivia questions): the server remembers
+	      the ids in state[field] after new() for each game, and passes the last ~200 back
+	      to new() as options.recent (a set), so the rules can skip them. Not used with a
+	      Party Host's custom content.
+
 	Stats (optional; see shared/StatsCatalog.luau for which keys each game saves):
 
 	  GameModule.addStat(state, seat, key, amount) / GameModule.maxStat(state, seat, key, value)
@@ -118,6 +124,7 @@ export type Result = {
 	isDraw: boolean,
 	reason: string?,
 	resignedSeat: number?, -- set by Match.resign, never by games
+	ranking: { number }?, -- optional: every seat, best first (the result card lists them in this order)
 }
 
 -- Picks a bot move: the game's own bot if it has one, else a random legal move.
