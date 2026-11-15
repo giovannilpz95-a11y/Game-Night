@@ -15,6 +15,7 @@ local GuiService = game:GetService("GuiService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.ColorClash)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local Access = require(script.Parent.Parent.UI.Access)
 local PlayingCard = require(script.Parent.Parent.UI.PlayingCard)
 local Fx = require(script.Parent.ColorClashFx)
 local Audio = require(script.Parent.Parent.Audio)
@@ -31,6 +32,9 @@ local COLORS = {
 	Color3.fromRGB(150, 110, 230), -- Violet
 }
 local WILD_COLOR = Color3.fromRGB(40, 36, 56)
+-- Color-blind marks (Settings > Accessibility): a shape for each color, in the card's
+-- free corners and on the color picker.
+local MARKS = { "▲", "●", "■", "◆" }
 local SYMBOLS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "★", wild4 = "+4", wild6 = "+6", skipall = "⊘⊘", discardall = "ALL" }
 local KIND_NAMES = { skip = "Skip", reverse = "Reverse", draw2 = "+2", skipall = "Skip Everyone", discardall = "Discard All" }
 local CARD_RATIO = 0.68 -- width / height
@@ -105,6 +109,15 @@ local function cardVisual(id: number?): Frame
 		Size = UDim2.fromScale(0.6, 0.38),
 		Parent = face,
 	})
+	if card.color ~= 0 then
+		for _, at in { { 0.84, 0.12 }, { 0.16, 0.88 } } do
+			Access.mark(face, MARKS[card.color], {
+				Position = UDim2.fromScale(at[1], at[2]),
+				Size = UDim2.fromScale(0.22, 0.15),
+				TextColor3 = Color3.new(1, 1, 1),
+			})
+		end
+	end
 	for _, corner in { { 0.06, 0.03, 0 }, { 0.64, 0.79, 180 } } do
 		Kit.label(text, {
 			Font = Theme.FontBold,
@@ -199,6 +212,12 @@ local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ()):
 			Size = UDim2.fromScale(0.2, 0.2),
 			ZIndex = z + 2,
 			Parent = button,
+		})
+		-- Its color-blind mark, clear of the arrow.
+		Access.mark(button, MARKS[i], {
+			Position = UDim2.fromScale(0.5, if i == 1 then 0.8 else 0.25),
+			Size = UDim2.fromScale(0.2, 0.18),
+			ZIndex = z + 2,
 		})
 		petals[i] = { button = button, stroke = stroke, scale = scale }
 		button.MouseEnter:Connect(function()
@@ -1111,7 +1130,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		end
 		deckCount.Text = `{view.deckCount} left`
 		colorRing.Color = COLORS[view.color] or Theme.Accent
-		colorLabel.Text = Rules.colorNames[view.color] or ""
+		colorLabel.Text = if Rules.colorNames[view.color] and Access.colorMarks() then `{MARKS[view.color]} {Rules.colorNames[view.color]}` else Rules.colorNames[view.color] or ""
 		colorLabel.TextColor3 = COLORS[view.color] or Theme.Text
 		directionLabel.Text = if view.direction == 1 then "Normal order" else "⇄ Reversed"
 		lastLabel.Text = describe(view.lastAction)

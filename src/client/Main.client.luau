@@ -72,6 +72,8 @@ local screen = Kit.new("ScreenGui", {
 })
 
 Layout.init(screen)
+-- Text size floor and scaling (Settings > Accessibility) for every ScreenGui of ours.
+require(script.Parent.UI.Access).start()
 Unlock.init(screen)
 Perf.start()
 -- Gamepad selection ring (breathing gold outline) for the springy UI feel.

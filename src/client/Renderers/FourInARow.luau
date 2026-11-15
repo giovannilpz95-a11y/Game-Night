@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.FourInARow)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local Access = require(script.Parent.Parent.UI.Access)
 local HudKit = require(script.Parent.Parent.UI.HudKit)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
 local Audio = require(script.Parent.Parent.Audio)
@@ -20,7 +21,7 @@ local FRAME_COLOR = Color3.fromRGB(92, 70, 140)
 local HOLE_COLOR = Color3.fromRGB(28, 24, 44)
 
 local function discVisual(seat: number): GuiObject
-	return PieceView.create("FourInARow", `Disc_{seat}`, function()
+	local disc = PieceView.create("FourInARow", `Disc_{seat}`, function()
 		return Kit.new("Frame", {
 			BackgroundColor3 = Theme.Seat[seat],
 			Size = UDim2.fromScale(1, 1),
@@ -32,6 +33,9 @@ local function discVisual(seat: number): GuiObject
 			HudKit.gradient(Color3.new(1, 1, 1), Color3.fromRGB(175, 175, 175)),
 		})
 	end, { faceOn = true })
+	-- Color-blind marks (Settings > Accessibility): the seat's shape on its discs.
+	Access.mark(disc, HudKit.seatShape(seat), { Size = UDim2.fromScale(0.45, 0.45) })
+	return disc
 end
 
 function FourInARow.create(container: Frame, sendMove: (any) -> ())
