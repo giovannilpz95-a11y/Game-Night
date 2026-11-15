@@ -494,14 +494,15 @@ rules.Palace = {
 	goal = "Be the first to get rid of your hand and all your table cards.",
 	card = {
 		"Play cards equal to or higher than the top of the pile (2s and 10s go on anything).",
-		"Can't play? You pick up the whole pile.",
+		"Can't play, or don't want to? Pick up the whole pile.",
 		"A 2 resets the pile; a 10 burns it and you go again.",
 	},
 	sections = {
-		{ title = "Setup", lines = { "You get 3 face-down table cards, 3 face-up cards on top, and 3 in hand.", "Before play, swap hand cards with your face-up cards, then press Ready." } },
-		{ title = "Your turn", lines = { "Play one or more cards of the same rank, equal to or higher than the top card. 3 is low, Ace high.", "Draw back up to 3 while the draw pile lasts.", "Can't play? Pick up the pile." } },
+		{ title = "Setup", lines = { "You get 3 face-down table cards, 3 face-up cards on top, and 3 in hand.", "Before play, swap hand cards with your face-up cards, then press Ready.", "The lowest card in anyone's hand or face-up cards starts. If it's in your hand, your first play must include it." } },
+		{ title = "Your turn", lines = { "Play one or more cards of the same rank, equal to or higher than the top card. 3 is low, Ace high.", "Draw back up to 3 while the draw pile lasts.", "You may pick up the pile instead of playing (keep low cards for later). If nothing plays, you must." } },
 		{ title = "Special cards", lines = { "2: goes on anything and resets the pile.", "10: goes on anything and burns the pile. You go again.", "Four of the same rank in a row also burns the pile." } },
 		{ title = "Table cards", lines = { "With your hand empty and the draw pile gone, play your face-up cards.", "Then flip face-down cards blind. If one can't be played, you pick up the pile." } },
+		{ title = "House rules", lines = { "Lower card (5, 7 or 9): after it, the next card must be equal or lower.", "8 skips: each 8 skips the next player.", "Invisible 3: a 3 goes on anything and the card under it still counts.", "Gamble on the deck: stuck with cards in hand, flip the top of the draw pile instead." } },
 		{ title = "Winning", lines = { "First player out of cards wins." } },
 	},
 }

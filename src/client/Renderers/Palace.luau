@@ -1,7 +1,9 @@
 -- Palace table: other players along the top (hand size, table cards), the draw pile and
 -- the play pile on the felt, your face-down and face-up table cards in a row above your
 -- hand. Setup: tap a hand card, then one of your face-up cards to swap them, then Ready.
--- Play: tap cards of one rank and press Play (or Pick up). Blind: tap a face-down card.
+-- Play: tap cards of one rank and press Play (or Pick up, any time). Blind: tap a
+-- face-down card. In Table view a small card on the left keeps the last play, the pile
+-- and the house rules in play.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -34,6 +36,16 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
+	end
+
+	local function cardsOf(view, seat: number): number
+		local n = (view.handCounts[seat] or 0) + #view.up[seat]
+		for _, here in view.down[seat] do
+			if here then
+				n += 1
+			end
+		end
+		return n
 	end
 
 	local function tableCards(view, seat: number): number
@@ -131,12 +143,15 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		-- The burn moment, once per burn.
 		local burnKey = if a and a.burned then `{a.seat}|{view.burned}` else nil
 		if burnKey and burnKey ~= shownBurn and shownBurn ~= nil then
-			HudKit.callout(ui.root, `🔥 BURN!  {nameOf(a.seat)} goes again`, Color3.fromRGB(235, 120, 40))
+			local out = cardsOf(view, a.seat) == 0
+			HudKit.callout(ui.root, if out then `🔥 BURN!  {nameOf(a.seat)} is out` else `🔥 BURN!  {nameOf(a.seat)} goes again`, Color3.fromRGB(235, 120, 40))
 		end
 		shownBurn = burnKey or shownBurn or ""
 		local text = ""
 		if a and a.kind == "play" then
-			text = `{nameOf(a.seat)} played {#a.cards} × {PlayingCards.rankShort[PlayingCards.rank(a.cards[1])]}` .. (if a.burned then ". Burn! Goes again." else "")
+			text = `{nameOf(a.seat)} played {#a.cards} × {PlayingCards.rankShort[PlayingCards.rank(a.cards[1])]}` .. (if a.burned then (if cardsOf(view, a.seat) == 0 then ". Burn!" else ". Burn! Goes again.") elseif a.skips then ` and skipped {a.skips}` else "")
+		elseif a and a.kind == "gamble" then
+			text = if a.ok then `{nameOf(a.seat)} gambled on the deck: {PlayingCards.short(a.card)} plays!` else `{nameOf(a.seat)} gambled on the deck ({PlayingCards.short(a.card)}) and picked up {a.count}`
 		elseif a and a.kind == "pickup" then
 			text = `{nameOf(a.seat)} picked up {a.count}`
 		elseif a and a.kind == "blind" then
@@ -173,9 +188,9 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 			local list = Kit.list(6, true)
 			list.HorizontalAlignment = if row:GetAttribute("Left") then Enum.HorizontalAlignment.Left else Enum.HorizontalAlignment.Center
 			list.Parent = row
-			local ups = view.up[me] or {}
+			local ups = (view.upSlots and view.upSlots[me]) or view.up[me] or {}
 			for i, here in view.down[me] or {} do
-				local up = ups[i]
+				local up = ups[i] or nil
 				local slot = PlayingCard.slot({ Size = UDim2.fromScale(1, 1), SizeConstraint = Enum.SizeConstraint.RelativeYY, LayoutOrder = i, Parent = row })
 				if up then
 					local face = PlayingCard.show(slot, up)
@@ -221,8 +236,15 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 					sendMove({ kind = "play", cards = selected })
 					selected = {}
 				end })
-			else
-				table.insert(buttons, { text = `Pick up {view.pileCount}`, color = Theme.Bad, onClick = function()
+			end
+			if view.canGamble then
+				table.insert(buttons, { text = "Gamble on the deck", color = Theme.Accent, onClick = function()
+					sendMove({ kind = "gamble" })
+				end })
+			end
+			-- You may always take the pile (a real tactic), not only when stuck.
+			if view.pileCount > 0 then
+				table.insert(buttons, { text = `Pick up {view.pileCount}`, color = if anyPlayable then Theme.PanelLight else Theme.Bad, onClick = function()
 					sendMove({ kind = "pickup" })
 				end })
 			end
@@ -238,12 +260,21 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		elseif view.phase == "setup" then
 			ui.prompt.Text = "Waiting for everyone to get ready..."
 		elseif myTurn then
-			local top = view.pileTop[#view.pileTop]
+			local top = if view.effectiveTop ~= nil then view.effectiveTop else view.pileTop[#view.pileTop]
 			local need = if top and PlayingCards.rank(top) ~= 2 then `{PlayingCards.rankShort[PlayingCards.rank(top)]} or higher (or a 2 or 10)` else "anything"
-			if top and view.sevenLower and PlayingCards.rank(top) == 7 then
-				need = "7 or lower (or a 2 or 10)"
+			local lower = view.lowerRank or (if view.sevenLower then 7 else nil)
+			if top and lower and PlayingCards.rank(top) == lower then
+				need = `{lower} or lower (or a 2 or 10)`
 			end
-			ui.prompt.Text = if source == "down" then "Flip one of your face-down cards!" elseif next(view.playable) == nil then "Nothing plays. Pick up the pile." else `Your turn: play {need}`
+			if view.mustPlay then
+				ui.prompt.Text = `You start: your play must include the {PlayingCards.name(view.mustPlay)}`
+			elseif source == "down" then
+				ui.prompt.Text = "Flip one of your face-down cards!"
+			elseif next(view.playable) == nil then
+				ui.prompt.Text = if view.canGamble then "Nothing plays. Pick up the pile, or gamble on the deck." else "Nothing plays. Pick up the pile."
+			else
+				ui.prompt.Text = `Your turn: play {need}, or pick up`
+			end
 		else
 			ui.prompt.Text = `{nameOf(view.turn)}'s turn`
 		end
@@ -263,7 +294,7 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 		if me and view.phase == "play" and not myTurn and not snapshot.result then
 			local pileTop = view.pileTop or {}
 			CardFx.offTurn(cards, function(id: number): boolean
-				return Rules.canPlay({ pile = pileTop, sevenLower = view.sevenLower }, id)
+				return Rules.canPlay({ pile = pileTop, sevenLower = view.sevenLower, lowerRank = view.lowerRank, invisibleThree = view.invisibleThree }, id)
 			end)
 		end
 		local faces = PlayingCard.renderHand(ui.hand, cards, function(id: number)
@@ -279,6 +310,28 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 			end
 		end)
 		effects(view, me, faces)
+
+		-- Table view: the felt's lines (last play, pile, burned, draw) on the left card.
+		local info = {}
+		if text ~= "" then
+			table.insert(info, text)
+		end
+		table.insert(info, `Pile {view.pileCount} · burned {view.burned} · draw {view.drawCount}`)
+		local extras = {}
+		local lower = view.lowerRank or (if view.sevenLower then 7 else nil)
+		if lower then
+			table.insert(extras, `{lower} or lower`)
+		end
+		if view.eightSkips then
+			table.insert(extras, "8 skips")
+		end
+		if view.invisibleThree then
+			table.insert(extras, "3 invisible")
+		end
+		if #extras > 0 then
+			table.insert(info, table.concat(extras, " · "))
+		end
+		CardTable.info(ui, if view.phase == "play" then info else nil)
 	end
 
 	ui.refresh = function()

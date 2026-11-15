@@ -807,8 +807,17 @@ local entries: { Entry } = {
 		minMinutes = 1,
 		minMoves = 20,
 		houseRules = {
-			{ key = "sevenLower", name = "7 or lower", hint = "After a 7, the next card must be 7 or lower.", choices = Toggle, default = 1 },
+			{
+				key = "lower",
+				name = "Lower card",
+				hint = "After this card the next must be equal or lower (2s and 10s still go).",
+				choices = { { label = "Off", value = false }, { label = "5", value = 5 }, { label = "7", value = 7 }, { label = "9", value = 9 } },
+				default = 1,
+			},
 			{ key = "burnFour", name = "Four burns", hint = "Four of the same rank in a row burns the pile.", choices = Toggle, default = 2 },
+			{ key = "eightSkips", name = "8 skips", hint = "Each 8 played skips the next player.", choices = Toggle, default = 1 },
+			{ key = "invisibleThree", name = "Invisible 3", hint = "A 3 goes on anything and is see-through: the card under it counts.", choices = Toggle, default = 1 },
+			{ key = "gamble", name = "Gamble on the deck", hint = "Stuck? Flip the top of the draw pile: it's played if it fits, else you pick up with it.", choices = Toggle, default = 1 },
 		},
 	},
 	{
