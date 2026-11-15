@@ -1,7 +1,7 @@
 -- The standard 52-card deck shared by the classic card games (Speed, Spoons, War, Go Fish,
 -- I Doubt It, President, Slap Stack, Hearts, Spades, Thirty-One, Palace, Old Maid,
 -- Snap, Gin Rummy, Oh Hell).
--- Cards are ids 1..52. rank 1 = Ace ... 11 = Jack, 12 = Queen, 13 = King.
+-- Cards are ids 1..52 (a second deck, for big tables, uses 53..104: same faces). rank 1 = Ace ... 11 = Jack, 12 = Queen, 13 = King.
 -- suit 1 = Spades, 2 = Hearts, 3 = Diamonds, 4 = Clubs.
 -- Pure Luau, like the game rules, so it is shared by server, client and tests.
 
@@ -19,7 +19,7 @@ function PlayingCards.rank(id: number): number
 end
 
 function PlayingCards.suit(id: number): number
-	return (id - 1) // 13 + 1
+	return ((id - 1) // 13) % 4 + 1
 end
 
 function PlayingCards.isRed(id: number): boolean
@@ -31,9 +31,9 @@ function PlayingCards.make(rank: number, suit: number): number
 	return (suit - 1) * 13 + rank
 end
 
--- A whole number from the network that names a real card.
-function PlayingCards.isCardId(value: any): boolean
-	return type(value) == "number" and value == value and value % 1 == 0 and value >= 1 and value <= 52
+-- A whole number from the network that names a real card (`decks` > 1 allows the extra decks' ids).
+function PlayingCards.isCardId(value: any, decks: number?): boolean
+	return type(value) == "number" and value == value and value % 1 == 0 and value >= 1 and value <= 52 * (decks or 1)
 end
 
 function PlayingCards.isRank(value: any): boolean
@@ -56,7 +56,8 @@ function PlayingCards.shuffle(list: { number }, rng: Random)
 end
 
 -- A shuffled full deck (or only some ranks, for games like Spoons that play with fewer).
-function PlayingCards.newDeck(rng: Random, ranks: { number }?): { number }
+-- `decks` > 1 shuffles in more full decks (ids 53..104 for the second).
+function PlayingCards.newDeck(rng: Random, ranks: { number }?, decks: number?): { number }
 	local deck = {}
 	if ranks then
 		for _, rank in ranks do
@@ -65,7 +66,7 @@ function PlayingCards.newDeck(rng: Random, ranks: { number }?): { number }
 			end
 		end
 	else
-		for id = 1, 52 do
+		for id = 1, 52 * (decks or 1) do
 			deck[id] = id
 		end
 	end
@@ -97,7 +98,7 @@ function PlayingCards.rankCounts(hand: { number }): { [number]: number }
 end
 
 -- A list of 1..maxCount different card ids from the network (a plain array, no extra keys).
-function PlayingCards.isCardList(value: any, maxCount: number): boolean
+function PlayingCards.isCardList(value: any, maxCount: number, decks: number?): boolean
 	if type(value) ~= "table" then
 		return false
 	end
@@ -114,7 +115,7 @@ function PlayingCards.isCardList(value: any, maxCount: number): boolean
 	end
 	local seen = {}
 	for _, id in value do
-		if not PlayingCards.isCardId(id) or seen[id] then
+		if not PlayingCards.isCardId(id, decks) or seen[id] then
 			return false
 		end
 		seen[id] = true

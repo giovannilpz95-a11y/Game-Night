@@ -98,4 +98,43 @@ return function(T)
 			end
 		end
 	end)
+	T.test("two decks at a big table: second-deck cards share the same faces", function()
+		local s = Cheat.new(6, nil, T.Random.new(5))
+		T.eq(s.decks, 2)
+		local n, seen = 0, {}
+		for seat = 1, 6 do
+			for _, id in s.hands[seat] do
+				n += 1
+				T.ok(not seen[id], "every id once")
+				seen[id] = true
+			end
+		end
+		T.eq(n, 104)
+		T.eq(PlayingCards.rank(52 + C(9, 3)), 9)
+		T.eq(PlayingCards.suit(52 + C(9, 3)), 3)
+		T.eq(PlayingCards.short(52 + C(1, 4)), PlayingCards.short(C(1, 4)))
+		T.eq(Cheat.new(5, nil, T.Random.new(5)).decks, 1)
+		T.eq(Cheat.new(8, { rules = { twoDecksAt = 0 } }, T.Random.new(5)).decks, 1)
+		T.eq(Cheat.new(5, { rules = { twoDecksAt = 5 } }, T.Random.new(5)).decks, 2)
+		-- Second-deck ids are valid only at a two-deck table.
+		local big = setup({ { C(5, 1), 52 + C(5, 1), C(2, 2) }, { C(3, 3) }, { C(4, 4) }, { 1 }, { 2 }, { 3 } })
+		big.decks = 2
+		apply(big, 1, { kind = "play", cards = { C(5, 1), 52 + C(5, 1) } })
+		T.eq(big.lastPlay.count, 2)
+		local small = setup({ { C(5, 1), C(2, 2) }, { C(3, 3) }, { C(4, 4) } })
+		T.eq((Cheat.validateMove(small, 1, { kind = "play", cards = { 52 + C(5, 1) } })), false)
+		-- Never more than 4 cards in one play, even holding 8 of a rank.
+		local eight = {}
+		for d = 0, 1 do
+			for suit = 1, 4 do
+				table.insert(eight, d * 52 + C(5, suit))
+			end
+		end
+		local s8 = setup({ eight, { C(3, 3) }, { C(4, 4) }, { 1 }, { 2 }, { 3 } })
+		s8.decks = 2
+		for _, m in Cheat.getLegalMoves(s8, 1) do
+			T.ok(#m.cards <= Cheat.MAX_CARDS)
+		end
+		T.ok(#Cheat.chooseBotMove(s8, 1, T.Random.new(1)).cards <= Cheat.MAX_CARDS)
+	end)
 end

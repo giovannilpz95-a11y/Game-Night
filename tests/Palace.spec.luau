@@ -196,4 +196,40 @@ return function(T)
 		T.eq(p.upSlots[1][2], others[1])
 		T.eq(p.upSlots[1][3], others[2])
 	end)
+
+	T.test("find the loser: play on until one player is left holding cards", function()
+		local none = { false, false, false }
+		local s = playing({ {}, { C(4, 1), C(5, 1) }, { C(6, 2), C(7, 2) } }, { {}, {}, {} }, { { C(9, 2), false, false }, table.clone(none), table.clone(none) })
+		s.toLoser = true
+		apply(s, 1, { kind = "blind", index = 1 }) -- seat 1 is out first
+		T.eq(Palace.getResult(s), nil, "the game goes on")
+		T.eq(s.out[1], 1)
+		T.eq(s.turn, 2)
+		apply(s, 2, { kind = "pickup" }) -- 4 and 5 can't beat the 9
+		T.eq(s.turn, 3)
+		apply(s, 3, { kind = "play", cards = { C(6, 2) } })
+		T.eq(s.turn, 2, "skips seat 1, who is out")
+		T.eq(#Palace.getLegalMoves(s, 1), 0)
+		-- Seat 2 plays everything off in pairs... give them a hand that empties now.
+		s.hands[2] = { C(10, 3) }
+		apply(s, 2, { kind = "play", cards = { C(10, 3) } }) -- burn and out
+		local r = Palace.getResult(s) :: any
+		T.ok(r ~= nil, "two out of three escaped")
+		T.eq(s.loser, 3)
+		T.eq(#r.winners, 2)
+		T.eq(r.winners[1], 1)
+		T.eq(r.winners[2], 2)
+		T.eq(Palace.getView(s, 3).loser, 3)
+	end)
+
+	T.test("find the loser: bot games always finish", function()
+		for seats = 2, 5 do
+			local rng = T.Random.new(seats * 7)
+			local s = Palace.new(seats, { botLevel = "medium", rules = { toLoser = true } }, rng)
+			sim(Palace, s, rng, 40000)
+			local r = Palace.getResult(s) :: any
+			T.ok(r ~= nil, `{seats}-seat game should finish`)
+			T.eq(#r.winners, seats - 1)
+		end
+	end)
 end

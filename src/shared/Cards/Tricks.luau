@@ -1,4 +1,4 @@
--- Shared trick-taking helpers (Hearts, Spades). Aces are high. Pure Luau.
+-- Shared trick-taking helpers (Hearts, Spades, Oh Hell). Aces are high. Pure Luau.
 --
 -- A trick is a list of plays in order: { { seat = n, card = id }, ... }.
 
@@ -76,6 +76,46 @@ function Tricks.highest(cards: { number }): number?
 		end
 	end
 	return best
+end
+
+-- Claim the rest (Trickster Cards): can `seat`, about to lead with the table empty,
+-- take every remaining trick however the others play? True when each of its cards beats
+-- every card the others hold in that suit, and either it holds only trumps or nobody
+-- else holds a trump to ruff with. (Sound, not complete: it never allows a claim that
+-- could lose a trick, but it misses some subtle ones.) hands[seat] is a list of card ids;
+-- trump is a suit or nil.
+function Tricks.canClaim(hands: { { number } }, seat: number, trump: number?): boolean
+	local mine = hands[seat]
+	if not mine or #mine == 0 then
+		return false
+	end
+	-- Highest card each suit among the others, and whether any of them holds a trump.
+	local top: { [number]: number } = {}
+	local othersTrump = false
+	for other, hand in hands do
+		if other ~= seat then
+			for _, id in hand do
+				local s = suit(id)
+				if top[s] == nil or power(id) > top[s] then
+					top[s] = power(id)
+				end
+				if trump and s == trump then
+					othersTrump = true
+				end
+			end
+		end
+	end
+	local onlyTrumps = trump ~= nil
+	for _, id in mine do
+		local s = suit(id)
+		if top[s] and top[s] > power(id) then
+			return false
+		end
+		if s ~= trump then
+			onlyTrumps = false
+		end
+	end
+	return onlyTrumps or not othersTrump
 end
 
 -- The trick as a plain list for views (seat and card only).

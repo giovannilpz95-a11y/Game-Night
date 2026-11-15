@@ -7,6 +7,9 @@
 
 	  Book        a move that stays on a named opening line (Lichess's opening list)
 	  Forced      the only legal move
+	  Brilliant   a best (or excellent) move that gives up material for good, and leaves
+	              you no worse off: chess.com's "!!"
+	  Great       the only good move: every other move loses at least 20% winning chance
 	  Best        the engine's top move (or as good as it)
 	  Excellent   lost almost nothing (under 2% winning chance)
 	  Good        under 5%
@@ -37,13 +40,15 @@ local Chess = require(ReplicatedStorage.Shared.Games.Chess)
 
 local ChessReview = {}
 
-ChessReview.LABELS = { "Book", "Forced", "Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder" }
+ChessReview.LABELS = { "Book", "Forced", "Brilliant", "Great", "Best", "Excellent", "Good", "Inaccuracy", "Mistake", "Blunder" }
 -- What chess.com and Lichess put next to a move.
 ChessReview.SYMBOLS = {
 	Book = "📖",
 	Forced = "→",
+	Brilliant = "!!",
+	Great = "!",
 	Best = "★",
-	Excellent = "!",
+	Excellent = "👍",
 	Good = "✓",
 	Inaccuracy = "?!",
 	Mistake = "?",
@@ -52,6 +57,8 @@ ChessReview.SYMBOLS = {
 ChessReview.COLORS = {
 	Book = Color3.fromRGB(168, 136, 101),
 	Forced = Color3.fromRGB(150, 150, 150),
+	Brilliant = Color3.fromRGB(27, 172, 166),
+	Great = Color3.fromRGB(92, 139, 176),
 	Best = Color3.fromRGB(129, 182, 76),
 	Excellent = Color3.fromRGB(96, 168, 70),
 	Good = Color3.fromRGB(119, 145, 92),
@@ -67,6 +74,14 @@ local THRESHOLDS = {
 	{ "Inaccuracy", 0.10 },
 	{ "Mistake", 0.20 },
 }
+
+-- Brilliant: the sacrifice must cost at least this much material (pawns) once the
+-- opponent takes what's on offer, and you must still stand at least this well after it.
+ChessReview.SAC_PAWNS = 2
+ChessReview.BRILLIANT_MIN_WIN = 45
+ChessReview.BRILLIANT_MAX_BEFORE = 97 -- already crushing: no "!!" for piling on (unless it mates)
+-- Great: the best move is at least this much winning chance (0..100) ahead of the next one.
+ChessReview.GREAT_GAP = 20
 
 local CP_CAP = 1000 -- evals are capped at +-10 pawns (mates too), as Lichess does
 
@@ -205,6 +220,50 @@ function ChessReview.classify(winDrop: number, isBest: boolean): string
 	return "Blunder"
 end
 
+local PAWNS = { 1, 3, 3, 5, 9, 0 }
+
+-- Material for `side` (1 white, -1 black), in pawns.
+local function material(pos, side: number): number
+	local sum = 0
+	for sq = 0, 63 do
+		local v = pos.board[sq]
+		if v ~= 0 then
+			sum += (if v > 0 then 1 else -1) * PAWNS[math.abs(v)]
+		end
+	end
+	return sum * side
+end
+
+-- Material for the side to move after it grabs whatever it profitably can: captures (and
+-- promotions) only, and it may always stop. A tiny quiescence search on material alone.
+local function grab(pos, depth: number): number
+	local best = material(pos, pos.side)
+	if depth <= 0 then
+		return best
+	end
+	for _, m in Chess.legalMoves(pos) do
+		if (m.captured and m.captured ~= 0) or m.promo then
+			local undo = Chess.makeMove(pos, m)
+			local v = -grab(pos, depth - 1)
+			Chess.unmakeMove(pos, m, undo)
+			if v > best then
+				best = v
+			end
+		end
+	end
+	return best
+end
+
+-- Does playing `m` in `pos` give material away (net, after the opponent's best captures)?
+function ChessReview.isSacrifice(pos, m): boolean
+	local side = pos.side
+	local before = material(pos, side)
+	local undo = Chess.makeMove(pos, m)
+	local after = -grab(pos, 4) -- the opponent moves next
+	Chess.unmakeMove(pos, m, undo)
+	return after <= before - ChessReview.SAC_PAWNS
+end
+
 -- The engine move matching a played move (from/to and the position it led to).
 local function playedMove(pos, from: string, to: string, fenAfter: string): any?
 	local placement = string.match(fenAfter, "^%S+")
@@ -279,6 +338,13 @@ function ChessReview.new(startFen: string, plies: { any }, opts: any?)
 	return setmetatable(self, { __index = ChessReview })
 end
 
+-- The exact score of the second-best move before move i (nil with one legal move).
+function ChessReview.secondBest(self, i: number): number?
+	local pos = Chess.fromFen(self.before[i])
+	local ranked = Chess.rankMoves(pos, math.max(2, self.depth - 2), self.seconds, true, self.searchOpts)
+	return if ranked[2] then ranked[2].score else nil
+end
+
 -- Reviews the next move. Returns true once every move is done.
 function ChessReview.step(self): boolean
 	if self.done then
@@ -319,11 +385,20 @@ function ChessReview.step(self): boolean
 		label = "Book"
 	else
 		label = ChessReview.classify((winBefore - winAfter) / 100, isBest == true)
+		if (label == "Best" or label == "Excellent") and m and winAfter >= ChessReview.BRILLIANT_MIN_WIN and (winBefore <= ChessReview.BRILLIANT_MAX_BEFORE or after >= Chess.MATE - 500) and ChessReview.isSacrifice(pos, m) then
+			label = "Brilliant"
+		elseif label == "Best" and winBefore < 97 then
+			-- Only move? Score the runner-up exactly (a shallower search keeps it cheap).
+			local second = self:secondBest(i)
+			if second and winBefore - ChessReview.winPercent(second) >= ChessReview.GREAT_GAP then
+				label = "Great"
+			end
+		end
 	end
 	local accuracy = if label == "Book" or label == "Forced" then 100 else ChessReview.moveAccuracy(winBefore, winAfter)
 	local whiteEval = if side == 1 then after else -after
-	-- Book and forced moves don't get a "better was..." arrow: there's nothing to improve.
-	local suggest = best and not isBest and label ~= "Book" and label ~= "Forced"
+	-- Book, forced and brilliant moves don't get a "better was..." arrow.
+	local suggest = best and not isBest and label ~= "Book" and label ~= "Forced" and label ~= "Brilliant"
 	self.moves[i] = {
 		san = self.sans[i],
 		label = label,
@@ -430,6 +505,8 @@ function ChessReview.describe(mv: any): string
 	local text = ({
 		Book = "is a book move",
 		Forced = "was the only move",
+		Brilliant = "is brilliant",
+		Great = "is a great move: the only good one",
 		Best = "is the best move",
 		Excellent = "is excellent",
 		Good = "is good",

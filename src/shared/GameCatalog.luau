@@ -70,7 +70,7 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "kingOfTheHill", name = "King of the hill", hint = "Also win by walking your king to one of the four center squares.", choices = Toggle, default = 1 },
 			{ key = "threeCheck", name = "Three-check", hint = "Also win by putting the other king in check three times.", choices = Toggle, default = 1 },
-			{ key = "shuffle", name = "Shuffle start", hint = "The back-row pieces start in a random order (the same for both sides). No castling.", choices = Toggle, default = 1 },
+			{ key = "shuffle", name = "Shuffle start", hint = "Chess960-style: the back-row pieces start in a random order (the same for both sides). Castle by moving the king onto its rook.", choices = Toggle, default = 1 },
 			{ key = "timeControl", name = "Chess clock", hint = "Real clocks: minutes each + seconds added per move. Out of time loses.", choices = GameClock.Choices, default = 1 },
 		},
 	},
@@ -644,6 +644,13 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "upDown", name = "Up, down or same", hint = "Each play may be the same rank as the last one, or one above or below it.", choices = Toggle, default = 1 },
+			{
+				key = "twoDecksAt",
+				name = "Two decks",
+				hint = "Shuffle two decks together at a big table, so hands stay big enough to bluff with.",
+				choices = { { label = "6+ players", value = 6 }, { label = "5+ players", value = 5 }, { label = "Never", value = 0 } },
+				default = 1,
+			},
 		},
 	},
 	{
@@ -856,6 +863,7 @@ local entries: { Entry } = {
 			{ key = "eightSkips", name = "8 skips", hint = "Each 8 played skips the next player.", choices = Toggle, default = 1 },
 			{ key = "invisibleThree", name = "Invisible 3", hint = "A 3 goes on anything and is see-through: the card under it counts.", choices = Toggle, default = 1 },
 			{ key = "gamble", name = "Gamble on the deck", hint = "Stuck? Flip the top of the draw pile: it's played if it fits, else you pick up with it.", choices = Toggle, default = 1 },
+			{ key = "toLoser", name = "Find the loser", hint = "Play on after someone goes out. The last player holding cards loses.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -949,6 +957,7 @@ local entries: { Entry } = {
 				default = 1,
 			},
 			{ key = "oklahoma", name = "Oklahoma", hint = "The first upcard sets the knock limit (its value; an Ace means gin only), and a spade upcard doubles the hand.", choices = Toggle, default = 1 },
+			{ key = "bigGin", name = "Big Gin", hint = "All 11 cards in melds after drawing: go out without discarding for 31 + their deadwood.", choices = Toggle, default = 2 },
 			{
 				key = "undercut",
 				name = "Undercut bonus",

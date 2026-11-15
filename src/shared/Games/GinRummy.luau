@@ -45,6 +45,7 @@ GinRummy.TARGET = 50 -- house rule "target" can make it 100 or 150
 GinRummy.KNOCK_LIMIT = 10
 GinRummy.GIN_BONUS = 25
 GinRummy.UNDERCUT_BONUS = 25
+GinRummy.BIG_GIN_BONUS = 31 -- all 11 cards melded after drawing: go out without discarding
 GinRummy.MAX_HANDS = 15
 GinRummy.REVEAL_SECONDS = 8
 GinRummy.WASH_AT = 2 -- stock size that ends the hand with no score
@@ -130,6 +131,7 @@ function GinRummy.new(seatCount: number, options: any?, rng: Random?)
 		knockLimit = knock,
 		baseKnock = knock,
 		oklahoma = rules.oklahoma == true,
+		bigGin = rules.bigGin ~= false,
 		undercutBonus = if type(rules.undercut) == "number" and rules.undercut >= 0 then rules.undercut else GinRummy.UNDERCUT_BONUS,
 		over = false,
 		botLevel = (options and options.botLevel) or "medium",
@@ -163,6 +165,15 @@ local function playing(state): boolean
 	return state.phase == "upcard" or state.phase == "draw" or state.phase == "discard"
 end
 
+-- Big Gin: after drawing, all 11 cards fit into melds, so you go out without discarding.
+function GinRummy.canBigGin(state, seat: number): boolean
+	if not state.bigGin or state.phase ~= "discard" or seat ~= state.turn then
+		return false
+	end
+	local hand = state.hands[seat]
+	return #hand == 11 and Melds.best(hand).value == 0
+end
+
 function GinRummy.getActiveSeats(state): { number }
 	if state.over or not playing(state) then
 		return {}
@@ -191,6 +202,9 @@ function GinRummy.getLegalMoves(state, seat: number): { any }
 		end
 		for _, id in GinRummy.knockCards(state, seat) do
 			table.insert(moves, { kind = "knock", card = id })
+		end
+		if GinRummy.canBigGin(state, seat) then
+			table.insert(moves, { kind = "bigGin" })
 		end
 	end
 	return moves
@@ -233,6 +247,17 @@ function GinRummy.validateMove(state, seat: number, move: any): (boolean, string
 			return true
 		end
 		return false, "Bad move"
+	elseif move.kind == "bigGin" then
+		if state.phase ~= "discard" then
+			return false, "Draw a card first"
+		end
+		if not state.bigGin then
+			return false, "Big Gin is off at this table"
+		end
+		if not GinRummy.canBigGin(state, seat) then
+			return false, "All 11 cards must be in melds for Big Gin"
+		end
+		return true
 	elseif move.kind == "discard" or move.kind == "knock" then
 		if state.phase ~= "discard" then
 			return false, "Draw a card first"
@@ -282,7 +307,7 @@ local function finishHand(state)
 	state.phaseId += 1
 end
 
-local function knock(state, seat: number)
+local function knock(state, seat: number, big: boolean?)
 	local defender = other(seat)
 	local kArr = Melds.best(state.hands[seat])
 	local gin = kArr.value == 0
@@ -301,7 +326,9 @@ local function knock(state, seat: number)
 		end
 	end
 	local kind, winner, points
-	if gin then
+	if gin and big then
+		kind, winner, points = "bigGin", seat, GinRummy.BIG_GIN_BONUS + defense.value
+	elseif gin then
 		kind, winner, points = "gin", seat, GinRummy.GIN_BONUS + defense.value
 	elseif defense.value <= kArr.value then
 		kind, winner, points = "undercut", defender, (state.undercutBonus or GinRummy.UNDERCUT_BONUS) + (kArr.value - defense.value)
@@ -312,7 +339,7 @@ local function knock(state, seat: number)
 		points *= 2
 	end
 	state.scores[winner] += points
-	if kind == "gin" then
+	if kind == "gin" or kind == "bigGin" then
 		GameModule.addStat(state, seat, "gins")
 	elseif kind == "undercut" then
 		GameModule.addStat(state, defender, "undercuts")
@@ -369,6 +396,12 @@ function GinRummy.applyMove(state, seat: number, move: any)
 		table.insert(hand, card)
 		state.lastAction = { kind = "draw", seat = seat, from = move.from, card = if move.from == "discard" then card else nil }
 		state.phase = "discard"
+		return
+	end
+	if move.kind == "bigGin" then
+		state.taken = nil
+		state.lastAction = { kind = "bigGin", seat = seat }
+		knock(state, seat, true)
 		return
 	end
 	table.remove(hand, table.find(hand, move.card) :: number)
@@ -436,6 +469,8 @@ function GinRummy.getView(state, seat: number?)
 		melds = if arrangement then arrangement.melds else nil,
 		deadwood = if arrangement then arrangement.value else nil,
 		knockCards = if seat then GinRummy.knockCards(state, seat) else {},
+		canBigGin = if seat then GinRummy.canBigGin(state, seat) else false,
+		bigGin = state.bigGin,
 		handCounts = { #state.hands[1], #state.hands[2] },
 		stockCount = #state.stock,
 		discardTop = state.discard[#state.discard],
@@ -563,6 +598,9 @@ function GinRummy.chooseBotMove(state, seat: number, rng: Random): any?
 	elseif state.phase == "draw" then
 		return { kind = "draw", from = if not state.stockOnly and wantsDiscard(state, seat, rng) then "discard" else "stock" }
 	elseif state.phase == "discard" then
+		if GinRummy.canBigGin(state, seat) then
+			return { kind = "bigGin" }
+		end
 		local card, dw = bestDiscard(state, seat, rng)
 		return { kind = if shouldKnock(state, dw) then "knock" else "discard", card = card }
 	end

@@ -114,6 +114,9 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 					table.insert(ups, PlayingCards.short(id))
 				end
 				local line1 = if view.phase == "setup" then (if view.ready[seat] then "ready" else "arranging...") else `{view.handCounts[seat]} in hand · {tableCards(view, seat)} on table`
+				if view.out and view.out[seat] then
+					line1 = `Out! #{view.out[seat]} to escape`
+				end
 				table.insert(chips, { seat = seat, lines = { line1, `up: {table.concat(ups, " ")}` }, turn = view.phase == "play" and view.turn == seat })
 			end
 		end
@@ -255,6 +258,8 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = "Watching"
 		elseif snapshot.result then
 			ui.prompt.Text = ""
+		elseif view.out and view.out[me] then
+			ui.prompt.Text = `You're out (#{view.out[me]})! Watch who's left holding the cards.`
 		elseif setup then
 			ui.prompt.Text = if swapFrom then "Now tap one of your face-up cards to swap" else "Swap: tap a hand card, then a face-up card. Press Ready when done."
 		elseif view.phase == "setup" then

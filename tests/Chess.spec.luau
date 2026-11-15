@@ -23,6 +23,10 @@ return function(T)
 			fen = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
 			counts = { 44, 1486 },
 		},
+		-- Chess960 positions from the published Chess960 perft tables (Shredder-FEN rights).
+		{ name = "chess960 #1", fen = "bqnb1rkr/pp3ppp/3ppn2/2p5/5P2/P2P4/NPP1P1PP/BQ1BNRKR w HFhf - 2 9", counts = { 21, 528, 12189 } },
+		{ name = "chess960 #2", fen = "2nnrbkr/p1qppppp/8/1ppb4/6PP/3PP3/PPP2P2/BQNNRBKR w HEhe - 1 9", counts = { 21, 807, 18002 } },
+		{ name = "chess960 #3", fen = "b1q1rrkb/pppppppp/3nn3/8/P7/1PPP4/4PPPP/BQNNRKRB w GE - 1 9", counts = { 20, 479, 10471 } },
 	}
 	for _, case in PERFT do
 		T.test(`perft {case.name}`, function()
@@ -223,5 +227,56 @@ return function(T)
 		local fromFen = Chess.pgn({ "Kb7" }, "8/8/8/8/8/8/8/K6k b - - 0 12", "*")
 		T.ok(string.find(fromFen, "12... Kb7 *", 1, true) ~= nil, fromFen)
 		T.ok(string.find(fromFen, '[SetUp "1"]', 1, true) ~= nil)
+	end)
+	T.test("chess960 castling: king onto its rook, ends on g/c with the rook on f/d", function()
+		local s = Chess.new(2, { fen = "rk2r3/pppppppp/8/8/8/8/PPPPPPPP/RK2R3 w EAea - 0 1" })
+		play(s, 1, "b1", "e1") -- O-O: king takes its own rook
+		T.eq(s.moveList[1], "O-O")
+		T.eq(Chess.toFen(s.pos), "rk2r3/pppppppp/8/8/8/8/PPPPPPPP/R4RK1 b ea - 1 1")
+		play(s, 2, "b8", "c8") -- a plain king step, not castling
+		T.eq(string.match(Chess.toFen(s.pos), "^%S+"), "r1k1r3/pppppppp/8/8/8/8/PPPPPPPP/R4RK1")
+		T.eq(string.match(Chess.toFen(s.pos), " (%S+) %S+ %S+ %S+$"), "-", "the king moved: no rights left")
+		local q = Chess.new(2, { fen = "rk2r3/pppppppp/8/8/8/8/PPPPPPPP/RK2R3 w EAea - 0 1" })
+		play(q, 1, "b1", "a1") -- O-O-O
+		T.eq(q.moveList[1], "O-O-O")
+		T.eq(string.match(Chess.toFen(q.pos), "([^/]+) b "), "2KRR3")
+		-- The king's end square works too when it isn't also a plain king move.
+		local g = Chess.new(2, { fen = "rk2r3/pppppppp/8/8/8/8/PPPPPPPP/RK2R3 w EAea - 0 1" })
+		play(g, 1, "b1", "g1")
+		T.eq(g.moveList[1], "O-O")
+		-- Blocked or attacked paths stop it.
+		local blocked = Chess.new(2, { fen = "rk2r3/pppppppp/8/8/8/8/PPPPPPPP/RKN1R3 w EAea - 0 1" })
+		T.eq((Chess.validateMove(blocked, 1, { from = "b1", to = "e1" })), false, "c1 is in the way")
+		local attacked = Chess.new(2, { fen = "rk4r1/pppppp1p/8/8/8/8/PPPPPP1P/RK2R3 w EAa - 0 1" })
+		T.eq((Chess.validateMove(attacked, 1, { from = "b1", to = "e1" })), false, "g1 is attacked by the g8 rook")
+		-- Moving a castling rook loses only that side.
+		local r = Chess.new(2, { fen = "rk2r3/pppppppp/8/8/8/8/PPPPPPPP/RK2R3 w EAea - 0 1" })
+		play(r, 1, "e1", "f1")
+		T.eq(string.match(Chess.toFen(r.pos), " (%S+) %S+ %S+ %S+$"), "Aea")
+		T.ok(Chess.findLegal(Chess.fromFen(Chess.toFen(r.pos)), { from = "b8", to = "e8" }) ~= nil, "black can still castle")
+	end)
+
+	T.test("shuffle start keeps castling rights and both colours can castle", function()
+		for seed = 1, 30 do
+			local s = Chess.new(2, { rules = { shuffle = true } }, Random.new(seed))
+			local fen = Chess.toFen(s.pos)
+			local rights = string.match(fen, "^%S+ %S+ (%S+)")
+			T.eq(#rights, 4, fen)
+			T.eq(rights, string.upper(string.sub(rights, 3, 4)) .. string.sub(rights, 3, 4))
+			-- Premoves include the king onto each of its rooks.
+			local kingSq = nil
+			for sq = 0, 7 do
+				if s.pos.board[sq] == 6 then
+					kingSq = Chess.squareName(sq)
+				end
+			end
+			local onRook = 0
+			for _, m in Chess.premoves(fen, 1) do
+				if m.from == kingSq and s.pos.board[Chess.parseSquare(m.to) :: number] == 4 then
+					onRook += 1
+				end
+			end
+			T.eq(onRook, 2, fen)
+		end
 	end)
 end

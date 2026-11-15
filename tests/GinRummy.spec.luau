@@ -234,4 +234,39 @@ return function(T)
 		T.eq(#d.layoffs, 0, "the 8S has nowhere to go")
 		T.eq(s.showdown.hands["1"].value, 4)
 	end)
+
+	T.test("big gin: all 11 cards melded after drawing goes out without a discard", function()
+		-- A-2-3-4 spades, 9 9 9, 5-6-7 hearts; drawing the 8 of hearts melds all 11.
+		local hand = { C(1, S), C(2, S), C(3, S), C(4, S), C(9, H), C(9, D), C(9, CL), C(5, H), C(6, H), C(7, H) }
+		local defender = { C(13, D), C(13, CL), C(12, S), C(2, D), C(3, CL), C(10, D), C(11, CL), C(6, D), C(4, CL), C(8, D) }
+		local s = setup({ hand, defender }, { C(8, H) }, filler(20))
+		T.eq((GinRummy.validateMove(s, 1, { kind = "bigGin" })), false, "draw first")
+		apply(s, 1, { kind = "draw", from = "discard" })
+		T.eq(GinRummy.canBigGin(s, 1), true)
+		T.eq(GinRummy.getView(s, 1).canBigGin, true)
+		T.eq(GinRummy.chooseBotMove(s, 1, T.Random.new(3)).kind, "bigGin")
+		local before = #s.discard
+		apply(s, 1, { kind = "bigGin" })
+		T.eq(#s.discard, before, "no discard")
+		T.eq(s.showdown.kind, "bigGin")
+		local dw = Melds.best(defender).value
+		T.eq(s.showdown.points, GinRummy.BIG_GIN_BONUS + dw)
+		T.eq(s.scores[1], GinRummy.BIG_GIN_BONUS + dw)
+		T.eq(#s.showdown.hands["2"].layoffs, 0, "no laying off against gin")
+	end)
+
+	T.test("big gin: not with deadwood, and off by house rule", function()
+		local hand = { C(1, S), C(2, S), C(3, S), C(4, S), C(9, H), C(9, D), C(9, CL), C(5, H), C(6, H), C(7, H) }
+		local s = setup({ hand, filler(10) }, { C(13, D) }, filler(20))
+		apply(s, 1, { kind = "draw", from = "discard" })
+		T.eq((GinRummy.validateMove(s, 1, { kind = "bigGin" })), false, "the king is deadwood")
+		local off = GinRummy.new(2, { botLevel = "medium", rules = { bigGin = false } }, T.Random.new(1))
+		off.hands = { table.clone(hand), filler(10) }
+		off.discard = { C(8, H) }
+		off.stock = filler(20)
+		off.turn, off.phase, off.taken = 1, "draw", nil
+		apply(off, 1, { kind = "draw", from = "discard" })
+		T.eq(GinRummy.canBigGin(off, 1), false)
+		T.eq((GinRummy.validateMove(off, 1, { kind = "bigGin" })), false)
+	end)
 end

@@ -101,4 +101,43 @@ return function(T)
 		T.ok(empty.done)
 		T.eq(empty.accuracy[1], 100)
 	end)
+	-- Plies for the review from a start position and { from, to } moves.
+	local function line(fen: string, moves: { { string } })
+		local pos = Chess.fromFen(fen)
+		local plies = {}
+		for _, mv in moves do
+			local m = assert(Chess.findLegal(pos, { from = mv[1], to = mv[2] }), `{mv[1]}-{mv[2]}`)
+			Chess.makeMove(pos, m)
+			table.insert(plies, { fen = Chess.toFen(pos), from = mv[1], to = mv[2] })
+		end
+		return plies
+	end
+
+	T.test("a queen sacrifice into smothered mate is Brilliant", function()
+		local fen = "4r2k/6pp/7N/3Q4/8/q7/5PPP/6K1 w - - 0 1"
+		local pos = Chess.fromFen(fen)
+		T.ok(ChessReview.isSacrifice(pos, Chess.findLegal(pos, { from = "d5", to = "g8" })), "Qg8+ gives the queen")
+		T.ok(not ChessReview.isSacrifice(pos, Chess.findLegal(pos, { from = "h6", to = "f7" })), "Nf7+ gives nothing")
+		T.ok(ChessReview.isSacrifice(pos, Chess.findLegal(pos, { from = "d5", to = "d8" })), "Qd8 just hangs the queen to the rook")
+		local review = ChessReview.run(fen, line(fen, { { "d5", "g8" }, { "e8", "g8" }, { "h6", "f7" } }), { depth = 4, seconds = 2 })
+		T.eq(review.moves[1].label, "Brilliant")
+		T.eq(review.moves[1].symbol, "!!")
+		T.eq(review.moves[1].bestSan, nil, "no better-move arrow on a brilliant move")
+		T.ok(review.moves[3].label ~= "Brilliant", "the mate itself gives nothing away")
+		T.eq(review.counts[1].Brilliant, 1)
+		T.ok(string.find(ChessReview.describe(review.moves[1]), "brilliant") ~= nil)
+	end)
+
+	T.test("the only move that holds is Great", function()
+		-- Black just took on d4: only Rxd4 keeps the game level.
+		local fen = "rr4k1/5ppp/8/8/3q4/8/5PPP/3RR1K1 w - - 0 1"
+		local review = ChessReview.run(fen, line(fen, { { "d1", "d4" } }), { depth = 4, seconds = 2 })
+		T.eq(review.moves[1].label, "Great")
+		T.eq(review.moves[1].symbol, "!")
+		-- An ordinary best move in a quiet position is just Best (or Book).
+		local quiet = ChessReview.run(Chess.START_FEN, line(Chess.START_FEN, { { "g1", "f3" }, { "g8", "f6" } }), { depth = 3, seconds = 1 })
+		for _, mv in quiet.moves do
+			T.ok(mv.label ~= "Great" and mv.label ~= "Brilliant", mv.label)
+		end
+	end)
 end

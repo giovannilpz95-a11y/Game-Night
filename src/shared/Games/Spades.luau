@@ -97,6 +97,7 @@ local function deal(state)
 	state.looked = {} -- seat -> true: has seen this round's cards
 	state.trick = {}
 	state.lastTrick = nil
+	state.claim = nil -- { seat, tricks, cards }: someone claimed the rest this round
 	state.tricksPlayed = 0
 	state.spadesBroken = false
 	state.turn = state.dealer % 4 + 1
@@ -222,6 +223,17 @@ function Spades.allowedBids(state, seat: number): { number }
 	return out
 end
 
+-- Claim the rest (Trickster Cards, Spades Plus): on your lead with 2+ tricks left, when
+-- every card you hold is sure to win (shared/Cards/Tricks.canClaim), take them all at once.
+function Spades.canClaim(state, seat: number): boolean
+	return not state.over
+		and state.phase == "play"
+		and seat == state.turn
+		and #state.trick == 0
+		and state.tricksPlayed <= 11
+		and Tricks.canClaim(state.hands, seat, SPADES)
+end
+
 function Spades.getActiveSeats(state): { number }
 	if state.over then
 		return {}
@@ -257,6 +269,9 @@ function Spades.getLegalMoves(state, seat: number): { any }
 	elseif state.phase == "play" then
 		for _, id in Spades.playable(state, seat) do
 			table.insert(moves, { kind = "play", card = id })
+		end
+		if Spades.canClaim(state, seat) then
+			table.insert(moves, { kind = "claim" })
 		end
 	end
 	return moves
@@ -314,6 +329,11 @@ function Spades.validateMove(state, seat: number, move: any): (boolean, string?)
 			if not Spades.canBlindNil(state, seat) then
 				return false, "You can bid Blind Nil only before looking, when your team is 100 behind"
 			end
+		end
+		return true
+	elseif move.kind == "claim" then
+		if not Spades.canClaim(state, seat) then
+			return false, "You can only claim on your lead when every card you hold is sure to win"
 		end
 		return true
 	elseif move.kind == "play" then
@@ -456,6 +476,23 @@ function Spades.applyMove(state, seat: number, move: any)
 		end
 		return
 	end
+	if move.kind == "claim" then
+		-- Every remaining trick goes to the claimer; the cards are shown to everyone.
+		local cards = sortHand(state.hands[seat])
+		local left = #cards
+		for s2 = 1, 4 do
+			for _, id in state.hands[s2] do
+				state.played[id] = true
+			end
+			state.hands[s2] = {}
+		end
+		state.tricks[seat] += left
+		state.tricksPlayed += left
+		state.claim = { seat = seat, tricks = left, cards = cards }
+		state.phase = "trick" -- the usual pause, then the round is scored
+		state.phaseId += 1
+		return
+	end
 	local hand = state.hands[seat]
 	table.remove(hand, table.find(hand, move.card) :: number)
 	table.insert(state.trick, { seat = seat, card = move.card })
@@ -553,6 +590,8 @@ function Spades.getView(state, seat: number?)
 		tricks = table.clone(state.tricks),
 		trick = Tricks.copy(state.trick),
 		lastTrick = GameModule.copy(state.lastTrick),
+		claim = GameModule.copy(state.claim),
+		canClaim = seat ~= nil and Spades.canClaim(state, seat),
 		scores = table.clone(state.scores),
 		bags = table.clone(state.bags),
 		allowNil = state.allowNil ~= false,
@@ -859,6 +898,9 @@ function Spades.chooseBotMove(state, seat: number, rng: Random): any?
 		end
 		return { kind = "bid", bid = b }
 	elseif state.phase == "play" then
+		if Spades.canClaim(state, seat) then
+			return { kind = "claim" }
+		end
 		return { kind = "play", card = choosePlay(state, seat, rng) }
 	end
 	return nil
