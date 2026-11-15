@@ -28,7 +28,9 @@
 --
 -- House rules (options.rules): anyRoom (walk to any room, not just the next one: quicker,
 -- like most app versions), openShow (a card shown to answer a suggestion is shown to
--- everyone: an easier, faster family game).
+-- everyone: an easier, faster family game), leftover (on by default: with 4 or 5 seats
+-- the cards that don't deal evenly lie face up for everyone, like the official rules and
+-- Clue by Marmalade, instead of some hands getting one more).
 
 local GameModule = require(script.Parent.Parent.GameModule)
 
@@ -150,10 +152,19 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 	end
 	shuffle(deck, random)
 
-	-- Deal round the table; with 4 or 5 seats some hands get one more card.
+	-- Deal round the table. With 4 or 5 seats the cards left over lie face up for everyone
+	-- (house rule leftover, on by default); with it off some hands get one more card.
 	local hands = {}
 	for seat = 1, seatCount do
 		hands[seat] = {}
+	end
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	local leftover = {}
+	if rules.leftover ~= false then
+		for _ = 1, #deck % seatCount do
+			table.insert(leftover, table.remove(deck))
+		end
+		table.sort(leftover)
 	end
 	for i, id in deck do
 		table.insert(hands[(i - 1) % seatCount + 1], id)
@@ -174,6 +185,7 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 		botLevel = (options and options.botLevel) or "medium",
 		solution = solution,
 		hands = hands,
+		leftover = leftover, -- face-up cards everyone can see (never in the case file)
 		suspectRoom = table.clone(SUSPECT_START),
 		itemRoom = table.clone(ITEM_START),
 		canStay = canStay,
@@ -533,6 +545,7 @@ function Whodunit.getView(state, seat: number?)
 		itemRoom = table.clone(state.itemRoom),
 		eliminated = table.clone(state.eliminated),
 		hand = if mySeat then table.clone(state.hands[mySeat]) else nil,
+		leftover = table.clone(state.leftover or {}),
 		notes = notes,
 		lacks = lacks,
 		handSizes = handSizes,
@@ -621,6 +634,12 @@ function Whodunit.deduce(state, seat: number, level: string?)
 	for _, entry in state.log do
 		if (entry.seat == seat or state.openShow) and entry.card then
 			assign(entry.card, entry.shower)
+		end
+	end
+	-- Face-up leftover cards: nobody holds them and they aren't in the case file.
+	for _, id in state.leftover or {} do
+		for h = 1, caseFile do
+			possible[id][h] = false
 		end
 	end
 	local clauses = {}
