@@ -27,6 +27,20 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 		return CardTable.nameOf(snapshot, seat)
 	end
 
+	-- "Honest! Bot Ava picks up 5" / "Caught bluffing! You pick up 1 card".
+	local function verdictText(reveal: any): string
+		local who = if reveal.honest then reveal.doubter else reveal.seat
+		local n = reveal.count or 0
+		local verb = if who == snapshot.yourSeat then "pick" else "picks"
+		local what = `{n} {if n == 1 then "card" else "cards"}`
+		return `{if reveal.honest then "Honest!" else "Caught bluffing!"} {nameOf(who)} {verb} up {what}`
+	end
+
+	-- "1 Queen", "3 Queens", "1 9", "2 9s".
+	local function countOf(n: number, rank: number): string
+		return `{n} {if n == 1 then PlayingCards.rankNames[rank] else PlayingCards.rankPlural[rank]}`
+	end
+
 	function render()
 		local view = snapshot.view
 		local me = snapshot.yourSeat
@@ -72,7 +86,7 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 		local claim = view.lastPlay
 		local reveal = view.reveal
 		if view.phase == "reveal" and reveal then
-			local verdict = if reveal.honest then `Honest! {nameOf(reveal.doubter)} picks up {reveal.count}.` else `Caught bluffing! {nameOf(reveal.seat)} picks up {reveal.count}.`
+			local verdict = verdictText(reveal) .. "."
 			CardTable.feltText(ui.content, `{nameOf(reveal.doubter)}: "I doubt it!"`, 0.04, 16)
 			CardTable.feltText(ui.content, verdict, 0.16, 18).TextColor3 = if reveal.honest then Theme.Good else Theme.Bad
 			local cards = {}
@@ -171,7 +185,7 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 				table.insert(info, `{nameOf(seat)}: {view.points[seat] or 0} pts`)
 			end
 		else
-			table.insert(info, `Pile: {view.pileCount} cards`)
+			table.insert(info, `Pile: {view.pileCount} {if view.pileCount == 1 then "card" else "cards"}`)
 		end
 		if view.yourNext and #view.yourNext > 0 then
 			local names = {}
@@ -196,7 +210,7 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 			end
 			CardTable.notice(ui, `{nameOf(rr.first[1])} went out first!`, lines)
 		elseif view.phase == "reveal" and reveal then
-			local verdict = if reveal.honest then `Honest! {nameOf(reveal.doubter)} picks up {reveal.count}` else `Caught bluffing! {nameOf(reveal.seat)} picks up {reveal.count}`
+			local verdict = verdictText(reveal)
 			local shown = {}
 			for _, id in reveal.cards do
 				table.insert(shown, PlayingCards.short(id))
@@ -221,7 +235,7 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 		elseif myTurn then
 			ui.prompt.Text = `Your turn: play 1-4 cards as {plural}. Bluff if you have to!`
 		elseif canDoubt then
-			ui.prompt.Text = `Did {nameOf(claim and claim.seat)} really play {claim and claim.count or 0} {PlayingCards.rankPlural[claim and claim.rank or view.called or 1]}?`
+			ui.prompt.Text = `Did {nameOf(claim and claim.seat)} really play {countOf(claim and claim.count or 0, claim and claim.rank or view.called or 1)}?`
 		elseif view.phase == "play" then
 			ui.prompt.Text = `{nameOf(view.turn)} is playing {plural}...`
 		else

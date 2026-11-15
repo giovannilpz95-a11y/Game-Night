@@ -483,7 +483,16 @@ function Cheat.getView(state, seat: number?)
 	for s in state.passed do
 		passed[tostring(s)] = true
 	end
+	-- The header during a doubt window: everyone may act, so it would say "Your turn!"
+	-- to all of them. It says what the moment is instead.
+	local status: string? = nil
+	if state.phase == "doubt" and seat and state.lastPlay then
+		status = if seat == state.lastPlay.seat then "Waiting to see if anyone doubts you..."
+			elseif state.passed[seat] then "You believed it · waiting..."
+			else "Doubt it or believe it?"
+	end
 	return {
+		status = status,
 		hand = if seat and state.hands[seat] then PlayingCards.sortHand(state.hands[seat]) else nil,
 		handCounts = counts,
 		pileCount = #state.pile,

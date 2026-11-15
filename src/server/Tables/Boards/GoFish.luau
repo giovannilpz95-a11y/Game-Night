@@ -17,6 +17,8 @@ local function fish(folder: Instance, cf: CFrame, color: Color3)
 	Models.ball(folder, "FishEye", 0.04, cf * CFrame.new(-0.13, 0.1, -0.05), Models.INK)
 end
 
+local POND_SHOWN = 14
+
 function GoFish.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	local rng = Random.new(7) -- same messy pond every redraw
 	-- Each card lies just above the cards it overlaps (not above every card before it),
@@ -24,7 +26,7 @@ function GoFish.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	local spots = {}
 	local placed: { Vector2 } = {}
 	local levels: { number } = {}
-	for i = 1, 52 do
+	for i = 1, POND_SHOWN do
 		local a = rng:NextNumber() * math.pi * 2
 		local d = math.sqrt(rng:NextNumber()) * 1.3
 		local at = Vector2.new(math.cos(a) * d, math.sin(a) * d)
@@ -68,8 +70,18 @@ function GoFish.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 				Scene.card(folder, Scene.seatSpot(boardCF, layout, ask.seat, 2.3), Scene.playingFront(PlayingCards, ask.card), 1.2)
 			end
 		end
-		for i = 1, math.min(view.pondCount or 0, 52) do
+		-- At most POND_SHOWN cards are drawn (a full pond of 30+ still piled up); a label
+		-- says how many are really there.
+		local pond = view.pondCount or 0
+		for i = 1, math.min(pond, POND_SHOWN) do
 			Scene.card(folder, Cards.center(boardCF, 0) * spots[i], nil)
+		end
+		if pond > 0 then
+			Scene.floatText(folder, Cards.center(boardCF, 0) * CFrame.new(0, 0.55, 0), 2.2, 0.55, `Pond · {pond}`, {
+				TextColor3 = Color3.fromRGB(200, 230, 255),
+				TextStrokeColor3 = Color3.fromRGB(15, 25, 35),
+				TextStrokeTransparency = 0.2,
+			})
 		end
 	end, Color3.fromRGB(60, 140, 190))
 end
