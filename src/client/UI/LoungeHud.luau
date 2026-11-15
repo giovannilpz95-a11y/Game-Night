@@ -124,7 +124,9 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.fromOffset(0, 44),
-		ZIndex = 5,
+		-- Above the lobby's windows and their dimmed backdrop, so the tabs switch pages
+		-- while one is open.
+		ZIndex = 40,
 		Parent = parent,
 	}, 14)
 	Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4), Parent = nav })

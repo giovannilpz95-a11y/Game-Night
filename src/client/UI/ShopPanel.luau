@@ -699,7 +699,9 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			end
 		end
 
-		local function tile(board: Instance, pick: any, x: number, y: number, w: number, h: number, big: boolean)
+		-- Tiles are laid out in scale (the board keeps its shape with an aspect ratio), so
+		-- they fit whatever width the window ends up with.
+		local function tile(board: Instance, pick: any, position: UDim2, size: UDim2, big: boolean)
 			local item, move = pick.item, pick.move
 			local tier = TIER_COLORS[item.tier] or Theme.SubText
 			local t = Kit.new("TextButton", {
@@ -709,8 +711,8 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				BackgroundColor3 = tier,
 				BorderSizePixel = 0,
 				ClipsDescendants = true,
-				Position = UDim2.fromOffset(x, y),
-				Size = UDim2.fromOffset(w, h),
+				Position = position,
+				Size = size,
 				Parent = board,
 			}, {
 				Kit.corner(14),
@@ -718,11 +720,11 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			})
 			Flair.rarityBorder(Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.7, Thickness = if big then 2 else 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = t }), item.tier)
 			Kit.label(move.icon, {
-				TextSize = if big then math.min(150, math.floor(h * 0.42)) else math.min(80, math.floor(h * 0.4)),
+				TextScaled = true,
 				TextXAlignment = Enum.TextXAlignment.Center,
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.42),
-				Size = UDim2.fromScale(1, 0.6),
+				Position = UDim2.fromScale(0.5, if big then 0.42 else 0.4),
+				Size = UDim2.fromScale(0.8, if big then 0.34 else 0.36),
 				Parent = t,
 			})
 			local footH = if big then 84 else 62
@@ -736,14 +738,16 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				Size = UDim2.new(1, 0, 0, footH),
 				Parent = t,
 			}, { Kit.new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.6, 0) }) })
+			-- Small tiles carry the price in the top corner so the name gets the full width.
+			local nameRoom = if big then -130 else -24
 			local name = Kit.label(move.name, {
 				Font = Theme.FontTitle,
 				TextSize = if big then 38 else 22,
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				AnchorPoint = Vector2.new(0, 1),
-				Position = UDim2.new(0, 14, 1, if big then -30 else -24),
-				Size = UDim2.new(1, -120, 0, if big then 42 else 26),
+				Position = UDim2.new(0, 12, 1, if big then -30 else -24),
+				Size = UDim2.new(1, nameRoom, 0, if big then 42 else 26),
 				Parent = foot,
 			})
 			Kit.headline(name)
@@ -753,8 +757,8 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				TextColor3 = Color3.fromRGB(225, 220, 245),
 				TextWrapped = false,
 				AnchorPoint = Vector2.new(0, 1),
-				Position = UDim2.new(0, 14, 1, -8),
-				Size = UDim2.new(1, -120, 0, 16),
+				Position = UDim2.new(0, 12, 1, -8),
+				Size = UDim2.new(1, nameRoom, 0, 16),
 				Parent = foot,
 			})
 			local gems = gemPrice(item, vip) :: number
@@ -768,10 +772,11 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				BackgroundColor3 = Theme.Background,
 				BackgroundTransparency = 0.15,
 				BorderSizePixel = 0,
-				AnchorPoint = Vector2.new(1, 1),
-				Position = UDim2.new(1, -10, 1, -10),
+				AnchorPoint = if big then Vector2.new(1, 1) else Vector2.new(1, 0),
+				Position = if big then UDim2.new(1, -10, 1, -10) else UDim2.new(1, -8, 0, 8),
 				Size = UDim2.fromOffset(if big then 104 else 86, if big then 38 else 32),
-				Parent = foot,
+				ZIndex = 3,
+				Parent = if big then foot else t,
 			}, { Kit.corner(10), Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 22) }) })
 			Kit.gemIcon(18, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -16, 0.5, 0), Parent = price })
 			Kit.onPress(price, function()
@@ -791,34 +796,35 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		end
 
 		if #picks > 0 then
-			local W = math.max(content.AbsoluteSize.X - 18, 280)
-			local gap = 10
-			local board = Kit.new("Frame", { Name = "Featured", BackgroundTransparency = 1, LayoutOrder = order, Parent = content })
-			order += 1
 			if narrow then
-				local bigH = math.floor(W * 0.6)
-				local smallW = math.floor((W - gap) / 2)
-				local smallH = math.floor(smallW * 1.05)
-				tile(board, picks[1], 0, 0, W, bigH, true)
-				local rows = 0
+				-- Phone: the big tile on top, the rest two to a row.
+				local big = Kit.new("Frame", { Name = "Featured", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 100), LayoutOrder = order, Parent = content }, {
+					Kit.new("UIAspectRatioConstraint", { AspectRatio = 1.7, DominantAxis = Enum.DominantAxis.Width }),
+				})
+				order += 1
+				tile(big, picks[1], UDim2.new(), UDim2.fromScale(1, 1), true)
+				local rest = grid(order, UDim2.new(0.5, -8, 0, 100))
+				Kit.new("UIAspectRatioConstraint", { AspectRatio = 0.95, Parent = rest })
+				order += 1
 				for i = 2, #picks do
-					local col, row = (i - 2) % 2, (i - 2) // 2
-					rows = row + 1
-					tile(board, picks[i], col * (smallW + gap), bigH + gap + row * (smallH + gap), smallW, smallH, false)
+					local holder = Kit.new("Frame", { BackgroundTransparency = 1, LayoutOrder = i, Parent = rest })
+					tile(holder, picks[i], UDim2.new(), UDim2.fromScale(1, 1), false)
 				end
-				board.Size = UDim2.fromOffset(W, bigH + rows * (smallH + gap))
 			else
-				local bigW = math.floor(W * 0.38)
-				local cols = 3
-				local smallW = math.floor((W - bigW - gap * cols) / cols)
-				local smallH = math.clamp(math.floor(smallW * 0.98), 150, 300)
-				local boardH = smallH * 2 + gap
-				tile(board, picks[1], 0, 0, bigW, boardH, true)
+				-- The big tile on the left (38%), six in a 3 x 2 grid beside it. Gaps are
+				-- 1% across and 3% down; the board's shape keeps the small tiles near square.
+				local board = Kit.new("Frame", { Name = "Featured", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 100), LayoutOrder = order, Parent = content }, {
+					Kit.new("UIAspectRatioConstraint", { AspectRatio = 2.45, DominantAxis = Enum.DominantAxis.Width }),
+				})
+				order += 1
+				local BIG_W, GAP_X, GAP_Y = 0.38, 0.01, 0.03
+				local smallW = (1 - BIG_W - GAP_X * 3) / 3
+				local smallH = (1 - GAP_Y) / 2
+				tile(board, picks[1], UDim2.new(), UDim2.fromScale(BIG_W, 1), true)
 				for i = 2, math.min(#picks, 7) do
-					local col, row = (i - 2) % cols, (i - 2) // cols
-					tile(board, picks[i], bigW + gap + col * (smallW + gap), row * (smallH + gap), smallW, smallH, false)
+					local col, row = (i - 2) % 3, (i - 2) // 3
+					tile(board, picks[i], UDim2.fromScale(BIG_W + GAP_X + col * (smallW + GAP_X), row * (smallH + GAP_Y)), UDim2.fromScale(smallW, smallH), false)
 				end
-				board.Size = UDim2.fromOffset(W, boardH)
 			end
 		end
 
