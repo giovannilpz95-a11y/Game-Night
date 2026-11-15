@@ -126,6 +126,11 @@ rules.Conquest = {
 			"Cease-fire: from a round before the limit, the game can stop after any turn (about once every two rounds), and always by the end of the round after the limit.",
 			"Knock a player out and you get their cards. With 6 or more you trade at once, until you're down to 4.",
 		} },
+		{ title = "Maps", lines = {
+			"The Shattered Isles: 24 territories in 6 regions. Played with 2-4 players unless the host picks a map.",
+			"The Sunken Crown: 31 territories in 7 regions round the Crownlands (+3), which borders every other region. Played with 5-6.",
+			"With 6 players the first seat starts with 4 extra armies and the second with 2, so going early isn't a handicap.",
+		} },
 		{ title = "Modes (house rules)", lines = {
 			"Fog of war: you only see who holds a land, and its armies, when it's yours or touches yours.",
 			"Secret missions: finish your mission on your turn (hold two regions, hold lots of lands, knock someone out) and you win at once. Nobody else sees it until the end.",

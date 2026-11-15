@@ -20,7 +20,7 @@ local Theme = Kit.Theme
 
 local Conquest = {}
 
-local territories = Rules.territories
+local territories = Rules.territories -- the match's map, set by buildMap
 local SEA = Color3.fromRGB(46, 92, 140)
 local SEA_LIGHT = Color3.fromRGB(70, 122, 170)
 local LAND_LINE = Color3.fromRGB(226, 220, 200)
@@ -83,121 +83,144 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		Parent = mapArea,
 	}, { Kit.corner(14), Kit.new("UIAspectRatioConstraint", { AspectRatio = MAP_ASPECT }), mapScale })
 
-	-- A round patch of land in the region's color under each territory. Patches of the
-	-- same region overlap into islands; different regions never touch (the closest
-	-- neighbours across a border are further apart than LAND_SIZE), so the regions read
-	-- as separate lands joined by the border lines. Each region's name and bonus sits in
-	-- open sea next to it (labelX/labelY in the map data).
-	for _, territory in territories do
-		Kit.new("Frame", {
-			BackgroundColor3 = Rules.regions[territory.region].color,
-			BackgroundTransparency = 0.45,
-			BorderSizePixel = 0,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(territory.x, territory.y),
-			Size = UDim2.fromScale(LAND_SIZE, LAND_SIZE * MAP_ASPECT),
-			ZIndex = 1,
-			Parent = map,
-		}, { Kit.corner(1000) })
-	end
-	for _, region in Rules.regions do
-		local label = Kit.label(`{region.name} +{region.bonus}`, {
-			Font = Theme.FontBold,
-			TextScaled = true,
-			TextColor3 = region.color:Lerp(Color3.new(1, 1, 1), 0.35),
-			TextStrokeTransparency = 0.6,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(region.labelX, region.labelY),
-			Size = UDim2.fromScale(0.17, 0.034),
-			ZIndex = 2,
-			Parent = map,
-		})
-		Kit.new("UITextSizeConstraint", { MaxTextSize = 15, Parent = label })
-	end
-
+	-- The map's lands, borders and dots are built for the match's map (view.mapId) on the
+	-- first update, and again if it changes.
 	local lines = {}
-	for i, link in Rules.links do
-		lines[i] = Kit.new("Frame", {
-			BackgroundColor3 = if link.sea then SEA_LIGHT else LAND_LINE,
-			BackgroundTransparency = if link.sea then 0.1 else 0.35,
-			BorderSizePixel = 0,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			ZIndex = 2,
-			Parent = map,
-		})
+	local nodes = {}
+	local built: { Instance } = {}
+	local builtMap: string? = nil
+	local mapLinks: { any } = {}
+	local onNode: (number) -> () = function() end
+	local function track<T>(instance: T): T
+		table.insert(built, instance :: any)
+		return instance
 	end
 	local function layoutLines()
 		local size = map.AbsoluteSize
-		for i, link in Rules.links do
+		for i, line in lines do
+			local link = mapLinks[i]
 			local a, b = territories[link[1]], territories[link[2]]
 			local ax, ay = a.x * size.X, a.y * size.Y
 			local bx, by = b.x * size.X, b.y * size.Y
 			local dx, dy = bx - ax, by - ay
-			local line = lines[i]
 			line.Position = UDim2.fromOffset((ax + bx) / 2, (ay + by) / 2)
 			line.Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy), if link.sea then 2 else 4)
 			line.Rotation = math.deg(math.atan2(dy, dx))
 		end
 	end
 	map:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutLines)
-	layoutLines()
 
-	local onNode: (number) -> () = function() end
-	local nodes = {}
-	for t, territory in territories do
-		local node = Kit.new("TextButton", {
-			Text = "",
-			AutoButtonColor = false, -- a darker press tint looked like a change of owner
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(territory.x, territory.y),
-			Size = UDim2.fromScale(NODE_SIZE, NODE_SIZE * MAP_ASPECT),
-			BackgroundColor3 = Theme.PanelLight,
-			Font = Theme.FontBold,
-			TextColor3 = Color3.new(1, 1, 1),
-			TextStrokeTransparency = 0.3,
-			TextScaled = true,
-			BorderSizePixel = 0,
-			ZIndex = 4,
-			Parent = map,
-		}, { Kit.corner(100), Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }), Kit.padding(4) })
-		Kit.new("UITextSizeConstraint", { MaxTextSize = 22, Parent = node })
-		local stroke = Kit.new("UIStroke", {
-			Color = Rules.regions[territory.region].color,
-			Thickness = 3,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			Parent = node,
-		})
-		local name = Kit.label(territory.name, {
-			Font = Theme.FontBold,
-			TextScaled = true,
-			TextStrokeTransparency = 0.35,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.fromScale(territory.x, territory.y + NODE_SIZE * MAP_ASPECT * 0.55),
-			Size = UDim2.fromScale(0.15, 0.033),
-			ZIndex = 5,
-			Parent = map,
-		})
-		Kit.new("UITextSizeConstraint", { MaxTextSize = 13, Parent = name })
-		Kit.onPress(node, function()
-			onNode(t)
-		end)
-		-- Capital conquest: a star on the capital's corner in its founder's color.
-		local star = Kit.label("★", {
-			Font = Theme.FontBold,
-			TextScaled = true,
-			TextColor3 = Color3.new(1, 1, 1),
-			TextStrokeTransparency = 0.2,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(territory.x + NODE_SIZE * 0.45, territory.y - NODE_SIZE * MAP_ASPECT * 0.45),
-			Size = UDim2.fromScale(NODE_SIZE * 0.6, NODE_SIZE * 0.6 * MAP_ASPECT),
-			Visible = false,
-			ZIndex = 6,
-			Parent = map,
-		})
-		nodes[t] = { button = node, stroke = stroke, star = star }
+	local function buildMap()
+		for _, instance in built do
+			instance:Destroy()
+		end
+		table.clear(built)
+		builtMap = Rules.mapId
+		territories = Rules.territories
+		mapLinks = Rules.links
+		-- Same-row neighbours on the bigger map sit closer, so their names get less room.
+		local nameWidth = if #territories > 24 then 0.125 else 0.15
+		-- A round patch of land in the region's color under each territory. On the Isles
+		-- patches of the same region overlap into islands and different regions never touch
+		-- (the closest neighbours across a border are further apart than LAND_SIZE); on the
+		-- Crown every land is its own islet. The border lines join them. Each region's name and bonus sits in
+		-- open sea next to it (labelX/labelY in the map data).
+		for _, territory in territories do
+			track(Kit.new("Frame", {
+				BackgroundColor3 = Rules.regions[territory.region].color,
+				BackgroundTransparency = 0.45,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(territory.x, territory.y),
+				Size = UDim2.fromScale(LAND_SIZE, LAND_SIZE * MAP_ASPECT),
+				ZIndex = 1,
+				Parent = map,
+			}, { Kit.corner(1000) }))
+		end
+		for _, region in Rules.regions do
+			local label = track(Kit.label(`{region.name} +{region.bonus}`, {
+				Font = Theme.FontBold,
+				TextScaled = true,
+				TextColor3 = region.color:Lerp(Color3.new(1, 1, 1), 0.35),
+				TextStrokeTransparency = 0.6,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(region.labelX, region.labelY),
+				Size = UDim2.fromScale(0.17, 0.034),
+				ZIndex = 2,
+				Parent = map,
+			}))
+			Kit.new("UITextSizeConstraint", { MaxTextSize = 15, Parent = label })
+		end
+
+		table.clear(lines)
+		for i, link in Rules.links do
+			lines[i] = track(Kit.new("Frame", {
+				BackgroundColor3 = if link.sea then SEA_LIGHT else LAND_LINE,
+				BackgroundTransparency = if link.sea then 0.1 else 0.35,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				ZIndex = 2,
+				Parent = map,
+			}))
+		end
+		layoutLines()
+
+		table.clear(nodes)
+		for t, territory in territories do
+			local node = track(Kit.new("TextButton", {
+				Text = "",
+				AutoButtonColor = false, -- a darker press tint looked like a change of owner
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(territory.x, territory.y),
+				Size = UDim2.fromScale(NODE_SIZE, NODE_SIZE * MAP_ASPECT),
+				BackgroundColor3 = Theme.PanelLight,
+				Font = Theme.FontBold,
+				TextColor3 = Color3.new(1, 1, 1),
+				TextStrokeTransparency = 0.3,
+				TextScaled = true,
+				BorderSizePixel = 0,
+				ZIndex = 4,
+				Parent = map,
+			}, { Kit.corner(100), Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }), Kit.padding(4) }))
+			Kit.new("UITextSizeConstraint", { MaxTextSize = 22, Parent = node })
+			local stroke = Kit.new("UIStroke", {
+				Color = Rules.regions[territory.region].color,
+				Thickness = 3,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+				Parent = node,
+			})
+			local name = track(Kit.label(territory.name, {
+				Font = Theme.FontBold,
+				TextScaled = true,
+				TextStrokeTransparency = 0.35,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.fromScale(territory.x, territory.y + NODE_SIZE * MAP_ASPECT * 0.55),
+				Size = UDim2.fromScale(nameWidth, 0.033),
+				ZIndex = 5,
+				Parent = map,
+			}))
+			Kit.new("UITextSizeConstraint", { MaxTextSize = 13, Parent = name })
+			Kit.onPress(node, function()
+				onNode(t)
+			end)
+			-- Capital conquest: a star on the capital's corner in its founder's color.
+			local star = track(Kit.label("★", {
+				Font = Theme.FontBold,
+				TextScaled = true,
+				TextColor3 = Color3.new(1, 1, 1),
+				TextStrokeTransparency = 0.2,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(territory.x + NODE_SIZE * 0.45, territory.y - NODE_SIZE * MAP_ASPECT * 0.45),
+				Size = UDim2.fromScale(NODE_SIZE * 0.6, NODE_SIZE * 0.6 * MAP_ASPECT),
+				Visible = false,
+				ZIndex = 6,
+				Parent = map,
+			}))
+			nodes[t] = { button = node, stroke = stroke, star = star }
+		end
 	end
 
 	-- Phase bar across the top of the map, like the official app: Place · Attack · Move,
@@ -1261,6 +1284,11 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	local function render()
 		local view = snapshot.view
 		local me = snapshot.yourSeat
+		Rules.useMap(view.mapId)
+		if builtMap ~= Rules.mapId then
+			selected, target = nil, nil
+			buildMap()
+		end
 		if view.turnId ~= lastTurnId then
 			lastTurnId = view.turnId
 			selected, target, pickedCards, occupyFor = nil, nil, {}, nil
