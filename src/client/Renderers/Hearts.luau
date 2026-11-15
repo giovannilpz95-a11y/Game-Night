@@ -24,6 +24,7 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 	-- Which way your 3 cards go, flowing toward the player who gets them.
 	local passArrow = FlowArrow.new(ui.root)
 	local wasBroken: boolean? = nil
+	local shownClaim: number? = nil -- the hand whose "CLAIMED!" already popped
 	local moonRound: any = nil
 	local STEP = { left = 1, right = -1, across = 2 }
 	local afterHand = CardFx.tricks(ui.felt)
@@ -101,6 +102,17 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 			local passTo = if me and STEP[view.pass or ""] then ` to {nameOf((me - 1 + STEP[view.pass]) % 4 + 1)}` else ""
 			CardTable.feltText(ui.content, `Pass 3 cards{passTo} ({view.pass})`, 0.38, 22).TextColor3 = Theme.Accent
 			CardTable.feltText(ui.content, `Game ends at {view.target} points. Lowest score wins.`, 0.58, 14).TextColor3 = Theme.SubText
+		elseif view.claim and view.phase == "trick" and #view.trick == 0 and not peekLast then
+			-- Claimed the rest: the claimer's cards go face up for everyone.
+			local c = view.claim
+			local cards = {}
+			for _, id in c.cards do
+				table.insert(cards, PlayingCards.short(id))
+			end
+			summaryTitle = `{nameOf(c.seat)} {if c.seat == me then "claim" else "claims"} the last {c.tricks} tricks` .. (if c.points > 0 then ` (+{c.points})` else "")
+			summaryLines = { table.concat(cards, "  "), "Every card is a sure winner." }
+			CardTable.feltText(ui.content, summaryTitle, 0.3, 20).TextColor3 = Theme.Accent
+			CardTable.feltText(ui.content, summaryLines[1], 0.5, 18)
 		else
 			local plays = view.trick
 			local winner = nil
@@ -163,6 +175,10 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 			CardFx.pop("♥ BROKEN!", Color3.fromRGB(235, 87, 110), ui.root)
 		end
 		wasBroken = view.heartsBroken == true
+		if view.claim and shownClaim ~= view.round then
+			shownClaim = view.round
+			CardFx.pop("CLAIMED!", Theme.Accent, ui.root)
+		end
 		if view.moon and view.phase == "round" and moonRound ~= view.round then
 			moonRound = view.round
 			HudKit.callout(ui.root, `🌙 {nameOf(view.moon)} shot the moon!`, Color3.fromRGB(150, 130, 255))
@@ -176,6 +192,12 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
 				peekLast = not peekLast
 				render()
+			end })
+		end
+		if view.canClaim then
+			-- Every card you hold wins: take the rest of the tricks at once (Trickster's Claim).
+			table.insert(buttons, { text = "Claim the rest", color = Theme.Good, onClick = function()
+				sendMove({ kind = "claim" })
 			end })
 		end
 		if passing then

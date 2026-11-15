@@ -22,6 +22,7 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 	local afterHand = CardFx.tricks(ui.felt)
 	local render: () -> ()
 	local peekLast = false -- showing the last trick instead of the current one
+	local shownClaim: number? = nil -- the round whose "CLAIMED!" already popped
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -145,6 +146,17 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 		elseif view.phase == "bid" then
 			CardTable.feltText(ui.content, "Bidding", 0.3, 22).TextColor3 = Theme.Accent
 			CardTable.feltText(ui.content, `Bids so far: {total} of {view.handSize} tricks`, 0.52, 16)
+		elseif view.claim and view.phase == "trick" and #view.trick == 0 and not peekLast then
+			-- Claimed the rest: the claimer's cards go face up for everyone.
+			local c = view.claim
+			local shown = {}
+			for _, id in c.cards do
+				table.insert(shown, PlayingCards.short(id))
+			end
+			summaryTitle = `{nameOf(c.seat)} {if c.seat == me then "claim" else "claims"} the last {c.tricks} tricks`
+			summaryLines = { table.concat(shown, "  "), "Every card is a sure winner." }
+			CardTable.feltText(ui.content, summaryTitle, 0.3, 20).TextColor3 = Theme.Accent
+			CardTable.feltText(ui.content, summaryLines[1], 0.5, 18)
 		else
 			local plays = view.trick
 			local winner = nil
@@ -174,6 +186,10 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 		end
 		CardTable.info(ui, info)
 		CardTable.notice(ui, summaryTitle, summaryLines)
+		if view.claim and shownClaim ~= view.round then
+			shownClaim = view.round
+			CardFx.pop("CLAIMED!", Theme.Accent, ui.root)
+		end
 		CardTable.trickPanel(ui, snapshot, if peekLast and view.lastTrick then view.lastTrick.plays else nil, if view.lastTrick then view.lastTrick.winner else nil)
 
 		local buttons = {}
@@ -184,6 +200,12 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
 				peekLast = not peekLast
 				render()
+			end })
+		end
+		if view.canClaim then
+			-- Every card you hold wins: take the rest of the tricks at once (Trickster's Claim).
+			table.insert(buttons, { text = "Claim the rest", color = Theme.Good, onClick = function()
+				sendMove({ kind = "claim" })
 			end })
 		end
 		if bidding then

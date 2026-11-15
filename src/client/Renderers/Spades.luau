@@ -25,6 +25,7 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 	local peekLast = false -- showing the last trick instead of the current one
 	local wasBroken: boolean? = nil
 	local shownLastHand: number? = nil
+	local shownClaim: number? = nil -- the hand whose "CLAIMED!" already popped
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
@@ -180,6 +181,17 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			local who = if ex.step == 1 then ex.bidder else ex.partner
 			CardTable.feltText(ui.content, "Blind Nil swap", 0.3, 22).TextColor3 = Theme.Accent
 			CardTable.feltText(ui.content, `{nameOf(who)} {if who == me then "pick" else "picks"} 2 cards for {nameOf(if ex.step == 1 then ex.partner else ex.bidder)}`, 0.5, 16)
+		elseif view.claim and view.phase == "trick" and #view.trick == 0 and not peekLast then
+			-- Claimed the rest: the claimer's cards go face up for everyone.
+			local c = view.claim
+			local cards = {}
+			for _, id in c.cards do
+				table.insert(cards, PlayingCards.short(id))
+			end
+			summaryTitle = `{nameOf(c.seat)} {if c.seat == me then "claim" else "claims"} the last {c.tricks} tricks`
+			summaryLines = { table.concat(cards, "  "), "Every card is a sure winner." }
+			CardTable.feltText(ui.content, summaryTitle, 0.3, 20).TextColor3 = Theme.Accent
+			CardTable.feltText(ui.content, summaryLines[1], 0.5, 18)
 		else
 			local plays = view.trick
 			local winner = nil
@@ -201,6 +213,10 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			CardFx.pop("♠ BROKEN!", Color3.fromRGB(120, 140, 200), ui.root)
 		end
 		wasBroken = view.spadesBroken == true
+		if view.claim and shownClaim ~= view.round then
+			shownClaim = view.round
+			CardFx.pop("CLAIMED!", Theme.Accent, ui.root)
+		end
 		-- The hand limit (a safety net for games that never reach the target): say so as
 		-- the last hand starts, so the end doesn't come out of nowhere.
 		if view.maxRounds and view.round == view.maxRounds and view.phase == "bid" and shownLastHand ~= view.round then
@@ -236,6 +252,12 @@ function SpadesRenderer.create(container: Frame, sendMove: (any) -> ())
 			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
 				peekLast = not peekLast
 				render()
+			end })
+		end
+		if view.canClaim then
+			-- Every card you hold wins: take the rest of the tricks at once (Trickster's Claim).
+			table.insert(buttons, { text = "Claim the rest", color = Theme.Good, onClick = function()
+				sendMove({ kind = "claim" })
 			end })
 		end
 		if view.canBlindNil and me and not snapshot.result then
