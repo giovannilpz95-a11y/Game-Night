@@ -16,7 +16,7 @@ All ten were created on 2026-11-15 through Open Cloud (universe 10774471881) and
 - [x] **Game Night Pass (premium)**, 299 R$ (developer product, bought again each season) → `Season.Premium.productId` in `shared/Season.luau` (id 3731718570, created 2026-11-15)
 - [x] **VIP** game pass, 399 R$ → `Economy.Passes.vip.gamePassId` (id 2089036059, created 2026-11-15)
 - [x] **Party Host** game pass, 199 R$ → `Economy.Passes.partyHost.gamePassId` (id 2089198115, created 2026-11-15)
-- [ ] Product images, 512 × 512 (briefs in [[Launch]] section 4)
+- [x] Product images, 512 × 512: made and uploaded to all ten on 2026-11-15 (files in the project's store-assets/product-icons)
 - [ ] After pasting: one real-Robux test buy of each in a private server, then rejoin and check it's still there (Gems, items, pass perks). Each developer product must be granted exactly once.
 
 ## 2. Studio and place settings

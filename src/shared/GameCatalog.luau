@@ -347,7 +347,7 @@ local entries: { Entry } = {
 		description = "Someone swiped the Golden Trophy. Find who, with what, and where.",
 		minSeats = 3,
 		maxSeats = 6,
-		turnSeconds = 45,
+		turnSeconds = 70, -- the whole turn (move, suggest, end); showing a card gets its own
 		status = "ready",
 		coin = "whodunit",
 		typicalMinutes = 10,
@@ -357,6 +357,7 @@ local entries: { Entry } = {
 			{ key = "anyRoom", name = "Walk anywhere", hint = "Move to any room on your turn, not just the next one.", choices = Toggle, default = 1 },
 			{ key = "openShow", name = "Show cards to all", hint = "A card shown to answer a suggestion is shown to everyone. Easier, faster games.", choices = Toggle, default = 1 },
 			{ key = "leftover", name = "Leftover cards face up", hint = "With 4 or 5 players, the cards that don't deal evenly lie face up for everyone instead of making some hands bigger.", choices = Toggle, default = 2 },
+			{ key = "stay", name = "Stay and suggest", hint = "Stay in your room and suggest again instead of leaving (2023 rules).", choices = Toggle, default = 1 },
 		},
 	},
 	{

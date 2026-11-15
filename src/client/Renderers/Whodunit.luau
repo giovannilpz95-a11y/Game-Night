@@ -6,6 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.Whodunit)
 local Kit = require(script.Parent.Parent.UI.Kit)
@@ -37,10 +38,20 @@ local function suspectColor(i: number): Color3
 	return Theme.Seat[i] or Theme.Text
 end
 
+-- Your notes per match, kept for this session so a re-created table (switching views,
+-- a new renderer) doesn't wipe them. marks[card][seat] = index into MARKS; nums = the
+-- suggestion number stamped in "#" mode.
+local saved: { [string]: { marks: any, nums: any } } = {}
+-- Touch screens get taller notes rows (36 px instead of 24).
+local ROW = if UserInputService.TouchEnabled then 36 else 24
+
 function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	-- Your own marks in the notes grid: marks[card][seat] -> index into MARKS.
 	local marks: { [number]: { [number]: number } } = {}
+	local nums: { [number]: { [number]: number } } = {} -- "#" mode: suggestion numbers
+	local stampMode = false -- "#" mode: tapping a box stamps the latest suggestion number
+	local smartNotes = false -- fill in what can be worked out (off for purists)
 	local lastRooms: { [number]: number } = {} -- suspect -> room on the last render (pawn pops)
 	local roundKey: number? = nil -- the suggestion whose go-round is playing
 	local roundStart = 0
@@ -121,6 +132,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	Kit.list(6).Parent = logList
 
 	local render: () -> ()
+	local layout: () -> ()
 	local docked = false -- Table view: only the side panel shows
 	-- Table mode (Table view without the map): walk by tapping the glowing rooms on the
 	-- table; what to do now is a panel along the bottom, the notes open in a window, and
@@ -140,6 +152,44 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		Visible = false,
 		Parent = side,
 	})
+	-- Three layouts: wide 2D (map left, actions over notes right), compact 2D for phones
+	-- (map left, actions right, notes open as a full sheet) and table mode (no map).
+	local compact = false
+	function layout()
+		local size = container.AbsoluteSize
+		compact = not tableMode and size.X > 0 and (size.Y < 420 or size.X < 640)
+		local sheetNotes = tableMode or compact
+		map.Visible = not tableMode
+		bottom.Visible = not sheetNotes
+		notesButton.Visible = sheetNotes
+		prompt.setVisible(sheetNotes)
+		if tableMode then
+			side.AnchorPoint = Vector2.new(0.5, 1)
+			side.Position = UDim2.new(0.5, 0, 1, -4)
+			side.Size = UDim2.new(0.9, 0, 0, 180)
+			actionPanel.Size = UDim2.fromScale(1, 1)
+			sideSize.Parent = side
+			notesButton.AnchorPoint = Vector2.new(1, 1)
+			notesButton.Position = UDim2.new(1, 0, 0, -6)
+		elseif compact then
+			map.Size = UDim2.new(0.5, 0, 1, 0)
+			side.AnchorPoint = Vector2.zero
+			side.Position = UDim2.new(0.5, 8, 0, 0)
+			side.Size = UDim2.new(0.5, -8, 1, 0)
+			actionPanel.Size = UDim2.fromScale(1, 1)
+			sideSize.Parent = nil
+			notesButton.AnchorPoint = Vector2.new(1, 0)
+			notesButton.Position = UDim2.new(1, -6, 0, 6)
+		else
+			map.Size = UDim2.new(0.56, 0, 1, 0)
+			side.AnchorPoint = Vector2.zero
+			side.Position = UDim2.new(0.56, 12, 0, 0)
+			side.Size = UDim2.new(0.44, -12, 1, 0)
+			actionPanel.Size = UDim2.new(1, 0, 0.5, -6)
+			sideSize.Parent = nil
+		end
+	end
+
 	local function selectTab(tab: string)
 		bottomTab = tab
 		notes.Visible = tab == "notes"
@@ -158,6 +208,15 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	HudKit.pill(notesTab)
 	HudKit.pill(logTab)
 	selectTab("notes")
+	notesButton.ZIndex = 8
+	container:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		local was = compact
+		layout()
+		if was ~= compact and snapshot then
+			render()
+		end
+	end)
+	task.defer(layout)
 
 	-- Accusation picker (an overlay over the whole table).
 	local accuseOverlay = Kit.new("Frame", {
@@ -511,9 +570,38 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			order += 1
 			text(notes, `Face up on the table (not in the case file): {table.concat(names, ", ")}`, order, { TextColor3 = Theme.SubText, TextSize = 12 })
 		end
+		-- Two switches: "#" stamps the latest suggestion number instead of cycling marks,
+		-- and Smart fills in everything that can be worked out.
+		local tools = row(ROW)
+		local function toggle(label: string, on: boolean, x: number, onPress: () -> ())
+			local b = Kit.button(label, onPress, {
+				Size = UDim2.new(0.5, -3, 1, -2),
+				Position = UDim2.new(x, if x > 0 then 3 else 0, 0, 1),
+				TextSize = 12,
+				BackgroundColor3 = if on then Theme.Accent else Theme.PanelLight,
+				TextColor3 = if on then Theme.AccentText else Theme.Text,
+				Parent = tools,
+			})
+			HudKit.pill(b)
+		end
+		toggle(if stampMode then "# Stamping #" .. (view.logCount or 0) else "# Stamp suggestion no.", stampMode, 0, function()
+			stampMode = not stampMode
+			render()
+		end)
+		toggle(if smartNotes then "Smart notes: on" else "Smart notes: off", smartNotes, 0.5, function()
+			smartNotes = not smartNotes
+			render()
+		end)
+		-- Smart notes: holder by card (seatCount + 1 = the case file).
+		local deduced: { [number]: number } = {}
+		if smartNotes then
+			for _, pair in view.deduced or {} do
+				deduced[pair.card] = pair.holder
+			end
+		end
 		-- Header: each player's initial in their color.
 		local head = row(24)
-		Kit.label("Tap a box to mark it", { TextSize = 11, TextColor3 = Theme.SubText, Size = UDim2.new(NAME, -4, 1, 0), Parent = head })
+		Kit.label(if stampMode then "Tap a box to stamp it" else "Tap a box to mark it", { TextSize = 11, TextColor3 = Theme.SubText, Size = UDim2.new(NAME, -4, 1, 0), Parent = head })
 		for i, seat in columns do
 			local chip = Kit.new("Frame", {
 				BackgroundColor3 = suspectColor(seat),
@@ -541,6 +629,11 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			text(notes, section[2], order, { Font = Theme.FontBold, TextColor3 = Theme.Accent, TextSize = 13 })
 			for _, id in Rules.categoryCards[section[1]] do
 				local by = known[id]
+				local smart = deduced[id]
+				local inFile = smart ~= nil and smart == view.seatCount + 1
+				if by == nil and smart ~= nil and not inFile then
+					by = smart
+				end
 				local cleared = by ~= nil
 				local cardMarks = marks[id] or {}
 				for _, seat in columns do
@@ -548,17 +641,17 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 						cleared = true -- you ticked someone as holding it
 					end
 				end
-				local line = row(24)
+				local line = row(ROW)
 				local back = Kit.new("Frame", {
-					BackgroundColor3 = if solution[id] then Theme.Accent else Theme.PanelLight,
-					BackgroundTransparency = if solution[id] then 0.3 else 0.5,
+					BackgroundColor3 = if solution[id] or inFile then Theme.Accent else Theme.PanelLight,
+					BackgroundTransparency = if solution[id] then 0.3 elseif inFile then 0.55 else 0.5,
 					BorderSizePixel = 0,
 					Size = UDim2.fromScale(1, 1),
 					Parent = line,
 				}, { Kit.corner(6) })
 				local card = Rules.cards[id]
 				local name = if card.category == "item" then `{ITEM_ICONS[card.index]} {card.name}` else card.name
-				local shown = if by == me and me ~= nil then `{name} (yours)` elseif by == 0 then `{name} (face up)` else name
+				local shown = if by == me and me ~= nil then `{name} (yours)` elseif by == 0 then `{name} (face up)` elseif inFile then `{name} (case file!)` else name
 				-- Crossed off like the paper notepad once you know someone holds it.
 				Kit.label(if cleared then `<s>{shown}</s>` else shown, {
 					RichText = true,
@@ -579,8 +672,9 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 						auto = 2
 					end
 					local mark = auto or cardMarks[seat] or 1
+					local stamp = if auto == nil and nums[id] then nums[id][seat] else nil
 					local cell = Kit.new("TextButton", {
-						Text = MARKS[mark],
+						Text = if stamp then `#{stamp}` else MARKS[mark],
 						Font = Theme.FontBold,
 						TextSize = if mark == 1 then 16 else 14,
 						TextColor3 = MARK_COLORS[mark],
@@ -594,10 +688,21 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 						Size = UDim2.new(colWidth, -4, 1, -4),
 						Parent = back,
 					}, { Kit.corner(4) })
+					if stamp then
+						cell.TextSize = 12
+						cell.TextColor3 = Theme.Accent
+					end
 					Kit.onPress(cell, function()
 						if auto == nil then
-							marks[id] = marks[id] or {}
-							marks[id][seat] = mark % #MARKS + 1
+							if stampMode then
+								-- Stamp which suggestion this came from (tap again to clear).
+								nums[id] = nums[id] or {}
+								local n = view.logCount or 0
+								nums[id][seat] = if nums[id][seat] == n or n == 0 then nil else n
+							else
+								marks[id] = marks[id] or {}
+								marks[id][seat] = mark % #MARKS + 1
+							end
 							Audio.play("click", { volume = 0.4 })
 							render()
 						end
@@ -776,7 +881,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			Parent = showOverlay,
 		})
 		Kit.label(`Show {nameOf(entry.seat)} a card`, { Font = Theme.FontTitle, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 28), ZIndex = 32, Parent = box })
-		Kit.label(`They suggested {suggestionText(entry)}. Only they will see the card you pick.`, {
+		Kit.label(`They suggested {suggestionText(entry)}. {if view.openShow then "Everyone will see the card you pick." else "Only they will see the card you pick."}`, {
 			TextSize = 13,
 			TextColor3 = Theme.SubText,
 			TextXAlignment = Enum.TextXAlignment.Center,
@@ -822,6 +927,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			local says = if view.phase == "show" then "Choosing..."
 				elseif entry.card and entry.seat == me then `Shows you {cardName(entry.card)}`
 				elseif entry.card and entry.shower == me then `You showed {cardName(entry.card)}`
+				elseif entry.card then `Shows {cardName(entry.card)}` -- "Show cards to all"
 				else "🂠 Shows a card"
 			table.insert(seq, { seat = entry.shower, text = says, color = Theme.Good, sound = if view.phase == "show" then nil else "card" })
 		end
@@ -911,6 +1017,22 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				TextSize = 16,
 				TextColor3 = Theme.Accent,
 			})
+			-- Everyone's hand, and how close each detective got.
+			if type(view.hands) == "table" then
+				text(actions, "Who held what:", 6, { Font = Theme.FontBold, TextSize = 14 })
+				for seat, hand in view.hands do
+					local names = {}
+					for _, id in hand do
+						table.insert(names, cardName(id))
+					end
+					local solved = view.solvedCount and view.solvedCount[seat] or 0
+					local verdict = if view.winner == seat then "solved it" elseif solved == 3 then "had it worked out" else `worked out {solved} of 3`
+					text(actions, `<font color="#{suspectColor(seat):ToHex()}"><b>{nameOf(seat)}</b></font> ({verdict}): {table.concat(names, ", ")}`, 6 + seat, {
+						RichText = true,
+						TextSize = 12,
+					})
+				end
+			end
 			return
 		end
 		if ended() then
@@ -930,7 +1052,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			text(actions, `{asker} suggested {suggestionText(entry)}.`, 4, { TextSize = 15 })
 			goRound(view, entry, 5)
 			if #view.showOptions > 0 then
-				text(actions, `Pick a card to show {asker}. Only they will see it.`, 6, { Font = Theme.FontBold, TextSize = 15, TextColor3 = Theme.Accent })
+				text(actions, `Pick a card to show {asker}. {if view.openShow then "Everyone will see it." else "Only they will see it."}`, 6, { Font = Theme.FontBold, TextSize = 15, TextColor3 = Theme.Accent })
 				for i, id in view.showOptions do
 					button(actions, `Show {cardName(id)}`, 6 + i, function()
 						sendMove({ kind = "show", card = id })
@@ -1029,6 +1151,13 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				pickSuspect, pickItem = nil, nil
 			end
 		end, { BackgroundColor3 = if ready then Theme.Accent else Theme.Panel, TextColor3 = if ready then Theme.AccentText else Theme.SubText })
+		if view.canSkip then
+			-- Suggesting is optional (sometimes you'd rather not give anything away).
+			button(actions, "Skip suggesting, end turn", 8, function()
+				pickSuspect, pickItem = nil, nil
+				sendMove({ kind = "end" })
+			end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text })
+		end
 		if view.canAccuse then
 			accuseButton()
 		end
@@ -1211,23 +1340,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				return
 			end
 			tableMode = value
-			map.Visible = not value
-			bottom.Visible = not value
-			notesButton.Visible = value
-			prompt.setVisible(value)
-			if value then
-				side.AnchorPoint = Vector2.new(0.5, 1)
-				side.Position = UDim2.new(0.5, 0, 1, -4)
-				side.Size = UDim2.new(0.9, 0, 0, 180)
-				actionPanel.Size = UDim2.fromScale(1, 1)
-				sideSize.Parent = side
-			else
-				side.AnchorPoint = Vector2.zero
-				side.Position = UDim2.new(0.56, 12, 0, 0)
-				side.Size = UDim2.new(0.44, -12, 1, 0)
-				actionPanel.Size = UDim2.new(1, 0, 0.5, -6)
-				sideSize.Parent = nil
-			end
+			layout()
 			if snapshot then
 				render()
 			end
@@ -1257,7 +1370,14 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		update = function(newSnapshot: any)
 			if newSnapshot.matchId ~= lastMatchId then
 				lastMatchId = newSnapshot.matchId
-				marks = {}
+				local keep = saved[newSnapshot.matchId]
+				if not keep then
+					keep = { marks = {}, nums = {} }
+					table.clear(saved) -- only the current match is worth keeping
+					saved[newSnapshot.matchId] = keep
+				end
+				marks = keep.marks
+				nums = keep.nums
 				pickSuspect, pickItem = nil, nil
 				accuseOpen = false
 				accusePick = { suspect = nil, item = nil, room = nil }
@@ -1265,7 +1385,16 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				roundKey = nil
 				showKey = nil
 			end
+			local previous = snapshot
 			snapshot = newSnapshot
+			-- A new suggestion: a short scene line for everyone ("🔎 Ava suggests ...").
+			local view = snapshot.view
+			if previous and previous.matchId == snapshot.matchId and view.suggestion and (view.logCount or 0) > ((previous.view and previous.view.logCount) or 0) then
+				local entry = view.suggestion
+				local who = if entry.seat == snapshot.yourSeat then "You suggest" else `{nameOf(entry.seat)} suggests`
+				HudKit.callout(root, `🔎 {who} {suggestionText(entry)}`, suspectColor(entry.seat))
+				Audio.play("knock", { volume = 0.5 })
+			end
 			local accusations = snapshot.view.accusations or {}
 			if shownAccusations ~= nil and #accusations > shownAccusations then
 				openCaseFile(accusations[#accusations])
