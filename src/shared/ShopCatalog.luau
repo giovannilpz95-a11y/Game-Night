@@ -145,6 +145,21 @@ local items: { Item } = {
 	{ id = "win_grandfinale", name = "Grand Finale", shop = "hub", slot = "victory", tier = "Legendary", notForSale = true, season = 3 },
 	{ id = "reactions_countdown", name = "Countdown", shop = "hub", slot = "reactions", tier = "Epic", notForSale = true, season = 3 },
 
+	-- Game Night Pass, Season 4 "Frost Fair" (shared/Season). Only the pass gives these.
+	{ id = "season4_title_frostfair", name = "Title: Frost Fair", shop = "hub", slot = "title", tier = "Common", notForSale = true, season = 4 },
+	{ id = "season4_trail_lantern", name = "Lantern Trail", shop = "hub", slot = "trail", tier = "Rare", notForSale = true, season = 4 },
+	{ id = "season4_cards_icecrystal", name = "Ice Crystal Card Backs", shop = "hub", slot = "cards", tier = "Rare", notForSale = true, season = 4 },
+	{ id = "season4_title_fairchamp", name = "Title: Fair Champion", shop = "hub", slot = "title", tier = "Epic", notForSale = true, season = 4 },
+	{ id = "season4_chair_sleigh", name = "Sleigh Seat", shop = "hub", slot = "chair", tier = "Epic", notForSale = true, season = 4 },
+	{ id = "season4_title_ringmaster", name = "Title: Ringmaster", shop = "hub", slot = "title", tier = "Rare", notForSale = true, season = 4 },
+	{ id = "season4_cards_carousel", name = "Carousel Card Backs", shop = "hub", slot = "cards", tier = "Epic", notForSale = true, season = 4 },
+	{ id = "season4_nameplate_lantern", name = "Lantern Nameplate", shop = "hub", slot = "nameplate", tier = "Epic", notForSale = true, season = 4 },
+	{ id = "season4_table_icepalace", name = "Ice Palace Table", shop = "hub", slot = "theme", tier = "Legendary", notForSale = true, season = 4 },
+	{ id = "pose_icesculptor", name = "Ice Sculptor", shop = "hub", slot = "pose", tier = "Rare", notForSale = true, season = 4 },
+	{ id = "pose_ringtoss", name = "Ring Toss", shop = "hub", slot = "pose", tier = "Epic", notForSale = true, season = 4 },
+	{ id = "win_toboggan", name = "Toboggan Run", shop = "hub", slot = "victory", tier = "Legendary", notForSale = true, season = 4 },
+	{ id = "reactions_frostfair", name = "Frost Fair", shop = "hub", slot = "reactions", tier = "Epic", notForSale = true, season = 4 },
+
 	-- Chess shop
 	{ id = "chess_walnut_board", name = "Walnut Board", shop = "chess", slot = "board", tier = "Common", coins = 400 },
 	{ id = "chess_marble_pieces", name = "Marble Pieces", shop = "chess", slot = "pieces", tier = "Rare", coins = 1500 },

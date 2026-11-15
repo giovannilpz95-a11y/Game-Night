@@ -20,7 +20,7 @@ The **Game Night Pass** is a 4-week season with 30 tiers. Players climb it with 
 
 ## Schedule
 - Season 1 starts Monday 2 November 2026 00:00 UTC (`Season.Epoch`). Each season is 28 days and starts on a Monday, so it holds exactly four weekly quest sets.
-- Season N uses `Season.Tracks[N]`. If no track is written for it yet, the last one runs again as an "encore". Items players already own pay Universal Coins instead (`Season.OwnedRefund`), so an encore is never worthless, but **write a new track before each season ends.** Season 4 is due before Mon 25 Jan 2027.
+- Season N uses `Season.Tracks[N]`. If no track is written for it yet, the last one runs again as an "encore". Items players already own pay Universal Coins instead (`Season.OwnedRefund`), so an encore is never worthless, but **write a new track before each season ends.** Season 5 is due before Mon 22 Feb 2027.
 - The last 7 days of a season give double Stars (catch-up week).
 - When a season ends, anything a player reached but didn't claim is given to them the next time they join or finish a game, with a "Last season's unclaimed rewards" toast.
 
@@ -73,6 +73,14 @@ The shop shows pass items with a "🎟️ Season 1 pass" tag instead of a price,
 - Premium: Starlight Lounger chair (1), Title: Night Owl (5), Gold Foil Card Backs (18), Fireworks Nameplate (20), Rooftop Party Table (25).
 - Themed weekly quests (🎆): Countdown (15 games), New year, new wins (5 wins), Midnight showdown (win 3 with people), Party of the year (6 games with people), Fireworks show (30 reactions), Fresh start (6 different games), Deal in the new year (5 card games), Up past midnight (90 minutes).
 
+## Season 4: Frost Fair
+25 Jan to 22 Feb 2027. The lake froze over, so the fair moved onto the ice: lanterns, fair stalls and ring toss, ice sculptures, the toboggan hill. Same Gem and Universal Coin amounts as Seasons 1 to 3 (premium pays back 270 Gems). New pass-only items (`season = 4`):
+- Poses **Ice Sculptor** (free, tier 10: three hammer-and-chisel taps, step back, frame it with your hands and admire) and **Ring Toss** (premium, tier 10: toss, toss, ringer, fist pump); win celebration **Toboggan Run** (premium, tier 30: tucked in holding the rope, lean through three turns, a bump, jump off with arms up, wave, spin). New `lanterns` particles in `Showtime.Fx`.
+- Reaction pack **Frost Fair** (premium, tier 15): ferris wheel, lantern, carousel, big top, pretzel, hockey, first prize, "Step right up!" (exactly 14 characters). All emoji are older ones Roblox fonts draw.
+- Free: Title: Frost Fair (5), Lantern Trail (16), Ice Crystal Card Backs (22), Title: Fair Champion (30).
+- Premium: Sleigh Seat chair (1), Title: Ringmaster (5), Carousel Card Backs (18), Lantern Nameplate (20), Ice Palace Table (25).
+- Themed weekly quests (🎡): Step right up (15 games), Win a prize (5 wins), Ring toss rivals (win 3 with people), Fairground friends (6 games with people), Cheer the crowd (30 reactions), Visit every stall (6 different games), Strategy tent (4 strategy games), Lanterns till late (90 minutes).
+
 ## Adding a season
 1. Add a track to `Season.Tracks` (a premium reward on every tier, free ones where you like, optional themed `weekly` quests; tests check every item exists, is pass-only, has the track's season number and isn't on an earlier track).
 2. Add its items to ShopCatalog with `notForSale = true, season = N`. Showtime moves also go in `shared/Showtime` and `client/Table3D/Moves`; reaction packs in `shared/Reactions`.
@@ -87,4 +95,4 @@ The shop shows pass items with a "🎟️ Season 1 pass" tag instead of a price,
 The wallet (WalletState) carries `season` (`SeasonPass.view`) and `seasonProductReady`.
 
 ## Needs a Studio playtest
-The Pass window on PC and phone (track scrolling, Claim buttons, the 🎟️ badge on the rail), the three Season 1 moves and the three Season 2 moves on the table, and the Premiere Night and Snowed In reactions. Season 2 only shows after 30 Nov; to see it earlier in Studio, temporarily lower `Season.Epoch` by 28 days.
+The Pass window on PC and phone (track scrolling, Claim buttons, the 🎟️ badge on the rail), the three moves each from Seasons 1 to 4 on the table, and the Premiere Night, Snowed In, Countdown and Frost Fair reactions. Season 2 only shows after 30 Nov; to see it earlier in Studio, temporarily lower `Season.Epoch` by 28 days.
