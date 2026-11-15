@@ -131,6 +131,10 @@ end
 local MODES = {
 	Conquest = { fog = true, capitals = true, missions = true },
 }
+-- Other maps a board can draw: one more mid-game scene each.
+local MAPS = {
+	Conquest = { { label = "Sunken Crown", rules = { map = "crown" } } },
+}
 
 -- Every game with a table scene, early (a few bot moves in) and late (or over).
 function Scenes.games(only: string?): { Scene }
@@ -151,6 +155,9 @@ function Scenes.games(only: string?): { Scene }
 		local stages = { { label = "mid-game", events = 12 }, { label = "late", events = 300 } }
 		if MODES[entry.id] then
 			table.insert(stages, { label = "house rules", events = 12, rules = MODES[entry.id] })
+		end
+		for _, m in MAPS[entry.id] or {} do
+			table.insert(stages, { label = m.label, events = 12, rules = m.rules })
 		end
 		for _, stage in stages do
 			local shape = if players > 4 then "Round8" else "Square4"

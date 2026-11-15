@@ -1,6 +1,7 @@
 --[[
 	Conquest Isles: a world-conquest strategy game for 2-6 seats on our own map, the
-	Shattered Isles (24 territories in 6 regions). Pure rules, see shared/GameModule.luau.
+	Shattered Isles (24 territories in 6 regions) or the Sunken Crown (31 in 7, for 5-6
+	players). Pure rules, see shared/GameModule.luau.
 
 	A turn:
 	  1. reinforce  Get max(3, territories / 3) armies plus the bonus of every region you
@@ -21,7 +22,8 @@
 	automatically, card sets have fixed values, attacks can blitz, each turn has a clock,
 	and after Conquest.roundsFor(seats) rounds the player with the most territories wins.
 
-	The map is data (regions, territories, links) so new maps are a content swap.
+	Maps are data (Conquest.maps: regions, territories, links, armies, rounds), so a new
+	map is a content swap. House rule map: auto (Isles for 2-4, Crown for 5-6) / isles / crown.
 
 	House rules (options.rules): turnLength (seconds per turn), cards ("fixed": set values
 	above; "rising": every trade at the table is worth more, 4, 6, 8, 10, 12, 15, then +5),
@@ -57,12 +59,6 @@ Conquest.LOG_SIZE = 14
 Conquest.FIRST_TURN_GRACE = 30 -- extra seconds on everyone's first turn (the how-to card is up)
 Conquest.CARD_LAND_BONUS = 2 -- trading a card whose territory you hold puts 2 armies there
 
--- Rounds before the game is scored, by seat count. Tuned so most games take 20-30 min.
-local ROUNDS = { [2] = 20, [3] = 16, [4] = 14, [5] = 11, [6] = 9 }
-function Conquest.roundsFor(seats: number): number
-	return ROUNDS[seats] or 12
-end
-
 -- Most territories one player may take in a turn, by round. Stops an early runaway
 -- (one player sweeping half the map in the first rounds) so games reach the limit.
 function Conquest.conquestLimit(round: number): number
@@ -74,97 +70,250 @@ function Conquest.conquestLimit(round: number): number
 	return 3
 end
 
--- Starting armies per player (one goes on each territory, the rest are spread at random).
-local STARTING_ARMIES = { [2] = 30, [3] = 24, [4] = 20, [5] = 17, [6] = 15 }
-
 ---------------------------------------------------------------------------------------
--- The map: the Shattered Isles. x/y are 0..1 positions on a 3:2 map; labelX/labelY is
--- where a region's name sits (in open sea next to it).
+-- Maps. Each is data: regions, territories (x/y are 0..1 positions on a 3:2 map; a
+-- region's labelX/labelY is where its name sits, in open sea; `float` puts it on a sign
+-- over the 3D board where the sea is too narrow), links (`sea = true` marks a sea lane),
+-- starting armies and rounds by seat count, and the region sets missions ask for.
+-- House rule "map" picks one; "auto" plays the Isles with 2-4 seats and the Crown with 5-6.
 
-Conquest.mapName = "The Shattered Isles"
-
-Conquest.regions = {
-	{ name = "Frostreach", bonus = 1, color = Color3.fromRGB(172, 214, 240), labelX = 0.15, labelY = 0.11 },
-	{ name = "Sunspire Sands", bonus = 2, color = Color3.fromRGB(236, 204, 120), labelX = 0.63, labelY = 0.07 },
-	{ name = "Heartwood", bonus = 2, color = Color3.fromRGB(116, 184, 104), labelX = 0.43, labelY = 0.24 },
-	{ name = "Ironcoast", bonus = 1, color = Color3.fromRGB(156, 156, 172), labelX = 0.15, labelY = 0.91 },
-	{ name = "Coral Keys", bonus = 1, color = Color3.fromRGB(122, 214, 204), labelX = 0.56, labelY = 0.93 },
-	{ name = "Emberfall", bonus = 1, color = Color3.fromRGB(226, 116, 84), labelX = 0.87, labelY = 0.76 },
+Conquest.maps = {
+	isles = {
+		name = "The Shattered Isles",
+		short = "Shattered Isles",
+		-- Rounds before the game is scored. Tuned so most games take 20-30 min.
+		rounds = { [2] = 20, [3] = 16, [4] = 14, [5] = 11, [6] = 9 },
+		-- Starting armies per player (one goes on each territory, the rest at random).
+		starting = { [2] = 30, [3] = 24, [4] = 20, [5] = 17, [6] = 15 },
+		-- "Hold N territories" and "hold N with 2+ armies on each", for 2 seats and for more
+		-- (24 and 18 of 42 in the classic deck; two players start with 12 lands each).
+		missionCounts = { two = { 16, 14 }, more = { 14, 11 } },
+		-- Extra starting armies by seat count and seat, so turn order doesn't decide games
+		-- (medium-bot games, wins per 150 by seat with 6 players: 16/24/25/24/26/35 without,
+		-- 30/20/26/21/16/35 with). The Crown's are in its docs note too.
+		seatBonus = { [6] = { 4, 2, 0, 0, 0, 0 } },
+		regions = {
+		{ name = "Frostreach", bonus = 1, color = Color3.fromRGB(172, 214, 240), labelX = 0.15, labelY = 0.11 },
+		{ name = "Sunspire Sands", bonus = 2, color = Color3.fromRGB(236, 204, 120), labelX = 0.63, labelY = 0.07 },
+		{ name = "Heartwood", bonus = 2, color = Color3.fromRGB(116, 184, 104), labelX = 0.43, labelY = 0.24 },
+		{ name = "Ironcoast", bonus = 1, color = Color3.fromRGB(156, 156, 172), labelX = 0.15, labelY = 0.91 },
+		{ name = "Coral Keys", bonus = 1, color = Color3.fromRGB(122, 214, 204), labelX = 0.56, labelY = 0.93 },
+		{ name = "Emberfall", bonus = 1, color = Color3.fromRGB(226, 116, 84), labelX = 0.87, labelY = 0.76 },
+		},
+		territories = {
+		-- Frostreach
+		{ name = "Icefang", region = 1, x = 0.147, y = 0.204 },
+		{ name = "Snowmere", region = 1, x = 0.285, y = 0.172 },
+		{ name = "Glacier Gate", region = 1, x = 0.165, y = 0.364 },
+		{ name = "Whitepine", region = 1, x = 0.302, y = 0.316 },
+		-- Sunspire Sands
+		{ name = "Oasis", region = 2, x = 0.560, y = 0.292 },
+		{ name = "Dunehold", region = 2, x = 0.629, y = 0.164 },
+		{ name = "Mirage Wells", region = 2, x = 0.767, y = 0.180 },
+		{ name = "Sandstone", region = 2, x = 0.853, y = 0.316 },
+		{ name = "Scorpion Pass", region = 2, x = 0.706, y = 0.348 },
+		-- Heartwood
+		{ name = "Elder Grove", region = 3, x = 0.431, y = 0.388 },
+		{ name = "Mossbrook", region = 3, x = 0.543, y = 0.468 },
+		{ name = "Thornwick", region = 3, x = 0.448, y = 0.572 },
+		{ name = "Fernhollow", region = 3, x = 0.337, y = 0.484 },
+		-- Ironcoast
+		{ name = "Gullrock", region = 4, x = 0.216, y = 0.548 },
+		{ name = "Anchor Bay", region = 4, x = 0.122, y = 0.636 },
+		{ name = "Rustport", region = 4, x = 0.259, y = 0.708 },
+		{ name = "Saltcliff", region = 4, x = 0.147, y = 0.812 },
+		-- Coral Keys
+		{ name = "Turtle Key", region = 5, x = 0.380, y = 0.780 },
+		{ name = "Pearl Lagoon", region = 5, x = 0.491, y = 0.716 },
+		{ name = "Shellbeach", region = 5, x = 0.577, y = 0.828 },
+		-- Emberfall
+		{ name = "Obsidian Bay", region = 6, x = 0.646, y = 0.588 },
+		{ name = "Ashpeak", region = 6, x = 0.784, y = 0.500 },
+		{ name = "Cinder Vale", region = 6, x = 0.870, y = 0.668 },
+		{ name = "Lava Falls", region = 6, x = 0.732, y = 0.772 },
+		},
+		links = {
+		-- Frostreach
+		{ 1, 2 }, { 1, 3 }, { 2, 4 }, { 3, 4 },
+		-- Sunspire Sands
+		{ 5, 6 }, { 6, 7 }, { 7, 8 }, { 8, 9 }, { 9, 5 }, { 6, 9 },
+		-- Heartwood
+		{ 10, 11 }, { 10, 13 }, { 11, 12 }, { 12, 13 }, { 10, 12 },
+		-- Ironcoast
+		{ 14, 15 }, { 14, 16 }, { 15, 16 }, { 15, 17 }, { 16, 17 },
+		-- Coral Keys
+		{ 18, 19 }, { 19, 20 }, { 18, 20 },
+		-- Emberfall
+		{ 21, 22 }, { 22, 23 }, { 23, 24 }, { 24, 21 },
+		-- Between regions
+		{ 4, 10 }, { 4, 13 }, { 3, 14 }, { 2, 6, sea = true },
+		{ 5, 10 }, { 5, 11 }, { 9, 22 }, { 8, 22 },
+		{ 11, 21 }, { 12, 19 }, { 13, 14 },
+		{ 16, 18 }, { 17, 18, sea = true },
+		{ 19, 21 }, { 20, 24 },
+		},
+		-- Region sets a mission can ask for. `extra` asks for one more whole region.
+		missionRegions = {
+			{ 2, 5 }, -- Sunspire Sands + Coral Keys
+			{ 2, 4 }, -- Sunspire Sands + Ironcoast
+			{ 3, 6 }, -- Heartwood + Emberfall
+			{ 3, 1 }, -- Heartwood + Frostreach
+			{ 1, 4, extra = true }, -- Frostreach + Ironcoast + one more
+			{ 5, 6, extra = true }, -- Coral Keys + Emberfall + one more
+		},
+	},
+	-- A bigger map for 5-6 players: 31 territories in 7 regions round the Crownlands,
+	-- which is worth the most but borders every other region.
+	crown = {
+		name = "The Sunken Crown",
+		short = "Sunken Crown",
+		rounds = { [2] = 22, [3] = 18, [4] = 15, [5] = 13, [6] = 11 },
+		starting = { [2] = 38, [3] = 31, [4] = 26, [5] = 22, [6] = 20 },
+		-- Extra starting armies (wins per 150 without, with: 2 seats 101/49, 74/76;
+		-- 6 seats 13/23/18/28/32/38, 25/28/27/25/22/26).
+		seatBonus = { [2] = { 0, 4 }, [6] = { 4, 2, 0, 0, 0, 0 } },
+		missionCounts = { two = { 21, 18 }, more = { 18, 14 } },
+		regions = {
+			{ name = "Northwatch", bonus = 1, color = Color3.fromRGB(172, 214, 240), labelX = 0.14, labelY = 0.05 },
+			{ name = "Gale Peaks", bonus = 1, color = Color3.fromRGB(176, 166, 204), labelX = 0.465, labelY = 0.05 },
+			{ name = "Sunreach", bonus = 2, color = Color3.fromRGB(236, 204, 120), labelX = 0.79, labelY = 0.05 },
+			{ name = "Mistfen", bonus = 1, color = Color3.fromRGB(140, 176, 104), labelX = 0.17, labelY = 0.601, float = true },
+			{ name = "Crownlands", bonus = 3, color = Color3.fromRGB(196, 132, 214), labelX = 0.465, labelY = 0.601, float = true },
+			{ name = "Tidecaller Reef", bonus = 1, color = Color3.fromRGB(110, 206, 196), labelX = 0.66, labelY = 0.95 },
+			{ name = "Driftwood Isles", bonus = 1, color = Color3.fromRGB(206, 164, 120), labelX = 0.27, labelY = 0.95 },
+		},
+	territories = {
+		-- Northwatch
+		{ name = "Hoarfrost", region = 1, x = 0.075, y = 0.170 },
+		{ name = "Wolfden", region = 1, x = 0.205, y = 0.170 },
+		{ name = "Pinewatch", region = 1, x = 0.140, y = 0.335 },
+		{ name = "Ravenhold", region = 1, x = 0.270, y = 0.335 },
+		-- Gale Peaks
+		{ name = "Thunder Crag", region = 2, x = 0.335, y = 0.170 },
+		{ name = "Eagle Spire", region = 2, x = 0.465, y = 0.170 },
+		{ name = "Windgap", region = 2, x = 0.595, y = 0.170 },
+		{ name = "Stormvale", region = 2, x = 0.530, y = 0.335 },
+		-- Sunreach
+		{ name = "Goldmere", region = 3, x = 0.725, y = 0.170 },
+		{ name = "Sunstone", region = 3, x = 0.855, y = 0.170 },
+		{ name = "Amber Coast", region = 3, x = 0.660, y = 0.335 },
+		{ name = "Brightwater", region = 3, x = 0.790, y = 0.335 },
+		{ name = "Dawnport", region = 3, x = 0.855, y = 0.500 },
+		-- Mistfen
+		{ name = "Murkwater", region = 4, x = 0.075, y = 0.500 },
+		{ name = "Willowmarsh", region = 4, x = 0.205, y = 0.500 },
+		{ name = "Reedholm", region = 4, x = 0.140, y = 0.665 },
+		{ name = "Bogmoor", region = 4, x = 0.270, y = 0.665 },
+		-- Crownlands
+		{ name = "Crown Keep", region = 5, x = 0.400, y = 0.335 },
+		{ name = "Kingsroad", region = 5, x = 0.335, y = 0.500 },
+		{ name = "Silver Gate", region = 5, x = 0.465, y = 0.500 },
+		{ name = "Throne Hill", region = 5, x = 0.595, y = 0.500 },
+		{ name = "Royal Mile", region = 5, x = 0.400, y = 0.665 },
+		{ name = "Banner Field", region = 5, x = 0.530, y = 0.665 },
+		-- Tidecaller Reef
+		{ name = "Coral Spire", region = 6, x = 0.660, y = 0.665 },
+		{ name = "Seafoam", region = 6, x = 0.790, y = 0.665 },
+		{ name = "Kelp Hollow", region = 6, x = 0.595, y = 0.830 },
+		{ name = "Tidepool", region = 6, x = 0.725, y = 0.830 },
+		-- Driftwood Isles
+		{ name = "Driftwood", region = 7, x = 0.075, y = 0.830 },
+		{ name = "Castaway", region = 7, x = 0.205, y = 0.830 },
+		{ name = "Gull Isle", region = 7, x = 0.335, y = 0.830 },
+		{ name = "Saltmarsh", region = 7, x = 0.465, y = 0.830 },
+	},
+	-- Borders: 12 between regions, so every region has 2-3 ways in (6 for the Crownlands).
+	links = {
+		-- Northwatch
+		{ 1, 2 }, { 1, 3 }, { 2, 3 }, { 2, 4 }, { 3, 4 },
+		-- Gale Peaks
+		{ 5, 6 }, { 6, 7 }, { 6, 8 }, { 7, 8 },
+		-- Sunreach
+		{ 9, 10 }, { 9, 11 }, { 9, 12 }, { 10, 12 }, { 11, 12 }, { 12, 13 },
+		-- Mistfen
+		{ 14, 15 }, { 14, 16 }, { 15, 16 }, { 15, 17 }, { 16, 17 },
+		-- Crownlands
+		{ 18, 19 }, { 18, 20 }, { 19, 20 }, { 19, 22 }, { 20, 21 }, { 20, 22 }, { 20, 23 }, { 21, 23 }, { 22, 23 },
+		-- Tidecaller Reef
+		{ 24, 25 }, { 24, 26 }, { 24, 27 }, { 25, 27 }, { 26, 27 },
+		-- Driftwood Isles
+		{ 28, 29, sea = true }, { 29, 30, sea = true }, { 30, 31, sea = true },
+		-- Between regions
+		{ 2, 5 }, { 3, 14 }, { 4, 18 }, { 7, 9 }, { 8, 20 }, { 11, 21 }, { 13, 25, sea = true }, { 15, 19 }, { 16, 28, sea = true }, { 22, 30, sea = true }, { 23, 24 }, { 26, 31, sea = true },
+	},
+		missionRegions = {
+			{ 3, 7 }, -- Sunreach + Driftwood Isles
+			{ 3, 4 }, -- Sunreach + Mistfen
+			{ 5, 1 }, -- Crownlands + Northwatch
+			{ 5, 7 }, -- Crownlands + Driftwood Isles
+			{ 2, 4, extra = true }, -- Gale Peaks + Mistfen + one more
+			{ 6, 7, extra = true }, -- Tidecaller Reef + Driftwood Isles + one more
+		},
+	},
 }
+Conquest.mapOrder = { "isles", "crown" }
 
-Conquest.territories = {
-	-- Frostreach
-	{ name = "Icefang", region = 1, x = 0.147, y = 0.204 },
-	{ name = "Snowmere", region = 1, x = 0.285, y = 0.172 },
-	{ name = "Glacier Gate", region = 1, x = 0.165, y = 0.364 },
-	{ name = "Whitepine", region = 1, x = 0.302, y = 0.316 },
-	-- Sunspire Sands
-	{ name = "Oasis", region = 2, x = 0.560, y = 0.292 },
-	{ name = "Dunehold", region = 2, x = 0.629, y = 0.164 },
-	{ name = "Mirage Wells", region = 2, x = 0.767, y = 0.180 },
-	{ name = "Sandstone", region = 2, x = 0.853, y = 0.316 },
-	{ name = "Scorpion Pass", region = 2, x = 0.706, y = 0.348 },
-	-- Heartwood
-	{ name = "Elder Grove", region = 3, x = 0.431, y = 0.388 },
-	{ name = "Mossbrook", region = 3, x = 0.543, y = 0.468 },
-	{ name = "Thornwick", region = 3, x = 0.448, y = 0.572 },
-	{ name = "Fernhollow", region = 3, x = 0.337, y = 0.484 },
-	-- Ironcoast
-	{ name = "Gullrock", region = 4, x = 0.216, y = 0.548 },
-	{ name = "Anchor Bay", region = 4, x = 0.122, y = 0.636 },
-	{ name = "Rustport", region = 4, x = 0.259, y = 0.708 },
-	{ name = "Saltcliff", region = 4, x = 0.147, y = 0.812 },
-	-- Coral Keys
-	{ name = "Turtle Key", region = 5, x = 0.380, y = 0.780 },
-	{ name = "Pearl Lagoon", region = 5, x = 0.491, y = 0.716 },
-	{ name = "Shellbeach", region = 5, x = 0.577, y = 0.828 },
-	-- Emberfall
-	{ name = "Obsidian Bay", region = 6, x = 0.646, y = 0.588 },
-	{ name = "Ashpeak", region = 6, x = 0.784, y = 0.500 },
-	{ name = "Cinder Vale", region = 6, x = 0.870, y = 0.668 },
-	{ name = "Lava Falls", region = 6, x = 0.732, y = 0.772 },
-}
-
--- Borders. `sea = true` marks a sea lane (drawn dashed-looking and thinner).
-Conquest.links = {
-	-- Frostreach
-	{ 1, 2 }, { 1, 3 }, { 2, 4 }, { 3, 4 },
-	-- Sunspire Sands
-	{ 5, 6 }, { 6, 7 }, { 7, 8 }, { 8, 9 }, { 9, 5 }, { 6, 9 },
-	-- Heartwood
-	{ 10, 11 }, { 10, 13 }, { 11, 12 }, { 12, 13 }, { 10, 12 },
-	-- Ironcoast
-	{ 14, 15 }, { 14, 16 }, { 15, 16 }, { 15, 17 }, { 16, 17 },
-	-- Coral Keys
-	{ 18, 19 }, { 19, 20 }, { 18, 20 },
-	-- Emberfall
-	{ 21, 22 }, { 22, 23 }, { 23, 24 }, { 24, 21 },
-	-- Between regions
-	{ 4, 10 }, { 4, 13 }, { 3, 14 }, { 2, 6, sea = true },
-	{ 5, 10 }, { 5, 11 }, { 9, 22 }, { 8, 22 },
-	{ 11, 21 }, { 12, 19 }, { 13, 14 },
-	{ 16, 18 }, { 17, 18, sea = true },
-	{ 19, 21 }, { 20, 24 },
-}
-
-Conquest.neighbors = {} :: { [number]: { number } }
-Conquest.regionMembers = {} :: { [number]: { number } }
-do
-	for t = 1, #Conquest.territories do
-		Conquest.neighbors[t] = {}
+for _, m in Conquest.maps do
+	m.neighbors = {}
+	m.regionMembers = {}
+	for t = 1, #m.territories do
+		m.neighbors[t] = {}
 	end
-	for _, link in Conquest.links do
-		table.insert(Conquest.neighbors[link[1]], link[2])
-		table.insert(Conquest.neighbors[link[2]], link[1])
+	for _, link in m.links do
+		table.insert(m.neighbors[link[1]], link[2])
+		table.insert(m.neighbors[link[2]], link[1])
 	end
-	for r = 1, #Conquest.regions do
-		Conquest.regionMembers[r] = {}
+	for r = 1, #m.regions do
+		m.regionMembers[r] = {}
 	end
-	for t, territory in Conquest.territories do
-		table.insert(Conquest.regionMembers[territory.region], t)
+	for t, territory in m.territories do
+		table.insert(m.regionMembers[territory.region], t)
 	end
 end
-local TERRITORY_COUNT = #Conquest.territories
+
+-- The map every rule below reads. Rules are synchronous, so each entry point (getView,
+-- applyMove, ...) switches to its match's map and back (see the bottom of this file);
+-- the client calls useMap with view.mapId before using the helpers.
+local MAP = Conquest.maps.isles
+local TERRITORY_COUNT = #MAP.territories
+Conquest.mapId = "isles"
+
+function Conquest.useMap(id: string?)
+	local m = Conquest.maps[id or "isles"] or Conquest.maps.isles
+	if m == MAP then
+		return
+	end
+	MAP = m
+	TERRITORY_COUNT = #m.territories
+	Conquest.mapId = if m == Conquest.maps.crown then "crown" else "isles"
+	Conquest.mapName = m.name
+	Conquest.regions = m.regions
+	Conquest.territories = m.territories
+	Conquest.links = m.links
+	Conquest.neighbors = m.neighbors
+	Conquest.regionMembers = m.regionMembers
+	Conquest.missionRegions = m.missionRegions
+end
+Conquest.mapName = MAP.name
+Conquest.regions = MAP.regions
+Conquest.territories = MAP.territories
+Conquest.links = MAP.links
+Conquest.neighbors = MAP.neighbors
+Conquest.regionMembers = MAP.regionMembers
+Conquest.missionRegions = MAP.missionRegions
+
+-- Which map a match plays: the house rule, or by seat count.
+function Conquest.pickMap(choice: any, seats: number): string
+	if choice == "isles" or choice == "crown" then
+		return choice
+	end
+	return if seats >= 5 then "crown" else "isles"
+end
+
+-- Rounds before scoring on the current map.
+function Conquest.roundsFor(seats: number): number
+	return MAP.rounds[seats] or 12
+end
 
 function Conquest.areNeighbors(a: number, b: number): boolean
 	return table.find(Conquest.neighbors[a], b) ~= nil
@@ -389,24 +538,11 @@ function Conquest.visibleTo(owner: { number }, seat: number?): { [number]: boole
 	return seen
 end
 
--- "Hold N territories" (24 of 42 in the classic deck) and "hold N with 2+ armies on
--- each" (18 of 42). Two players start with 12 lands each, so they need more.
+-- "Hold N territories" and "hold N with 2+ armies on each" on the current map.
 function Conquest.missionCounts(seats: number): (number, number)
-	if seats <= 2 then
-		return 16, 14
-	end
-	return 14, 11
+	local counts = if seats <= 2 then MAP.missionCounts.two else MAP.missionCounts.more
+	return counts[1], counts[2]
 end
-
--- Region pairs a mission can ask for. `extra` asks for one more whole region of your choice.
-Conquest.missionRegions = {
-	{ 2, 5 }, -- Sunspire Sands + Coral Keys
-	{ 2, 4 }, -- Sunspire Sands + Ironcoast
-	{ 3, 6 }, -- Heartwood + Emberfall
-	{ 3, 1 }, -- Heartwood + Frostreach
-	{ 1, 4, extra = true }, -- Frostreach + Ironcoast + one more
-	{ 5, 6, extra = true }, -- Coral Keys + Emberfall + one more
-}
 
 -- Capitals you must hold to win capital conquest, by seat count.
 function Conquest.capitalsToWin(seats: number): number
@@ -617,8 +753,12 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 		turnSeconds = rules.turnLength
 	end
 
+	local mapId = Conquest.pickMap(rules.map, seatCount)
+	Conquest.useMap(mapId)
+
 	local state = {
 		seats = seatCount,
+		mapId = mapId,
 		turnSeconds = turnSeconds,
 		rng = random,
 		botLevel = level,
@@ -670,7 +810,7 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 	end
 	-- Later seats got fewer territories, so they're dealt from the back: even it out by
 	-- giving every seat the same number of armies.
-	local total = STARTING_ARMIES[seatCount] or 15
+	local total = MAP.starting[seatCount] or 15
 	for seat = 1, seatCount do
 		local mine = {}
 		for t = 1, TERRITORY_COUNT do
@@ -678,14 +818,15 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 				table.insert(mine, t)
 			end
 		end
-		for _ = 1, total - #mine do
+		local bonus = MAP.seatBonus and MAP.seatBonus[seatCount]
+		for _ = 1, total - #mine + (bonus and bonus[seat] or 0) do
 			local t = mine[random:NextInteger(1, #mine)]
 			state.armies[t] += 1
 		end
 	end
 
-	-- Each non-wild card shows a territory (8 of each kind for our 24 lands): trading it
-	-- while you hold that land puts 2 armies there, like the classic cards.
+	-- Each non-wild card shows a territory (8 of each kind: every land on the Isles, 24 of
+	-- the Crown's 31): trading it while you hold that land puts 2 armies there.
 	local cardLands = {}
 	for t = 1, TERRITORY_COUNT do
 		cardLands[t] = t
@@ -703,6 +844,17 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 	end
 	shuffle(state.deck, random)
 
+	local bonus = MAP.seatBonus and MAP.seatBonus[seatCount]
+	local bonusText = nil
+	if bonus then
+		local parts = {}
+		for seat, extra in bonus do
+			if extra > 0 then
+				table.insert(parts, `seat {seat} +{extra}`)
+			end
+		end
+		bonusText = `Turn order is evened out with extra starting armies: {table.concat(parts, ", ")}.`
+	end
 	if rules.capitals == true then
 		pickCapitals(state)
 	end
@@ -720,6 +872,9 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 		goal = `Hold {Conquest.capitalsToWin(seatCount)} capitals to win!`
 	end
 	log(state, `{Conquest.mapName}: {state.maxRounds} rounds. {goal}`)
+	if bonusText then
+		log(state, bonusText)
+	end
 	if state.fog then
 		log(state, "Fog of war: you only see lands next to yours.")
 	end
@@ -1495,6 +1650,8 @@ function Conquest.getView(state, seat: number?)
 		turn = state.turn,
 		round = state.round,
 		maxRounds = state.maxRounds,
+		mapId = state.mapId or "isles",
+		mapName = Conquest.mapName,
 		phase = state.phase,
 		reinforcements = state.reinforcements,
 		occupy = occupy,
@@ -1800,6 +1957,36 @@ function Conquest.chooseBotMove(state, seat: number, rng: Random): any?
 		return { kind = "endTurn" }
 	end
 	return nil
+end
+
+---------------------------------------------------------------------------------------
+-- Every entry point plays on its match's map (state.mapId; old states are the Isles) and
+-- puts back whichever map was current, so nested calls and the client's useMap hold.
+
+do
+	local function onMap(id: string?, f: (...any) -> ...any, ...: any): ...any
+		local prev = Conquest.mapId
+		Conquest.useMap(id)
+		local out = table.pack(f(...))
+		Conquest.useMap(prev)
+		return table.unpack(out, 1, out.n)
+	end
+	local newState = Conquest.new
+	Conquest.new = function(seatCount: number, options: any?, rng: Random?)
+		return onMap(Conquest.mapId, newState, seatCount, options, rng)
+	end
+	for _, name in {
+		"getActiveSeats", "getLegalMoves", "validateMove", "applyMove", "getResult", "getView",
+		"chooseBotMove", "chooseAfkMove", "getTimer", "onTimeout", "getTurnKey", "getBotDelay",
+		"getSeatInfo", "getScores", "getMatchStats", "capitalsHeld", "ceaseFireChance", "ceaseFireNear",
+	} do
+		local f = (Conquest :: any)[name]
+		if f then
+			(Conquest :: any)[name] = function(state: any, ...: any): ...any
+				return onMap(if type(state) == "table" then state.mapId else nil, f, state, ...)
+			end
+		end
+	end
 end
 
 return Conquest
