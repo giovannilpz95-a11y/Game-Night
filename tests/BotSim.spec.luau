@@ -129,7 +129,8 @@ return function(T)
 
 	for _, case in { { "Cheat", 3 }, { "Cheat", 6 }, { "President", 4 }, { "Hearts", 4 }, { "Whodunit", 4 }, { "WordTiles", 2 }, { "Palace", 3 }, { "SeaStrike", 2 } } do
 		T.test(`hard bots beat easy ones at {case[1]} ({case[2]} seats)`, function()
-			local hard, easy = hardVsEasy(case[1], case[2], 10)
+			-- Palace is mostly the deal (blind flips, refills), so 10 games is too few to see it.
+			local hard, easy = hardVsEasy(case[1], case[2], if case[1] == "Palace" then 30 else 10)
 			T.ok(hard >= easy * 2, `hard won {hard}, easy won {easy}`)
 		end)
 	end

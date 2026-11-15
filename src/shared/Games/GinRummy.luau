@@ -1,7 +1,9 @@
 -- Gin Rummy: 2 players make melds and knock first. Played for points, never stakes.
 --
 -- Each hand: 10 cards each, one card face up starts the discard pile, the rest is the
--- stock. The player who didn't deal goes first. On your turn take the top of the stock or
+-- stock. The upcard is offered first: the player who didn't deal may take it or pass, then
+-- the dealer; if both pass, the non-dealer starts by drawing from the stock. On your turn
+-- take the top of the stock or
 -- the discard pile, then discard one card (not the one you just took from the discard
 -- pile). Melds are sets (3-4 of a rank) and runs (3+ in a row in one suit, Ace low).
 -- Cards not in a meld are deadwood: Ace 1, number cards as marked, faces 10.
@@ -11,13 +13,20 @@
 --   Gin (no deadwood): the knocker scores 25 + the other player's deadwood (no lay offs).
 --   Knock: the knocker scores the difference in deadwood.
 --   Undercut (the other player has the same or less): they score 25 + the difference.
--- If the stock gets down to 2 cards with no knock, the hand is a wash. First to the
--- target (50 by default) wins; after MAX_HANDS the higher score wins.
+-- The knocker's melds are laid out (among the ways that leave the least deadwood) so the
+-- other player can lay off as little as possible; lay offs are automatic.
+-- If the stock gets down to 2 cards with no knock, the hand is a wash and the same dealer
+-- deals again. First to the target (50 by default) wins. A long game stops after
+-- handLimit(target) hands (15 at 50, 25 at 100, 35 at 150) and the higher score wins.
 --
 -- More house rules: oklahoma (the first upcard sets the knock limit: its deadwood value,
--- an Ace means gin only), undercut (the undercut bonus: 25 or 10).
+-- an Ace means gin only; a spade upcard doubles that hand's points), undercut (the
+-- undercut bonus: 25 or 10), bonuses (classic end-of-game tally: +100 game bonus, +25 per
+-- hand won, the winner's points doubled on a shutout; shown at the end, never changes who
+-- won; on by default).
 --
--- Moves: { kind = "draw", from = "stock" | "discard" }  (draw phase)
+-- Moves: { kind = "upcard", take = boolean }            (upcard phase: take it or pass)
+--        { kind = "draw", from = "stock" | "discard" }  (draw phase)
 --        { kind = "discard", card = id }                (discard phase)
 --        { kind = "knock", card = id }                  (discard phase: discard and knock)
 
@@ -39,6 +48,13 @@ GinRummy.UNDERCUT_BONUS = 25
 GinRummy.MAX_HANDS = 15
 GinRummy.REVEAL_SECONDS = 8
 GinRummy.WASH_AT = 2 -- stock size that ends the hand with no score
+GinRummy.GAME_BONUS = 100
+GinRummy.BOX_BONUS = 25
+
+-- The most hands a game lasts: about long enough for the target to be reached.
+function GinRummy.handLimit(target: number): number
+	return math.max(GinRummy.MAX_HANDS, math.floor(target / 5) + 5)
+end
 
 local function other(seat: number): number
 	return 3 - seat
@@ -55,9 +71,16 @@ local function deal(state)
 	state.discard = { table.remove(deck) :: number }
 	state.stock = deck
 	state.round += 1
-	state.dealer = other(state.dealer)
+	-- After a wash the same dealer deals again.
+	if not state.redeal then
+		state.dealer = other(state.dealer)
+	end
+	state.redeal = false
 	state.turn = other(state.dealer)
-	state.phase = "draw"
+	-- The upcard is offered first (non-dealer, then dealer).
+	state.phase = "upcard"
+	state.upcardPasses = 0
+	state.stockOnly = false
 	state.taken = nil
 	state.showdown = nil
 	state.lastAction = nil
@@ -68,6 +91,10 @@ local function deal(state)
 		local r = PlayingCards.rank(state.discard[1])
 		local upValue = if r == 1 then 0 elseif r >= 10 then 10 else r
 		state.knockLimit = math.min(state.baseKnock or GinRummy.KNOCK_LIMIT, upValue)
+		-- And a spade upcard doubles the hand.
+		state.doubled = PlayingCards.suit(state.discard[1]) == 1
+	else
+		state.doubled = false
 	end
 end
 
@@ -86,7 +113,14 @@ function GinRummy.new(seatCount: number, options: any?, rng: Random?)
 		round = 0,
 		dealer = 1, -- seat 2 deals first after the swap in deal(), so seat 1 starts
 		turn = 1,
-		phase = "draw", -- "draw" | "discard" | "reveal" | "done"
+		phase = "draw", -- "upcard" | "draw" | "discard" | "reveal" | "done"
+		upcardPasses = 0, -- how many have passed on the first upcard this hand
+		stockOnly = false, -- both passed the upcard: the non-dealer must draw from the stock
+		redeal = false, -- the last hand was a wash: the same dealer deals again
+		doubled = false, -- Oklahoma: this hand's upcard was a spade
+		maxHands = GinRummy.handLimit(target),
+		bonuses = rules.bonuses ~= false,
+		final = nil, -- the classic end-of-game tally (bonuses house rule)
 		phaseId = 0,
 		taken = nil, -- the card just taken from the discard pile
 		showdown = nil,
@@ -125,8 +159,12 @@ function GinRummy.knockCards(state, seat: number): { number }
 	return out
 end
 
+local function playing(state): boolean
+	return state.phase == "upcard" or state.phase == "draw" or state.phase == "discard"
+end
+
 function GinRummy.getActiveSeats(state): { number }
-	if state.over or (state.phase ~= "draw" and state.phase ~= "discard") then
+	if state.over or not playing(state) then
 		return {}
 	end
 	return { state.turn }
@@ -137,9 +175,12 @@ function GinRummy.getLegalMoves(state, seat: number): { any }
 	if state.over or seat ~= state.turn then
 		return moves
 	end
-	if state.phase == "draw" then
+	if state.phase == "upcard" then
+		table.insert(moves, { kind = "upcard", take = true })
+		table.insert(moves, { kind = "upcard", take = false })
+	elseif state.phase == "draw" then
 		table.insert(moves, { kind = "draw", from = "stock" })
-		if #state.discard > 0 then
+		if #state.discard > 0 and not state.stockOnly then
 			table.insert(moves, { kind = "draw", from = "discard" })
 		end
 	elseif state.phase == "discard" then
@@ -165,7 +206,18 @@ function GinRummy.validateMove(state, seat: number, move: any): (boolean, string
 	if seat ~= state.turn then
 		return false, "It's not your turn"
 	end
-	if move.kind == "draw" then
+	if move.kind == "upcard" then
+		if state.phase ~= "upcard" then
+			return false, "The upcard has already been decided"
+		end
+		if type(move.take) ~= "boolean" then
+			return false, "Bad move"
+		end
+		return true
+	elseif move.kind == "draw" then
+		if state.phase == "upcard" then
+			return false, "Take the upcard or pass first"
+		end
 		if state.phase ~= "draw" then
 			return false, "You've already drawn"
 		end
@@ -174,6 +226,9 @@ function GinRummy.validateMove(state, seat: number, move: any): (boolean, string
 		elseif move.from == "discard" then
 			if #state.discard == 0 then
 				return false, "The discard pile is empty"
+			end
+			if state.stockOnly then
+				return false, "You both passed the upcard: draw from the stock"
 			end
 			return true
 		end
@@ -196,11 +251,31 @@ function GinRummy.validateMove(state, seat: number, move: any): (boolean, string
 	return false, "Bad move"
 end
 
+-- The classic end-of-game tally: game bonus, a box bonus for each hand won, and the
+-- winner's points doubled when the other player never scored.
+local function tally(state)
+	local a, b = state.scores[1], state.scores[2]
+	local winner = if a > b then 1 elseif b > a then 2 else nil
+	local rows = {}
+	for seat = 1, 2 do
+		local points = state.scores[seat]
+		local boxes = state.handsWon[seat] * GinRummy.BOX_BONUS
+		local game = if seat == winner then GinRummy.GAME_BONUS else 0
+		local shutout = seat == winner and state.scores[other(seat)] == 0
+		local total = (points + boxes) * (if shutout then 2 else 1) + game
+		rows[seat] = { points = points, boxes = boxes, game = game, shutout = shutout, total = total }
+	end
+	return rows
+end
+
 local function finishHand(state)
 	local a, b = state.scores[1], state.scores[2]
-	if (a >= state.target or b >= state.target) or state.round >= GinRummy.MAX_HANDS then
+	if (a >= state.target or b >= state.target) or state.round >= state.maxHands then
 		state.over = true
 		state.phase = "done"
+		if state.bonuses then
+			state.final = tally(state)
+		end
 	else
 		state.phase = "reveal"
 	end
@@ -216,7 +291,14 @@ local function knock(state, seat: number)
 		local dArr = Melds.best(state.hands[defender])
 		defense = { melds = dArr.melds, layoffs = {}, deadwood = dArr.deadwood, value = dArr.value }
 	else
+		-- Lay the knocker's melds out the way that leaves the defender the most deadwood.
 		defense = Melds.defend(kArr.melds, state.hands[defender])
+		for _, option in Melds.bestOptions(state.hands[seat]) do
+			local try = Melds.defend(option.melds, state.hands[defender])
+			if try.value > defense.value then
+				kArr, defense = option, try
+			end
+		end
 	end
 	local kind, winner, points
 	if gin then
@@ -225,6 +307,9 @@ local function knock(state, seat: number)
 		kind, winner, points = "undercut", defender, (state.undercutBonus or GinRummy.UNDERCUT_BONUS) + (kArr.value - defense.value)
 	else
 		kind, winner, points = "knock", seat, defense.value - kArr.value
+	end
+	if state.doubled then
+		points *= 2
 	end
 	state.scores[winner] += points
 	if kind == "gin" then
@@ -242,6 +327,7 @@ local function knock(state, seat: number)
 		knocker = seat,
 		winner = winner,
 		points = points,
+		doubled = state.doubled or nil,
 		hands = {
 			[tostring(seat)] = { melds = kArr.melds, deadwood = kArr.deadwood, value = kArr.value, layoffs = {} },
 			[tostring(defender)] = { melds = defense.melds, deadwood = defense.deadwood, value = defense.value, layoffs = layoffs },
@@ -252,6 +338,23 @@ end
 
 function GinRummy.applyMove(state, seat: number, move: any)
 	local hand = state.hands[seat]
+	if move.kind == "upcard" then
+		if move.take then
+			-- Taking the upcard is a normal draw from the discard pile.
+			state.phase = "draw"
+			GinRummy.applyMove(state, seat, { kind = "draw", from = "discard" })
+			return
+		end
+		state.upcardPasses += 1
+		state.lastAction = { kind = "pass", seat = seat }
+		if state.upcardPasses >= 2 then
+			-- Both passed: the non-dealer starts, from the stock.
+			state.phase = "draw"
+			state.stockOnly = true
+		end
+		state.turn = other(seat)
+		return
+	end
 	if move.kind == "draw" then
 		local card
 		if move.from == "discard" then
@@ -262,6 +365,7 @@ function GinRummy.applyMove(state, seat: number, move: any)
 			card = table.remove(state.stock) :: number
 			state.taken = nil
 		end
+		state.stockOnly = false
 		table.insert(hand, card)
 		state.lastAction = { kind = "draw", seat = seat, from = move.from, card = if move.from == "discard" then card else nil }
 		state.phase = "discard"
@@ -277,6 +381,7 @@ function GinRummy.applyMove(state, seat: number, move: any)
 	end
 	if #state.stock <= GinRummy.WASH_AT then
 		state.showdown = { kind = "wash" }
+		state.redeal = true
 		finishHand(state)
 		return
 	end
@@ -341,6 +446,13 @@ function GinRummy.getView(state, seat: number?)
 		handsWon = table.clone(state.handsWon),
 		target = state.target,
 		knockLimit = state.knockLimit,
+		maxHands = state.maxHands,
+		upcardPasses = state.upcardPasses,
+		stockOnly = state.stockOnly,
+		doubled = state.doubled,
+		oklahoma = state.oklahoma,
+		bonuses = state.bonuses,
+		final = GameModule.copy(state.final),
 		round = state.round,
 		dealer = state.dealer,
 		turn = state.turn,
@@ -351,7 +463,11 @@ function GinRummy.getView(state, seat: number?)
 end
 
 function GinRummy.getSeatInfo(state): { [number]: string }
-	return { `{state.scores[1]} pts`, `{state.scores[2]} pts` }
+	local out = {}
+	for seat = 1, 2 do
+		out[seat] = `{state.scores[seat]} pts` .. (if state.dealer == seat then " · D" else "")
+	end
+	return out
 end
 
 function GinRummy.getScores(state): { [number]: number }
@@ -442,8 +558,10 @@ function GinRummy.chooseBotMove(state, seat: number, rng: Random): any?
 	if state.over or seat ~= state.turn then
 		return nil
 	end
-	if state.phase == "draw" then
-		return { kind = "draw", from = if wantsDiscard(state, seat, rng) then "discard" else "stock" }
+	if state.phase == "upcard" then
+		return { kind = "upcard", take = wantsDiscard(state, seat, rng) }
+	elseif state.phase == "draw" then
+		return { kind = "draw", from = if not state.stockOnly and wantsDiscard(state, seat, rng) then "discard" else "stock" }
 	elseif state.phase == "discard" then
 		local card, dw = bestDiscard(state, seat, rng)
 		return { kind = if shouldKnock(state, dw) then "knock" else "discard", card = card }

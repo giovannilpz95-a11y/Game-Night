@@ -484,9 +484,9 @@ rules.ThirtyOne = {
 	},
 	sections = {
 		{ title = "Hand value", lines = { "Only your best suit counts. Aces are 11, face cards 10, others their number." } },
-		{ title = "Your turn", lines = { "Take the top card of the stock or discard pile, then discard one (not the one you just took from the discard).", "Or knock instead of drawing (after the first time around)." } },
-		{ title = "Showdown", lines = { "After a knock, everyone else gets one last turn, then hands are shown.", "The lowest hand loses a life. A knocker who is lowest alone loses two; tied for lowest, the knocker is safe.", "Hit exactly 31 for a Blitz: everyone else loses a life." } },
-		{ title = "Winning", lines = { "Out of lives, out of the game. Last player standing wins." } },
+		{ title = "Your turn", lines = { "Take the top card of the stock or discard pile, then discard one (not the one you just took from the discard).", "Or knock instead of drawing (after the first time around, unless the house rule allows it on your first turn)." } },
+		{ title = "Showdown", lines = { "After a knock, everyone else gets one last turn, then hands are shown.", "The lowest hand loses a life. A knocker who is lowest alone loses two; a knocker who ties for lowest is safe.", "Hit exactly 31 for a Blitz: everyone else loses a life. Everyone dealt 31 is spared.", "A hand that drags past 60 turns is shown down with no knocker." } },
+		{ title = "Winning", lines = { "At 0 hearts you're on the county: you keep playing, and one more loss puts you out.", "Last player standing wins. If everyone left would go out on the same hand, it's replayed." } },
 	},
 }
 
@@ -494,14 +494,15 @@ rules.Palace = {
 	goal = "Be the first to get rid of your hand and all your table cards.",
 	card = {
 		"Play cards equal to or higher than the top of the pile (2s and 10s go on anything).",
-		"Can't play? You pick up the whole pile.",
+		"Can't play, or don't want to? Pick up the whole pile.",
 		"A 2 resets the pile; a 10 burns it and you go again.",
 	},
 	sections = {
-		{ title = "Setup", lines = { "You get 3 face-down table cards, 3 face-up cards on top, and 3 in hand.", "Before play, swap hand cards with your face-up cards, then press Ready." } },
-		{ title = "Your turn", lines = { "Play one or more cards of the same rank, equal to or higher than the top card. 3 is low, Ace high.", "Draw back up to 3 while the draw pile lasts.", "Can't play? Pick up the pile." } },
+		{ title = "Setup", lines = { "You get 3 face-down table cards, 3 face-up cards on top, and 3 in hand.", "Before play, swap hand cards with your face-up cards, then press Ready.", "The lowest card in anyone's hand or face-up cards starts. If it's in your hand, your first play must include it." } },
+		{ title = "Your turn", lines = { "Play one or more cards of the same rank, equal to or higher than the top card. 3 is low, Ace high.", "Draw back up to 3 while the draw pile lasts.", "You may pick up the pile instead of playing (keep low cards for later). If nothing plays, you must." } },
 		{ title = "Special cards", lines = { "2: goes on anything and resets the pile.", "10: goes on anything and burns the pile. You go again.", "Four of the same rank in a row also burns the pile." } },
 		{ title = "Table cards", lines = { "With your hand empty and the draw pile gone, play your face-up cards.", "Then flip face-down cards blind. If one can't be played, you pick up the pile." } },
+		{ title = "House rules", lines = { "Lower card (5, 7 or 9): after it, the next card must be equal or lower.", "8 skips: each 8 skips the next player.", "Invisible 3: a 3 goes on anything and the card under it still counts.", "Gamble on the deck: stuck with cards in hand, flip the top of the draw pile instead." } },
 		{ title = "Winning", lines = { "First player out of cards wins." } },
 	},
 }
@@ -542,10 +543,13 @@ rules.GinRummy = {
 		"Deadwood of 10 or less? Knock. None at all is Gin.",
 	},
 	sections = {
-		{ title = "Melds", lines = { "Set: 3 or 4 cards of the same rank.", "Run: 3 or more cards in a row in one suit. Ace is low (A-2-3, not Q-K-A).", "Your hand is sorted into its best melds for you." } },
+		{ title = "The upcard", lines = { "After the deal one card is turned face up.", "The player who didn't deal may take it or pass, then the dealer may.", "If you both pass, the non-dealer starts by drawing from the stock." } },
+		{ title = "Melds", lines = { "Set: 3 or 4 cards of the same rank.", "Run: 3 or more cards in a row in one suit. Ace is low (A-2-3, not Q-K-A).", "Your hand is sorted into its best melds for you, and melds and lay offs at a knock are arranged automatically." } },
 		{ title = "Deadwood", lines = { "Cards not in a meld. Ace 1, number cards their number, faces 10." } },
 		{ title = "Your turn", lines = { "Take the top of the stock or the discard pile.", "Discard one card (not the one you just took from the discard pile).", "Or press Knock and pick the card to discard, if your deadwood is low enough." } },
-		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Stock down to 2 cards with no knock: nobody scores." } },
+		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Stock down to 2 cards with no knock: nobody scores and the same dealer deals again." } },
+		{ title = "Winning", lines = { "First to the target wins (50, 100 or 150).", "A game stops after 15 hands at 50, 25 at 100 and 35 at 150; then the higher score wins.", "House rule Classic bonuses: at the end the winner adds 100, each player adds 25 per hand won, and a shutout doubles the winner's points." } },
+		{ title = "Oklahoma (house rule)", lines = { "The first upcard sets the knock limit: its value, and an Ace means Gin only.", "A spade upcard doubles that hand's points." } },
 	},
 }
 
