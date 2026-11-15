@@ -427,27 +427,30 @@ rules.Speed = {
 	goal = "Be the first to play every card from your hand and your draw pile.",
 	card = {
 		"No turns: both players play at the same time. Be quick!",
-		"Play a card one higher or lower than either center pile (K-A-2 connects).",
+		"Play a card one higher or lower than either center pile (K-A-2 connects unless the host turned it off).",
 		"Your hand refills to 5 by itself. Stuck? New center cards flip in.",
 	},
 	sections = {
-		{ title = "Playing", lines = { "Tap a card in your hand that fits a center pile. If it fits both, tap the pile you want.", "A card fits if it is one rank above or below the top card.", "Ace and King connect, so King-Ace-2 works.", "Your hand refills from your draw pile." } },
-		{ title = "Stuck", lines = { "When neither player can play, a card flips from each side pile onto the center." } },
-		{ title = "Winning", lines = { "First to run out of cards wins. A long stalemate ends it: fewest cards left wins." } },
+		{ title = "Start", lines = { "3, 2, 1... GO! Both center cards turn over at the same moment." } },
+		{ title = "Playing", lines = { "Tap a card in your hand that fits a center pile. If it fits both, tap the pile you want (the buttons name its top card).", "A card fits if it is one rank above or below the top card.", "Ace and King connect, so King-Ace-2 works (a house rule can turn this off).", "Your hand refills from your draw pile." } },
+		{ title = "Stuck", lines = { "When neither player can play, a card flips from each side pile onto the center.", "When the side piles run out, each center pile is shuffled into a new side pile." } },
+		{ title = "Winning", lines = { "First to run out of cards wins. A long stalemate ends it: fewest cards left wins.", "Match to 25: the deal's winner scores a point for every card the other player has left. First to 25 wins." } },
+		{ title = "House rules", lines = { "Ace and King connect (on by default).", "Same rank plays: a card of the same rank also fits.", "Match: one deal, or deals to 25 points." } },
 	},
 }
 
 rules.Spoons = {
 	goal = "Don't be the one left without a spoon. Last player in wins.",
 	card = {
-		"Each pass, you get a card. Tap one of your cards to pass it on.",
-		"Collect four of a kind, then GRAB A SPOON!",
-		"Once anyone grabs a spoon, grab one too, fast. No spoon and you're out.",
+		"Hold 5? Tap one of your cards to pass it on. No turns: pass as fast as you like.",
+		"Collect four of a kind, then GRAB A SPOON! (Quietly: only a missing spoon gives it away.)",
+		"Spot a missing spoon? Grab one too, fast. No spoon and you're out.",
 	},
 	sections = {
-		{ title = "Passing", lines = { "Everyone holds 4 cards and passes at the same time.", "You get a new card, then pass one of your 5 to the next player.", "Too slow? A card is passed for you." } },
-		{ title = "Spoons", lines = { "There's one spoon fewer than players.", "Get four of a kind to grab a spoon. As soon as the first one goes, anyone can grab." } },
+		{ title = "Passing", lines = { "You hold 4 cards plus the one coming in. Pass one of your 5 to the next player.", "No turns: pass whenever you hold 5. Your card waits in front of the next player until they're ready.", "Sit on your cards too long and one is passed for you." } },
+		{ title = "Spoons", lines = { "There's one spoon fewer than players.", "Get four of a kind to grab a spoon. Nobody is told: a spoon just goes missing from the middle.", "Once a spoon is gone, anyone can grab. A second grab and everyone knows: the scramble!" } },
 		{ title = "Winning", lines = { "The player left without a spoon is out. New deal, one spoon fewer, until one player is left." } },
+		{ title = "House rules", lines = { "Passing: free (default) or together.", "Letters: P-I-G or S-P-O-O-N lives instead of out at once.", "False grab: grab without four of a kind and you lose the round.", "Two winners: the last two players both win." } },
 	},
 }
 
@@ -469,13 +472,14 @@ rules.War = {
 	goal = "Win every card, or hold the most when the battle limit is reached.",
 	card = {
 		"Everyone flips their top card at once. Highest card takes them all.",
-		"A tie for highest is a war: 3 cards face down, then flip again.",
-		"Aces are high.",
+		"A tie for highest is a war: cards face down (3 unless the host picked 1 or 2), then flip again.",
+		"Aces are high. Auto-flip flips for you.",
 	},
 	sections = {
-		{ title = "Battles", lines = { "Tap Flip! Everyone still in flips their top card.", "Highest rank wins all the flipped cards. Slow players are flipped for." } },
-		{ title = "War", lines = { "Tied for highest? Those players each put up to 3 cards face down and flip one more. Highest takes everything. Wars can chain." } },
-		{ title = "Winning", lines = { "Out of cards, you're out. Last player with cards wins.", "After the battle limit, most cards wins." } },
+		{ title = "Battles", lines = { "Tap Flip! Everyone still in flips their top card.", "Highest rank wins all the flipped cards. Slow players are flipped for.", "Switch on Auto-flip and your cards flip by themselves." } },
+		{ title = "War", lines = { "Tied for highest? Those players each put cards face down (3 unless the host picked 1 or 2) and flip one more. Highest takes everything. Wars can chain.", "Tied on your last card? It stays up as your war card, so you can still win." } },
+		{ title = "Winning", lines = { "Out of cards, you're out. Last player with cards wins.", "After the battle limit (200 unless the host picked 60 or no limit), most cards wins." } },
+		{ title = "House rules", lines = { "Peace: lowest card wins, and a tie spells P-E-A-C-E (4 down, the 5th decides).", "Everyone joins the war: with 3-4 players, everyone still in fights it." } },
 	},
 }
 
@@ -606,12 +610,14 @@ rules.Snap = {
 	card = {
 		"On your turn, flip your top card onto your face-up pile.",
 		"When two face-up piles show the same rank, hit SNAP (or Space) first.",
-		"The snapper wins both piles. A wrong snap gives a card away.",
+		"The snapper wins both piles. A wrong snap sends your pile to the Snap Pool.",
 	},
 	sections = {
-		{ title = "Your turn", lines = { "Tap your pile or Flip to turn your top card face up in front of you.", "When your face-down pile runs out, your face-up pile is turned over and used again." } },
-		{ title = "Snapping", lines = { "Anyone can snap any time two face-up top cards match, even if they aren't yours.", "First good snap takes every matching pile, and that player flips next.", "Snap when nothing matches and your top card goes to the player on your left." } },
-		{ title = "Winning", lines = { "Out of cards, out of the game. The last player with cards wins.", "A very long game ends after 500 flips: most cards wins." } },
+		{ title = "Your turn", lines = { "Tap your pile or Flip to turn your top card face up in front of you.", "When your face-down pile runs out, your face-up pile is turned over and used again. In a long game it's shuffled first." } },
+		{ title = "Snapping", lines = { "Anyone can snap any time two face-up top cards match, even if they aren't yours.", "First good snap takes every matching pile. Play goes on from the player left of whoever flipped last." } },
+		{ title = "Snap Pool", lines = { "Snap when nothing matches and your whole face-up pile goes to the middle: the Snap Pool.", "When a face-up top card matches the pool's top card, the first to snap wins the whole pool." } },
+		{ title = "Winning", lines = { "Out of cards, out of the game. The last player with cards wins.", "A very long game ends after 500 flips (the host can pick 250 or no limit): most cards wins." } },
+		{ title = "House rules", lines = { "Wrong snap costs: pile to the pool, or 1 or 2 cards to the player on your left.", "Match: same rank, or same rank and color.", "Owners only: only the players whose piles match may snap." } },
 	},
 }
 

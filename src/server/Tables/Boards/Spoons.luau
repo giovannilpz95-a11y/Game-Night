@@ -1,6 +1,9 @@
 -- Spoons at the table: the spoons in the middle (one fewer than players), each player's
--- four cards, and a spoon in front of everyone who has grabbed one.
+-- cards (and any waiting for them), a spoon in front of everyone who has grabbed one, and the
+-- winning four of a kind face up in the middle once the spoons are flying.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Models = require(script.Parent.Parent.Models)
 local Scene = require(script.Parent.Parent.Scene)
 local Cards = require(script.Parent._Cards)
@@ -26,12 +29,26 @@ function Spoons.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 		local seatCount = if snapshot and snapshot.seats then #snapshot.seats else 0
 		local out = view.out or {}
 		local holders = view.spoonHolders or {}
+		local handCounts = view.handCounts or {}
+		local queues = view.queueCounts or {}
 		for seat = 1, seatCount do
 			if not out[tostring(seat)] then
-				Scene.hand(folder, boardCF, layout, seat, 4)
+				Scene.hand(folder, boardCF, layout, seat, handCounts[seat] or 4)
+				-- Free passing: cards waiting for this player, face down in front of them.
+				if (queues[seat] or 0) > 0 then
+					Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 1.5, 0.6), queues[seat], false)
+				end
 			end
 			if holders[tostring(seat)] then
 				spoon(folder, Scene.seatSpot(boardCF, layout, seat, 2.2))
+			end
+		end
+		-- The reveal: the four of a kind that started it, face up in the middle.
+		if view.phase ~= "pass" and view.revealHand then
+			local n = #view.revealHand
+			for i, id in view.revealHand do
+				local x = (i - (n + 1) / 2) * (Scene.CARD_W + 0.08)
+				Scene.card(folder, Cards.center(boardCF, x, 1.0), Scene.playingFront(PlayingCards, id))
 			end
 		end
 		local left = view.spoonsLeft or 0

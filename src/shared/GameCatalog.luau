@@ -572,6 +572,13 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "wrap", name = "Ace and King connect", hint = "A King and an Ace count as one apart (K-A-2).", choices = Toggle, default = 2 },
 			{ key = "sameRank", name = "Same rank plays", hint = "A card of the same rank also goes on a pile.", choices = Toggle, default = 1 },
+			{
+				key = "target",
+				name = "Match",
+				hint = "Match to 25: the deal's winner scores 1 point per card the other player has left. Deals go on until someone has 25.",
+				choices = { { label = "One deal", value = 0 }, { label = "Match to 25", value = 25 } },
+				default = 1,
+			},
 		},
 	},
 	{
@@ -591,9 +598,16 @@ local entries: { Entry } = {
 			{
 				key = "passSeconds",
 				name = "Passing speed",
-				hint = "How long everyone gets to pass a card each round.",
+				hint = "How long a player may sit on their cards before one is passed for them.",
 				choices = { { label = "Fast (5 s)", value = 5 }, { label = "Normal (8 s)", value = 8 }, { label = "Slow (12 s)", value = 12 } },
 				default = 2,
+			},
+			{
+				key = "passing",
+				name = "Passing",
+				hint = "Free: pass whenever you hold 5, like a real table. Together: everyone passes at once, then the next card comes.",
+				choices = { { label = "Free", value = "free" }, { label = "Together", value = "together" } },
+				default = 1,
 			},
 			{
 				key = "letters",
@@ -602,6 +616,8 @@ local entries: { Entry } = {
 				choices = { { label = "Off (out at once)", value = "" }, { label = "P-I-G", value = "PIG" }, { label = "S-P-O-O-N", value = "SPOON" } },
 				default = 1,
 			},
+			{ key = "falseGrab", name = "False grab", hint = "Grab without four of a kind before any spoon is gone and you lose the round.", choices = Toggle, default = 1 },
+			{ key = "twoWinners", name = "Two winners", hint = "The game ends when two players are left: both win.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -648,15 +664,16 @@ local entries: { Entry } = {
 				key = "faceDown",
 				name = "War cards",
 				hint = "Cards each player puts face down in a war.",
-				choices = { { label = "3 cards", value = 3 }, { label = "1 card", value = 1 } },
+				choices = { { label = "3 cards", value = 3 }, { label = "2 cards", value = 2 }, { label = "1 card", value = 1 } },
 				default = 1,
 			},
-			{ key = "peace", name = "Peace", hint = "The LOWEST card wins each battle.", choices = Toggle, default = 1 },
+			{ key = "peace", name = "Peace", hint = "The LOWEST card wins each battle. A tie spells P-E-A-C-E: 4 cards down, the 5th decides.", choices = Toggle, default = 1 },
+			{ key = "allIn", name = "Everyone joins the war", hint = "With 3-4 players, everyone still in fights the war, not just the tied players.", choices = Toggle, default = 1 },
 			{
 				key = "battleLimit",
 				name = "Battles",
-				hint = "Battles before whoever holds the most cards wins.",
-				choices = { { label = "30", value = 30 }, { label = "60", value = 60 }, { label = "100", value = 100 } },
+				hint = "Battles before whoever holds the most cards wins. Tip: Auto-flip plays a long game for you.",
+				choices = { { label = "60", value = 60 }, { label = "200", value = 200 }, { label = "No limit", value = 0 } },
 				default = 2,
 			},
 		},
@@ -962,9 +979,18 @@ local entries: { Entry } = {
 			{
 				key = "penalty",
 				name = "Wrong snap costs",
-				choices = { { label = "1 card", value = 1 }, { label = "2 cards", value = 2 } },
+				hint = "Pile to the pool: your face-up pile goes to the middle, and whoever snaps a match with its top card wins it.",
+				choices = { { label = "Pile to the pool", value = "pool" }, { label = "1 card", value = 1 }, { label = "2 cards", value = 2 } },
 				default = 1,
 			},
+			{
+				key = "length",
+				name = "Game length",
+				hint = "After this many flips, most cards wins.",
+				choices = { { label = "250 flips", value = 250 }, { label = "500 flips", value = 500 }, { label = "No limit", value = 0 } },
+				default = 2,
+			},
+			{ key = "owners", name = "Owners only", hint = "Only the players whose piles match may snap.", choices = Toggle, default = 1 },
 		},
 	},
 	{

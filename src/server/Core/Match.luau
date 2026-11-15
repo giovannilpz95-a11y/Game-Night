@@ -221,6 +221,13 @@ function Match.playForSeat(self: Match, seat: number, afk: boolean?): boolean
 		if not self:canMove(seat) or not self.rules.chooseBotMove then
 			return false
 		end
+		-- An away person never jumps in out of turn (a snap, a catch) unless the game's safe
+		-- AFK move says so.
+		local away = self.seats[seat]
+		if afk and away and away.kind == "player" and self.rules.chooseAfkMove then
+			local move = self.rules.chooseAfkMove(self.state, seat, self.rng)
+			return move ~= nil and (self:submitMove(seat, move))
+		end
 		local move = self.rules.chooseBotMove(self.state, seat, self.rng)
 		return move ~= nil and (self:submitMove(seat, move))
 	end

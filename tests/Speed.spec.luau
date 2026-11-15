@@ -27,6 +27,7 @@ return function(T)
 
 	T.test("both players are active, illegal plays are rejected, hand refills", function()
 		local s = Speed.new(2, nil, T.Random.new(2))
+		s.countdown = false
 		s.hands[1] = { C(5, 1), C(9, 1), C(2, 2), C(2, 3), C(2, 4) }
 		s.hands[2] = { C(11, 1), C(11, 2), C(11, 3), C(11, 4), C(12, 1) }
 		s.centers = { { C(6, 2) }, { C(3, 1) } }
@@ -46,6 +47,7 @@ return function(T)
 
 	T.test("when nobody can play, the flip timer turns new center cards", function()
 		local s = Speed.new(2, nil, T.Random.new(3))
+		s.countdown = false
 		s.hands[1] = { C(9, 1) }
 		s.hands[2] = { C(9, 2) }
 		s.centers = { { C(2, 1) }, { C(2, 2) } }
@@ -62,6 +64,7 @@ return function(T)
 
 	T.test("side piles rebuild from the center piles", function()
 		local s = Speed.new(2, nil, T.Random.new(4))
+		s.countdown = false
 		s.hands[1] = { C(9, 1) }
 		s.hands[2] = { C(9, 2) }
 		s.centers = { { C(2, 1), C(3, 1) }, { C(2, 2), C(3, 2) } }
@@ -69,10 +72,58 @@ return function(T)
 		Speed._checkStuck(s)
 		Speed.onTimeout(s)
 		T.eq(#s.centers[1] + #s.centers[2] + #s.sides[1] + #s.sides[2], 4)
+		T.eq(#s.centers[1], 1)
+		T.eq(#s.sides[1], 1, "each center pile becomes its own side pile")
+		local mine = s.centers[1][1] == C(2, 1) or s.centers[1][1] == C(3, 1)
+		T.ok(mine, "pile 1's cards stay on side 1")
+	end)
+
+	T.test("3-2-1 GO: nothing plays and the center cards stay face down until GO", function()
+		local s = Speed.new(2, nil, T.Random.new(11))
+		T.ok(s.countdown)
+		T.eq(#Speed.getActiveSeats(s), 0)
+		T.eq(#Speed.getView(s, 1).tops, 0, "center cards face down")
+		local timer = Speed.getTimer(s) :: any
+		T.eq(timer.seconds, Speed.COUNTDOWN)
+		local move = { kind = "play", card = s.hands[1][1], pile = 1 }
+		T.eq((Speed.validateMove(s, 1, move)), false)
+		Speed.onTimeout(s)
+		T.eq(s.countdown, false)
+		T.eq(s.lastAction.kind, "go")
+		T.eq(#Speed.getView(s, 1).tops, 2)
+	end)
+
+	T.test("match to 25: the deal's winner scores the other player's cards, then a new deal", function()
+		local s = Speed.new(2, { rules = { target = 25 } }, T.Random.new(12))
+		s.countdown = false
+		s.hands[1] = { C(5, 1) }
+		s.draws[1] = {}
+		s.hands[2] = { C(9, 1), C(9, 2), C(9, 3) }
+		s.draws[2] = { C(10, 1), C(10, 2) }
+		s.centers = { { C(6, 2) }, { C(3, 1) } }
+		s.stuck = false
+		Speed.applyMove(s, 1, { kind = "play", card = C(5, 1), pile = 1 })
+		T.eq(Speed.getResult(s), nil, "not at 25 yet")
+		T.eq(s.scores[1], 5)
+		T.ok(s.dealOver ~= nil)
+		T.eq(#Speed.getActiveSeats(s), 0)
+		Speed.onTimeout(s)
+		T.eq(s.dealNumber, 2)
+		T.ok(s.countdown, "a new deal starts with the countdown")
+		T.eq(#s.hands[1], 5)
+		s.scores[1] = 24
+		s.countdown = false
+		s.hands[1] = { C(5, 1) }
+		s.draws[1] = {}
+		s.centers = { { C(6, 2) }, { C(3, 1) } }
+		s.stuck = false
+		Speed.applyMove(s, 1, { kind = "play", card = C(5, 1), pile = 1 })
+		T.eq(Speed.getResult(s).winners[1], 1)
 	end)
 
 	T.test("playing your last card wins", function()
 		local s = Speed.new(2, nil, T.Random.new(5))
+		s.countdown = false
 		s.hands[1] = { C(5, 1) }
 		s.draws[1] = {}
 		s.centers = { { C(6, 2) }, { C(3, 1) } }
