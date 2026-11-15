@@ -26,6 +26,7 @@ local LAND_LINE = Color3.fromRGB(226, 220, 200)
 local NODE_SIZE = 0.058 -- of the map's width
 local LAND_SIZE = 0.10 -- land patch under each territory, of the map's width
 local MAP_ASPECT = 1.5
+local FOG = Color3.fromRGB(96, 104, 122) -- a territory hidden by fog of war
 local CARD_COLORS = {
 	sword = Color3.fromRGB(235, 87, 87),
 	shield = Color3.fromRGB(54, 162, 235),
@@ -176,7 +177,21 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		Kit.onPress(node, function()
 			onNode(t)
 		end)
-		nodes[t] = { button = node, stroke = stroke }
+		-- Capital conquest: a star on the capital's corner in its founder's color.
+		local star = Kit.label("★", {
+			Font = Theme.FontBold,
+			TextScaled = true,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextStrokeTransparency = 0.2,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(territory.x + NODE_SIZE * 0.45, territory.y - NODE_SIZE * MAP_ASPECT * 0.45),
+			Size = UDim2.fromScale(NODE_SIZE * 0.6, NODE_SIZE * 0.6 * MAP_ASPECT),
+			Visible = false,
+			ZIndex = 6,
+			Parent = map,
+		})
+		nodes[t] = { button = node, stroke = stroke, star = star }
 	end
 
 	-- Phase bar across the top of the map, like the official app: Place · Attack · Move,
@@ -248,10 +263,11 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local actions = section(1)
-	local cardsSection = section(2)
-	local battleSection = section(3)
-	local regionsSection = section(4)
-	local logSection = section(5)
+	local modesSection = section(2) -- secret mission, capitals, fog of war
+	local cardsSection = section(3)
+	local battleSection = section(4)
+	local regionsSection = section(5)
+	local logSection = section(6)
 
 	local function heading(text: string, parent: Instance, order: number)
 		return HudKit.heading(text, { LayoutOrder = order, Parent = parent })
@@ -468,6 +484,48 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Secret mission (yours, or everyone's at the end), capitals and fog of war.
+	local function renderModes(view: any, me: number?)
+		Kit.clear(modesSection)
+		local order = 1
+		local function line(text: string, color: Color3?)
+			order += 1
+			hint(text, modesSection, order, color)
+		end
+		if view.mission then
+			heading("Your secret mission", modesSection, 1)
+			line(Rules.missionText(view.mission, nameOf), Theme.Accent)
+			if view.mission.needed and view.mission.needed > 1 then
+				line(`Progress: {view.mission.done} of {view.mission.needed}`)
+			end
+			line("Finish it on your turn to win at once. Nobody else can see it.")
+		elseif view.missions then
+			heading("Secret missions", modesSection, 1)
+			for seat, mission in view.missions do
+				line(`{nameOf(seat)}: {Rules.missionText(mission, nameOf)}`, Theme.Seat[seat])
+			end
+		end
+		if view.capitals then
+			if order == 1 then
+				heading("Capitals", modesSection, 1)
+			end
+			local mine = 0
+			for _, t in view.capitals do
+				if me and view.owner[t] == me then
+					mine += 1
+				end
+			end
+			if me then
+				line(`Capitals (★): you hold {mine}. Hold {view.capitalsToWin} to win.`)
+			else
+				line(`Capitals (★): hold {view.capitalsToWin} to win.`)
+			end
+		end
+		if view.fog then
+			line("Fog of war: grey lands are hidden. You see lands that are yours or touch yours.", Theme.SubText)
+		end
+	end
+
 	local function renderCards(view: any)
 		Kit.clear(cardsSection)
 		if not view.hand then
@@ -593,6 +651,9 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		heading("Regions", regionsSection, 1)
 		for r, region in Rules.regions do
 			local holder = Rules.regionOwner(view.owner, r)
+			if holder == 0 then
+				holder = nil -- all of it is in the fog
+			end
 			local line = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = r + 1, Parent = regionsSection })
 			Kit.new("Frame", { BackgroundColor3 = region.color, BorderSizePixel = 0, Size = UDim2.fromOffset(12, 12), Position = UDim2.fromOffset(0, 4), Parent = line }, { Kit.corner(3) })
 			Kit.label(`{region.name}  +{region.bonus}`, { TextSize = 14, Position = UDim2.fromOffset(18, 0), Size = UDim2.new(0.6, -18, 1, 0), Parent = line })
@@ -652,8 +713,19 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		local focus = myTurn() and (placing or (view.phase == "attack" and selected ~= nil))
 		for t, node in nodes do
 			local owner = view.owner[t]
-			node.button.BackgroundColor3 = Theme.Seat[owner] or Theme.PanelLight
-			node.button.Text = `{view.armies[t]}`
+			local fogged = owner == 0 -- fog of war: not yours and not next to yours
+			node.button.BackgroundColor3 = if fogged then FOG else Theme.Seat[owner] or Theme.PanelLight
+			node.button.Text = if fogged then "?" else `{view.armies[t]}`
+			local founder = nil
+			for seat, capital in view.capitals or {} do
+				if capital == t then
+					founder = seat
+				end
+			end
+			node.star.Visible = founder ~= nil
+			if founder then
+				node.star.TextColor3 = Theme.Seat[founder] or Color3.new(1, 1, 1)
+			end
 			local live = not focus or (placing and owner == me) or t == selected or targets[t] ~= nil
 			node.button.BackgroundTransparency = if live then 0 else 0.55
 			node.button.TextTransparency = if live then 0 else 0.4
@@ -732,6 +804,22 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				end
 			end
 			table.insert(chips, TablePrompt.chip(`Your islands {lands} · armies {armies}`, HudKit.seatColor(me)))
+		end
+		if view.mission then
+			local progress = if view.mission.needed and view.mission.needed > 1 then ` ({view.mission.done}/{view.mission.needed})` else ""
+			table.insert(chips, TablePrompt.chip(`Mission: {Rules.missionText(view.mission, nameOf)}{progress}`))
+		end
+		if view.capitals and me then
+			local held = 0
+			for _, t in view.capitals do
+				if view.owner[t] == me then
+					held += 1
+				end
+			end
+			table.insert(chips, TablePrompt.chip(`Capitals ★ {held}/{view.capitalsToWin}`))
+		end
+		if view.fog then
+			table.insert(chips, TablePrompt.chip("Fog of war"))
 		end
 		prompt.chips("info", chips)
 		if not myTurn() then
@@ -883,6 +971,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		end
 		renderMap(view, me)
 		renderActions(view, me)
+		renderModes(view, me)
 		renderCards(view)
 		renderBattle(view)
 		renderRegions(view)
@@ -899,6 +988,34 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	local function islandOf(id: any): number?
 		local t = type(id) == "string" and tonumber(string.match(id, "^terr:(%d+)$"))
 		return if t and snapshot and snapshot.view.owner[t] ~= nil then t else nil
+	end
+
+	-- Your picked island and where it can go (outlines on the table).
+	local function selectionMarks(): { [any]: any }?
+		if not (snapshot and myTurn() and snapshot.view.phase == "attack") then
+			-- Table mode: where the armies you're placing can go.
+			if tableMode and snapshot and myTurn() and snapshot.view.phase == "reinforce" and not snapshot.view.mustTrade then
+				local marks = {}
+				for t, owner in snapshot.view.owner do
+					if owner == snapshot.yourSeat then
+						marks[`terr:{t}`] = "target"
+					end
+				end
+				return marks
+			end
+			return nil
+		end
+		local marks = {}
+		if selected then
+			marks[`terr:{selected}`] = "picked"
+			for t in targetsOf(snapshot.view, snapshot.yourSeat) do
+				marks[`terr:{t}`] = "target"
+			end
+		end
+		if target then
+			marks[`terr:{target}`] = "picked"
+		end
+		return marks
 	end
 
 	return {
@@ -925,29 +1042,23 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				onNode(t)
 			end
 		end,
-		tableMarks = function(): { [any]: string }?
-			if not (snapshot and myTurn() and snapshot.view.phase == "attack") then
-				-- Table mode: where the armies you're placing can go.
-				if tableMode and snapshot and myTurn() and snapshot.view.phase == "reinforce" and not snapshot.view.mustTrade then
-					local marks = {}
-					for t, owner in snapshot.view.owner do
-						if owner == snapshot.yourSeat then
-							marks[`terr:{t}`] = "target"
-						end
+		tableMarks = function(): { [any]: any }?
+			local marks = selectionMarks()
+			-- Fog of war: the table board shows no armies (everyone sees it), so the ones
+			-- you can see float over the islands on your screen only.
+			if snapshot and snapshot.view.fog then
+				marks = marks or {}
+				for t, owner in snapshot.view.owner do
+					if owner ~= 0 then
+						local id = `terr:{t}`
+						local mark = marks[id]
+						marks[id] = {
+							kind = if type(mark) == "string" then mark else "label",
+							text = tostring(snapshot.view.armies[t]),
+							color = HudKit.seatColor(owner),
+						}
 					end
-					return marks
 				end
-				return nil
-			end
-			local marks = {}
-			if selected then
-				marks[`terr:{selected}`] = "picked"
-				for t in targetsOf(snapshot.view, snapshot.yourSeat) do
-					marks[`terr:{t}`] = "target"
-				end
-			end
-			if target then
-				marks[`terr:{target}`] = "picked"
 			end
 			return marks
 		end,

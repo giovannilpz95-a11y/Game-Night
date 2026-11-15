@@ -26,7 +26,18 @@
 	House rules (options.rules): turnLength (seconds per turn), cards ("fixed": set values
 	above; "rising": every trade at the table is worth more, 4, 6, 8, 10, 12, 15, then +5),
 	length (rounds before scoring: 0.75 / 1 / 1.5 times the normal count), earlyLimit
-	(default on: the cap on conquests per turn in the first rounds).
+	(default on: the cap on conquests per turn in the first rounds), and three modes from
+	RISK: Global Domination / Warzone, all off by default:
+	  fog       Fog of war. You only see who holds a territory, and how many armies, when
+	            it's yours or touches yours. getView hides the rest (owner 0, armies -1),
+	            spectators and knocked-out players see nothing, and the full map shows
+	            once the game ends.
+	  missions  Secret missions. Everyone gets one (hold two regions, hold 14 lands, hold
+	            11 lands with 2+ armies each, knock out a player; more lands with 2 seats). Finish yours on your turn
+	            and you win at once. Only you see yours until the game ends.
+	  capitals  Capital conquest. Each player's strongest starting territory is their
+	            capital. Hold enough capitals (all of them with 2-3 players, 3 with 4,
+	            4 with 5-6) and you win at once.
 ]]
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -328,6 +339,208 @@ end
 Conquest.hasEnemyNeighbor = hasEnemyNeighbor
 
 ---------------------------------------------------------------------------------------
+-- Modes: fog of war, secret missions, capitals
+
+-- Territories `seat` can see under fog of war: its own and every one touching them.
+function Conquest.visibleTo(owner: { number }, seat: number?): { [number]: boolean }
+	local seen = {}
+	if seat == nil then
+		return seen
+	end
+	for t = 1, TERRITORY_COUNT do
+		if owner[t] == seat then
+			seen[t] = true
+			for _, n in Conquest.neighbors[t] do
+				seen[n] = true
+			end
+		end
+	end
+	return seen
+end
+
+-- "Hold N territories" (24 of 42 in the classic deck) and "hold N with 2+ armies on
+-- each" (18 of 42). Two players start with 12 lands each, so they need more.
+function Conquest.missionCounts(seats: number): (number, number)
+	if seats <= 2 then
+		return 16, 14
+	end
+	return 14, 11
+end
+
+-- Region pairs a mission can ask for. `extra` asks for one more whole region of your choice.
+Conquest.missionRegions = {
+	{ 2, 5 }, -- Sunspire Sands + Coral Keys
+	{ 2, 4 }, -- Sunspire Sands + Ironcoast
+	{ 3, 6 }, -- Heartwood + Emberfall
+	{ 3, 1 }, -- Heartwood + Frostreach
+	{ 1, 4, extra = true }, -- Frostreach + Ironcoast + one more
+	{ 5, 6, extra = true }, -- Coral Keys + Emberfall + one more
+}
+
+-- Capitals you must hold to win capital conquest, by seat count.
+function Conquest.capitalsToWin(seats: number): number
+	if seats <= 3 then
+		return seats
+	elseif seats == 4 then
+		return 3
+	end
+	return 4
+end
+
+-- The mission in words. nameOf turns a seat into a name (the client passes its own).
+function Conquest.missionText(mission: any, nameOf: ((number) -> string)?): string
+	if type(mission) ~= "table" then
+		return ""
+	end
+	if mission.kind == "regions" then
+		local names = {}
+		for _, r in mission.regions do
+			table.insert(names, Conquest.regions[r].name)
+		end
+		local text = `Hold {table.concat(names, " and ")}`
+		if mission.extra then
+			text ..= " plus one more whole region"
+		end
+		return text
+	elseif mission.kind == "lands" then
+		return `Hold {mission.count} territories`
+	elseif mission.kind == "strong" then
+		return `Hold {mission.count} territories with 2+ armies on each`
+	elseif mission.kind == "knockout" then
+		local who = if nameOf then nameOf(mission.target) else `Seat {mission.target}`
+		return `Knock out {who}`
+	end
+	return ""
+end
+
+-- How far along a mission is, as (done, needed), for the progress line.
+function Conquest.missionProgress(owner: { number }, armies: { number }, seat: number, mission: any, eliminated: { boolean }?): (number, number)
+	if mission.kind == "regions" then
+		local done = 0
+		for _, r in mission.regions do
+			if Conquest.regionOwner(owner, r) == seat then
+				done += 1
+			end
+		end
+		local needed = #mission.regions
+		if mission.extra then
+			needed += 1
+			for r = 1, #Conquest.regions do
+				if not table.find(mission.regions, r) and Conquest.regionOwner(owner, r) == seat then
+					done += 1
+					break
+				end
+			end
+		end
+		return done, needed
+	elseif mission.kind == "lands" then
+		return math.min(mission.count, Conquest.countOwned(owner, seat)), mission.count
+	elseif mission.kind == "strong" then
+		local n = 0
+		for t = 1, TERRITORY_COUNT do
+			if owner[t] == seat and armies[t] >= 2 then
+				n += 1
+			end
+		end
+		return math.min(mission.count, n), mission.count
+	elseif mission.kind == "knockout" then
+		return if eliminated and eliminated[mission.target] then 1 else 0, 1
+	end
+	return 0, 1
+end
+
+local function dealMissions(state, rng: Random)
+	local pool = {}
+	for _, pair in Conquest.missionRegions do
+		table.insert(pool, { kind = "regions", regions = { pair[1], pair[2] }, extra = pair.extra == true })
+	end
+	local lands, strong = Conquest.missionCounts(state.seats)
+	table.insert(pool, { kind = "lands", count = lands })
+	table.insert(pool, { kind = "strong", count = strong })
+	if state.seats >= 3 then
+		for seat = 1, state.seats do
+			table.insert(pool, { kind = "knockout", target = seat })
+		end
+	end
+	state.missions = {}
+	for seat = 1, state.seats do
+		local mission = table.remove(pool, rng:NextInteger(1, #pool))
+		-- Your own colour: take territories instead (the classic deck's rule).
+		if mission.kind == "knockout" and mission.target == seat then
+			mission = { kind = "lands", count = lands }
+		end
+		state.missions[seat] = mission
+	end
+end
+
+-- Each player's capital: the territory they start with the most armies on.
+local function pickCapitals(state)
+	state.capitals = {}
+	for seat = 1, state.seats do
+		local best, bestArmies = nil, -1
+		for t = 1, TERRITORY_COUNT do
+			if state.owner[t] == seat and state.armies[t] > bestArmies then
+				best, bestArmies = t, state.armies[t]
+			end
+		end
+		state.capitals[seat] = best
+	end
+end
+
+function Conquest.capitalsHeld(state, seat: number): number
+	local n = 0
+	for _, t in state.capitals or {} do
+		if state.owner[t] == seat then
+			n += 1
+		end
+	end
+	return n
+end
+
+local function missionDone(state, seat: number): boolean
+	local mission = state.missions and state.missions[seat]
+	if not mission or state.eliminated[seat] then
+		return false
+	end
+	local done, needed = Conquest.missionProgress(state.owner, state.armies, seat, mission, state.eliminated)
+	return done >= needed
+end
+
+-- After every move: did the player on turn just finish their mission or take enough
+-- capitals? (Both win at once, like the official modes.)
+local function settleOccupy(state)
+	-- Won mid-conquest: march the fewest armies in so no land is left empty.
+	local occupy = state.occupy
+	if occupy then
+		state.armies[occupy.to] += occupy.min
+		state.armies[occupy.from] -= occupy.min
+		state.occupy = nil
+	end
+end
+
+local function checkModeWin(state)
+	if state.result then
+		return
+	end
+	local seat = state.turn
+	if state.missions and missionDone(state, seat) then
+		state.result = {
+			winners = { seat },
+			isDraw = false,
+			reason = `Secret mission: {Conquest.missionText(state.missions[seat])}`,
+		}
+		settleOccupy(state)
+		state.phase = "over"
+		return
+	end
+	if state.capitals and Conquest.capitalsHeld(state, seat) >= Conquest.capitalsToWin(state.seats) then
+		state.result = { winners = { seat }, isDraw = false, reason = "Held the capitals" }
+		settleOccupy(state)
+		state.phase = "over"
+	end
+end
+
+---------------------------------------------------------------------------------------
 -- State
 
 local function shuffle(list: { any }, rng: Random)
@@ -339,8 +552,9 @@ end
 
 -- Log lines name players by seat: the client puts "<seat name> " in front of the text
 -- and swaps "{target}" for the other seat's name.
-local function log(state, text: string, seat: number?, target: number?)
-	table.insert(state.log, { text = text, seat = seat, target = target })
+local function log(state, text: string, seat: number?, target: number?, territory: number?)
+	-- territory: where it happened, so fog of war can hide news from places you can't see.
+	table.insert(state.log, { text = text, seat = seat, target = target, t = territory })
 	while #state.log > Conquest.LOG_SIZE do
 		table.remove(state.log, 1)
 	end
@@ -387,6 +601,9 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 		cards = if rules.cards == "rising" then "rising" else "fixed",
 		trades = 0,
 		earlyLimit = rules.earlyLimit ~= false,
+		fog = rules.fog == true,
+		missions = nil, -- { [seat]: mission } with the missions house rule
+		capitals = nil, -- { [seat]: territory } with the capitals house rule
 		phase = "reinforce",
 		reinforcements = 0,
 		conqueredThisTurn = false,
@@ -439,8 +656,26 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 	end
 	shuffle(state.deck, random)
 
+	if rules.capitals == true then
+		pickCapitals(state)
+	end
+	if rules.missions == true then
+		dealMissions(state, random)
+	end
+
 	startTurn(state)
-	log(state, `{Conquest.mapName}: {state.maxRounds} rounds. Most territories wins!`)
+	local goal = "Most territories wins!"
+	if state.missions and state.capitals then
+		goal = "Finish your secret mission or hold the capitals!"
+	elseif state.missions then
+		goal = "Finish your secret mission!"
+	elseif state.capitals then
+		goal = `Hold {Conquest.capitalsToWin(seatCount)} capitals to win!`
+	end
+	log(state, `{Conquest.mapName}: {state.maxRounds} rounds. {goal}`)
+	if state.fog then
+		log(state, "Fog of war: you only see lands next to yours.")
+	end
 	return state
 end
 
@@ -665,6 +900,12 @@ local function eliminate(state, loser: number, by: number)
 	end
 	state.hands[loser] = {}
 	log(state, "is knocked out!", loser)
+	-- Someone else's knockout mission on this player: it turns into "hold 14 lands".
+	for seat, mission in state.missions or {} do
+		if mission.kind == "knockout" and mission.target == loser and seat ~= by then
+			state.missions[seat] = { kind = "lands", count = (Conquest.missionCounts(state.seats)) }
+		end
+	end
 	local alive = aliveSeats(state)
 	if #alive == 1 then
 		state.result = { winners = { alive[1] }, isDraw = false, reason = "Conquered the Shattered Isles" }
@@ -727,6 +968,7 @@ function Conquest.applyMove(state, seat: number, move: any)
 		state.armies[move.territory] += move.count
 		state.reinforcements -= move.count
 		checkReinforceDone(state)
+		checkModeWin(state)
 	elseif kind == "attack" then
 		local from, to = move.from, move.to
 		local defender = state.owner[to]
@@ -767,10 +1009,11 @@ function Conquest.applyMove(state, seat: number, move: any)
 		state.lastBattle = battle
 		if state.armies[to] == 0 then
 			battle.conquered = true
-			log(state, "took " .. territoryName(to) .. " from {target}", seat, defender)
+			log(state, "took " .. territoryName(to) .. " from {target}", seat, defender, to)
 			finishConquest(state, from, to, lastDice)
+			checkModeWin(state)
 		elseif battle.blitz then
-			log(state, `was held off at {territoryName(to)}`, seat)
+			log(state, `was held off at {territoryName(to)}`, seat, defender, to)
 		end
 	elseif kind == "occupy" then
 		local occupy = state.occupy
@@ -782,11 +1025,15 @@ function Conquest.applyMove(state, seat: number, move: any)
 			state.phase = "reinforce"
 			state.reinforcements = 0
 		end
+		checkModeWin(state)
 	elseif kind == "fortify" then
 		state.armies[move.from] -= move.count
 		state.armies[move.to] += move.count
-		log(state, `moved {move.count} to {territoryName(move.to)}`, seat)
-		endTurn(state)
+		log(state, `moved {move.count} to {territoryName(move.to)}`, seat, nil, move.to)
+		checkModeWin(state) -- a mission like "11 lands with 2+ armies" can finish on a move
+		if not state.result then
+			endTurn(state)
+		end
 	elseif kind == "endTurn" then
 		endTurn(state)
 	end
@@ -1002,20 +1249,56 @@ function Conquest.getView(state, seat: number?)
 	for s = 1, state.seats do
 		handCounts[s] = #state.hands[s]
 	end
+	-- Fog of war (until the game ends): only lands you hold or touch. Spectators and
+	-- knocked-out players see none, so the shared table board gives nothing away.
+	local fogged = state.fog and not state.result
+	local seen = if fogged then Conquest.visibleTo(state.owner, if seat and not state.eliminated[seat] then seat else nil) else nil
+	local function canSee(t: number?): boolean
+		return seen == nil or t == nil or seen[t] == true
+	end
+	local owner = table.clone(state.owner)
+	local armies = table.clone(state.armies)
+	if seen then
+		for t = 1, TERRITORY_COUNT do
+			if not seen[t] then
+				owner[t] = 0
+				armies[t] = -1
+			end
+		end
+	end
 	local log = {}
-	for i, entry in state.log do
-		log[i] = { text = entry.text, seat = entry.seat, target = entry.target }
+	for _, entry in state.log do
+		local mine = seat ~= nil and (entry.seat == seat or entry.target == seat)
+		if mine or canSee(entry.t) then
+			table.insert(log, { text = entry.text, seat = entry.seat, target = entry.target })
+		end
 	end
 	local battle = nil
-	if state.lastBattle then
-		battle = table.clone(state.lastBattle)
-		battle.attackDice = table.clone(state.lastBattle.attackDice)
-		battle.defendDice = table.clone(state.lastBattle.defendDice)
+	local b = state.lastBattle
+	if b and (canSee(b.from) or canSee(b.to) or (seat ~= nil and (b.attacker == seat or b.defender == seat))) then
+		battle = table.clone(b)
+		battle.attackDice = table.clone(b.attackDice)
+		battle.defendDice = table.clone(b.defendDice)
 	end
 	local occupy = if state.occupy then table.clone(state.occupy) else nil
+	-- Secret missions: your own, and everyone's once the game is over.
+	local mission, missions = nil, nil
+	if state.missions then
+		if state.result then
+			missions = GameModule.copy(state.missions)
+		elseif seat and state.missions[seat] then
+			mission = GameModule.copy(state.missions[seat])
+			mission.done, mission.needed = Conquest.missionProgress(state.owner, state.armies, seat, state.missions[seat], state.eliminated)
+		end
+	end
 	return {
-		owner = table.clone(state.owner),
-		armies = table.clone(state.armies),
+		fog = fogged,
+		mission = mission,
+		missions = missions,
+		capitals = if state.capitals then table.clone(state.capitals) else nil,
+		capitalsToWin = if state.capitals then Conquest.capitalsToWin(state.seats) else nil,
+		owner = owner,
+		armies = armies,
 		turn = state.turn,
 		round = state.round,
 		maxRounds = state.maxRounds,
@@ -1044,7 +1327,13 @@ function Conquest.getSeatInfo(state): { [number]: string }
 		if state.eliminated[seat] then
 			info[seat] = "Knocked out"
 		else
-			info[seat] = `{Conquest.countOwned(state.owner, seat)} lands · {totalArmies(state, seat)} armies · {#state.hands[seat]} 🃏`
+			local lands = Conquest.countOwned(state.owner, seat)
+			if state.fog and not state.result then
+				-- Fog of war: how big an army is stays hidden.
+				info[seat] = `{lands} lands · {#state.hands[seat]} 🃏`
+			else
+				info[seat] = `{lands} lands · {totalArmies(state, seat)} armies · {#state.hands[seat]} 🃏`
+			end
 		end
 	end
 	return info
@@ -1083,17 +1372,23 @@ end
 -- The region a bot is trying to take: the one it holds most of (that isn't whole yet).
 local function focusRegion(state, seat: number): number?
 	local best, bestScore = nil, -math.huge
+	-- Under fog of war bots only count the armies they could see; the rest are a guess.
+	local seen = if state.fog then Conquest.visibleTo(state.owner, seat) else nil
+	local mission = state.missions and state.missions[seat]
 	for r, members in Conquest.regionMembers do
 		local mine, theirArmies = 0, 0
 		for _, t in members do
 			if state.owner[t] == seat then
 				mine += 1
 			else
-				theirArmies += state.armies[t]
+				theirArmies += if seen == nil or seen[t] then state.armies[t] else 2
 			end
 		end
 		if mine > 0 and mine < #members then
 			local score = mine / #members * 10 - theirArmies * 0.4 + Conquest.regions[r].bonus * 0.5
+			if mission and mission.kind == "regions" and table.find(mission.regions, r) and state.botLevel ~= "easy" then
+				score += 6 -- the regions its secret mission needs
+			end
 			if score > bestScore then
 				best, bestScore = r, score
 			end
@@ -1125,6 +1420,13 @@ local function botPlace(state, seat: number, rng: Random): any
 			if state.owner[n] ~= seat and Conquest.territories[n].region == focus then
 				score += 6
 				break
+			end
+		end
+		-- Guard the capital (capital conquest): losing it is half the game.
+		if state.capitals and state.capitals[seat] == t and level ~= "easy" then
+			local gap = threatOn(state, t) - state.armies[t]
+			if gap > -2 then
+				score += 8 + gap * 0.5
 			end
 		end
 		-- Hard bots guard regions they already hold.
@@ -1160,6 +1462,15 @@ local function botAttack(state, seat: number, rng: Random): any?
 					local region = Conquest.territories[to].region
 					if region == focus then
 						score += 0.6
+					end
+					if level ~= "easy" then
+						local mission = state.missions and state.missions[seat]
+						if mission and mission.kind == "knockout" and mission.target == enemy then
+							score += 0.8 -- its secret mission is to knock them out
+						end
+						if state.capitals and table.find(state.capitals, to) then
+							score += if level == "hard" then 1.0 else 0.6 -- a capital
+						end
 					end
 					if level == "hard" then
 						if Conquest.regionOwner(state.owner, region) == enemy then

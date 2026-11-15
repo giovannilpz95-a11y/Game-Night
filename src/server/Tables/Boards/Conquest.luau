@@ -1,6 +1,9 @@
 -- Conquest Isles at the table: the Shattered Isles map as raised island patches in region
 -- colors, land bridges and sea lanes, and on every territory toy soldiers in its owner's
 -- color with the army count on a flag-side plate. Play stays in the 2D view.
+-- House rule modes: capitals get a little stone keep flying their founder's flag, and
+-- under fog of war the board shows everyone the same thing, so no soldiers at all: each
+-- island wears a cloud until the game ends (your own screen labels what you can see).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Rules = require(ReplicatedStorage.Shared.Games.Conquest)
@@ -59,7 +62,8 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 		-- Tap an island in Table view to place, pick or attack (renderer tapTable "terr:<i>").
 		local id = `terr:{i}`
 		Scene.tappable(Models.cyl(model, "Beach", 1.2, beachTop + 0.06, base * CFrame.new(0, -0.06, 0), Color3.fromRGB(232, 214, 160), Enum.Material.Sand), id)
-		Scene.tappable(Models.cyl(model, t.name, 1.05, 0.16, base, color, Enum.Material.Grass), id)
+		-- Grass tops step down a hair too (neighbors overlap where nothing stands on them).
+		Scene.tappable(Models.cyl(model, t.name, 1.05, 0.16 - (i % 3) * 0.012, base, color, Enum.Material.Grass), id)
 		-- A hill so the patches don't read as flat coins.
 		Scene.tappable(Models.egg(model, "Hill", Vector3.new(0.5, 0.2, 0.4), base * CFrame.new(-0.26, TOP_Y - LAND_Y, 0.26), color:Lerp(Color3.new(0, 0, 0), 0.15), Enum.Material.Grass), id)
 	end
@@ -74,11 +78,29 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 				return
 			end
 			Scene.redraw(dynamic, function(dynamic)
+				for seat, capital in view.capitals or {} do
+					local t = Rules.territories[capital]
+					if t then
+						-- Back corner of the island, clear of the soldiers and the count plate.
+						local base = pos(boardCF, t, TOP_Y) * CFrame.new(0.3, 0, -0.3)
+						Models.cyl(dynamic, "CapitalKeep", 0.22, 0.3, base, Color3.fromRGB(176, 170, 160), Enum.Material.Slate)
+						Models.cyl(dynamic, "CapitalRoof", 0.27, 0.05, base * CFrame.new(0, 0.3, 0), Color3.fromRGB(120, 112, 104), Enum.Material.Slate)
+						Models.flag(dynamic, base * CFrame.new(0, 0.35, 0), Scene.SEAT_COLORS[seat] or NEUTRAL, 0.3)
+					end
+				end
 				for i, t in Rules.territories do
 					local owner = (view.owner or {})[i] or 0
 					local armies = (view.armies or {})[i] or 0
 					local color = Scene.SEAT_COLORS[owner] or NEUTRAL
 					local top = pos(boardCF, t, TOP_Y)
+					if view.fog and owner == 0 then
+						-- Fog of war: a cloud of three puffs over the island.
+						for k, puff in { { -0.12, 0.05, 0.42 }, { 0.14, 0.02, 0.36 }, { 0.0, -0.14, 0.3 } } do
+							local cloud = Models.ball(dynamic, "Fog", puff[3], top * CFrame.new(puff[1], 0.22 + k * 0.035, puff[2]), Color3.fromRGB(236, 240, 246))
+							cloud.Transparency = 0.25
+						end
+						continue
+					end
 					local squad = squadSize(armies)
 					for k = 1, squad do
 						local a = (k - 1) / squad * math.pi * 2 + 0.8

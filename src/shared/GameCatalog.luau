@@ -435,6 +435,9 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "earlyLimit", name = "Slow start", hint = "Only 1-2 conquests a turn in the first rounds, so nobody runs away early.", choices = Toggle, default = 2 },
+			{ key = "fog", name = "Fog of war", hint = "You only see lands that are yours or touch yours.", choices = Toggle, default = 1 },
+			{ key = "missions", name = "Secret missions", hint = "Everyone gets a secret mission. Finish yours on your turn to win at once.", choices = Toggle, default = 1 },
+			{ key = "capitals", name = "Capitals", hint = "Your strongest starting land is your capital. Hold enough capitals to win at once.", choices = Toggle, default = 1 },
 		},
 	},
 	{
