@@ -103,7 +103,7 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 		elseif view.lastChance then
 			text = `{nameOf(view.holder)} has every card: {view.lastChance} last-chance {if view.lastChance == 1 then "flip" else "flips"}`
 		elseif view.collect then
-			text = `{nameOf(view.collect)} wins the challenge! Last chance to slap...`
+			text = `{nameOf(view.collect)} {if view.collect == me then "win" else "wins"} the challenge! Last chance to slap...`
 		elseif view.challenge then
 			local face = FACE[view.challenge.face] or "face card"
 			text = `{nameOf(view.turn)}: {view.challenge.tries} {if view.challenge.tries == 1 then "try" else "tries"} to beat the {face}`

@@ -295,6 +295,10 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		end
 		local myList = if me then view.books[me] or {} else {}
 		myBooks.Text = if not me then "" elseif #myList == 0 then "You have no books yet" else `Your {booksText(myList)}`
+		if docked and view.pondCount > 0 then
+			-- The felt's pond count is hidden at the table: it rides on your books line.
+			myBooks.Text ..= (if myBooks.Text ~= "" then "  ·  " else "") .. `Pond: {view.pondCount}`
+		end
 		Kit.clear(askRow)
 		local choosing = myTurn and selectedRank ~= nil
 		if choosing then

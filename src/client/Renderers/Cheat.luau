@@ -36,9 +36,13 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 		return `{if reveal.honest then "Honest!" else "Caught bluffing!"} {nameOf(who)} {verb} up {what}`
 	end
 
-	-- "1 Queen", "3 Queens", "1 9", "2 9s".
+	-- "a Queen", "3 Queens", "an 8", "2 9s" ("1 2" read oddly).
 	local function countOf(n: number, rank: number): string
-		return `{n} {if n == 1 then PlayingCards.rankNames[rank] else PlayingCards.rankPlural[rank]}`
+		if n == 1 then
+			local name = PlayingCards.rankNames[rank]
+			return `{if rank == 1 or rank == 8 then "an" else "a"} {name}`
+		end
+		return `{n} {PlayingCards.rankPlural[rank]}`
 	end
 
 	function render()

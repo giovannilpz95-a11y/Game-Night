@@ -225,8 +225,10 @@ end
 -- A face-down pile of `count` cards (drawn as a block, at most 0.6 studs tall) with the
 -- count written on top if `showCount`. `drawPile` marks it as the game's draw pile (the
 -- stock), so the client can fly drawn cards off it (UI/CardFx). Returns where a card laid
--- on it goes.
-function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: boolean?, drawPile: boolean?): CFrame
+-- on it goes. `ownerSeat` marks the count as that seat's own: that player's screen hides
+-- it (client/Table3D/SeatLabels), since their held card shows the count already and the
+-- 3D one sat behind the prompt over their hand.
+function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: boolean?, drawPile: boolean?, ownerSeat: number?): CFrame
 	if count <= 0 then
 		return cf
 	end
@@ -242,7 +244,12 @@ function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: bool
 	local top = cf * CFrame.new(0, height + Scene.STACK - Scene.CARD_T, 0)
 	if showCount then
 		-- Floats just over the pile, facing each viewer.
-		Scene.floatText(parent, top * CFrame.new(0, 0.3, 0), Scene.CARD_W * 0.8, Scene.CARD_W * 0.55, tostring(count), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
+		local label = Scene.floatText(parent, top * CFrame.new(0, 0.3, 0), Scene.CARD_W * 0.8, Scene.CARD_W * 0.55, tostring(count), { TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = Color3.fromRGB(20, 18, 30), TextStrokeTransparency = 0.2 })
+		if ownerSeat then
+			local holder = (label.Parent :: Instance).Parent :: Instance
+			holder:SetAttribute("Seat", ownerSeat)
+			holder:AddTag("GameNightSeatLabel")
+		end
 	end
 	return top
 end

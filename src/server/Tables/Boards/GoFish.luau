@@ -70,18 +70,10 @@ function GoFish.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 				Scene.card(folder, Scene.seatSpot(boardCF, layout, ask.seat, 2.3), Scene.playingFront(PlayingCards, ask.card), 1.2)
 			end
 		end
-		-- At most POND_SHOWN cards are drawn (a full pond of 30+ still piled up); a label
-		-- says how many are really there.
-		local pond = view.pondCount or 0
-		for i = 1, math.min(pond, POND_SHOWN) do
+		-- At most POND_SHOWN cards are drawn (a full pond of 30+ piled up into a heap); the
+		-- real count is on each player's screen.
+		for i = 1, math.min(view.pondCount or 0, POND_SHOWN) do
 			Scene.card(folder, Cards.center(boardCF, 0) * spots[i], nil)
-		end
-		if pond > 0 then
-			Scene.floatText(folder, Cards.center(boardCF, 0) * CFrame.new(0, 0.55, 0), 2.2, 0.55, `Pond · {pond}`, {
-				TextColor3 = Color3.fromRGB(200, 230, 255),
-				TextStrokeColor3 = Color3.fromRGB(15, 25, 35),
-				TextStrokeTransparency = 0.2,
-			})
 		end
 	end, Color3.fromRGB(60, 140, 190))
 end

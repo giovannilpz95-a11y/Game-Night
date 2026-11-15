@@ -1171,7 +1171,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				elseif action.skipAll then
 					say(if action.seat == snapshot.yourSeat then "EVERYONE SKIPPED!  Go again" else `EVERYONE SKIPPED!  {nameOf(action.seat)} goes again`, Theme.Bad)
 				elseif action.discarded and action.discarded > 0 then
-					say(`DISCARD ALL!  {nameOf(action.seat)} dumps {action.discarded + 1}`, Color3.fromRGB(120, 210, 255))
+					say(`DISCARD ALL!  {nameOf(action.seat)} {if action.seat == snapshot.yourSeat then "dump" else "dumps"} {action.discarded + 1}`, Color3.fromRGB(120, 210, 255))
 				end
 				if action.mercy then
 					say(if action.mercy == snapshot.yourSeat then "25 CARDS!  You're out" else `25 CARDS!  {nameOf(action.mercy)} is out`, Theme.Bad, 0.42)

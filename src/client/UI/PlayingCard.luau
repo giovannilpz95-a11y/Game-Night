@@ -71,6 +71,8 @@ function PlayingCard.face(id: number?): Frame
 		Kit.new("UICorner", { CornerRadius = UDim.new(0.1, 0) }),
 		Kit.new("UIStroke", { Color = Color3.fromRGB(200, 196, 186), Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 	})
+	-- The corner index hugs the card's edge (left-aligned; the bottom one is turned, so it
+	-- hugs the right edge), so it still shows when a big fan overlaps the cards to a strip.
 	for _, corner in { { 0.05, 0.03, 0 }, { 0.6, 0.67, 180 } } do
 		local box = Kit.new("Frame", {
 			BackgroundTransparency = 1,
@@ -83,7 +85,7 @@ function PlayingCard.face(id: number?): Frame
 			Font = Theme.FontBold,
 			TextScaled = true,
 			TextColor3 = color,
-			TextXAlignment = Enum.TextXAlignment.Center,
+			TextXAlignment = Enum.TextXAlignment.Left,
 			Size = UDim2.fromScale(1, 0.55),
 			Parent = box,
 		})
@@ -91,7 +93,7 @@ function PlayingCard.face(id: number?): Frame
 			Font = Theme.FontBold,
 			TextScaled = true,
 			TextColor3 = color,
-			TextXAlignment = Enum.TextXAlignment.Center,
+			TextXAlignment = Enum.TextXAlignment.Left,
 			Position = UDim2.fromScale(0, 0.52),
 			Size = UDim2.fromScale(1, 0.45),
 			Parent = box,

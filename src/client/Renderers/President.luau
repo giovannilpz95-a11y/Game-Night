@@ -282,7 +282,7 @@ function PresidentRenderer.create(container: Frame, sendMove: (any) -> ())
 		elseif fresh and a and a.skipped then
 			CardFx.pop("SKIP!", Theme.Accent, ui.root)
 		elseif fresh and a and a.downfall then
-			HudKit.callout(ui.root, `Downfall! {nameOf(a.downfall)} drops to Beggar`, Color3.fromRGB(235, 87, 87))
+			HudKit.callout(ui.root, `Downfall! {nameOf(a.downfall)} {if a.downfall == snapshot.yourSeat then "drop" else "drops"} to Beggar`, Color3.fromRGB(235, 87, 87))
 		elseif fresh and a and a.flipped then
 			-- Four of a kind: the order flips (Daifugō's revolution).
 			HudKit.callout(ui.root, if a.revolution then "REVOLUTION! Low beats high" else "Counter-revolution! High beats low", Color3.fromRGB(235, 87, 87))

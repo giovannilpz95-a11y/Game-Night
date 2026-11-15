@@ -24,14 +24,9 @@ function Snap.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			if view.poolTop then
 				Scene.card(folder, cf, Scene.playingFront(PlayingCards, view.poolTop), 1.15)
 			end
-			Scene.floatText(folder, Cards.center(boardCF, 0) * CFrame.new(0, 0.6, 0), 2.4, 0.6, `Snap Pool · {poolCount}`, {
-				TextColor3 = Color3.fromRGB(200, 205, 255),
-				TextStrokeColor3 = Color3.fromRGB(20, 18, 30),
-				TextStrokeTransparency = 0.2,
-			})
 		end
 		for seat, count in view.downCounts or {} do
-			Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 0.9, -0.55), count, true)
+			Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 0.9, -0.55), count, true, false, seat)
 			local top = (view.tops or {})[tostring(seat)]
 			if top then
 				local under = math.max(0, ((view.upCounts or {})[seat] or 1) - 1)

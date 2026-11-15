@@ -475,12 +475,9 @@ function CardTable.notice(ui: Layout, title: string?, lines: { string }?, color:
 			Parent = panel,
 		})
 	end
-	panel.Size = UDim2.new(0.46, 0, 0, 40 + #(lines or {}) * 22)
-	task.defer(function()
-		if panel.Parent then
-			panel.Size = UDim2.new(0.46, 0, 0, list.AbsoluteContentSize.Y + 16)
-		end
-	end)
+	-- Grows to fit its lines (a fixed height cut the second line in half).
+	panel.AutomaticSize = Enum.AutomaticSize.Y
+	panel.Size = UDim2.new(0.46, 0, 0, 0)
 	Kit.popIn(panel)
 end
 
