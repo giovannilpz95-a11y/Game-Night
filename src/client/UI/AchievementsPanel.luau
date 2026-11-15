@@ -443,7 +443,7 @@ function AchievementsPanel.create(parent: Instance, send: (any) -> ())
 
 	local function renderGame(p: any, gameId: string)
 		local entry = GameCatalog.get(gameId)
-		local back = Kit.button("◂ All games", function()
+		local back = Kit.button("< All games", function()
 			gameOpen = nil
 			render()
 		end, { Size = UDim2.new(0, 140, 0, 30), TextSize = 14, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, LayoutOrder = nextOrder(), Parent = content })

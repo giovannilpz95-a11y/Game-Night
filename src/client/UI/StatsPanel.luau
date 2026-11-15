@@ -485,7 +485,7 @@ function StatsPanel.create(parent: Instance, send: (any) -> (), openAchievements
 		local mine = p.userId == localPlayer.UserId
 		title.Text = if mine then "Your stats" else `{p.name}'s stats`
 		if not mine then
-			Kit.button("◂ Back to mine", function()
+			Kit.button("< Back to mine", function()
 				askProfile(nil)
 			end, { Size = UDim2.new(0, 150, 0, 30), TextSize = 14, BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, LayoutOrder = nextOrder(), Parent = content })
 		end
