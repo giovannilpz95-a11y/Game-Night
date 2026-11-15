@@ -829,6 +829,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = root,
 	})
 	lockButton:SetAttribute("NoHotkey", true) -- that's Alt
+	local lockSlot = false -- the layout has a place for it (Table view, a mouse)
 	seatsPanel:SetAttribute("NoHotkey", true)
 	local function showLock(locked: boolean)
 		lockButton.Text = if locked then "Mouse locked (Alt)" else "Mouse free (Alt)"
@@ -939,7 +940,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		else
 			seatsPanel.Size = UDim2.fromOffset(seatsW, available)
 		end
-		lockButton.Visible = in3D and FreeLook.hasMouse() and root.Visible
+		lockSlot = in3D and FreeLook.hasMouse() and root.Visible
+		lockButton.Visible = lockSlot and snapshot ~= nil and not isOver()
 		lockButton.Size = UDim2.fromOffset(seatsW, if compact then 30 else 34)
 		lockButton.Position = UDim2.fromOffset(left, top + seatsPanel.Size.Y.Offset + 6)
 		local boardX = left + seatsW + 8
@@ -1540,6 +1542,11 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if root.Visible then
 			updateTurnText()
 		end
+		-- The mouse lock is for playing only: off once the game is over (end card, the
+		-- winners' celebration) and back with the next game.
+		local playing = root.Visible and snapshot ~= nil and not isOver()
+		FreeLook.setPlaying(playing)
+		lockButton.Visible = lockSlot and playing
 	end)
 
 	-- Hand peek: look down and your held cards come up to you; look up and they drop away

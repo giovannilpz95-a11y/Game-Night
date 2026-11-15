@@ -81,6 +81,7 @@ local cinematic = false
 local anyActive = false
 function Controller.setCinematic(value: boolean)
 	cinematic = value
+	FreeLook.setCinematic(value) -- the mouse is free through the shots
 end
 
 -- Whether a table view is showing (the camera is the table camera's).
