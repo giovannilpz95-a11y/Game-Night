@@ -131,7 +131,8 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 
 		local text = ""
 		if a and a.kind == "snap" then
-			text = if a.pool then `{nameOf(a.seat)} snapped the pool and won {a.count} cards!` else `{nameOf(a.seat)} snapped and won {a.count} cards!`
+			local won = if a.count == 1 then "1 card" else `{a.count} cards`
+			text = if a.pool then `{nameOf(a.seat)} snapped the pool and won {won}!` else `{nameOf(a.seat)} snapped and won {won}!`
 		elseif a and a.kind == "badSnap" and a.pool then
 			text = `{nameOf(a.seat)} snapped too soon: {a.count} {if a.count == 1 then "card" else "cards"} to the Snap Pool`
 		elseif a and a.kind == "badSnap" then
@@ -144,7 +145,7 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 		status.Text = text
 
 		-- Table view hides the felt: the pool, the flips left and the last snap go on screen.
-		local info = { if me and alive then `You · {total(view, me)} cards` else "Snap" }
+		local info = { if me and alive then `You · {view.downCounts[me] or 0} to flip · {view.upCounts[me] or 0} face up` else "Snap" }
 		if poolCount > 0 then
 			table.insert(info, `Snap Pool: {poolCount} {if poolCount == 1 then "card" else "cards"}`)
 		end
@@ -193,16 +194,27 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = if poolCount > 0 then `SNAP when two piles (or a pile and the pool) show {what}!` else `SNAP when two piles show {what}!`
 		end
 
-		-- Your face-down pile: one card back with the count on it (tap it to flip).
+		-- Your face-down pile: one card back with the count on it (tap it to flip). In Table
+		-- view the held card would cover your own face-up pile on the 3D table, so its top
+		-- card is held up beside it.
 		local count = if me then view.downCounts[me] or 0 else 0
 		local showPile = me ~= nil and total(view, me) > 0
-		PlayingCard.renderHand(ui.hand, if showPile then { { id = nil, key = 0, enabled = myTurn, glow = myTurn } } else {}, function()
+		local held = {}
+		if showPile then
+			table.insert(held, { id = nil, key = 0, enabled = myTurn, glow = myTurn })
+			local myTop = ui.docked and view.tops[tostring(me)]
+			if myTop then
+				table.insert(held, { id = myTop, key = "up", enabled = myTurn })
+			end
+		end
+		local faces = PlayingCard.renderHand(ui.hand, held, function()
 			if myTurn then
 				sendMove({ kind = "flip" })
 			end
 		end)
-		local slot = ui.hand:FindFirstChildOfClass("Frame")
-		if slot then
+		local back = faces[0]
+		if back then
+			-- Low on the card: the prompt sits just above the held hand in Table view.
 			local badge = Kit.label(if count > 0 then `{count}` else "turn over", {
 				Font = Theme.FontBold,
 				TextSize = if count > 0 then 22 else 14,
@@ -212,10 +224,10 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 				BackgroundColor3 = Theme.Panel,
 				BackgroundTransparency = 0.15,
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, if ui.docked then 0.66 else 0.5),
 				Size = UDim2.new(0.8, 0, 0, 32),
 				ZIndex = 6,
-				Parent = slot,
+				Parent = back,
 			})
 			Kit.corner(8).Parent = badge
 		end
