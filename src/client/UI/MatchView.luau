@@ -817,7 +817,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = root,
 	})
 	local function showLock(locked: boolean)
-		lockButton.Text = if locked then "🔒 Mouse locked · Alt" else "🔓 Lock mouse · Alt"
+		lockButton.Text = if locked then "Mouse locked (Alt)" else "Mouse free (Alt)"
 		lockButton.BackgroundColor3 = if locked then Theme.Panel else Theme.Accent
 		lockButton.TextColor3 = if locked then Theme.Text else Theme.AccentText
 	end

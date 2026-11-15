@@ -43,6 +43,7 @@ local function full(parent: Instance, entry: Entry, done: () -> ())
 		ZIndex = 80,
 		Parent = parent,
 	})
+	Kit.needsMouse(overlay)
 	Juice.tween(overlay, Juice.Info.Fade, { BackgroundTransparency = 0.35 })
 	Flair.blur("unlock", true)
 	local short = math.min(overlay.AbsoluteSize.X, overlay.AbsoluteSize.Y)

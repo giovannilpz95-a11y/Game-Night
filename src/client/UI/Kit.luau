@@ -10,6 +10,14 @@ local Juice = require(script.Parent.Juice)
 
 local Kit = {}
 
+-- Windows that need the mouse: while one is on screen, Table view's mouse lock lets go
+-- (client/Table3D/FreeLook watches this tag), and takes it back when it closes.
+Kit.NEEDS_MOUSE = "GameNightNeedsMouse"
+function Kit.needsMouse(gui: GuiObject): GuiObject
+	game:GetService("CollectionService"):AddTag(gui, Kit.NEEDS_MOUSE)
+	return gui
+end
+
 Kit.Theme = {
 	Background = Color3.fromRGB(24, 22, 38),
 	Panel = Color3.fromRGB(38, 34, 60),
@@ -320,6 +328,7 @@ function Kit.modal(parent: Instance, opts: { [string]: any }): any
 		ZIndex = z,
 		Parent = parent,
 	})
+	Kit.needsMouse(overlay)
 	-- A button that does nothing, so taps on the window don't reach the dim area behind it.
 	local panel = Kit.new("TextButton", {
 		Name = "Window",

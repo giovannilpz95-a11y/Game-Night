@@ -15,6 +15,7 @@
 --
 -- Where you look is sent to the server (HeadLook), so the others see your head turn.
 
+local CollectionService = game:GetService("CollectionService")
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -329,10 +330,39 @@ local function sendLook(dir: Vector3?)
 	(remote :: RemoteEvent):FireServer(dir)
 end
 
+-- Windows tagged by UI/Kit.needsMouse (rules, the how-to-play card, the shop, modals):
+-- whether one is on screen now.
+local NEEDS_MOUSE = "GameNightNeedsMouse"
+local function windowOpen(): boolean
+	for _, gui in CollectionService:GetTagged(NEEDS_MOUSE) do
+		if gui:IsA("GuiObject") then
+			local shown = true
+			local at: Instance? = gui
+			while at and at:IsA("GuiObject") do
+				if not at.Visible then
+					shown = false
+					break
+				end
+				at = at.Parent
+			end
+			local screen = gui:FindFirstAncestorWhichIsA("LayerCollector")
+			if shown and screen and screen.Enabled and screen:IsDescendantOf(Players.LocalPlayer) then
+				return true
+			end
+		end
+	end
+	return false
+end
+local windowCheckAt = 0
+
 -- Called by the table camera every frame it's on, before it places the camera.
 function FreeLook.step(dt: number)
 	if not active then
 		return
+	end
+	if os.clock() >= windowCheckAt then
+		windowCheckAt = os.clock() + 0.15
+		FreeLook.hold("window", windowOpen())
 	end
 	local locked = FreeLook.isLocked()
 	if locked then

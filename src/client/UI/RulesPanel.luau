@@ -185,6 +185,7 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 		ZIndex = Z - 10,
 		Parent = screen,
 	})
+	Kit.needsMouse(card)
 	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Parent = card })
 	Kit.list(6).Parent = card
 	local cardTitle = Kit.label("", { Font = Theme.FontBold, TextSize = 20, LayoutOrder = 1, ZIndex = Z - 9, Parent = card })
