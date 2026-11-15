@@ -7,6 +7,7 @@
 -- match what the server accepts. The server still checks everything.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.Conquest)
 local Kit = require(script.Parent.Parent.UI.Kit)
@@ -45,6 +46,10 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	local lastTurnId = -1
 	local occupyFor: number? = nil -- the conquest the occupy counter was set up for
 	local lastBattleId: number? = nil -- the battle whose losses already popped on the map
+	local diceCount: number? = nil -- dice for a single Roll (nil: as many as you can)
+	local stopAt = 1 -- a blitz stops when the attacking territory is down to this many
+	local tumbledBattle: number? = nil -- the battle whose dice already tumbled
+	local zoom = 1 -- map zoom (pinch, wheel or the +/- buttons)
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local rerender: () -> () = function() end
@@ -66,7 +71,8 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	-- Map ----------------------------------------------------------------------
-	local mapArea = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.68, -8, 1, 0), Parent = root })
+	local mapArea = Kit.new("Frame", { BackgroundTransparency = 1, ClipsDescendants = true, Size = UDim2.new(0.68, -8, 1, 0), Parent = root })
+	local mapScale = Kit.new("UIScale", { Scale = 1 })
 	local map = Kit.new("Frame", {
 		BackgroundColor3 = SEA,
 		BorderSizePixel = 0,
@@ -75,7 +81,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		Size = UDim2.fromScale(1, 1),
 		ClipsDescendants = true,
 		Parent = mapArea,
-	}, { Kit.corner(14), Kit.new("UIAspectRatioConstraint", { AspectRatio = MAP_ASPECT }) })
+	}, { Kit.corner(14), Kit.new("UIAspectRatioConstraint", { AspectRatio = MAP_ASPECT }), mapScale })
 
 	-- A round patch of land in the region's color under each territory. Patches of the
 	-- same region overlap into islands; different regions never touch (the closest
@@ -238,6 +244,39 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		Parent = map,
 	})
 	Kit.corner(11).Parent = chanceTag
+	-- Roll / Blitz right next to the target, like the official app (the panel has them too).
+	local attackCard = Kit.new("Frame", {
+		BackgroundColor3 = Color3.fromRGB(24, 30, 48),
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Size = UDim2.fromOffset(150, 40),
+		Visible = false,
+		ZIndex = 12,
+		Parent = map,
+	}, { Kit.corner(10), Kit.padding(4), Kit.list(4, true) })
+	local attackRoll = Kit.button("Roll", function() end, { Size = UDim2.new(0.5, -2, 1, 0), TextSize = 14, BackgroundColor3 = Theme.Bad, ZIndex = 13, Parent = attackCard })
+	local attackBlitz = Kit.button("Blitz", function() end, { Size = UDim2.new(0.5, -2, 1, 0), TextSize = 14, ZIndex = 13, Parent = attackCard })
+	local function sendAttack(blitz: boolean)
+		if not (selected and target) then
+			return
+		end
+		local move: any = { kind = "attack", from = selected, to = target, blitz = blitz }
+		local most = math.min(3, (snapshot.view.armies[selected] or 2) - 1)
+		if not blitz and diceCount and diceCount < most then
+			move.dice = diceCount
+		end
+		if blitz and stopAt > 1 and stopAt < (snapshot.view.armies[selected] or 0) then
+			move.stopAt = stopAt
+		end
+		sendMove(move)
+	end
+	Kit.onPress(attackRoll, function()
+		sendAttack(false)
+	end)
+	Kit.onPress(attackBlitz, function()
+		sendAttack(true)
+	end)
 
 	-- Side panel ---------------------------------------------------------------
 	local side = Kit.new("ScrollingFrame", {
@@ -251,6 +290,95 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	}, { Kit.corner(14), Kit.padding(12), Kit.list(8) })
 	HudKit.sidePanel(side)
+
+	-- Phones and small boards: the map takes the full width on top (territories about
+	-- twice as big) and the panel sits below it like a bottom sheet. Pinch, the mouse
+	-- wheel or the +/- buttons zoom the map; drag pans it while zoomed.
+	local compact = false
+	local pan = Vector2.zero
+	local function applyZoom()
+		zoom = math.clamp(zoom, 1, 2.4)
+		mapScale.Scale = zoom
+		local area = mapArea.AbsoluteSize
+		local limit = area * (zoom - 1) / 2
+		pan = Vector2.new(math.clamp(pan.X, -limit.X, limit.X), math.clamp(pan.Y, -limit.Y, limit.Y))
+		map.Position = UDim2.new(0.5, pan.X, 0.5, pan.Y)
+	end
+	local function layout()
+		local size = root.AbsoluteSize
+		compact = size.X < 760 or size.X / math.max(1, size.Y) < 1.25
+		if compact then
+			mapArea.Size = UDim2.new(1, 0, 0.6, -4)
+			mapArea.Position = UDim2.new()
+			side.Position = UDim2.new(0, 0, 0.6, 4)
+			side.Size = UDim2.new(1, 0, 0.4, -4)
+		else
+			mapArea.Size = UDim2.new(0.68, -8, 1, 0)
+			mapArea.Position = UDim2.new()
+			side.Position = UDim2.new(0.68, 8, 0, 0)
+			side.Size = UDim2.new(0.32, -8, 1, 0)
+		end
+		applyZoom()
+	end
+	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
+	layout()
+	local zoomBar = Kit.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -6, 1, -6),
+		Size = UDim2.fromOffset(40, 128),
+		ZIndex = 20,
+		Parent = mapArea,
+	}, { Kit.list(4) })
+	for i, spec in { { "+", 0.4 }, { "−", -0.4 }, { "⤢", 0 } } do
+		Kit.button(spec[1], function()
+			if spec[2] == 0 then
+				zoom, pan = 1, Vector2.zero
+			else
+				zoom += spec[2]
+			end
+			applyZoom()
+		end, {
+			Size = UDim2.fromOffset(40, 40),
+			TextSize = 20,
+			BackgroundColor3 = Theme.PanelLight,
+			TextColor3 = Theme.Text,
+			LayoutOrder = i,
+			ZIndex = 21,
+			Parent = zoomBar,
+		})
+	end
+	local function overMap(position: Vector3 | Vector2): boolean
+		local p, a, s = Vector2.new(position.X, position.Y), mapArea.AbsolutePosition, mapArea.AbsoluteSize
+		return p.X >= a.X and p.Y >= a.Y and p.X <= a.X + s.X and p.Y <= a.Y + s.Y
+	end
+	local connections = {}
+	local pinchStart = 1
+	table.insert(connections, UserInputService.TouchPinch:Connect(function(points, scale, _velocity, state)
+		if not root.Visible or not points[1] or not overMap(points[1]) then
+			return
+		end
+		if state == Enum.UserInputState.Begin then
+			pinchStart = zoom
+		end
+		zoom = pinchStart * scale
+		applyZoom()
+	end))
+	table.insert(connections, UserInputService.TouchPan:Connect(function(points, translation, _velocity, state)
+		if not root.Visible or zoom <= 1 or not points[1] or not overMap(points[1]) or #points > 1 then
+			return
+		end
+		if state == Enum.UserInputState.Change then
+			pan += translation * 0.05
+			applyZoom()
+		end
+	end))
+	table.insert(connections, UserInputService.InputChanged:Connect(function(input)
+		if root.Visible and input.UserInputType == Enum.UserInputType.MouseWheel and overMap(input.Position) then
+			zoom += input.Position.Z * 0.2
+			applyZoom()
+		end
+	end))
 
 	local function section(order: number): Frame
 		return Kit.new("Frame", {
@@ -306,6 +434,14 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		return view ~= nil and not snapshot.result and snapshot.yourSeat ~= nil and view.turn == snapshot.yourSeat
 	end
 
+	-- "Round 3 of 14", or near the end "Round 13 · cease-fire any turn now".
+	local function roundText(view: any): string
+		if view.ceaseFire then
+			return `Round {view.round} · cease-fire any turn now`
+		end
+		return `Round {view.round} of {view.maxRounds}`
+	end
+
 	-- Highlights for the current selection: "attack" (enemy neighbours) and "move" (your
 	-- land you can reach).
 	local function targetsOf(view: any, me: number?): { [number]: string }
@@ -355,34 +491,109 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- End of the game: places by territories then armies, land share round by round
+	-- (a stacked bar per round), and the biggest battle.
+	local function renderFinal(view: any)
+		heading("Final standings", actions, 2)
+		local seats = {}
+		for seat = 1, #view.eliminated do
+			table.insert(seats, seat)
+		end
+		local totals = view.totals or {}
+		local function lands(seat: number): number
+			return Rules.countOwned(view.owner, seat)
+		end
+		table.sort(seats, function(a, b)
+			if lands(a) ~= lands(b) then
+				return lands(a) > lands(b)
+			end
+			return (totals[a] or 0) > (totals[b] or 0)
+		end)
+		for place, seat in seats do
+			local text = if view.eliminated[seat] then "knocked out" else `{lands(seat)} lands · {totals[seat] or 0} armies`
+			hint(`{place}. {nameOf(seat)}  {text}`, actions, 2 + place, Theme.Seat[seat])
+		end
+		local history = view.history
+		if history and #history > 1 then
+			hint("Territories round by round", actions, 20)
+			local chart = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 70), LayoutOrder = 21, Parent = actions })
+			local width = 1 / #history
+			for i, rowCounts in history do
+				local total = 0
+				for _, n in rowCounts do
+					total += n
+				end
+				local y = 0
+				for seat, n in rowCounts do
+					if n > 0 and total > 0 then
+						Kit.new("Frame", {
+							BackgroundColor3 = Theme.Seat[seat] or Theme.Text,
+							BorderSizePixel = 0,
+							Position = UDim2.new((i - 1) * width, 0, y / total, 0),
+							Size = UDim2.new(width, -1, n / total, 0),
+							Parent = chart,
+						})
+						y += n
+					end
+				end
+			end
+		end
+		local b = view.biggestBattle
+		if b then
+			hint(`Biggest battle: {nameOf(b.attacker)} vs {nameOf(b.defender)} at {territories[b.to].name}, {b.lost} armies lost{if b.conquered then ", and it fell" else ""}.`, actions, 22)
+		end
+	end
+
 	local function renderActions(view: any, me: number?)
 		Kit.clear(actions)
 		if snapshot.result then
 			HudKit.turnTint(side, nil, false)
 			HudKit.statusCard("Game over", nil, false, { LayoutOrder = 1, Parent = actions })
+			renderFinal(view)
 			return
 		end
 		HudKit.turnTint(side, view.turn, myTurn())
 		if not myTurn() then
 			HudKit.statusCard(`{nameOf(view.turn)}'s turn`, view.turn, false, { LayoutOrder = 1, Parent = actions })
 			local doing = if view.phase == "reinforce" then "placing armies" else "on the attack"
-			hint(`Round {view.round} of {view.maxRounds}. They're {doing}.`, actions, 2)
+			hint(`{roundText(view)}. They're {doing}.`, actions, 2)
+			if view.nextUp and #view.nextUp > 0 then
+				local names = {}
+				for _, seat in view.nextUp do
+					table.insert(names, nameOf(seat))
+				end
+				hint(`Next up: {table.concat(names, ", then ")}`, actions, 3)
+			end
 			return
 		end
-		HudKit.statusCard(`Round {view.round} of {view.maxRounds}: your turn`, view.turn, true, { LayoutOrder = 1, Parent = actions })
+		HudKit.statusCard(`{roundText(view)}: your turn`, view.turn, true, { LayoutOrder = 1, Parent = actions })
 		if view.phase == "reinforce" then
 			if view.mustTrade then
 				hint(`You have {#view.hand} cards. Trade a set below first.`, actions, 2, Theme.Accent)
 				return
 			end
+			if view.holdForTrade then
+				hint("All placed. You still hold a set: trade it now (more armies to place), or start attacking.", actions, 2, Theme.Accent)
+				smallButton("Start attacking", actions, 1, function()
+					sendMove({ kind = "startAttack" })
+				end, nil, 3)
+				return
+			end
 			hint(`Place {view.reinforcements} armies: tap your territories.`, actions, 2, Theme.Text)
+			if view.income then
+				local parts = {}
+				for _, part in view.income do
+					table.insert(parts, `{part.armies} {part.label}`)
+				end
+				hint(`From {table.concat(parts, " + ")}{if view.reinforcements > 0 then "" else ""}`, actions, 2)
+			end
 			if view.rallying then
 				hint(`Includes +{Rules.RALLY_ARMIES} rally armies for holding fewer lands than average.`, actions, 2, Theme.Good)
 			end
 			local amounts = row(actions, 3)
-			for i, amount in { 1, 3, "all" } do
+			for i, amount in { 1, 3, 5, "all" } do
 				local chosen = placeAmount == amount
-				smallButton(if amount == "all" then "All" else `+{amount}`, amounts, 1 / 3, function()
+				smallButton(if amount == "all" then "All" else `+{amount}`, amounts, 1 / 4, function()
 					placeAmount = amount
 					rerender()
 				end, if chosen then nil else Theme.PanelLight, i)
@@ -423,13 +634,36 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				hint(`Attack {to} ({view.armies[target]}) from {from} ({view.armies[selected]})`, actions, 2, Theme.Text)
 				local chance = Rules.winChance(view.armies[selected], view.armies[target])
 				hint(`Blitz win chance: {math.floor(chance * 100 + 0.5)}%`, actions, 2, if chance >= 0.6 then Theme.Good elseif chance >= 0.35 then Theme.Accent else Theme.Bad)
-				local buttons = row(actions, 3)
-				smallButton("Roll", buttons, 0.5, function()
-					sendMove({ kind = "attack", from = selected, to = target, blitz = false })
+				local most = math.min(3, view.armies[selected] - 1)
+				local dice = math.min(diceCount or most, most)
+				local diceRowFrame = row(actions, 3)
+				Kit.label("Dice", { Size = UDim2.new(0.25, -4, 1, 0), TextSize = 15, LayoutOrder = 0, Parent = diceRowFrame })
+				for n = 1, 3 do
+					smallButton(tostring(n), diceRowFrame, 0.25, function()
+						if n <= most then
+							diceCount = n
+							rerender()
+						end
+					end, if n == dice then nil else Theme.PanelLight, n)
+				end
+				local buttons = row(actions, 4)
+				smallButton(`Roll {dice}`, buttons, 0.5, function()
+					sendAttack(false)
 				end, Theme.Bad, 1)
-				smallButton("Blitz", buttons, 0.5, function()
-					sendMove({ kind = "attack", from = selected, to = target, blitz = true })
+				smallButton(if stopAt > 1 then `Blitz (stop at {stopAt})` else "Blitz", buttons, 0.5, function()
+					sendAttack(true)
 				end, nil, 2)
+				local stopRow = row(actions, 5)
+				Kit.label("Blitz stops at", { Size = UDim2.new(0.4, -4, 1, 0), TextSize = 14, LayoutOrder = 0, Parent = stopRow })
+				smallButton("−", stopRow, 0.2, function()
+					stopAt = math.max(1, stopAt - 1)
+					rerender()
+				end, Theme.PanelLight, 1)
+				Kit.label(`{stopAt}`, { Size = UDim2.new(0.2, -4, 1, 0), Font = Theme.FontBold, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = stopRow })
+				smallButton("+", stopRow, 0.2, function()
+					stopAt = math.min(math.max(1, view.armies[selected] - 1), stopAt + 1)
+					rerender()
+				end, Theme.PanelLight, 3)
 			elseif selected and target and targets[target] == "move" then
 				local max = view.armies[selected] - 1
 				moveCount = math.clamp(moveCount, 1, math.max(1, max))
@@ -455,6 +689,8 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				smallButton(`Move {moveCount} and end turn`, actions, 1, function()
 					sendMove({ kind = "fortify", from = selected, to = target, count = moveCount })
 				end, Theme.Good, 4)
+			elseif view.peaceRound then
+				hint("Round 1 is for placing armies: attacks start in round 2. Move armies once, or end your turn.", actions, 2, Theme.Accent)
 			elseif view.conquestsLeft == 0 then
 				hint("That's all the territories you can take this turn. More open up in later rounds.", actions, 2, Theme.Accent)
 				if selected then
@@ -467,7 +703,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			else
 				hint("Tap one of your territories with 2+ armies to attack from it.", actions, 2)
 			end
-			if view.conquestsLeft > 0 and view.round <= 5 and view.earlyLimit ~= false then
+			if view.conquestsLeft > 0 and view.round <= 5 and view.earlyLimit ~= false and not view.peaceRound then
 				local n = view.conquestsLeft
 				hint(`You can take {n} more {if n == 1 then "territory" else "territories"} this turn.`, actions, 2)
 			end
@@ -527,6 +763,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local function renderCards(view: any)
+		local me = snapshot.yourSeat
 		Kit.clear(cardsSection)
 		if not view.hand then
 			return
@@ -543,11 +780,15 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			LayoutOrder = 2,
 			Parent = cardsSection,
 		})
-		Kit.new("UIGridLayout", { CellSize = UDim2.fromOffset(52, 64), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+		Kit.new("UIGridLayout", { CellSize = UDim2.fromOffset(64, 72), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
 		for i, kind in view.hand do
 			local picked = table.find(pickedCards, i) ~= nil
+			local land = view.handLands and view.handLands[i] or 0
+			local landName = if land > 0 and territories[land] then territories[land].name else nil
+			local yours = land > 0 and me ~= nil and view.owner[land] == me
 			local card = Kit.new("TextButton", {
-				Text = `{CARD_ICONS[kind] or "?"}\n{Rules.cardNames[kind] or kind}`,
+				Text = if landName then `{CARD_ICONS[kind] or "?"}\n{landName}{if yours then "\n+2" else ""}` else `{CARD_ICONS[kind] or "?"}\n{Rules.cardNames[kind] or kind}`,
+				TextWrapped = true,
 				Font = Theme.FontBold,
 				TextSize = 13,
 				TextColor3 = Color3.new(1, 1, 1),
@@ -570,7 +811,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				rerender()
 			end)
 		end
-		local canTrade = myTurn() and view.phase == "reinforce"
+		local canTrade = myTurn() and view.phase == "reinforce" and not (view.knockoutTrade and #view.hand < Rules.HAND_LIMIT)
 		local cards: { number }? = nil
 		local value: number? = nil
 		if #pickedCards == 3 then
@@ -609,12 +850,13 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		else
 			hint(`Sets: 3 Swords {values.sword} · 3 Shields {values.shield} · 3 Crowns {values.crown} · one of each {values.mixed}. Wilds match anything.`, cardsSection, 5)
 		end
+		hint(`A traded card showing a territory you hold puts +{Rules.CARD_LAND_BONUS} armies there.`, cardsSection, 6)
 	end
 
-	local function diceRow(parent: Instance, dice: { number }, color: Color3, order: number)
+	local function diceRow(parent: Instance, dice: { number }, color: Color3, order: number, tumble: boolean?)
 		local frame = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = order, Parent = parent }, { Kit.list(6, true) })
 		for i, value in dice do
-			Kit.new("TextLabel", {
+			local die = Kit.new("TextLabel", {
 				Text = `{value}`,
 				Font = Theme.FontBold,
 				TextSize = 18,
@@ -624,6 +866,23 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				LayoutOrder = i,
 				Parent = frame,
 			}, { Kit.corner(6) })
+			-- A new battle: the dice tumble for a moment before they land.
+			if tumble then
+				task.spawn(function()
+					for step = 1, 6 do
+						if not die.Parent then
+							return
+						end
+						die.Text = tostring(math.random(1, 6))
+						die.Rotation = if step % 2 == 0 then 12 else -12
+						task.wait(0.06)
+					end
+					if die.Parent then
+						die.Text = `{value}`
+						die.Rotation = 0
+					end
+				end)
+			end
 		end
 	end
 
@@ -642,8 +901,12 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			2,
 			Theme.Text
 		)
-		diceRow(battleSection, b.attackDice, Theme.Bad, 3)
-		diceRow(battleSection, b.defendDice, Color3.fromRGB(240, 240, 240), 4)
+		local tumble = b.id ~= nil and b.id ~= tumbledBattle and tumbledBattle ~= nil
+		if b.id ~= tumbledBattle then
+			tumbledBattle = b.id or tumbledBattle or 0
+		end
+		diceRow(battleSection, b.attackDice, Theme.Bad, 3, tumble)
+		diceRow(battleSection, b.defendDice, Color3.fromRGB(240, 240, 240), 4, tumble)
 	end
 
 	local function renderRegions(view: any)
@@ -753,8 +1016,14 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			chanceTag.Text = `{math.floor(chance * 100 + 0.5)}%`
 			chanceTag.BackgroundColor3 = if chance >= 0.6 then Color3.fromRGB(60, 160, 90) elseif chance >= 0.35 then Color3.fromRGB(200, 150, 40) else Theme.Bad
 			chanceTag.Position = UDim2.fromScale(spot.x, spot.y - NODE_SIZE * MAP_ASPECT * 0.55)
+			attackCard.Visible = not tableMode
+			attackCard.Position = UDim2.fromScale(math.clamp(spot.x, 0.1, 0.9), math.min(spot.y + NODE_SIZE * MAP_ASPECT * 0.9, 0.9))
+			local most = math.min(3, view.armies[selected] - 1)
+			attackRoll.Text = `Roll {math.min(diceCount or most, most)}`
+			attackBlitz.Text = if stopAt > 1 then `Blitz ≥{stopAt}` else "Blitz"
 		else
 			chanceTag.Visible = false
+			attackCard.Visible = false
 		end
 		-- A new battle: losses pop over both territories, a conquest flips with a bounce.
 		local b = view.lastBattle
@@ -789,12 +1058,14 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			prompt.sheet(side, if cardsN > 0 then "Cards and battle" else "Battle")
 		end }
 		if snapshot.result then
-			prompt.bar(nil)
 			prompt.ask(nil)
 			prompt.chips(nil)
+			prompt.bar("over", "Game over", { { text = "Final standings", onClick = function()
+				prompt.sheet(side, "Final standings")
+			end } })
 			return
 		end
-		local chips = { TablePrompt.chip(`Round {view.round} of {view.maxRounds}`) }
+		local chips = { TablePrompt.chip(roundText(view)) }
 		if me and view.owner then
 			local lands, armies = 0, 0
 			for t, owner in view.owner do
@@ -824,7 +1095,11 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		prompt.chips("info", chips)
 		if not myTurn() then
 			local doing = if view.phase == "reinforce" then "placing armies" else "on the attack"
-			prompt.bar("wait", `{nameOf(view.turn)}'s turn: {doing}`, { info })
+			local nextText = ""
+			if view.nextUp and view.nextUp[1] then
+				nextText = ` · next: {nameOf(view.nextUp[1])}`
+			end
+			prompt.bar("wait", `{nameOf(view.turn)}'s turn: {doing}{nextText}`, { info })
 			prompt.ask(nil)
 			return
 		end
@@ -851,8 +1126,27 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 				prompt.bar("trade", nil, {})
 				return
 			end
+			if view.holdForTrade then
+				local cards, value = Rules.bestSet(view.hand)
+				if view.nextRising and value then
+					value = view.nextRising
+				end
+				prompt.ask("hold", "You still hold a set", "Trade it for more armies, or start attacking.", {
+					{ text = if value then `Trade for {value}` else "Cards", color = Theme.Good, onClick = function()
+						if cards and value then
+							pickedCards = {}
+							sendMove({ kind = "trade", cards = cards })
+						end
+					end },
+					{ text = "Start attacking", onClick = function()
+						sendMove({ kind = "startAttack" })
+					end },
+				})
+				prompt.bar("hold", nil, {})
+				return
+			end
 			local buttons = {}
-			for _, amount in { 1, 3, "all" } do
+			for _, amount in { 1, 3, 5, "all" } do
 				table.insert(buttons, {
 					text = if amount == "all" then "All" else `+{amount}`,
 					color = if placeAmount == amount then Theme.Accent else Theme.PanelLight,
@@ -884,6 +1178,10 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 					moveCount = math.min(occupy.max, moveCount + 1)
 					rerender()
 				end },
+				{ text = "Half", color = Theme.PanelLight, onClick = function()
+					moveCount = math.clamp(math.ceil(occupy.max / 2), occupy.min, occupy.max)
+					rerender()
+				end },
 				{ text = "All", color = Theme.PanelLight, onClick = function()
 					moveCount = occupy.max
 					rerender()
@@ -898,12 +1196,18 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			if selected and target and targets[target] == "attack" then
 				local from, to = territories[selected].name, territories[target].name
 				local chance = Rules.winChance(view.armies[selected], view.armies[target])
-				prompt.ask(`attack:{selected}:{target}`, `Attack {to}?`, `From {from} ({view.armies[selected]}) against {view.armies[target]}. Blitz win chance {math.floor(chance * 100 + 0.5)}%`, {
-					{ text = "Roll", color = Theme.Bad, onClick = function()
-						sendMove({ kind = "attack", from = selected, to = target, blitz = false })
+				local most = math.min(3, view.armies[selected] - 1)
+				local dice = math.min(diceCount or most, most)
+				prompt.ask(`attack:{selected}:{target}:{dice}`, `Attack {to}?`, `From {from} ({view.armies[selected]}) against {view.armies[target]}. Blitz win chance {math.floor(chance * 100 + 0.5)}%`, {
+					{ text = `Roll {dice}`, color = Theme.Bad, onClick = function()
+						sendAttack(false)
+					end },
+					{ text = `Dice: {dice}`, color = Theme.PanelLight, onClick = function()
+						diceCount = if dice <= 1 then most else dice - 1
+						rerender()
 					end },
 					{ text = "Blitz", onClick = function()
-						sendMove({ kind = "attack", from = selected, to = target, blitz = true })
+						sendAttack(true)
 					end },
 					{ text = "Cancel", color = Theme.PanelLight, onClick = cancel },
 				})
@@ -922,13 +1226,19 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 						moveCount = math.min(max, moveCount + 1)
 						rerender()
 					end },
+					{ text = "Half", color = Theme.PanelLight, onClick = function()
+						moveCount = math.max(1, math.ceil(max / 2))
+						rerender()
+					end },
 					{ text = "Cancel", color = Theme.PanelLight, onClick = cancel },
 				})
 			else
 				prompt.ask(nil)
 			end
 			local line
-			if view.conquestsLeft == 0 then
+			if view.peaceRound then
+				line = "Round 1 is for placing: move armies once or end your turn"
+			elseif view.conquestsLeft == 0 then
 				line = if selected then "Tap a green island to move armies there, or end your turn" else "No more conquests this turn: move armies or end your turn"
 			elseif selected then
 				line = "Tap a red neighbour to attack, or a green island to move armies"
@@ -954,6 +1264,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 		if view.turnId ~= lastTurnId then
 			lastTurnId = view.turnId
 			selected, target, pickedCards, occupyFor = nil, nil, {}, nil
+			diceCount, stopAt = nil, 1
 		end
 		-- Drop a selection the board no longer allows (lost the territory, down to 1 army).
 		if selected and (view.owner[selected] ~= me or view.armies[selected] < 2 or view.phase ~= "attack") then
@@ -1072,6 +1383,9 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			rerender()
 		end,
 		destroy = function()
+			for _, connection in connections do
+				connection:Disconnect()
+			end
 			root:Destroy()
 		end,
 	}
