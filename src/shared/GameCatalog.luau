@@ -453,7 +453,7 @@ local entries: { Entry } = {
 		name = "Conquest Isles",
 		module = "Conquest",
 		category = "Strategy",
-		description = "Roll dice, take territories and hold whole regions to rule the Shattered Isles.",
+		description = "Roll dice, take territories and hold whole regions to rule the isles.",
 		minSeats = 2,
 		maxSeats = 6,
 		status = "ready", -- turns are timed by the game itself (Conquest.TURN_SECONDS)
@@ -468,6 +468,13 @@ local entries: { Entry } = {
 				hint = "Time for a whole turn: reinforce, attack and fortify.",
 				choices = { { label = "60 s", value = 60 }, { label = "90 s", value = 90 }, { label = "2 min", value = 120 }, { label = "150 s", value = 150 }, { label = "5 min (relaxed)", value = 300 } },
 				default = 2,
+			},
+			{
+				key = "map",
+				name = "Map",
+				hint = "Auto: the Shattered Isles (24 lands) for 2-4 players, the Sunken Crown (31 lands round a rich middle) for 5-6.",
+				choices = { { label = "Auto", value = "auto" }, { label = "Shattered Isles", value = "isles" }, { label = "Sunken Crown", value = "crown" } },
+				default = 1,
 			},
 			{
 				key = "cards",

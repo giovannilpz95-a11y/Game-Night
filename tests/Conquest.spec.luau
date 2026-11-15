@@ -99,20 +99,25 @@ return function(T)
 		T.eq(total, N)
 	end)
 
-	T.test("setup deals every territory and gives each seat the same armies", function()
+	T.test("setup deals every territory and gives each seat the same armies (plus turn-order armies)", function()
 		for seats = 2, 6 do
 			local s = Conquest.new(seats, {}, T.Random.new(seats))
+			Conquest.useMap(s.mapId)
 			local armies = {}
-			for t = 1, N do
+			T.eq(#s.owner, #Conquest.territories)
+			for t = 1, #s.owner do
 				T.ok(s.owner[t] >= 1 and s.owner[t] <= seats)
 				T.ok(s.armies[t] >= 1)
 				armies[s.owner[t]] = (armies[s.owner[t]] or 0) + s.armies[t]
 			end
+			-- The same, apart from the turn-order armies some seat counts get.
+			local bonus = Conquest.maps[s.mapId].seatBonus[seats] or {}
 			for seat = 2, seats do
-				T.eq(armies[seat], armies[1])
+				T.eq(armies[seat] - (bonus[seat] or 0), armies[1] - (bonus[1] or 0))
 			end
 			T.eq(s.phase, "reinforce")
 			T.eq(s.reinforcements, Conquest.income(s.owner, 1))
+			Conquest.useMap("isles")
 		end
 	end)
 
@@ -373,7 +378,7 @@ return function(T)
 					Conquest.applyMove(s, seat, move)
 					moves += 1
 					assert(moves < 20000, "game never ended")
-					for t = 1, N do
+					for t = 1, #s.owner do
 						assert(s.armies[t] >= 1 or s.phase == "occupy", "a territory was left empty")
 						assert(not s.eliminated[s.owner[t]], "a knocked-out seat still owns land")
 					end
@@ -711,5 +716,105 @@ return function(T)
 			end
 		end
 		T.ok(changed >= 2, "leftovers went on more than one border")
+	end)
+
+	T.test("maps: connected, two-way, every land in a region, missions and labels valid", function()
+		for id, m in Conquest.maps do
+			local n = #m.territories
+			local seen = { [1] = true }
+			local queue = { 1 }
+			while #queue > 0 do
+				local t = table.remove(queue)
+				for _, nb in m.neighbors[t] do
+					T.ok(table.find(m.neighbors[nb], t) ~= nil, `{id}: links go both ways`)
+					if not seen[nb] then
+						seen[nb] = true
+						table.insert(queue, nb)
+					end
+				end
+			end
+			local pairs = {}
+			for _, link in m.links do
+				local key = `{math.min(link[1], link[2])}-{math.max(link[1], link[2])}`
+				T.ok(not pairs[key], `{id}: link {key} listed once`)
+				pairs[key] = true
+			end
+			for t = 1, n do
+				T.ok(seen[t], `{id}: {m.territories[t].name} is reachable`)
+				local territory = m.territories[t]
+				T.ok(m.regions[territory.region] ~= nil, `{id}: {territory.name} has a region`)
+				T.ok(territory.x > 0 and territory.x < 1 and territory.y > 0 and territory.y < 1)
+				-- Nodes never sit on top of each other.
+				for u = t + 1, n do
+					local other = m.territories[u]
+					T.ok(math.abs(territory.x - other.x) * 1.5 + math.abs(territory.y - other.y) > 0.15, `{id}: {territory.name} and {other.name} overlap`)
+				end
+			end
+			for r, region in m.regions do
+				T.ok(#m.regionMembers[r] >= 3, `{id}: {region.name} has 3+ lands`)
+				T.ok(region.labelX > 0 and region.labelX < 1 and region.labelY > 0 and region.labelY < 1)
+			end
+			for _, set in m.missionRegions do
+				for _, r in ipairs(set) do
+					T.ok(m.regions[r] ~= nil, `{id}: mission region {r}`)
+				end
+			end
+			for seats = 2, 6 do
+				T.ok(m.starting[seats] * seats > n, `{id}: enough armies for {seats} seats`)
+				T.ok(m.rounds[seats] >= 8)
+				local lands, strong = (if seats <= 2 then m.missionCounts.two else m.missionCounts.more)[1], (if seats <= 2 then m.missionCounts.two else m.missionCounts.more)[2]
+				T.ok(lands > math.ceil(n / seats) and lands < n and strong < lands)
+			end
+		end
+	end)
+
+	T.test("map house rule: auto plays the Sunken Crown with 5-6 seats; either can be picked", function()
+		for seats = 2, 6 do
+			local s = Conquest.new(seats, {}, T.Random.new(seats))
+			T.eq(s.mapId, if seats >= 5 then "crown" else "isles")
+			T.eq(#s.owner, #Conquest.maps[s.mapId].territories)
+			T.eq(Conquest.getView(s, 1).mapId, s.mapId)
+		end
+		local crown = Conquest.new(2, { rules = { map = "crown" } }, T.Random.new(4))
+		T.eq(crown.mapId, "crown")
+		T.eq(#crown.owner, 31)
+		T.eq(Conquest.getView(crown, 1).mapName, "The Sunken Crown")
+		T.ok(string.find(crown.log[1].text, "Sunken Crown", 1, true) ~= nil)
+		local isles = Conquest.new(6, { rules = { map = "isles" } }, T.Random.new(5))
+		T.eq(isles.mapId, "isles")
+		T.eq(#isles.owner, 24)
+		-- Entry points put the current map back, so helpers outside a call read the Isles.
+		T.eq(Conquest.mapId, "isles")
+		T.eq(#Conquest.territories, 24)
+	end)
+
+	T.test("the Sunken Crown: bot games finish for every seat count, nothing lost", function()
+		for seats = 2, 6 do
+			local level = ({ "easy", "medium", "hard" })[seats % 3 + 1]
+			local rng = T.Random.new(seats * 101)
+			local s = Conquest.new(seats, { botLevel = level, rules = { map = "crown", missions = seats % 2 == 0, capitals = seats == 5 } }, rng)
+			local moves = 0
+			while not Conquest.getResult(s) do
+				local seat = Conquest.getActiveSeats(s)[1]
+				local move = GameModule.chooseBotMove(Conquest, s, seat, rng)
+				assert(move, `bot had no move in phase {s.phase}`)
+				local ok, err = Conquest.validateMove(s, seat, move)
+				assert(ok, `{level} bot made a bad {move.kind}: {err}`)
+				Conquest.applyMove(s, seat, move)
+				moves += 1
+				assert(moves < 30000, "game never ended")
+				for t = 1, 31 do
+					assert(s.armies[t] >= 1 or s.phase == "occupy", "a territory was left empty")
+				end
+				local cards = #s.deck + #s.discard
+				for seat2 = 1, seats do
+					cards += #s.hands[seat2]
+				end
+				assert(cards == 26, "cards went missing")
+			end
+			T.ok(#Conquest.getResult(s).winners >= 1)
+			local view = Conquest.getView(s, 1)
+			T.eq(#view.owner, 31)
+		end
 	end)
 end

@@ -1,6 +1,6 @@
--- Conquest Isles at the table: the Shattered Isles map as raised island patches in region
--- colors, land bridges and sea lanes, and on every territory toy soldiers in its owner's
--- color with the army count on a flag-side plate. Play stays in the 2D view.
+-- Conquest Isles at the table: the match's map (Shattered Isles or Sunken Crown) as
+-- raised island patches in region colors, land bridges and sea lanes, and on every
+-- territory toy soldiers in its owner's color with the army count on a flag-side plate.
 -- House rule modes: capitals get a little stone keep flying their founder's flag, and
 -- under fog of war the board shows everyone the same thing, so no soldiers at all: each
 -- island wears a cloud until the game ends (your own screen labels what you can see).
@@ -32,48 +32,93 @@ local function squadSize(armies: number): number
 	return 1
 end
 
+-- Beach heights: each island takes the lowest of three steps no overlapping neighbor
+-- already has, so two sandy tops never share a plane.
+local function beachLevels(territories: { any }): { number }
+	local levels = {}
+	for i, t in territories do
+		local used = {}
+		for j = 1, i - 1 do
+			local o = territories[j]
+			local dx, dz = (t.x - o.x) * W, (t.y - o.y) * D
+			if dx * dx + dz * dz < 1.25 * 1.25 then
+				used[levels[j]] = true
+			end
+		end
+		local level = 0
+		while used[level] and level < 2 do
+			level += 1
+		end
+		levels[i] = level
+	end
+	return levels
+end
+
 function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layout)
 	local model = Instance.new("Model")
 	model.Name = "GameBoard"
 	Models.block(model, "Frame", Vector3.new(W + 0.8, 0.14, D + 0.8), boardCF * CFrame.new(0, 0.07, 0), Models.WALNUT, Enum.Material.Wood)
 	Models.block(model, "Sea", Vector3.new(W + 0.4, 0.2, D + 0.4), boardCF * CFrame.new(0, 0.1, 0), SEA)
-	for _, link in Rules.links do
-		local a, b = Rules.territories[link[1]], Rules.territories[link[2]]
-		local pa, pb = pos(boardCF, a, 0.27).Position, pos(boardCF, b, 0.27).Position
-		local cf = CFrame.lookAt((pa + pb) / 2, pb, boardCF.UpVector)
-		local length = (pb - pa).Magnitude
-		if link.sea then
-			-- A dashed line of buoys across the water.
-			local dashes = math.max(2, math.floor(length / 0.4))
-			for i = 1, dashes do
-				Models.block(model, "SeaLane", Vector3.new(0.06, 0.03, 0.2), cf * CFrame.new(0, 0, (i - (dashes + 1) / 2) * length / dashes), Color3.fromRGB(235, 244, 255))
-			end
-		else
-			-- Rooted in the sea (no gap under it), its top below the beaches'.
-			Models.block(model, "Border", Vector3.new(0.6, 0.1, length), cf * CFrame.new(0, -0.05, 0), Rules.regions[a.region].color:Lerp(Rules.regions[b.region].color, 0.5), Enum.Material.Grass)
+	-- The map itself (islands, borders, region names) is built on the first update, for
+	-- the match's map, inside its own model so a different map can replace it.
+	local board = model
+	local mapModel: Model? = nil
+	local builtMap: string? = nil
+	local M = Rules.maps.isles
+	local function buildMap(id: string?)
+		if mapModel then
+			mapModel:Destroy()
 		end
-	end
-	for i, t in Rules.territories do
-		local color = Rules.regions[t.region].color
-		local base = pos(boardCF, t, LAND_Y)
-		-- Beaches reach down into the sea. Neighbors overlap, so their tops step by 0.015
-		-- (three heights) to keep two sandy tops from fighting (flickering) in one plane.
-		local beachTop = 0.08 + (i % 3) * 0.015
-		-- Tap an island in Table view to place, pick or attack (renderer tapTable "terr:<i>").
-		local id = `terr:{i}`
-		Scene.tappable(Models.cyl(model, "Beach", 1.2, beachTop + 0.06, base * CFrame.new(0, -0.06, 0), Color3.fromRGB(232, 214, 160), Enum.Material.Sand), id)
-		-- Grass tops step down a hair too (neighbors overlap where nothing stands on them).
-		Scene.tappable(Models.cyl(model, t.name, 1.05, 0.16 - (i % 3) * 0.012, base, color, Enum.Material.Grass), id)
-		-- A hill so the patches don't read as flat coins.
-		Scene.tappable(Models.egg(model, "Hill", Vector3.new(0.5, 0.2, 0.4), base * CFrame.new(-0.26, TOP_Y - LAND_Y, 0.26), color:Lerp(Color3.new(0, 0, 0), 0.15), Enum.Material.Grass), id)
-	end
-	-- Region names and bonuses on the sea next to each region, like the printed board.
-	for _, region in Rules.regions do
-		local cf = boardCF * CFrame.new((region.labelX - 0.5) * W, 0.21, (region.labelY - 0.5) * D)
-		Scene.flatText(model, cf, 1.9, 0.34, `{region.name} +{region.bonus}`, {
-			TextColor3 = region.color:Lerp(Color3.new(1, 1, 1), 0.45),
-			TextStrokeTransparency = 0.5,
-		})
+		M = Rules.maps[id or "isles"] or Rules.maps.isles
+		builtMap = id or "isles"
+		local model = Instance.new("Model")
+		model.Name = "Map"
+		local levels = beachLevels(M.territories)
+		for _, link in M.links do
+			local a, b = M.territories[link[1]], M.territories[link[2]]
+			local pa, pb = pos(boardCF, a, 0.27).Position, pos(boardCF, b, 0.27).Position
+			local cf = CFrame.lookAt((pa + pb) / 2, pb, boardCF.UpVector)
+			local length = (pb - pa).Magnitude
+			if link.sea then
+				-- A dashed line of buoys across the water.
+				local dashes = math.max(2, math.floor(length / 0.4))
+				for i = 1, dashes do
+					Models.block(model, "SeaLane", Vector3.new(0.06, 0.03, 0.2), cf * CFrame.new(0, 0, (i - (dashes + 1) / 2) * length / dashes), Color3.fromRGB(235, 244, 255))
+				end
+			else
+				-- Rooted in the sea (no gap under it), its top below the beaches'.
+				Models.block(model, "Border", Vector3.new(0.6, 0.1, length), cf * CFrame.new(0, -0.05, 0), M.regions[a.region].color:Lerp(M.regions[b.region].color, 0.5), Enum.Material.Grass)
+			end
+		end
+		for i, t in M.territories do
+			local color = M.regions[t.region].color
+			local base = pos(boardCF, t, LAND_Y)
+			-- Beaches reach down into the sea. Neighbors overlap, so their tops step by 0.015
+			-- (three heights) to keep two sandy tops from fighting (flickering) in one plane.
+			local beachTop = 0.08 + levels[i] * 0.015
+			-- Tap an island in Table view to place, pick or attack (renderer tapTable "terr:<i>").
+			local id = `terr:{i}`
+			Scene.tappable(Models.cyl(model, "Beach", 1.2, beachTop + 0.06, base * CFrame.new(0, -0.06, 0), Color3.fromRGB(232, 214, 160), Enum.Material.Sand), id)
+			-- Grass tops step down a hair too (neighbors overlap where nothing stands on them).
+			Scene.tappable(Models.cyl(model, t.name, 1.05, 0.16 - levels[i] * 0.012, base, color, Enum.Material.Grass), id)
+			-- A hill so the patches don't read as flat coins.
+			Scene.tappable(Models.egg(model, "Hill", Vector3.new(0.5, 0.2, 0.4), base * CFrame.new(-0.26, TOP_Y - LAND_Y, 0.26), color:Lerp(Color3.new(0, 0, 0), 0.15), Enum.Material.Grass), id)
+		end
+		-- Region names and bonuses on the sea next to each region, like the printed board.
+		-- Where the sea between rows is too narrow (the Crown's middle), the name floats on a
+		-- sign above the board instead.
+		for _, region in M.regions do
+			local style = { TextColor3 = region.color:Lerp(Color3.new(1, 1, 1), 0.45), TextStrokeTransparency = 0.5 }
+			if region.float then
+				local cf = boardCF * CFrame.new((region.labelX - 0.5) * W, 0.95, (region.labelY - 0.5) * D)
+				Scene.floatText(model, cf, 1.9, 0.34, `{region.name} +{region.bonus}`, style)
+			else
+				local cf = boardCF * CFrame.new((region.labelX - 0.5) * W, 0.21, (region.labelY - 0.5) * D)
+				Scene.flatText(model, cf, 1.9, 0.34, `{region.name} +{region.bonus}`, style)
+			end
+		end
+		model.Parent = board
+		mapModel = model
 	end
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent
@@ -82,12 +127,15 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 	return {
 		model = model,
 		update = function(view: any, _snapshot: any)
+			if builtMap ~= (view.mapId or "isles") then
+				buildMap(view.mapId)
+			end
 			if not Scene.changed(memo, view) then
 				return
 			end
 			Scene.redraw(dynamic, function(dynamic)
 				for seat, capital in view.capitals or {} do
-					local t = Rules.territories[capital]
+					local t = M.territories[capital]
 					if t then
 						-- Back corner of the island, clear of the soldiers and the count plate.
 						local base = pos(boardCF, t, TOP_Y) * CFrame.new(0.3, 0, -0.3)
@@ -96,7 +144,7 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 						Models.flag(dynamic, base * CFrame.new(0, 0.35, 0), Scene.SEAT_COLORS[seat] or NEUTRAL, 0.3)
 					end
 				end
-				for i, t in Rules.territories do
+				for i, t in M.territories do
 					local owner = (view.owner or {})[i] or 0
 					local armies = (view.armies or {})[i] or 0
 					local color = Scene.SEAT_COLORS[owner] or NEUTRAL
@@ -125,8 +173,8 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 				-- attacking land to the target, the dice each side rolled next to their land,
 				-- and the losses floating over each (the battle screen of the big versions).
 				local battle = view.lastBattle
-				local fromT = battle and Rules.territories[battle.from]
-				local toT = battle and Rules.territories[battle.to]
+				local fromT = battle and M.territories[battle.from]
+				local toT = battle and M.territories[battle.to]
 				if battle and fromT and toT and view.turn == battle.attacker and (view.phase == "attack" or view.phase == "occupy") then
 					local RED = Color3.fromRGB(230, 60, 60)
 					local pa = pos(boardCF, fromT, TOP_Y + 0.55).Position
