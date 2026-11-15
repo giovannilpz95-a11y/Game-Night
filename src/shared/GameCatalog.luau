@@ -29,6 +29,7 @@ export type Entry = {
 	serverData: { [string]: string }?, -- options key -> module in ServerScriptService Data (answers clients must never see)
 }
 
+local Config = require(script.Parent.Config)
 local Toggle = require(script.Parent.HouseRules).Toggle
 
 local entries: { Entry } = {
@@ -151,7 +152,10 @@ local entries: { Entry } = {
 		-- Off for launch (Giovanni, 2026-11-04). The game is built and tested; set this to
 		-- "ready" to turn it back on.
 		-- Held from launch: freehand drawing counts as "free-form user creation", which
-		-- Roblox limits to 16+ for the whole experience. See docs/Launch.md.
+		-- Roblox limits to 16+ for the whole experience. With Config.SketchFreeDraw = false
+		-- (the default) every table is stamps only (pre-made stamps, no pen). Turn this on
+		-- only after Roblox confirms in writing that stamps aren't free-form creation.
+		-- See docs/Launch.md blocker 1.
 		status = "soon",
 		coin = "party",
 		typicalMinutes = 10,
@@ -173,6 +177,7 @@ local entries: { Entry } = {
 			},
 			{
 				key = "tools",
+				freeDrawOnly = true, -- only where Config.SketchFreeDraw is on (else stamps only)
 				name = "Drawing tools",
 				hint = "Shapes only: lines, boxes and ovals, no free pen.",
 				choices = { { label = "Pen and shapes", value = "all" }, { label = "Shapes only", value = "shapes" } },
@@ -901,6 +906,19 @@ local entries: { Entry } = {
 }
 
 local GameCatalog = {}
+
+-- Rules that only make sense with freehand drawing allowed (see Config.SketchFreeDraw).
+if not Config.SketchFreeDraw then
+	for _, entry in entries do
+		if entry.houseRules then
+			for i = #entry.houseRules, 1, -1 do
+				if entry.houseRules[i].freeDrawOnly then
+					table.remove(entry.houseRules, i)
+				end
+			end
+		end
+	end
+end
 
 GameCatalog.entries = entries
 
