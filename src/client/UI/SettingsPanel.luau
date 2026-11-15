@@ -319,7 +319,8 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 		hooks.rules()
 	end)
 
-	note(left, 9, "Saved for next time.")
+	local savedNote = note(left, 9, "Saved for next time.")
+	savedNote.TextColor3 = Theme.SubText -- on the window, not on paper
 
 	local function render()
 		local levels = Audio.levels()

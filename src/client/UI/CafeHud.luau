@@ -392,7 +392,7 @@ function CafeHud.create(parent: Instance, actions: Actions)
 	moreRow("Settings", 5, "⚙️", "Settings", actions.settings or actions.sound)
 	moreRows.Voice.Visible = false
 
-	more = railButton("More", 5, "☰", "More", function()
+	more = railButton("More", 5, "•••", "More", function()
 		local show = not pop.Visible
 		catcher.Visible = show
 		pop.Visible = show
@@ -777,7 +777,7 @@ function CafeHud.create(parent: Instance, actions: Actions)
 			local icon = button:FindFirstChild("Icon") :: TextLabel?
 			local caption = button:FindFirstChild("Caption") :: TextLabel?
 			if icon then
-				icon.TextSize = if railSize < 56 then 20 else 26
+				icon.TextSize = if railSize < 56 then 22 else 30
 				icon.Position = UDim2.new(0, 0, 0, if railSize < 56 then 3 else 6)
 			end
 			if caption then

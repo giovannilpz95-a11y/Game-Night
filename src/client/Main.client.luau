@@ -137,7 +137,8 @@ local statsPanel = StatsPanel.create(lobby, function(request)
 end)
 
 local partyWindow = Kit.modal(lobby, { name = "PartyWindow", maxSize = Vector2.new(420, 600) })
-local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = Vector2.new(1000, 680) })
+-- The Café picker has a game panel on the right, so its window is wider.
+local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = if Kit.cafe then Vector2.new(1240, 780) else Vector2.new(1000, 680) })
 local partyPanel = PartyPanel.create(partyWindow.body, sendParty, hostHooks)
 local gamePicker = GamePicker.create(pickerWindow.body, sendMatch, hostHooks)
 Layout.onChange(function(info)

@@ -1030,13 +1030,16 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 				inspected = entry
 				render()
 			end
-			task.defer(function()
+			-- After the grid has laid out (and grown its canvas), scroll the tile into view.
+			local function scrollTo()
 				local tile = grid:FindFirstChild(gameId) :: GuiObject?
 				if tile then
 					local y = tile.AbsolutePosition.Y - grid.AbsolutePosition.Y + grid.CanvasPosition.Y
 					grid.CanvasPosition = Vector2.new(0, math.max(0, y - 8))
 				end
-			end)
+			end
+			task.delay(0.1, scrollTo)
+			task.delay(0.45, scrollTo)
 		end,
 		chosenId = function(): string?
 			return if chosen then chosen.id else nil
