@@ -11,6 +11,7 @@ local Audio = require(script.Parent.Parent.Audio)
 local Controller = require(script.Parent.Parent.Table3D.Controller)
 local FreeLook = require(script.Parent.Parent.Table3D.FreeLook)
 local Kit = require(script.Parent.Kit)
+local Perf = require(script.Parent.Parent.Perf)
 local Theme = Kit.Theme
 
 local SettingsPanel = {}
@@ -194,7 +195,7 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 	--------------------------------------------------------------------------------
 	-- Saving
 	--------------------------------------------------------------------------------
-	local saved = { graphics = "auto", camera = "full", view = "eye", invertY = false, lookSpeed = 1 }
+	local saved = { graphics = "auto", camera = "full", view = "eye", invertY = false, reduceMotion = false, lookSpeed = 1 }
 	local audioToken, settingsToken = 0, 0
 	local function saveAudio()
 		audioToken += 1
@@ -211,7 +212,15 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 		local token = settingsToken
 		task.delay(SAVE_DELAY, function()
 			if token == settingsToken then
-				hooks.send({ action = "settings", graphics = saved.graphics, camera = saved.camera, view = saved.view, invertY = saved.invertY, lookSpeed = saved.lookSpeed })
+				hooks.send({
+					action = "settings",
+					graphics = saved.graphics,
+					camera = saved.camera,
+					view = saved.view,
+					invertY = saved.invertY,
+					reduceMotion = saved.reduceMotion,
+					lookSpeed = saved.lookSpeed,
+				})
 			end
 		end)
 	end
@@ -263,6 +272,15 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 		saveSettings()
 	end)
 	note(graphics, 2, "Low turns off shadows, flames and tiny decorations for a smoother game on older phones. Auto follows your Roblox graphics level.")
+	local showMotionUi = segmented(graphics, 3, "Reduce motion", {
+		{ value = "off", label = "Off" },
+		{ value = "on", label = "On" },
+	}, function(value)
+		Perf.setReducedMotion(value == "on")
+		saved.reduceMotion = value == "on"
+		saveSettings()
+	end)
+	note(graphics, 4, "On stops spinning borders, glints and bouncing badges in the menus.")
 
 	local camera = card(right, 1, "🎥  Table camera")
 	local showMotion = segmented(camera, 1, "Camera motion", {
@@ -327,6 +345,7 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 		showMusic(levels.music)
 		showEffects(levels.effects)
 		showGraphics(saved.graphics)
+		showMotionUi(if Perf.isReducedMotion() then "on" else "off")
 		showMotion(if Controller.isCalm() then "calm" else "full")
 		showView(if Controller.isEyeLevel() then "eye" else "raised")
 		showInvert(if FreeLook.isInvertY() then "on" else "off")
@@ -364,6 +383,10 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 				if Controller.isEyeLevel() ~= eye then
 					Controller.setEyeLevel(eye)
 				end
+			end
+			if type(record.reduceMotion) == "boolean" then
+				saved.reduceMotion = record.reduceMotion
+				Perf.setReducedMotion(record.reduceMotion)
 			end
 			if type(record.invertY) == "boolean" then
 				saved.invertY = record.invertY

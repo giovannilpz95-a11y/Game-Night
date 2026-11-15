@@ -292,7 +292,7 @@ end
 -- the stroke goes away; skipped in low-detail mode (a still ring instead).
 function Juice.breathe(stroke: UIStroke, low: number?, high: number?)
 	stroke.Transparency = low or 0
-	if Perf.isLow() then
+	if Perf.stillMotion() then
 		return
 	end
 	local info = TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)

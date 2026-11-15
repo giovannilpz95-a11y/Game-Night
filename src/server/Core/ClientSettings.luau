@@ -1,6 +1,6 @@
 -- The Settings window's choices that live on the player's device but are saved in the
 -- profile (data.settings), so they come back next time: graphics detail, the table
--- camera's motion and height, invert look and look speed. Sound has its own record
+-- camera's motion and height, invert look, look speed and Reduce motion. Sound has its own record
 -- (Core/AudioSettings). Pure, so it is unit tested; EconomyService passes it the client's
 -- { action = "settings", ... } requests and sends the record back with the wallet.
 
@@ -11,6 +11,7 @@ export type State = {
 	camera: string, -- "full" (lean, push-ins, drift) or "calm"
 	view: string, -- "eye" (eye level) or "raised"
 	invertY: boolean,
+	reduceMotion: boolean, -- menus: no spinning, glinting or nudging
 	lookSpeed: number, -- multiple of the normal mouse/touch look speed
 }
 
@@ -26,7 +27,7 @@ ClientSettings.LookSpeedMax = 3
 ClientSettings.LookSpeedStep = 0.05
 
 function ClientSettings.new(): State
-	return { graphics = "auto", camera = "full", view = "eye", invertY = false, lookSpeed = 1 }
+	return { graphics = "auto", camera = "full", view = "eye", invertY = false, reduceMotion = false, lookSpeed = 1 }
 end
 
 -- A look speed from a client: a real number, clamped and rounded to 0.05. nil if invalid.
@@ -52,9 +53,12 @@ function ClientSettings.apply(state: State, request: any): boolean
 			changed = true
 		end
 	end
-	if type(request.invertY) == "boolean" and state.invertY ~= request.invertY then
-		state.invertY = request.invertY
-		changed = true
+	for _, key in { "invertY", "reduceMotion" } do
+		local value = request[key]
+		if type(value) == "boolean" and (state :: any)[key] ~= value then
+			(state :: any)[key] = value
+			changed = true
+		end
 	end
 	local speed = ClientSettings.lookSpeed(request.lookSpeed)
 	if speed ~= nil and math.abs(state.lookSpeed - speed) > 1e-6 then

@@ -9,6 +9,7 @@ return function(T)
 			T.eq((state :: any)[key], allowed[1])
 		end
 		T.eq(state.invertY, false)
+		T.eq(state.reduceMotion, false)
 		T.eq(state.lookSpeed, 1)
 	end)
 
@@ -22,8 +23,10 @@ return function(T)
 			T.eq(ClientSettings.apply(state, { graphics = junk, camera = junk, view = junk }), false)
 		end
 		for _, junk in { "yes", 1, {} } do
-			T.eq(ClientSettings.apply(state, { invertY = junk }), false)
+			T.eq(ClientSettings.apply(state, { invertY = junk, reduceMotion = junk }), false)
 		end
+		T.eq(ClientSettings.apply(state, { reduceMotion = true }), true)
+		T.eq(state.reduceMotion, true)
 		T.eq(ClientSettings.apply(state, { invertY = true, view = "raised" }), true)
 		T.eq(state.invertY, true)
 		T.eq(state.view, "raised")
@@ -61,5 +64,9 @@ return function(T)
 		old.settings = nil :: any
 		local fixed = Profile.reconcile(old, 0)
 		T.eq(fixed.settings.camera, "full")
+		-- A save from before Reduce motion gets the field.
+		local older = Profile.new(0)
+		older.settings = { graphics = "low", camera = "calm", view = "eye", invertY = false, lookSpeed = 1 } :: any
+		T.eq(Profile.reconcile(older, 0).settings.reduceMotion, false)
 	end)
 end

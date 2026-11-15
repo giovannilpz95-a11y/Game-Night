@@ -215,7 +215,15 @@ local function compact(parent: Instance, entry: Entry, done: () -> ())
 	end)
 end
 
+-- Another moment that owns the screen (the daily reward card, the lobby tour): wait for it.
+local busy: (() -> boolean)? = nil
+
 function showNext()
+	if busy and busy() and #queue > 0 then
+		showing = true
+		task.delay(0.3, showNext)
+		return
+	end
 	local entry = table.remove(queue, 1)
 	if not entry or not screen then
 		showing = false
@@ -231,6 +239,11 @@ end
 -- Where the moments are drawn (the main ScreenGui). Call once.
 function Unlock.init(parent: Instance)
 	screen = parent
+end
+
+-- One moment at a time: unlocks wait while `isBusy()` says another moment is up.
+function Unlock.setBusy(isBusy: () -> boolean)
+	busy = isBusy
 end
 
 -- Queues one moment. They play one after another.

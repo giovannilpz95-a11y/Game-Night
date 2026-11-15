@@ -82,7 +82,7 @@ local spinners: { Spinner } = {}
 local loop: RBXScriptConnection? = nil
 
 local function step(dt: number)
-	if Perf.isLow() then
+	if Perf.stillMotion() then
 		return
 	end
 	local i = 1
@@ -245,7 +245,7 @@ function Flair.idleShine(object: GuiObject, every: number?)
 	task.spawn(function()
 		task.wait(math.random() * gap)
 		while object.Parent do
-			if object.Visible and not Perf.isLow() and object.AbsoluteSize.X > 0 then
+			if object.Visible and not Perf.stillMotion() and object.AbsoluteSize.X > 0 then
 				Flair.sweep(object)
 			end
 			task.wait(gap)
@@ -264,7 +264,7 @@ function Flair.nudge(object: GuiObject, every: number?)
 	task.spawn(function()
 		while object.Parent do
 			task.wait(gap)
-			if object.Visible and not Perf.isLow() then
+			if object.Visible and not Perf.stillMotion() then
 				Juice.bump(object, 0.25)
 				Juice.wiggle(object)
 			end
