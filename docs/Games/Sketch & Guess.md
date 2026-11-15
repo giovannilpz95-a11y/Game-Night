@@ -42,7 +42,8 @@ One player draws a secret word and everyone else races to guess it. 3-8 seats.
 
 ## Layout
 - Wide screens: canvas and tools left, guesses right.
-- Narrow or portrait screens, and the Table view dock: one column (word, canvas, tools or guesser buttons, guesses, guess box). The dock shows the right 32% of the board (`MatchView` `DOCK.SketchGuess`, mirrored as `DOCK_SHARE` in the renderer), so drawers can draw and pick words in Table view.
+- Narrow or portrait screens: one column (word, canvas, tools or guesser buttons, guesses, guess box). The old Table view dock layout (`DOCK_SHARE`) is still there for a docked board, but Table view now uses table mode.
+- Table view (`setTableMode`): no side panel. Guessers watch the drawing on the screen over the table; the hint is the line of a `TablePrompt` bar (with 👍 / 👎 / Vote skip / Report / Hide), a guess box sits over it (it keeps focus between guesses), and the last three feed lines float above as chips. The drawer picks a word on a pop-up `ask` card, then draws in an easel window (the full canvas, tools and feed) that closes when the drawing ends. The reveal is a pop-up card with the word, the top scores and thumbs to rate it; the gallery opens as a window. Report opens the canvas window for its prompt.
 - Tool and color grids wrap to the width, and the word-choice buttons scale with the canvas.
 
 ## Sounds

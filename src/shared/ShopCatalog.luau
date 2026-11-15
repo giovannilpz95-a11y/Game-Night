@@ -196,7 +196,9 @@ local items: { Item } = {
 	{ id = "colorclash_holo_cards", name = "Holo Card Backs", shop = "colorclash", slot = "cards", tier = "Rare", coins = 2000, earnedOnly = true },
 
 	-- Party shop (Sketch & Guess, Trivia Night)
-	{ id = "party_crayon_brushes", name = "Crayon Brushes", shop = "party", slot = "brush", tier = "Common", coins = 300 },
+	-- Off sale while Sketch & Guess is off (nothing draws a brush yet): drop notForSale
+	-- when the game and its brush look are live.
+	{ id = "party_crayon_brushes", name = "Crayon Brushes", shop = "party", slot = "brush", tier = "Common", coins = 300, notForSale = true },
 	{ id = "party_buzzer_sounds", name = "Game Show Buzzer", shop = "party", slot = "sound", tier = "Common", coins = 450 },
 	{ id = "party_spotlight_podium", name = "Spotlight Podium", shop = "party", slot = "board", tier = "Rare", coins = 1200 },
 	{ id = "party_paint_splat", name = "Paint Splat Win", shop = "party", slot = "celebration", tier = "Epic", coins = 3000, gems = 300 },
