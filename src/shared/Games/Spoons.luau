@@ -659,6 +659,10 @@ function Spoons.getView(state, seat: number?)
 		end)(),
 		lastLetter = state.lastLetter,
 		freshDeals = state.freshDeals or 0, -- how many jammed rounds were dealt again
+		deckCount = #state.deck, -- the dealer's draw pile
+		waitingForYou = if seat and state.queue and state.queue[seat] then #state.queue[seat] else 0,
+		-- The header line once you're out (instead of "Waiting for other players...").
+		status = if seat and state.out[seat] then "You're out · watching the spoons" else nil,
 	}
 end
 

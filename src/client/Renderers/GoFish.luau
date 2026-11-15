@@ -73,7 +73,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 	})
 	-- "Ask <name>" buttons in the same spot as your books line, once you've picked a rank,
 	-- so Table view (which keeps only the bottom of the screen) can ask too.
-	local askRow = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.65, 22), Size = UDim2.new(1, 0, 0, 26), Visible = false, Parent = root })
+	local askRow = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.65, 22), Size = UDim2.new(1, 0, 0, 30), Visible = false, ZIndex = 9, Parent = root })
 	local askList = Kit.list(6, true)
 	askList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	askList.Parent = askRow
@@ -86,7 +86,8 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		Size = UDim2.new(0.2, 0, 0.4, 0),
 		ZIndex = 7,
 		Parent = root,
-	}, { Kit.corner(10), Kit.padding(6) })
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, { Kit.corner(10), Kit.padding(6), Kit.new("UISizeConstraint", { MinSize = Vector2.new(190, 0) }) })
 	HudKit.glass(logPanel, 0.2)
 	local logList = Kit.list(2)
 	logList.Parent = logPanel
@@ -248,13 +249,13 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		local log = view.log or {}
-		Kit.label("Who asked for what", { Font = Theme.FontBold, TextSize = 13, TextColor3 = Theme.Accent, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 0, ZIndex = 8, Parent = logPanel })
+		Kit.label("Who asked for what", { Font = Theme.FontBold, TextSize = 14, TextColor3 = Theme.Accent, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 0, ZIndex = 8, Parent = logPanel })
 		for i = #log, 1, -1 do
 			local e = log[i]
 			local plural = PlayingCards.rankPlural[e.rank] or "?"
 			local result = if (e.got or 0) > 0 then `got {e.got}` elseif e.lucky then "fished one!" else "Go fish"
 			Kit.label(`{nameOf(e.seat)} → {nameOf(e.target)}: {plural}, {result}`, {
-				TextSize = 12,
+				TextSize = 14,
 				TextColor3 = if (e.got or 0) > 0 or e.lucky then Theme.Text else Theme.SubText,
 				TextWrapped = true,
 				AutomaticSize = Enum.AutomaticSize.Y,
@@ -265,8 +266,9 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 			})
 		end
 		logPanel.Visible = #log > 0
+		-- Only as tall as its lines (it was a big, mostly empty panel).
 		logPanel.Position = if docked then UDim2.new(0.005, 0, 0.62, 0) else UDim2.new(0.79, 0, 0.22, 0)
-		logPanel.Size = if docked then UDim2.new(0.13, 0, 0.36, 0) else UDim2.new(0.2, 0, 0.4, 0)
+		logPanel.Size = if docked then UDim2.new(0.16, 0, 0, 0) else UDim2.new(0.2, 0, 0, 0)
 
 		-- Table view: the "You fished" card lives on the hidden felt, so pop it once.
 		local fishKey = if view.drawnCard then `{view.drawnCard}:{view.pondCount}` else nil
@@ -301,6 +303,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 					end, {
 						Size = UDim2.new(0, math.max(90, #nameOf(seat) * 8 + 50), 1, 0),
 						TextSize = 14,
+						ZIndex = 9,
 						LayoutOrder = seat,
 						Parent = askRow,
 					})
@@ -364,6 +367,12 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		PlayingCard.setHeld(hand, docked)
 		hand.Position = if docked then UDim2.new(0.14, 0, 0.74, 0) else UDim2.new(0, 0, 0.74, 0)
 		hand.Size = if docked then UDim2.new(0.72, 0, 0.4, 0) else UDim2.new(1, 0, 0.26, 0)
+		-- Held, the picked rank's cards lift up out of the fan: the prompt and the Ask
+		-- buttons move up out of their way.
+		local y = if docked then 0.565 else 0.65
+		prompt.Position = UDim2.new(0, 0, y, 0)
+		myBooks.Position = UDim2.new(0, 0, y, 22)
+		askRow.Position = UDim2.new(0, 0, y, 24)
 		if snapshot then
 			render()
 		end
