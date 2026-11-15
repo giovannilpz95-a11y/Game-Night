@@ -94,7 +94,7 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 			for _, pair in { { stock, "stock", `Stock {view.stockCount}` }, { discard, "discard", "Discard" } } do
 				Kit.label(pair[3], { TextSize = 13, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, 2), ZIndex = 6, Parent = pair[1] })
 				local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = pair[1] })
-				button.Activated:Connect(function()
+				Kit.onPress(button, function()
 					if drawing then
 						sendMove({ kind = "draw", from = pair[2] })
 					end

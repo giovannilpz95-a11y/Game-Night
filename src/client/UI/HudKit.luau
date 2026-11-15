@@ -10,6 +10,7 @@ local Audio = require(script.Parent.Parent.Audio)
 local Kit = require(script.Parent.Kit)
 local Flair = require(script.Parent.Flair)
 local Juice = require(script.Parent.Juice)
+local Focus = require(script.Parent.Parent.Table3D.Focus)
 local Theme = Kit.Theme
 
 local HudKit = {}
@@ -345,14 +346,39 @@ end
 
 -- A big moment called out over the game for a second or two ("Hearts are broken!",
 -- "BINGO! +50", "Gin!"): a pill that pops in, shines and fades away. `color` tints it.
+-- In Table view the middle of the screen is where you look and aim (the crosshair), so
+-- call-outs go to a lane along the top instead, smaller, stacking when a few land at
+-- once (Giovanni, 2026-11-15: Color Clash's "+2! That's you" kept popping up in the
+-- middle). Ones placed low on purpose (a prompt like "JUMP IN!") stay where they are.
+local CALLOUT_TOP = 0.17 -- the lane's first slot, a fraction of the screen's height
+local CALLOUT_STEP = 50 -- pixels between stacked call-outs
+local laneUsed: { [number]: boolean } = {}
 function HudKit.callout(parent: Instance, text: string, color: Color3?, y: number?)
+	local topLane = Focus.get() ~= nil and (y or 0.4) < 0.6
+	local slot: number? = nil
+	local home: UDim2
+	local size: UDim2
+	if topLane then
+		parent = parent:FindFirstAncestorWhichIsA("ScreenGui") or parent
+		local i = 1
+		while laneUsed[i] and i < 4 do
+			i += 1
+		end
+		slot = i
+		laneUsed[i] = true
+		home = UDim2.new(0.5, 0, CALLOUT_TOP, (i - 1) * CALLOUT_STEP)
+		size = UDim2.fromOffset(math.clamp(#text * 13 + 50, 150, 420), 44)
+	else
+		home = UDim2.fromScale(0.5, y or 0.4)
+		size = UDim2.fromOffset(math.clamp(#text * 17 + 60, 180, 520), 58)
+	end
 	local pill = Kit.new("Frame", {
 		Name = "Callout",
 		BackgroundColor3 = color or Kit.Theme.Accent,
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, y or 0.4),
-		Size = UDim2.fromOffset(math.clamp(#text * 17 + 60, 180, 520), 58),
+		Position = home,
+		Size = size,
 		ZIndex = 40,
 		Parent = parent,
 	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0, 14) }), Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Transparency = 0.3 }) })
@@ -373,12 +399,17 @@ function HudKit.callout(parent: Instance, text: string, color: Color3?, y: numbe
 	TweenService:Create(pill, Juice.Info.Spring, { Rotation = 0 }):Play()
 	HudKit.shine(pill, 42)
 	Audio.play("callout")
+	pill.Destroying:Once(function()
+		if slot then
+			laneUsed[slot] = nil
+		end
+	end)
 	task.delay(1.6, function()
 		if not pill.Parent then
 			return
 		end
 		local info = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		TweenService:Create(pill, info, { BackgroundTransparency = 1, Position = UDim2.fromScale(0.5, (y or 0.4) - 0.05) }):Play()
+		TweenService:Create(pill, info, { BackgroundTransparency = 1, Position = home - UDim2.fromOffset(0, 24) }):Play()
 		TweenService:Create(label, info, { TextTransparency = 1 }):Play()
 		local stroke = pill:FindFirstChildOfClass("UIStroke")
 		if stroke then

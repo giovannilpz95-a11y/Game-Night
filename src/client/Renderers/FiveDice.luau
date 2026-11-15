@@ -202,7 +202,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 		})
 		local view = { button = button, stroke = stroke, keep = keep, blank = blank, value = -1 }
 		dieViews[i] = view
-		button.Activated:Connect(function()
+		Kit.onPress(button, function()
 			if not canHold() then
 				if snapshot and snapshot.view.preview then
 					Juice.nope(button)
@@ -276,7 +276,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 	end)
 	rollButton.MouseButton1Up:Connect(stopShake)
 	rollButton.MouseLeave:Connect(stopShake)
-	rollButton.Activated:Connect(stopShake)
+	Kit.onPress(rollButton, stopShake)
 	Kit.padding(6).Parent = rollButton
 	local scoreButton = Kit.button("Score", function()
 		if selected then
@@ -412,7 +412,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			row.cells = cells
 			if isBox then
 				local id = row.id
-				frame.Activated:Connect(function()
+				Kit.onPress(frame, function()
 					local v = snapshot and snapshot.view
 					if not v or not v.preview or snapshot.result then
 						return

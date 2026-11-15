@@ -100,7 +100,7 @@ function CoinConvertPanel.create(parent: Instance, sendEconomy: (any) -> ())
 			rim.Color = targetIcon.BackgroundColor3:Lerp(Color3.new(0, 0, 0), 0.4)
 		end
 	end
-	target.Activated:Connect(render)
+	Kit.onPress(target, render)
 
 	return {
 		-- preferredKey: start on the shop the player was looking at, if it's a game coin.

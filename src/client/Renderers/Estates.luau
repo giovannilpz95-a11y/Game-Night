@@ -295,7 +295,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			Parent = tile,
 		})
 		Kit.new("UITextSizeConstraint", { MaxTextSize = 11, Parent = price })
-		tile.Activated:Connect(function()
+		Kit.onPress(tile, function()
 			if Rules.isDeed(pos) then
 				tapDeed(pos)
 			end
@@ -523,7 +523,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		})
 		local chips = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 38), Size = UDim2.new(1, -16, 0, 16), Parent = frame })
 		Kit.new("UIGridLayout", { CellSize = UDim2.fromOffset(8, 14), CellPadding = UDim2.fromOffset(2, 2), SortOrder = Enum.SortOrder.LayoutOrder, Parent = chips })
-		frame.Activated:Connect(function()
+		Kit.onPress(frame, function()
 			-- Tap someone to start a trade with them (on your turn).
 			local view = snapshot and snapshot.view
 			local me = snapshot and snapshot.yourSeat
@@ -558,6 +558,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 	-- panel, and the rest of the screen is the table. They center on the board (2D) or
 	-- the table (Table view), left of the side panel.
 	local overlay = Kit.new("Frame", { Name = "EstatesOverlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 40, Parent = root })
+	Kit.hotkeyArea(overlay)
 	local function attachOverlay()
 		local screen = if quiet then nil else container:FindFirstAncestorWhichIsA("ScreenGui")
 		local parent = screen or root
@@ -1408,7 +1409,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 				end)
 			end
 		end
-		card.Activated:Connect(gone)
+		Kit.onPress(card, gone)
 		task.delay(2.8, gone)
 	end
 
@@ -1618,7 +1619,7 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 							LayoutOrder = pos,
 							Parent = row.chips,
 						}, { Kit.corner(2) })
-						chip.Activated:Connect(function()
+						Kit.onPress(chip, function()
 							tapDeed(pos)
 						end)
 					end

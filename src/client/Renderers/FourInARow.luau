@@ -138,7 +138,7 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 				ZIndex = 21,
 				Parent = frame,
 			}, { Kit.corner(8) })
-			b.Activated:Connect(function()
+			Kit.onPress(b, function()
 				closeChoice()
 				if myTurn() then
 					sendMove(if option[2] then { column = c, pop = true } else { column = c })
@@ -169,7 +169,7 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 				refreshGhost()
 			end
 		end)
-		button.Activated:Connect(function()
+		Kit.onPress(button, function()
 			if not myTurn() then
 				return
 			end

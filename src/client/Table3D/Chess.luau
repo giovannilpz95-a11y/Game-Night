@@ -3,9 +3,11 @@
 -- rank 8, col 1 is file a). On your turn the piece under the mouse rises off its square
 -- if it can move, and the one you picked stays up until you move or let it go.
 
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ChessRules = require(ReplicatedStorage.Shared.Games.Chess)
+local Press = require(script.Parent.Parent.UI.Press)
 
 local Chess = {}
 
@@ -157,7 +159,7 @@ function Chess.create(ctx: any)
 			button.TextColor3 = if white then Color3.fromRGB(40, 36, 44) else Color3.fromRGB(250, 246, 236)
 			Instance.new("UICorner").Parent = button
 			button.Parent = frame
-			button.Activated:Connect(function()
+			Press.connect(button, function()
 				closePicker()
 				selected = nil
 				ctx.dropLift()
@@ -165,6 +167,8 @@ function Chess.create(ctx: any)
 				render()
 			end)
 		end
+		-- A window over the table: while it's up, number keys press its buttons (UI/Hotkeys).
+		CollectionService:AddTag(frame, "GameNightNeedsMouse")
 		frame.Parent = ctx.gui
 		picker = frame
 	end

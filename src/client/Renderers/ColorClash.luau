@@ -207,7 +207,7 @@ local function buildWheel(parent: GuiObject, z: number, onPick: (number) -> ()):
 			end
 			settle(i)
 		end)
-		button.Activated:Connect(function()
+		Kit.onPress(button, function()
 			onPick(i)
 		end)
 	end
@@ -390,7 +390,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	local function say(text: string, color: Color3?, y: number?)
 		HudKit.callout(container:FindFirstAncestorWhichIsA("ScreenGui") or root, text, color, y)
 	end
-	drawButton.Activated:Connect(function()
+	Kit.onPress(drawButton, function()
 		if drawAction.Visible then
 			sendMove({ kind = "draw" })
 		end
@@ -480,6 +480,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		Visible = false,
 		Parent = root,
 	})
+	Kit.hotkeyArea(overlay)
 	local function showOverlay()
 		-- A game picker preview keeps it in the tile.
 		local screen = if Kit.inPreview(container) then nil else container:FindFirstAncestorWhichIsA("ScreenGui")
@@ -609,8 +610,8 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 		closePicker()
 	end
 	table.insert(lights, buildWheel(picker, 53, pick))
-	pickerShade.Activated:Connect(closePicker)
-	backButton.Activated:Connect(closePicker)
+	Kit.onPress(pickerShade, closePicker)
+	Kit.onPress(backButton, closePicker)
 	local function openPicker(id: number)
 		closePicker()
 		pendingWild = id
@@ -1132,7 +1133,7 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				slot.ZIndex = 1
 				TweenService:Create(face, lift, { Position = rest, Rotation = offset * spread }):Play()
 			end, play)
-			button.Activated:Connect(play)
+			Kit.onPress(button, play)
 		end
 		squeezeHand()
 		refitSoon()

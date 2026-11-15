@@ -7,14 +7,23 @@
 local Audio = require(script.Parent.Parent.Audio)
 local Flair = require(script.Parent.Flair)
 local Juice = require(script.Parent.Juice)
+local Press = require(script.Parent.Press)
 
 local Kit = {}
 
--- Windows that need the mouse: while one is on screen, Table view's mouse lock lets go
--- (client/Table3D/FreeLook watches this tag), and takes it back when it closes.
+-- Windows over the game (rules, modals, the shop, the match menu): while one is open
+-- with Table view's mouse locked, only its buttons get number keys (UI/Hotkeys).
 Kit.NEEDS_MOUSE = "GameNightNeedsMouse"
 function Kit.needsMouse(gui: GuiObject): GuiObject
 	game:GetService("CollectionService"):AddTag(gui, Kit.NEEDS_MOUSE)
+	return gui
+end
+
+-- A game's pop-up layer that sits on the whole screen, outside the match screen (Color
+-- Clash's overlay, the card you just drew): its buttons get number keys too.
+Kit.HOTKEY_AREA = "GameNightHotkeyArea"
+function Kit.hotkeyArea(gui: GuiObject): GuiObject
+	game:GetService("CollectionService"):AddTag(gui, Kit.HOTKEY_AREA)
 	return gui
 end
 
@@ -52,6 +61,10 @@ Kit.Theme = {
 }
 
 Kit.Juice = Juice
+
+-- Use instead of button.Activated:Connect(fn): the same, and a number key can press the
+-- button while Table view has the mouse locked (UI/Hotkeys).
+Kit.onPress = Press.connect
 
 -- Kit.new("Frame", { Size = ..., Parent = ... }, { children })
 function Kit.new(className: string, props: { [string]: any }?, children: { Instance }?): any
@@ -177,7 +190,7 @@ function Kit.button(text: string, onClick: () -> (), props: { [string]: any }?):
 	for key, value in props or {} do
 		(button :: any)[key] = value
 	end
-	button.Activated:Connect(onClick)
+	Press.connect(button, onClick)
 	Kit.pressable(button)
 	Kit.edge(button)
 	return button
@@ -211,7 +224,7 @@ end
 -- sound is the button's "Sfx" attribute (a shared/Sounds.Effects name), "click" if unset,
 -- "none" for silent.
 function Kit.pressable(button: GuiButton)
-	button.Activated:Connect(function()
+	Press.connect(button, function()
 		local sfx = button:GetAttribute("Sfx")
 		if sfx ~= "none" then
 			Audio.play(if type(sfx) == "string" then sfx else "click")

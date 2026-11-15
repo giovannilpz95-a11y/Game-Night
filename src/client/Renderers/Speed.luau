@@ -58,7 +58,7 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 	for pile, slot in centerSlots do
 		local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = slot })
 		glows[pile] = Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 6, Enabled = false, Parent = button })
-		button.Activated:Connect(function()
+		Kit.onPress(button, function()
 			if selected then
 				sendMove({ kind = "play", card = selected, pile = pile })
 				selected = nil

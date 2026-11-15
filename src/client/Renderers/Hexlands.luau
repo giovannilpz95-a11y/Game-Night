@@ -254,7 +254,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				end
 			end
 		end
-		button.Activated:Connect(hexActs[h])
+		Kit.onPress(button, hexActs[h])
 		hexViews[h] = { parts = parts, icon = icon, token = token, tokenStroke = tokenStroke, number = number, pips = pips, bandit = bandit }
 	end
 
@@ -335,7 +335,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			sendMove({ kind = "road", edge = e })
 			mode = nil
 		end
-		dot.Activated:Connect(edgeActs[e])
+		Kit.onPress(dot, edgeActs[e])
 		edgeViews[e] = { bar = bar, dot = dot }
 	end
 
@@ -389,7 +389,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			end
 			mode = nil
 		end
-		dot.Activated:Connect(vertexActs[v])
+		Kit.onPress(dot, vertexActs[v])
 		vertexViews[v] = { piece = piece, star = star, dot = dot }
 	end
 

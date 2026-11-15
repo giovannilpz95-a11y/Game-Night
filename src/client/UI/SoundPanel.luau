@@ -139,7 +139,7 @@ function SoundPanel.create(screen: Instance, send: (any) -> ())
 			set((x - track.AbsolutePosition.X) / width, true)
 		end
 
-		mute.Activated:Connect(function()
+		Kit.onPress(mute, function()
 			local now = Audio.levels()[key]
 			set(if now > 0 then 0 else unmuted[key], true)
 		end)

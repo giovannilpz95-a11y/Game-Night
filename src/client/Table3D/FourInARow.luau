@@ -3,9 +3,11 @@
 -- of your color instead, hovering over its slot, ready to drop. With Pop Out, a column
 -- whose bottom disc is yours asks "Drop" or "Pop out" (or pops, when it's full).
 
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Rules = require(ReplicatedStorage.Shared.Games.FourInARow)
+local Press = require(script.Parent.Parent.UI.Press)
 
 local FourInARow = {}
 
@@ -64,13 +66,15 @@ function FourInARow.create(ctx: any)
 			button.BackgroundColor3 = if option[2] then MARK else Color3.fromRGB(240, 222, 190)
 			Instance.new("UICorner").Parent = button
 			button.Parent = frame
-			button.Activated:Connect(function()
+			Press.connect(button, function()
 				closePicker()
 				if myTurn() then
 					ctx.sendMove(if option[2] then { column = c, pop = true } else { column = c })
 				end
 			end)
 		end
+		-- A window over the table: while it's up, number keys press its buttons (UI/Hotkeys).
+		CollectionService:AddTag(frame, "GameNightNeedsMouse")
 		frame.Parent = ctx.gui
 		picker = frame
 	end

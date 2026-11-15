@@ -78,7 +78,7 @@ local function makeGrid(parent: Instance, n: number, onClick: (row: number, col:
 				ZIndex = 3,
 				Parent = button,
 			}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-			button.Activated:Connect(function()
+			Kit.onPress(button, function()
 				onClick(r, c)
 			end)
 			if onPress then
