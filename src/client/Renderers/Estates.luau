@@ -131,7 +131,7 @@ local function stateFromView(view: any): any
 	end
 	local players = {}
 	for seat, p in view.players do
-		players[seat] = { cash = p.cash, cards = table.create(p.cards, "card"), bankrupt = p.bankrupt }
+		players[seat] = { cash = p.cash, cards = table.create(p.cards, "card"), bankrupt = p.bankrupt, laps = p.laps }
 	end
 	return {
 		owner = owner,
@@ -140,6 +140,7 @@ local function stateFromView(view: any): any
 		housesLeft = view.housesLeft,
 		hotelsLeft = view.hotelsLeft,
 		players = players,
+		firstLap = view.firstLap,
 	}
 end
 
@@ -1568,7 +1569,8 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 				end)
 			end
 		else
-			actionText.Text = "Build, trade, or end your turn."
+			local firstLap = view.firstLap and me and view.players[me] and (view.players[me].laps or 0) < 1
+			actionText.Text = if firstLap then "Trade or end your turn. You can build once you pass Start." else "Build, trade, or end your turn."
 			endTurnButton = primary("End turn", function()
 				sendMove({ kind = "endTurn" })
 			end)

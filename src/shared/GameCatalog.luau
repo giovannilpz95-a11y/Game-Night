@@ -373,6 +373,7 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "jailRent", name = "Rent from Jail", hint = "Off: owners sitting in Jail can't collect rent.", choices = Toggle, default = 2 },
+			{ key = "firstLap", name = "No houses on the first lap", hint = "Nobody can build until they've gone around the board and passed Start once.", choices = Toggle, default = 1 },
 		},
 	},
 	{

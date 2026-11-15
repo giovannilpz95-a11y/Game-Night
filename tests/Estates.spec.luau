@@ -630,4 +630,23 @@ return function(T)
 		T.ok(snap.seatInfo[2] ~= nil)
 		T.ok(m:getScores() ~= nil)
 	end)
+	T.test("house rule: no houses on the first lap", function()
+		local s = Estates.new(2, { rules = { firstLap = true } }, T.Random.new(3))
+		local group = Estates.groupMembers[1]
+		for _, pos in group do
+			s.owner[pos] = 1
+		end
+		s.players[1].cash = 5000
+		local ok, why = Estates.canBuild(s, 1, group[1])
+		T.eq(ok, false)
+		T.ok(string.find(why, "once") ~= nil, why)
+		s.players[1].laps = 1 -- passing Start counts a lap
+		T.eq((Estates.canBuild(s, 1, group[1])), true)
+		local plain = Estates.new(2, {}, T.Random.new(3))
+		for _, pos in group do
+			plain.owner[pos] = 1
+		end
+		plain.players[1].cash = 5000
+		T.eq((Estates.canBuild(plain, 1, group[1])), true, "off by default")
+	end)
 end
