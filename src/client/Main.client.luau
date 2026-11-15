@@ -147,8 +147,9 @@ end, function()
 end)
 
 local partyWindow = Kit.modal(lobby, { name = "PartyWindow", maxSize = Vector2.new(420, 600) })
--- The Café picker has a game panel on the right, so its window is wider.
-local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = if Kit.rich then Vector2.new(1240, 780) else Vector2.new(1000, 680) })
+-- The Café picker has a game panel on the right, so its window is wider; the Lounge's
+-- Games page (hero banner + shelf) is nearly full screen.
+local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = if Kit.lounge then Vector2.new(1500, 900) elseif Kit.rich then Vector2.new(1240, 780) else Vector2.new(1000, 680) })
 local partyPanel = PartyPanel.create(partyWindow.body, sendParty, hostHooks)
 local gamePicker = GamePicker.create(pickerWindow.body, sendMatch, hostHooks)
 Layout.onChange(function(info)

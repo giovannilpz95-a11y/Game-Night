@@ -94,11 +94,31 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		Parent = parent,
 	})
 	Kit.needsMouse(root)
-	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(860, 580) }).Parent = root
-	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.2 }).Parent = root
+	-- The Lounge's shop is a near full-screen page of dark glass.
+	Kit.new("UISizeConstraint", { MaxSize = if Kit.lounge then Vector2.new(1400, 860) else Vector2.new(860, 580) }).Parent = root
+	if Kit.lounge then
+		root.Size = UDim2.fromScale(0.96, 0.88)
+		root.BackgroundTransparency = 0.06
+	else
+		Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.2 }).Parent = root
+	end
 
 	local title = Kit.title("🛒 Shop", { Size = UDim2.new(1, -190, 0, 30), Parent = root })
-	Flair.titleStyle(title)
+	if not Kit.lounge then
+		Flair.titleStyle(title)
+	end
+	-- The Lounge's Featured page says when today's picks change (midnight UTC).
+	local resetLabel = Kit.label("", {
+		Name = "Resets",
+		Font = Theme.FontBold,
+		TextSize = 13,
+		TextColor3 = Color3.fromRGB(255, 79, 163),
+		TextWrapped = false,
+		Position = UDim2.fromOffset(170, 6),
+		Size = UDim2.fromOffset(220, 20),
+		Visible = false,
+		Parent = root,
+	})
 	Kit.closeButton(function()
 		root.Visible = false
 	end, { Parent = root })
@@ -471,15 +491,10 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 	local previewId: string? = nil
 	local setPreview: ((string) -> ())? = nil
 
-	-- Featured: the front page. One offer you don't have yet, three moves of the day (they
-	-- change every day, the same for everyone) and big shortcuts to the other tabs. Only
-	-- things that show in the game are featured (poses and wins play on your avatar).
-	local function renderFeatured()
-		Kit.list(12).Parent = content
-		local vip = wallet.vip == true
+	-- The offer: Starter Pack while it lasts, else a pass you don't own yet. Returns the
+	-- next layout order.
+	local function addOffer(order: number): number
 		local passes = wallet.passes or {}
-		local order = 1
-
 		-- The offer: Starter Pack while it lasts, else a pass you don't own yet.
 		local offer: any = nil
 		if wallet.starterAvailable then
@@ -538,6 +553,16 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			end
 			order += 1
 		end
+		return order
+	end
+
+	-- Featured: the front page. One offer you don't have yet, three moves of the day (they
+	-- change every day, the same for everyone) and big shortcuts to the other tabs. Only
+	-- things that show in the game are featured (poses and wins play on your avatar).
+	local function renderFeatured()
+		Kit.list(12).Parent = content
+		local vip = wallet.vip == true
+		local order = addOffer(1)
 
 		-- Today's picks: three poses or win dances you don't own, different every day.
 		local pool = {}
@@ -626,6 +651,210 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			end)
 			Kit.pressable(b)
 		end
+	end
+
+
+	-- The Midnight Lounge's Featured page, like the item shops of the big games: one big
+	-- tile (the rarest of the day) beside a grid of six, each in its rarity's color with the
+	-- move huge in the middle and its Gem price in the corner; tap a tile to see it on your
+	-- avatar. Gem packs run along the bottom. Picks change every day at midnight UTC.
+	local function renderFeaturedLounge()
+		Kit.list(14).Parent = content
+		local vip = wallet.vip == true
+		local order = 1
+		local pool = {}
+		for _, list in { { kind = "Pose", moves = Showtime.Poses }, { kind = "Victory dance", moves = Showtime.Dances } } do
+			for _, move in list.moves do
+				local item = ShopCatalog.get(move.id)
+				if item and not item.free and not item.season and not (wallet.owned and wallet.owned[item.id]) and gemPrice(item, vip) then
+					table.insert(pool, { move = move, item = item, kind = list.kind })
+				end
+			end
+		end
+		local picks = {}
+		local day = math.floor(os.time() / 86400)
+		for i = 1, math.min(7, #pool) do
+			local index = (day * 7 + i * 5) % #pool + 1
+			while table.find(picks, pool[index]) do
+				index = index % #pool + 1
+			end
+			table.insert(picks, pool[index])
+		end
+		local TIER_RANK = { Legendary = 4, Epic = 3, Rare = 2, Common = 1 }
+		table.sort(picks, function(a, b)
+			local ra, rb = TIER_RANK[a.item.tier] or 0, TIER_RANK[b.item.tier] or 0
+			if ra ~= rb then
+				return ra > rb
+			end
+			return a.item.id < b.item.id
+		end)
+
+		local function seeIt(id: string)
+			tab = "showtime"
+			render()
+			if setPreview then
+				setPreview(id)
+			else
+				previewId = id
+			end
+		end
+
+		-- Tiles are laid out in scale (the board keeps its shape with an aspect ratio), so
+		-- they fit whatever width the window ends up with.
+		local function tile(board: Instance, pick: any, position: UDim2, size: UDim2, big: boolean)
+			local item, move = pick.item, pick.move
+			local tier = TIER_COLORS[item.tier] or Theme.SubText
+			local t = Kit.new("TextButton", {
+				Name = item.id,
+				Text = "",
+				AutoButtonColor = false,
+				BackgroundColor3 = tier,
+				BorderSizePixel = 0,
+				ClipsDescendants = true,
+				Position = position,
+				Size = size,
+				Parent = board,
+			}, {
+				Kit.corner(14),
+				Kit.new("UIGradient", { Name = "Shade", Rotation = 120, Color = ColorSequence.new(Color3.fromRGB(235, 235, 240), Color3.fromRGB(95, 90, 120)) }),
+			})
+			Flair.rarityBorder(Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.7, Thickness = if big then 2 else 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = t }), item.tier)
+			Kit.label(move.icon, {
+				TextScaled = true,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, if big then 0.42 else 0.4),
+				Size = UDim2.fromScale(0.8, if big then 0.34 else 0.36),
+				Parent = t,
+			})
+			local footH = if big then 84 else 62
+			local foot = Kit.new("Frame", {
+				Name = "Foot",
+				BackgroundColor3 = Color3.new(0, 0, 0),
+				BackgroundTransparency = 0.25,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.fromScale(0, 1),
+				Size = UDim2.new(1, 0, 0, footH),
+				Parent = t,
+			}, { Kit.new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.6, 0) }) })
+			-- Small tiles carry the price in the top corner so the name gets the full width.
+			local nameRoom = if big then -130 else -24
+			local name = Kit.label(move.name, {
+				Font = Theme.FontTitle,
+				TextSize = if big then 38 else 22,
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 12, 1, if big then -30 else -24),
+				Size = UDim2.new(1, nameRoom, 0, if big then 42 else 26),
+				Parent = foot,
+			})
+			Kit.headline(name)
+			Kit.label(`{pick.kind}  ·  {item.tier}`, {
+				Font = Theme.FontBold,
+				TextSize = if big then 14 else 12,
+				TextColor3 = Color3.fromRGB(225, 220, 245),
+				TextWrapped = false,
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 12, 1, -8),
+				Size = UDim2.new(1, nameRoom, 0, 16),
+				Parent = foot,
+			})
+			local gems = gemPrice(item, vip) :: number
+			local price = Kit.new("TextButton", {
+				Name = "Price",
+				Text = commas(gems),
+				Font = Theme.FontBold,
+				TextSize = if big then 18 else 15,
+				TextColor3 = Theme.Text,
+				AutoButtonColor = true,
+				BackgroundColor3 = Theme.Background,
+				BackgroundTransparency = 0.15,
+				BorderSizePixel = 0,
+				AnchorPoint = if big then Vector2.new(1, 1) else Vector2.new(1, 0),
+				Position = if big then UDim2.new(1, -10, 1, -10) else UDim2.new(1, -8, 0, 8),
+				Size = UDim2.fromOffset(if big then 104 else 86, if big then 38 else 32),
+				ZIndex = 3,
+				Parent = if big then foot else t,
+			}, { Kit.corner(10), Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 22) }) })
+			Kit.gemIcon(18, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -16, 0.5, 0), Parent = price })
+			Kit.onPress(price, function()
+				if wallet.gems < gems then
+					Kit.nope(price)
+				end
+				sendEconomy({ action = "buy", itemId = item.id, currency = "gems" })
+			end)
+			Kit.pressable(price)
+			Kit.onPress(t, function()
+				seeIt(move.id)
+			end)
+			Kit.pressable(t)
+			t.MouseEnter:Connect(function()
+				Kit.bump(t, 0.03)
+			end)
+		end
+
+		if #picks > 0 then
+			if narrow then
+				-- Phone: the big tile on top, the rest two to a row.
+				local big = Kit.new("Frame", { Name = "Featured", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 100), LayoutOrder = order, Parent = content }, {
+					Kit.new("UIAspectRatioConstraint", { AspectRatio = 1.7, DominantAxis = Enum.DominantAxis.Width, AspectType = Enum.AspectType.ScaleWithParentSize }),
+				})
+				order += 1
+				tile(big, picks[1], UDim2.new(), UDim2.fromScale(1, 1), true)
+				local rest = grid(order, UDim2.new(0.5, -8, 0, 100))
+				Kit.new("UIAspectRatioConstraint", { AspectRatio = 0.95, Parent = rest })
+				order += 1
+				for i = 2, #picks do
+					local holder = Kit.new("Frame", { BackgroundTransparency = 1, LayoutOrder = i, Parent = rest })
+					tile(holder, picks[i], UDim2.new(), UDim2.fromScale(1, 1), false)
+				end
+			else
+				-- The big tile on the left (38%), six in a 3 x 2 grid beside it. Gaps are
+				-- 1% across and 3% down; the board's shape keeps the small tiles near square.
+				local board = Kit.new("Frame", { Name = "Featured", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 100), LayoutOrder = order, Parent = content }, {
+					Kit.new("UIAspectRatioConstraint", { AspectRatio = 2.45, DominantAxis = Enum.DominantAxis.Width, AspectType = Enum.AspectType.ScaleWithParentSize }),
+				})
+				order += 1
+				local BIG_W, GAP_X, GAP_Y = 0.38, 0.01, 0.03
+				local smallW = (1 - BIG_W - GAP_X * 3) / 3
+				local smallH = (1 - GAP_Y) / 2
+				tile(board, picks[1], UDim2.new(), UDim2.fromScale(BIG_W, 1), true)
+				for i = 2, math.min(#picks, 7) do
+					local col, row = (i - 2) % 3, (i - 2) // 3
+					tile(board, picks[i], UDim2.fromScale(BIG_W + GAP_X + col * (smallW + GAP_X), row * (smallH + GAP_Y)), UDim2.fromScale(smallW, smallH), false)
+				end
+			end
+		end
+
+		-- Gem packs along the bottom: one glass bar each, the Robux price on the right.
+		local packs = grid(order, UDim2.new(if narrow then 0.5 else 1 / #Economy.GemPacks, -10, 0, 60))
+		order += 1
+		for i, pack in Economy.GemPacks do
+			local bar = Kit.glass({ LayoutOrder = i, Parent = packs }, 12)
+			Kit.gemIcon(26, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Parent = bar })
+			local amount = Kit.label(commas(pack.gems), {
+				Font = Theme.FontTitle,
+				TextSize = 24,
+				TextWrapped = false,
+				AutomaticSize = Enum.AutomaticSize.X,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 44, 0.5, 0),
+				Size = UDim2.fromOffset(0, 28),
+				Parent = bar,
+			})
+			Kit.headline(amount)
+			if pack.bonus then
+				Kit.label(pack.bonus, { Font = Theme.FontBold, TextSize = 12, TextColor3 = Theme.Good, TextWrapped = false, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 44, 0.5, 18), Size = UDim2.fromOffset(60, 14), Parent = bar })
+			end
+			robuxButton(bar, pack.robux, pack.productId ~= 0, function()
+				sendPurchase({ action = "buyGems", key = pack.key })
+			end, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(86, 34) })
+		end
+
+		-- The offer you don't have yet, under the shelf.
+		addOffer(order)
 	end
 
 	local function renderItems(shop: string)
@@ -1140,7 +1369,11 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			line("Loading your wallet...", 1)
 			return
 		end
-		if tab == "featured" then
+		resetLabel.Visible = Kit.lounge and tab == "featured"
+		if tab == "featured" and Kit.lounge then
+			title.Text = "ITEM SHOP"
+			renderFeaturedLounge()
+		elseif tab == "featured" then
 			title.Text = "🛒 Shop"
 			renderFeatured()
 		elseif tab == "wallet" then
@@ -1169,6 +1402,15 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			Kit.Juice.stagger(content, 0.025, 18)
 		end
 	end
+	task.spawn(function()
+		while root.Parent do
+			if resetLabel.Visible and root.Visible then
+				local left = 86400 - os.time() % 86400
+				resetLabel.Text = string.format("⏱  RESETS IN %02d:%02d:%02d", left // 3600, left % 3600 // 60, left % 60)
+			end
+			task.wait(1)
+		end
+	end)
 	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		-- Tabs switch between column and row at NARROW; redraw so tiles re-flow.
 		local wasNarrow = narrow

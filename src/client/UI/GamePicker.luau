@@ -7,6 +7,11 @@
 -- rules and a big START (mockup: project files ui-mockups/a-cafe-picker.jpg). Everyone
 -- can look at any game there; only the leader can start one. Narrow windows keep the
 -- bottom bar.
+--
+-- The Midnight Lounge (Kit.lounge) turns that panel into a hero banner across the top
+-- instead: the game huge on the left with PLAY, seats, bots and house rules in a row under
+-- it, the game playing live on the right, and the shelf of games below (mockup:
+-- ui-mockups/c-lounge/02-picker.jpg). With nothing picked it shows today's pick.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37,6 +42,8 @@ local HOVER_DELAY = 1 -- seconds resting on a tile before its hover card plays t
 local NAME_H = 42 -- the name and player count under each tile's picture
 local DETAIL_W = 300 -- the Café's game panel on the right
 local DETAIL_MIN_WIDTH = 720 -- narrower windows keep the bottom bar
+local HERO_MIN, HERO_MAX = 200, 300 -- the Lounge's hero banner height
+local HERO_PINK = Color3.fromRGB(255, 79, 163)
 
 local function rgb(list: { number }): Color3
 	return Color3.fromRGB(list[1], list[2], list[3])
@@ -108,7 +115,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		Parent = parent,
 	})
 
-	Kit.title("Pick a game", { Parent = root })
+	local titleLabel = Kit.title("Pick a game", { Parent = root })
 	local status = Kit.label("", { TextColor3 = Theme.SubText, TextSize = 14, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, -48, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd, Parent = root })
 
 	-- Filter chips: All, then each category. Scrolls sideways on a narrow phone.
@@ -268,9 +275,18 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		Parent = root,
 	}, {
 		Kit.corner(14),
-		Kit.new("UIStroke", { Name = "Outline", Color = Theme.WoodDark, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
-		Kit.new("UIGradient", { Name = "Shade", Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200)) }),
+		if Kit.lounge then Kit.frameStroke() else Kit.new("UIStroke", { Name = "Outline", Color = Theme.WoodDark, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+		if Kit.lounge
+			then Kit.new("UIGradient", { Name = "Shade", Rotation = 0, Color = ColorSequence.new(Color3.fromRGB(150, 150, 170), Color3.new(1, 1, 1)) })
+			else Kit.new("UIGradient", { Name = "Shade", Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200)) }),
 	})
+	-- The Lounge hero: wide window and the Lounge look.
+	local function heroMode(): boolean
+		return wide and Kit.lounge
+	end
+	local function heroHeight(): number
+		return math.floor(math.clamp(root.AbsoluteSize.Y * 0.4, HERO_MIN, HERO_MAX))
+	end
 	local detailInfo = Kit.new("ScrollingFrame", {
 		Name = "Info",
 		BackgroundTransparency = 1,
@@ -293,7 +309,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		Parent = detailInfo,
 	}, { Kit.corner(10), Kit.new("UIStroke", { Color = Theme.WoodDark, Thickness = 2, Transparency = 0.3 }) })
 	local detailName = Kit.label("", { Font = Theme.FontTitle, TextSize = 24, Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = detailInfo })
-	local detailMeta = Kit.label("", { Font = Theme.FontBold, TextSize = 13, TextColor3 = Color3.fromRGB(200, 232, 214), Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = detailInfo })
+	local detailMeta = Kit.label("", { Font = Theme.FontBold, TextSize = 13, TextColor3 = if Kit.lounge then Theme.SubText else Color3.fromRGB(200, 232, 214), Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = detailInfo })
 	local detailText = Kit.label("", { TextSize = 14, TextColor3 = Theme.Text, Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4, Parent = detailInfo })
 	local detailRules = Kit.label("", { Font = Theme.FontBold, TextSize = 12, TextColor3 = Theme.Accent, Size = UDim2.new(1, -4, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = detailInfo })
 	local howTo = Kit.new("TextButton", {
@@ -309,6 +325,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		Parent = detailInfo,
 	})
 	-- Controls at the bottom of the panel (the bar's own buttons move in here).
+	local controlsList = Kit.list(8)
 	local controls = Kit.new("Frame", {
 		Name = "Controls",
 		BackgroundTransparency = 1,
@@ -317,7 +334,7 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		Size = UDim2.new(1, -24, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = detail,
-	}, { Kit.list(8) })
+	}, { controlsList })
 	local seatsRow = Kit.new("Frame", { Name = "Seats", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 1, Parent = controls })
 	local seatsList = Kit.list(8, true)
 	seatsList.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -332,7 +349,100 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 
 	-- Moves the seat stepper, bots, house rules and Start between the bottom bar and the
 	-- Café panel.
+	-- The Lounge hero's pieces: the art on the right, name and text on the left, the
+	-- controls in one row under them. fitHero sizes them to the banner.
+	local function fitHero()
+		if not heroMode() then
+			return
+		end
+		local h = detail.AbsoluteSize.Y
+		local w = detail.AbsoluteSize.X
+		if h <= 0 or w <= 0 then
+			return
+		end
+		local artH = h - 28
+		local artW = math.min(math.floor(artH * 16 / 9), math.floor(w * 0.45))
+		art.Size = UDim2.fromOffset(artW, artH)
+		local textW = w - artW - 28 - 40
+		detailInfo.Size = UDim2.new(0, textW, 1, -(18 + controls.AbsoluteSize.Y + 30))
+		controls.Size = UDim2.new(0, textW, 0, 0)
+		detailName.TextSize = if h >= 260 then 56 elseif h >= 220 then 46 else 38
+	end
+	detail:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitHero)
+
 	local function placeControls()
+		if heroMode() then
+			-- Hero banner: one row of controls, PLAY first.
+			art.Parent = detail
+			art.AnchorPoint = Vector2.new(1, 0.5)
+			art.Position = UDim2.new(1, -14, 0.5, 0)
+			detailInfo.Position = UDim2.fromOffset(24, 18)
+			detailInfo.ScrollBarThickness = 0
+			detailMeta.LayoutOrder = 1
+			detailMeta.TextColor3 = HERO_PINK
+			detailMeta.TextSize = 14
+			detailName.LayoutOrder = 2
+			detailText.TextSize = 15
+			detailText.TextColor3 = Theme.SubText
+			controls.Position = UDim2.new(0, 24, 1, -18)
+			controlsList.FillDirection = Enum.FillDirection.Horizontal
+			controlsList.VerticalAlignment = Enum.VerticalAlignment.Center
+			minus.Parent, seatsLabel.Parent, plus.Parent = seatsRow, seatsRow, seatsRow
+			minus.Size, plus.Size = UDim2.fromOffset(40, 40), UDim2.fromOffset(40, 40)
+			seatsLabel.Size = UDim2.new(0, 84, 1, 0)
+			seatsLabel.Font = Theme.FontBold
+			seatsLabel.TextSize = 17
+			seatsRow.Size = UDim2.fromOffset(180, 52)
+			seatsRow.LayoutOrder = 2
+			rulesRow.Parent, levelButton.Parent = optsRow, optsRow
+			rulesRow.Size = UDim2.fromOffset(130, 44)
+			levelButton.Size = UDim2.fromOffset(130, 44)
+			optsRow.Size = UDim2.fromOffset(0, 52)
+			optsRow.AutomaticSize = Enum.AutomaticSize.X
+			optsRow.LayoutOrder = 3
+			waiting.Size = UDim2.fromOffset(260, 0)
+			waiting.TextXAlignment = Enum.TextXAlignment.Left
+			waiting.LayoutOrder = 4
+			startButton.Parent = controls
+			startButton.LayoutOrder = 1
+			startButton.Size = UDim2.fromOffset(180, 60)
+			startButton.Font = Theme.FontTitle
+			startButton.TextSize = 32
+			startButton.Text = "▶ PLAY"
+			Kit.headline(startButton)
+			startButton.BackgroundColor3 = Theme.Accent
+			startButton.TextColor3 = Theme.AccentText
+			detail.Visible = true
+			fitHero()
+			return
+		end
+		-- Back from the hero (window got narrower): the panel's own layout.
+		art.Parent = detailInfo
+		art.AnchorPoint = Vector2.zero
+		art.Position = UDim2.new()
+		art.Size = UDim2.new(1, -4, 0, artH)
+		art.LayoutOrder = 1
+		detailInfo.Position = UDim2.fromOffset(12, 12)
+		detailInfo.ScrollBarThickness = 3
+		detailMeta.LayoutOrder = 3
+		detailMeta.TextColor3 = if Kit.lounge then Theme.SubText else Color3.fromRGB(200, 232, 214)
+		detailMeta.TextSize = 13
+		detailText.TextSize = 14
+		detailText.TextColor3 = Theme.Text
+		detailName.LayoutOrder = 2
+		detailName.TextSize = 24
+		controls.Position = UDim2.new(0, 12, 1, -12)
+		controls.Size = UDim2.new(1, -24, 0, 0)
+		controlsList.FillDirection = Enum.FillDirection.Vertical
+		seatsRow.Size = UDim2.new(1, 0, 0, 44)
+		seatsRow.LayoutOrder = 1
+		optsRow.Size = UDim2.new(1, 0, 0, 38)
+		optsRow.AutomaticSize = Enum.AutomaticSize.None
+		optsRow.LayoutOrder = 2
+		waiting.Size = UDim2.new(1, 0, 0, 0)
+		waiting.TextXAlignment = Enum.TextXAlignment.Center
+		waiting.LayoutOrder = 3
+		startButton.LayoutOrder = 6
 		if wide then
 			minus.Parent, seatsLabel.Parent, plus.Parent = seatsRow, seatsRow, seatsRow
 			minus.Size, plus.Size = UDim2.fromOffset(44, 44), UDim2.fromOffset(44, 44)
@@ -749,8 +859,20 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		end
 		seatsRow.Visible = isLeader and chosen ~= nil
 		optsRow.Visible = isLeader and chosen ~= nil and (rulesRow.Visible or levelButton.Visible)
-		levelButton.Size = if rulesRow.Visible then UDim2.new(0.5, -4, 1, 0) else UDim2.new(1, 0, 1, 0)
-		rulesRow.Size = if levelButton.Visible then UDim2.new(0.5, -4, 1, 0) else UDim2.new(1, 0, 1, 0)
+		if heroMode() then
+			levelButton.Size = UDim2.fromOffset(130, 44)
+			rulesRow.Size = UDim2.fromOffset(130, 44)
+			Kit.headline(detailName)
+			local category = entry and GameArt.category(entry.category)
+			if entry then
+				local players = if entry.minSeats == entry.maxSeats then `{entry.maxSeats} PLAYERS` else `{entry.minSeats}-{entry.maxSeats} PLAYERS`
+				detailMeta.Text = `{if category then string.upper(category.name) .. "  ·  " else ""}{players}{if entry.typicalMinutes then `  ·  {entry.typicalMinutes} MIN` else ""}`
+			end
+			task.defer(fitHero)
+		else
+			levelButton.Size = if rulesRow.Visible then UDim2.new(0.5, -4, 1, 0) else UDim2.new(1, 0, 1, 0)
+			rulesRow.Size = if levelButton.Visible then UDim2.new(0.5, -4, 1, 0) else UDim2.new(1, 0, 1, 0)
+		end
 		waiting.Visible = not isLeader
 		if not isLeader and party then
 			local leaderName = "the leader"
@@ -768,8 +890,32 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		end
 	end)
 
+	-- The hero never stands empty: with nothing picked it shows today's pick (the same
+	-- game the lobby's card shows), picked for the leader without counting as a pick.
+	local function todaysPick(): any
+		local ready = {}
+		for _, candidate in GameCatalog.entries do
+			if candidate.status == "ready" and candidate.category ~= "Party" then
+				table.insert(ready, candidate)
+			end
+		end
+		return if #ready > 0 then ready[math.floor(os.time() / 86400) % #ready + 1] else nil
+	end
+
 	function render()
 		local isLeader = party ~= nil and party.leaderId == localPlayer.UserId
+		if heroMode() and party then
+			if isLeader and not chosen then
+				local entry = todaysPick()
+				if entry then
+					chosen = entry
+					seats = math.max(entry.minSeats, #party.members)
+					clampSeats()
+				end
+			elseif not isLeader and not inspected and not chosen then
+				inspected = todaysPick()
+			end
+		end
 		if not party then
 			status.Text = "Connecting..."
 		elseif isLeader and chosen then
@@ -954,8 +1100,24 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		-- Non-leaders don't get the bar, so the grid can use its space. The Café panel
 		-- takes the right side on a wide window (and the bar's buttons).
 		bar.Visible = isLeader and not wide
-		local side = if wide then -(DETAIL_W + 12) else 0
-		grid.Size = if bar.Visible then UDim2.new(1, side, 1, -GRID_TOP - BAR_H - 8) else UDim2.new(1, side, 1, -GRID_TOP)
+		local side = if wide and not heroMode() then -(DETAIL_W + 12) else 0
+		-- The hero banner takes the top; the chips and shelf sit under it.
+		local top = if heroMode() then heroHeight() + 54 else GRID_TOP
+		titleLabel.Visible = not heroMode()
+		status.Visible = not heroMode()
+		if heroMode() then
+			detail.AnchorPoint = Vector2.zero
+			detail.Position = UDim2.new()
+			detail.Size = UDim2.new(1, -40, 0, heroHeight())
+		else
+			detail.AnchorPoint = Vector2.new(1, 0)
+			detail.Position = UDim2.new(1, 0, 0, 40)
+			detail.Size = UDim2.new(0, DETAIL_W, 1, -40)
+		end
+		chipRow.Position = UDim2.new(0, 0, 0, top - 38)
+		grid.Position = UDim2.new(0, 0, 0, top)
+		sheet.Position = grid.Position
+		grid.Size = if bar.Visible then UDim2.new(1, side, 1, -top - BAR_H - 8) else UDim2.new(1, side, 1, -top)
 		sheet.Size = grid.Size
 		chipRow.Size = UDim2.new(1, side, 0, 32)
 		status.Size = UDim2.new(1, if wide then side else -48, 0, 20)
@@ -1003,6 +1165,14 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		end
 	end
 	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(checkWide)
+	-- The hero's height follows the window's.
+	local lastHeroH = 0
+	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if heroMode() and heroHeight() ~= lastHeroH then
+			lastHeroH = heroHeight()
+			render()
+		end
+	end)
 	-- The description scrolls in whatever room the controls leave.
 	local function fitInfo()
 		detailInfo.Size = UDim2.new(1, -24, 1, -24 - controls.AbsoluteSize.Y - 8)
