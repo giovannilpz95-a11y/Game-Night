@@ -165,7 +165,10 @@ local function readRules(options: any?)
 	return {
 		together = rules.together == true,
 		quick = rules.card == "quick",
+		-- Big Five bonus: true = official forced joker, "free" = the joker may go in any
+		-- open box (lower boxes still score in full), false = no bonus and no joker.
 		bigBonus = rules.bigBonus ~= false,
+		jokerFree = rules.bigBonus == "free",
 	}
 end
 
@@ -186,6 +189,7 @@ function FiveDice.new(seatCount: number, options: any?, rng: Random?)
 			held = { false, false, false, false, false },
 			rolls = 0, -- rolls used this turn
 			rollId = 0, -- counts every roll (the UI animates when it changes)
+			bigCounted = false, -- this turn's Big Five already went into the stat
 			card = {}, -- [boxId] = points written
 			bigBonus = 0,
 			done = 0, -- last round this seat scored in
@@ -198,6 +202,7 @@ function FiveDice.new(seatCount: number, options: any?, rng: Random?)
 		together = r.together,
 		quick = r.quick,
 		bigBonusRule = r.bigBonus,
+		jokerFree = r.jokerFree,
 		boxes = boxes,
 		rounds = #boxes,
 		round = 1,
@@ -230,7 +235,7 @@ end
 -- Boxes a card may take dice counts `c` in (joker placement rules included).
 local function allowedFor(state, card: { [string]: number }, c: { number }): { string }
 	local out = {}
-	if state.bigBonusRule and card.big ~= nil and (maxCount(c)) == 5 then
+	if state.bigBonusRule and not state.jokerFree and card.big ~= nil and (maxCount(c)) == 5 then
 		local _, face = maxCount(c)
 		local upper = UPPER_FOR_FACE[face]
 		if card[upper] == nil and table.find(state.boxes, upper) then
@@ -440,6 +445,7 @@ local function endTurn(state, seat: number)
 	local p = state.players[seat]
 	p.done = state.round
 	p.rolls = 0
+	p.bigCounted = false
 	p.held = { false, false, false, false, false }
 	if state.together then
 		for s = 1, state.seatCount do
@@ -479,7 +485,9 @@ function FiveDice.applyMove(state, seat: number, move: any)
 		end
 		p.rolls += 1
 		p.rollId += 1
-		if isFiveKind(p) then
+		-- Once a turn: re-rolling one die back onto the same Big Five isn't a second one.
+		if isFiveKind(p) and not p.bigCounted then
+			p.bigCounted = true
 			GameModule.addStat(state, seat, "bigFives")
 		end
 	elseif move.kind == "score" then
@@ -549,6 +557,7 @@ function FiveDice.getView(state, seat: number?)
 		together = state.together,
 		quick = state.quick,
 		bigBonusRule = state.bigBonusRule,
+		jokerFree = state.jokerFree,
 		maxRolls = FiveDice.MAX_ROLLS,
 		boxes = table.clone(state.boxes),
 		players = players,
@@ -678,17 +687,64 @@ local BASELINE = {
 	three = 21, four = 12, house = 22, small = 28, large = 30, big = 16, chance = 22,
 }
 
--- How good it is to write counts `c` into `boxId` now (hard/medium bots).
-local function boxValue(state, p, boxId: string, c: { number }, joker: boolean, upperNow: number): number
+-- Chance of still making the upper bonus: each open upper box is scored about three of
+-- its face (a good player averages a little under), with a spread of about one die.
+-- `surplus` is how far the filled upper boxes are ahead of three of each.
+local function normalCdf(x: number): number
+	-- Abramowitz-Stegun 7.1.26 erf, good to 1e-7.
+	local z = math.abs(x) / math.sqrt(2)
+	local t = 1 / (1 + 0.3275911 * z)
+	local y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * math.exp(-z * z)
+	return if x >= 0 then (1 + y) / 2 else (1 - y) / 2
+end
+
+local PACE_MEAN = -0.15 -- dice above or below three per open upper box, on average
+local PACE_SPREAD = 1.05 -- spread of that, in dice
+
+local function bonusChance(surplus: number, openFaces: { number }): number
+	if #openFaces == 0 then
+		return if surplus >= 0 then 1 else 0
+	end
+	local mean, var = 0, 0
+	for _, f in openFaces do
+		mean += f * PACE_MEAN
+		var += (f * PACE_SPREAD) ^ 2
+	end
+	return normalCdf((surplus + mean + 0.5) / math.sqrt(var))
+end
+
+-- The upper section as it stands on p's card: surplus over three of each, open faces.
+local function upperPace(state, p): (number, { number })
+	local surplus, open = 0, {}
+	for _, id in state.boxes do
+		local box = BOX[id]
+		if box.face then
+			if p.card[id] ~= nil then
+				surplus += p.card[id] - 3 * box.face
+			else
+				table.insert(open, box.face)
+			end
+		end
+	end
+	return surplus, open
+end
+
+-- How good it is to write counts `c` into `boxId` now (hard/medium bots). `pace` is
+-- upperPace for the card (nil on the quick card or once the bonus is safe or gone).
+local function boxValue(state, p, boxId: string, c: { number }, joker: boolean, pace: any): number
 	local points = scoreCounts(boxId, c, joker)
 	local value = points - BASELINE[boxId]
 	local box = BOX[boxId]
-	if box.face and not state.quick and upperNow < FiveDice.UPPER_TARGET then
-		-- Three of a face keeps you on pace for the upper bonus; more is a cushion.
-		value += (c[box.face] - 3) * box.face * 0.6
-		if upperNow + points >= FiveDice.UPPER_TARGET then
-			value += FiveDice.UPPER_BONUS * 0.8
+	if box.face and pace then
+		-- What this box does to the chance of the +35 upper bonus.
+		local rest = {}
+		for _, f in pace.open do
+			if f ~= box.face then
+				table.insert(rest, f)
+			end
 		end
+		local after = bonusChance(pace.surplus + points - 3 * box.face, rest)
+		value += FiveDice.UPPER_BONUS * (after - pace.chance)
 	end
 	if boxId == "big" and points == 50 and state.bigBonusRule then
 		value += 10 -- later Big Fives are worth +100
@@ -696,9 +752,21 @@ local function boxValue(state, p, boxId: string, c: { number }, joker: boolean, 
 	return value
 end
 
+local function paceFor(state, p): any
+	if state.quick then
+		return nil
+	end
+	local surplus, open = upperPace(state, p)
+	local chance = bonusChance(surplus, open)
+	if #open == 0 or chance > 0.999 or chance < 0.001 then
+		return nil
+	end
+	return { surplus = surplus, open = open, chance = chance }
+end
+
 -- Best box value for final counts `c`, for the boxes still open on p's card.
 local function makeFinal(state, p, simple: boolean)
-	local upperNow = totals(state, p).upper
+	local pace = paceFor(state, p)
 	local memo: { [number]: number } = {}
 	return function(c: { number }): number
 		local key = keyOf(c)
@@ -709,7 +777,7 @@ local function makeFinal(state, p, simple: boolean)
 		local best = -math.huge
 		local joker = state.bigBonusRule and (maxCount(c)) == 5 and p.card.big ~= nil
 		for _, id in allowedFor(state, p.card, c) do
-			local v = if simple then scoreCounts(id, c, joker) else boxValue(state, p, id, c, joker, upperNow)
+			local v = if simple then scoreCounts(id, c, joker) else boxValue(state, p, id, c, joker, pace)
 			if v > best then
 				best = v
 			end
@@ -776,10 +844,10 @@ local function bestBox(state, seat: number, simple: boolean, rng: Random?): stri
 	local legal = legalBoxes(state, seat)
 	local c = countsOf(p.dice)
 	local joker = jokerFor(state, p)
-	local upperNow = totals(state, p).upper
+	local pace = paceFor(state, p)
 	local best, bestValue = legal[1], -math.huge
 	for _, id in legal do
-		local v = if simple then scoreCounts(id, c, joker) else boxValue(state, p, id, c, joker, upperNow)
+		local v = if simple then scoreCounts(id, c, joker) else boxValue(state, p, id, c, joker, pace)
 		if simple and rng then
 			v += rng:NextNumber() * 3 -- easy bots don't always see the best box
 		end
@@ -844,6 +912,16 @@ function FiveDice.chooseBotMove(state, seat: number, rng: Random): any?
 		return { kind = "score", box = bestBox(state, seat, false) }
 	end
 	return { kind = "roll", held = maskFor(p.dice, bestKeep) }
+end
+
+-- A player who's away or out of time: the medium bot without its slips (keeps sensible
+-- dice, never the table's hard planner, never a random box).
+function FiveDice.chooseAfkMove(state, seat: number, rng: Random): any?
+	local saved = state.botLevel
+	state.botLevel = "afk"
+	local ok, move = pcall(FiveDice.chooseBotMove, state, seat, rng)
+	state.botLevel = saved
+	return if ok then move else nil
 end
 
 function FiveDice.getBotDelay(state, seat: number, rng: Random): number

@@ -310,7 +310,13 @@ local entries: { Entry } = {
 				choices = { { label = "Full (13 rounds)", value = "full" }, { label = "Quick (7 rounds)", value = "quick" } },
 				default = 1,
 			},
-			{ key = "bigBonus", name = "Big Five bonus", hint = "Each extra Big Five scores +100 and works as a joker.", choices = Toggle, default = 2 },
+			{
+				key = "bigBonus",
+				name = "Big Five bonus",
+				hint = "Each extra Big Five scores +100 and works as a joker. Official: it must go in its number's box first. Free choice: any open box.",
+				choices = { { label = "Official", value = true }, { label = "Free choice", value = "free" }, { label = "Off", value = false } },
+				default = 1,
+			},
 		},
 	},
 	{

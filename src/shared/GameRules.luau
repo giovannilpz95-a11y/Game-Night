@@ -200,7 +200,17 @@ rules.FiveDice = {
 		{ title = "Your turn", lines = { "Roll up to three times. Between rolls, tap dice to keep (hold) them.", "You can stop early. Then tap a box on your card and Score.", "If the roll doesn't fit the box you pick, it scores 0 there." } },
 		{ title = "Upper boxes", lines = { "Ones to Sixes: add up the dice showing that number.", "Reach 63 in the upper boxes for a 35 point bonus (three of each number gets you there)." } },
 		{ title = "Lower boxes", lines = { "3 of a kind, 4 of a kind: add up all five dice.", "Full house (three + two): 25. Small straight (four in a row): 30. Large straight (five in a row): 40.", "Big Five (five the same): 50. Chance: add up anything." } },
-		{ title = "Extra Big Fives", lines = { "Roll another Big Five after scoring 50 there: +100 bonus.", "It's also a joker: it must go in its number's upper box if that's open, otherwise it scores in full in any lower box." } },
+		{ title = "Extra Big Fives", lines = {
+			"Roll another Big Five after scoring 50 there: +100 bonus.",
+			"It's also a joker: it must go in its number's upper box if that's open. Otherwise it scores in full in any open lower box (Full house 25, straights 30 and 40).",
+			"If every lower box is full too, it goes in any open upper box for 0.",
+			"If you scored 0 in Big Five, later ones are still jokers, but there's no +100.",
+		} },
+		{ title = "House rules", lines = {
+			"Big Five bonus: Official (the joker order above), Free choice (any open box, lower boxes still score in full) or Off (no +100, no joker).",
+			"Everyone rolls at once: all players take their turn together.",
+			"Quick card: only the 7 lower boxes, no upper bonus.",
+		} },
 	},
 }
 

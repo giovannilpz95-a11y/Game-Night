@@ -191,4 +191,63 @@ return function(T)
 		T.eq(move.held[3], false)
 		T.eq(move.held[1] and move.held[2] and move.held[4] and move.held[5], true)
 	end)
+
+	T.test("free-choice joker: any open box, lower boxes still score in full", function()
+		local s = rolledState(1, { bigBonus = "free" })
+		local p = s.players[1]
+		p.card.big = 50
+		p.dice = { 4, 4, 4, 4, 4 }
+		T.eq(#FiveDice.legalBoxes(s, 1), 12, "every open box")
+		T.ok(FiveDice.validateMove(s, 1, { kind = "score", box = "house" }))
+		FiveDice.applyMove(s, 1, { kind = "score", box = "house" })
+		T.eq(p.card.house, 25)
+		T.eq(p.bigBonus, 100)
+		T.eq(FiveDice.getView(s, 1).jokerFree, true)
+	end)
+
+	T.test("Big Five bonus off: no joker, no +100", function()
+		local s = rolledState(1, { bigBonus = false })
+		local p = s.players[1]
+		p.card.big = 50
+		p.dice = { 4, 4, 4, 4, 4 }
+		T.eq(#FiveDice.legalBoxes(s, 1), 12)
+		FiveDice.applyMove(s, 1, { kind = "score", box = "house" })
+		T.eq(p.card.house, 0)
+		T.eq(p.bigBonus, 0)
+	end)
+
+	T.test("the Big Five stat counts once a turn", function()
+		local s = FiveDice.new(1, nil, T.Random.new(1))
+		s.rng = { NextInteger = function()
+			return 3
+		end }
+		FiveDice.applyMove(s, 1, { kind = "roll" })
+		FiveDice.applyMove(s, 1, { kind = "roll", held = { true, true, true, true, false } })
+		T.eq(s.matchStats[1].bigFives, 1, "the same Big Five landing again isn't a second one")
+		FiveDice.applyMove(s, 1, { kind = "score", box = "big" })
+		FiveDice.applyMove(s, 1, { kind = "roll" })
+		T.eq(s.matchStats[1].bigFives, 2, "a new turn counts again")
+	end)
+
+	T.test("away players get the steady medium bot, never a random box", function()
+		local s = rolledState(1)
+		s.botLevel = "hard"
+		s.players[1].dice = { 2, 3, 4, 5, 6 }
+		s.players[1].rolls = 3
+		local move = FiveDice.chooseAfkMove(s, 1, T.Random.new(1))
+		T.eq(move.kind, "score")
+		T.eq(move.box, "large")
+		T.eq(s.botLevel, "hard", "the table's level is left alone")
+		local fresh = FiveDice.new(1, nil, T.Random.new(2))
+		T.eq(FiveDice.chooseAfkMove(fresh, 1, T.Random.new(1)).kind, "roll")
+	end)
+
+	T.test("hard bot banks four sixes in Sixes early, for the upper bonus", function()
+		local s = rolledState(1)
+		s.botLevel = "hard"
+		s.players[1].dice = { 6, 6, 6, 6, 2 }
+		s.players[1].rolls = 3
+		local move = FiveDice.chooseBotMove(s, 1, T.Random.new(1))
+		T.eq(move.box, "sixes")
+	end)
 end
