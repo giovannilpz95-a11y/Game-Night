@@ -336,7 +336,12 @@ local entries: { Entry } = {
 				default = 1,
 			},
 			{ key = "streak", name = "Hit again", hint = "A hit lets you fire again.", choices = Toggle, default = 1 },
-			{ key = "salvo", name = "Salvo", hint = "Each turn you fire one shot for every ship you still have afloat.", choices = Toggle, default = 1 },
+			{ key = "salvo", name = "Salvo", hint = "Each turn you fire one shot for every ship you still have afloat: one at a time, or call them all and they land together.", choices = {
+				{ label = "Off", value = false },
+				{ label = "One at a time", value = true },
+				{ label = "Call them all", value = "all" },
+			}, default = 1 },
+			{ key = "noTouch", name = "No touching", hint = "Ships can't touch, not even at a corner. The water around a sunk ship is marked for you.", choices = Toggle, default = 1 },
 		},
 	},
 	{

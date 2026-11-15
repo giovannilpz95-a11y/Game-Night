@@ -50,12 +50,30 @@ local function makeGrid(parent: Instance, n: number, onClick: (row: number, col:
 		Size = UDim2.fromScale(1, 1),
 		Parent = parent,
 	}, { Kit.new("UIAspectRatioConstraint", { AspectRatio = 1 }), Kit.corner(8) })
+	-- Coordinates like the paper game: rows A-J down the left, columns 1-10 along the top.
+	local MARGIN = 0.07
 	local inner = Kit.new("Frame", {
 		BackgroundTransparency = 1,
-		Position = UDim2.new(0, 4, 0, 4),
-		Size = UDim2.new(1, -8, 1, -8),
+		Position = UDim2.new(MARGIN, 2, MARGIN, 2),
+		Size = UDim2.new(1 - MARGIN, -6, 1 - MARGIN, -6),
 		Parent = frame,
 	})
+	for i = 1, n do
+		local along = MARGIN + (i - 0.5) / n * (1 - MARGIN)
+		for _, spec in { { tostring(i), along, MARGIN / 2 }, { string.sub("ABCDEFGHIJ", i, i), MARGIN / 2, along } } do
+			Kit.new("TextLabel", {
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(spec[2], spec[3]),
+				Size = UDim2.fromScale(MARGIN * 0.9, MARGIN * 0.9),
+				Text = spec[1],
+				TextScaled = true,
+				Font = Enum.Font.GothamBold,
+				TextColor3 = Color3.fromRGB(200, 215, 240),
+				Parent = frame,
+			})
+		end
+	end
 	local cells = {}
 	for r = 1, n do
 		cells[r] = {}
@@ -142,9 +160,13 @@ local function paint(grid: Grid, ships: { any }?, shots: { number }?, selected: 
 				elseif ship then SHIP
 				elseif code == Rules.SUNK then SHIP_SUNK
 				else cell.base
+			-- WATER = known empty next to a sunk ship ("no touching" rule): a faint small dot.
 			cell.dot.Visible = code ~= 0
-			cell.dot.BackgroundColor3 = if code == Rules.MISS then MISS else HIT
-			cell.dot.Size = if code == Rules.MISS then UDim2.fromScale(0.3, 0.3) else UDim2.fromScale(0.46, 0.46)
+			cell.dot.BackgroundColor3 = if code == Rules.MISS or code == Rules.WATER then MISS else HIT
+			cell.dot.BackgroundTransparency = if code == Rules.WATER then 0.6 else 0
+			cell.dot.Size = if code == Rules.MISS then UDim2.fromScale(0.3, 0.3)
+				elseif code == Rules.WATER then UDim2.fromScale(0.18, 0.18)
+				else UDim2.fromScale(0.46, 0.46)
 		end
 	end
 end
@@ -152,6 +174,9 @@ end
 function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local selected: string? = nil
+	-- Salvo "Call them all": the squares picked for this volley so far ({row, col}).
+	-- The volley fires itself once the last square is picked; tap one again to drop it.
+	local queued: { { number } } = {}
 	local shownShot = -1
 	local first = true
 
@@ -218,11 +243,15 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local bigGrid: Grid? = nil
+	local drawAimNow: (() -> ())? = nil -- set once drawAim exists (Table view crosshair)
 	-- Turns the radar arm (when it's showing).
 	local sweep = RunService.RenderStepped:Connect(function()
 		local grid = bigGrid
 		if grid and grid.radar.Visible then
 			grid.radar.Rotation = (os.clock() * 120) % 360
+		end
+		if drawAimNow then
+			drawAimNow()
 		end
 	end)
 	local smallGrid: Grid? = nil
@@ -330,7 +359,33 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			end
 			return
 		end
+		if view.salvo == "all" then
+			for i, q in queued do
+				if q[1] == row and q[2] == col then
+					table.remove(queued, i)
+					Audio.play("cardHover")
+					render()
+					return
+				end
+			end
+			table.insert(queued, { row, col })
+			if #queued >= (view.volley or 1) then
+				local shots = queued
+				queued = {}
+				sendMove({ kind = "salvo", shots = shots })
+				Audio.play("knock")
+			else
+				Audio.play("piece")
+			end
+			render()
+			return
+		end
 		sendMove({ kind = "fire", row = row, col = col })
+	end
+
+	local function salvoPicking(): boolean
+		local v = snapshot and snapshot.view
+		return v ~= nil and v.salvo == "all" and v.phase == "battle" and v.turn == me() and not snapshot.result
 	end
 
 	-- Drag a ship in setup. `grab` is how far along the ship you took hold of it.
@@ -497,7 +552,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 
 	local function flash(grid: Grid?, row: number, col: number, color: Color3)
 		local cell = grid and grid.cells[row] and grid.cells[row][col]
-		if not cell then
+		if not cell or not cell.button.Parent then
 			return
 		end
 		local ring = Kit.new("Frame", {
@@ -519,6 +574,29 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 			ring:Destroy()
 		end)
 		Juice.bump(cell.dot, 0.4)
+		if color == MISS then
+			-- A miss splashes: a few drops jump out of the water.
+			for i = 1, 6 do
+				local angle = (i / 6) * math.pi * 2 + math.random() * 0.5
+				local drop = Kit.new("Frame", {
+					BackgroundColor3 = Color3.fromRGB(170, 215, 255),
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.5),
+					Size = UDim2.fromScale(0.16, 0.16),
+					ZIndex = 6,
+					Parent = cell.button,
+				}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+				local fly = TweenService:Create(drop, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Position = UDim2.fromScale(0.5 + math.cos(angle) * 0.9, 0.5 + math.sin(angle) * 0.9),
+					BackgroundTransparency = 1,
+				})
+				fly:Play()
+				fly.Completed:Once(function()
+					drop:Destroy()
+				end)
+			end
+		end
 		if color == HIT then
 			-- A hit blows up: sparks fly out of the square.
 			for i = 1, 8 do
@@ -543,6 +621,13 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 				end)
 			end
 		end
+	end
+
+	-- "Salvo! Pick 3 more squares" while you're choosing a volley.
+	local function salvoLine(view: any): string
+		local left = math.max(0, (view.volley or 1) - #queued)
+		return if #queued == 0 then `Salvo! Pick {left} square{if left == 1 then "" else "s"} to fire at`
+			else `Salvo! Pick {left} more · tap a gold one to drop it`
 	end
 
 	function render()
@@ -588,6 +673,39 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		end
 		paint(big, shipsFor(bigSeat), if view.phase == "setup" then nil else view.boards[bigSeat].shotsAt, if view.phase == "setup" then selected else nil)
 		paint(small, shipsFor(smallSeat), view.boards[smallSeat].shotsAt, nil)
+		-- The last shot keeps a gold outline until the next one, like the apps.
+		for _, grid in { big, small } do
+			for _, row in grid.cells do
+				for _, cell in row do
+					local ring = cell.button:FindFirstChild("LastShot")
+					if ring then
+						ring:Destroy()
+					end
+				end
+			end
+		end
+		if view.phase ~= "setup" then
+			for _, last in (view.lastSalvo or { view.lastShot }) do
+				local grid = if 3 - last.seat == bigSeat then big elseif 3 - last.seat == smallSeat then small else nil
+				local cell = grid and grid.cells[last.row] and grid.cells[last.row][last.col]
+				if cell then
+					Kit.new("UIStroke", { Name = "LastShot", Color = Color3.fromRGB(255, 214, 102), Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = cell.button })
+				end
+			end
+		end
+		-- Squares picked for the volley: gold markers on the enemy ocean.
+		if not salvoPicking() then
+			queued = {}
+		end
+		for _, q in queued do
+			local cell = big.cells[q[1]] and big.cells[q[1]][q[2]]
+			if cell then
+				cell.dot.Visible = true
+				cell.dot.BackgroundColor3 = SELECTED
+				cell.dot.BackgroundTransparency = 0
+				cell.dot.Size = UDim2.fromScale(0.4, 0.4)
+			end
+		end
 
 		-- Titles and buttons
 		local setup = view.phase == "setup"
@@ -604,7 +722,10 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		elseif snapshot.result then
 			title.Text = "Battle over"
 		elseif mine then
-			title.Text = if view.turn == mine then (if view.salvo and (view.shotsLeft or 1) > 1 then `Salvo! {view.shotsLeft} shots left` else "Your shot! Tap the enemy ocean") else `{nameOf(view.turn)} is aiming…`
+			title.Text = if view.turn ~= mine then `{nameOf(view.turn)} is aiming…`
+				elseif view.salvo == "all" then salvoLine(view)
+				elseif view.salvo and (view.shotsLeft or 1) > 1 then `Salvo! {view.shotsLeft} shots left`
+				else "Your shot! Tap the enemy ocean"
 		else
 			title.Text = `{nameOf(2)}'s ocean · {nameOf(view.turn)} to fire`
 		end
@@ -617,6 +738,7 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		statusLabel.Visible = not editing
 		statusLabel.Text = if setup then (if mine and view.ready[mine] then "Locked in" else "")
 			elseif snapshot.result then ""
+			elseif view.salvo == "all" then "Salvo: pick a square per ship you have left, then they all fire"
 			elseif view.salvo then "Salvo: one shot per ship you have left"
 			elseif view.streak then "Hit again is on: a hit fires again"
 			else ""
@@ -634,7 +756,37 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		if shot and shot.n ~= shownShot then
 			local wasFirst = first and shownShot == -1
 			shownShot = shot.n
-			if not wasFirst then
+			local salvo = view.lastSalvo
+			if not wasFirst and salvo and #salvo > 1 and salvo[#salvo].n == shot.n then
+				-- A whole volley landed at once: splash every square, one call-out for it.
+				local targetSeat = 3 - shot.seat
+				local grid = if targetSeat == bigSeat then big elseif targetSeat == smallSeat then small else nil
+				local hits, sunkNames = 0, {}
+				for k, s in salvo do
+					task.delay((k - 1) * 0.08, function()
+						flash(grid, s.row, s.col, if s.hit then HIT else MISS)
+					end)
+					if s.hit then
+						hits += 1
+					end
+					if s.sunk then
+						table.insert(sunkNames, Rules.SHIP[s.sunk] and Rules.SHIP[s.sunk].name or "ship")
+					end
+				end
+				Audio.play(if #sunkNames > 0 then "caught" elseif hits > 0 then "knock" else "piece")
+				local ours = shot.seat == mine
+				local text
+				if #sunkNames > 0 then
+					text = if ours then `You sank their {table.concat(sunkNames, " and ")}!`
+						elseif targetSeat == mine then `They sank your {table.concat(sunkNames, " and ")}!`
+						else `{nameOf(shot.seat)} sank a {sunkNames[1]}!`
+				else
+					local word = if hits == 1 then "1 hit" else `{hits} hits`
+					text = if ours then `Salvo: {word}!` elseif targetSeat == mine then `Their salvo: {word}` else `{nameOf(shot.seat)}'s salvo: {word}`
+				end
+				local good = ours == (hits > 0 or #sunkNames > 0)
+				HudKit.callout(fx(), text, if good then Theme.Accent else Theme.Bad, 0.35)
+			elseif not wasFirst then
 				local targetSeat = 3 - shot.seat
 				local grid = if targetSeat == bigSeat then big elseif targetSeat == smallSeat then small else nil
 				flash(grid, shot.row, shot.col, if shot.hit then HIT else MISS)
@@ -647,11 +799,26 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 					HudKit.callout(fx(), text, if shot.seat == mine then Theme.Accent else Theme.Bad, 0.35)
 				elseif shot.hit then
 					Audio.play("knock")
+					local coord = `{string.sub("ABCDEFGHIJ", shot.row, shot.row)}{shot.col}`
 					if shot.seat == mine then
-						HudKit.callout(fx(), "Hit!", HIT, 0.35)
+						HudKit.callout(fx(), `Hit! {coord}`, HIT, 0.35)
+					elseif targetSeat == mine then
+						-- Which of your ships it was, like "They hit your Cruiser!"
+						local hitName = "ship"
+						for _, ship in view.fleet or {} do
+							for _, c in Rules.cellsOf(ship) do
+								if c[1] == shot.row and c[2] == shot.col then
+									hitName = Rules.SHIP[ship.id] and Rules.SHIP[ship.id].name or hitName
+								end
+							end
+						end
+						HudKit.callout(fx(), `They hit your {hitName}!`, Theme.Bad, 0.35)
 					end
 				else
 					Audio.play("piece")
+					if shot.seat == mine then
+						HudKit.callout(fx(), `Miss · {string.sub("ABCDEFGHIJ", shot.row, shot.row)}{shot.col}`, Color3.fromRGB(150, 200, 255), 0.3)
+					end
 				end
 			end
 		end
@@ -722,6 +889,99 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		fleetFolder = folder
 	end
 
+	-- Table view: a crosshair square on the target board under the mouse on your turn,
+	-- and gold pegs on the squares picked for a salvo. Local parts only you see.
+	local aimFolder: Folder? = nil
+	local aimKey = ""
+	local function drawAim()
+		local view = snapshot and snapshot.view
+		local mine = me()
+		local board = if tableMode and tapParts and mine then tapParts(`target:{mine}`)[1] else nil
+		local canFire = view ~= nil and view.phase == "battle" and view.turn == mine and not snapshot.result
+		if not (board and canFire) then
+			if aimFolder then
+				aimFolder:Destroy()
+				aimFolder = nil
+			end
+			aimKey = ""
+			return
+		end
+		local n = view.size or 10
+		local margin = tonumber(board:GetAttribute("TapMargin")) or 0
+		-- Where the mouse ray meets the board's grid face (+Z).
+		local aimRow, aimCol = nil, nil
+		local camera = workspace.CurrentCamera
+		if camera and UserInputService.MouseEnabled then
+			local mouse = UserInputService:GetMouseLocation()
+			local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
+			local normal = -board.CFrame.LookVector
+			local facing = ray.Direction:Dot(normal)
+			if facing < -1e-4 then
+				local face = board.Position + normal * board.Size.Z / 2
+				local t = (face - ray.Origin):Dot(normal) / facing
+				local p = board.CFrame:PointToObjectSpace(ray.Origin + ray.Direction * t)
+				local fx = (p.X / board.Size.X + 0.5 - margin) / (1 - 2 * margin)
+				local fy = (p.Y / board.Size.Y + 0.5 - margin) / (1 - 2 * margin)
+				if fx >= 0 and fx < 1 and fy >= 0 and fy < 1 then
+					aimRow, aimCol = math.floor((1 - fy) * n) + 1, math.floor(fx * n) + 1
+					if view.boards[3 - mine].shotsAt[(aimRow - 1) * n + aimCol] ~= 0 then
+						aimRow, aimCol = nil, nil
+					end
+				end
+			end
+		end
+		local bits = { tostring(board.CFrame), tostring(aimRow), tostring(aimCol) }
+		for _, q in queued do
+			table.insert(bits, `{q[1]},{q[2]}`)
+		end
+		local key = table.concat(bits, "|")
+		if key == aimKey and aimFolder and aimFolder.Parent then
+			return
+		end
+		aimKey = key
+		if aimFolder then
+			aimFolder:Destroy()
+		end
+		local folder = Instance.new("Folder")
+		folder.Name = "SeaStrikeAim"
+		local cellW = board.Size.X * (1 - 2 * margin) / n
+		local cellH = board.Size.Y * (1 - 2 * margin) / n
+		local function at(row: number, col: number, out: number): CFrame
+			local x = (margin + (col - 0.5) / n * (1 - 2 * margin) - 0.5) * board.Size.X
+			local y = (margin + (1 - (row - 0.5) / n) * (1 - 2 * margin) - 0.5) * board.Size.Y
+			return board.CFrame * CFrame.new(x, y, board.Size.Z / 2 + out)
+		end
+		local function part(name: string, size: Vector3, cf: CFrame, color: Color3, transparency: number, shape: Enum.PartType?)
+			local p = Instance.new("Part")
+			p.Name = name
+			p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+			p.Size = size
+			p.CFrame = cf
+			p.Color = color
+			p.Material = Enum.Material.Neon
+			p.Transparency = transparency
+			if shape then
+				p.Shape = shape
+			end
+			p.Parent = folder
+		end
+		if aimRow and aimCol then
+			-- A gold frame of four thin bars round the square, like a gun sight.
+			local cf = at(aimRow, aimCol, 0.03)
+			local t = math.min(cellW, cellH) * 0.12
+			part("AimTop", Vector3.new(cellW, t, 0.01), cf * CFrame.new(0, cellH / 2 - t / 2, 0), SELECTED, 0.1)
+			part("AimBottom", Vector3.new(cellW, t, 0.01), cf * CFrame.new(0, -cellH / 2 + t / 2, 0), SELECTED, 0.1)
+			part("AimLeft", Vector3.new(t, cellH, 0.01), cf * CFrame.new(-cellW / 2 + t / 2, 0, 0), SELECTED, 0.1)
+			part("AimRight", Vector3.new(t, cellH, 0.01), cf * CFrame.new(cellW / 2 - t / 2, 0, 0), SELECTED, 0.1)
+		end
+		for _, q in queued do
+			part("Queued", Vector3.one * math.min(cellW, cellH) * 0.55, at(q[1], q[2], 0.05), SELECTED, 0, Enum.PartType.Ball)
+		end
+		folder.Parent = workspace
+		aimFolder = folder
+	end
+	drawAimNow = drawAim
+
 	-- Table mode: the bar along the bottom and the Fleets window.
 	function renderTable()
 		drawFleet()
@@ -761,7 +1021,9 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		end
 		local line
 		if mine and view.turn == mine then
-			line = if view.salvo and (view.shotsLeft or 1) > 1 then `Salvo! {view.shotsLeft} shots left: tap the target board` else "Your shot! Tap the target board in front of you"
+			line = if view.salvo == "all" then `{salvoLine(view)} on the target board`
+				elseif view.salvo and (view.shotsLeft or 1) > 1 then `Salvo! {view.shotsLeft} shots left: tap the target board`
+				else "Your shot! Tap the target board in front of you"
 		else
 			line = `{nameOf(view.turn)} is aiming…`
 		end
@@ -830,6 +1092,9 @@ function SeaStrike.create(container: Frame, sendMove: (any) -> ())
 		destroy = function()
 			if fleetFolder then
 				fleetFolder:Destroy()
+			end
+			if aimFolder then
+				aimFolder:Destroy()
 			end
 			sweep:Disconnect()
 			for _, connection in connections do

@@ -54,6 +54,69 @@ local function targetCell(f: CFrame, n: number, row: number, col: number, top: n
 	return f * CFrame.new((col - half) * TARGET_CELL, top - (row - 0.5) * TARGET_CELL, PANEL_T / 2)
 end
 
+-- Grid coordinates like the paper game: rows A-J down the side, columns 1-10 along the top.
+local LABEL = Color3.fromRGB(235, 240, 255)
+local function rowLetter(r: number): string
+	return string.sub("ABCDEFGHIJ", r, r)
+end
+
+local function textLabel(parent: Instance, text: string, position: UDim2, size: UDim2)
+	local t = Instance.new("TextLabel")
+	t.BackgroundTransparency = 1
+	t.AnchorPoint = Vector2.new(0.5, 0.5)
+	t.Position = position
+	t.Size = size
+	t.Font = Enum.Font.GothamBold
+	t.TextScaled = true
+	t.Text = text
+	t.TextColor3 = LABEL
+	t.Parent = parent
+end
+
+-- Letters and numbers on the margin of a standing target board (its +Z face).
+local function labelTarget(board: BasePart, n: number)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Coordinates"
+	gui.Face = Enum.NormalId.Back -- +Z, the side facing the seat
+	gui.LightInfluence = 0.2
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 400
+	gui.Parent = board
+	local w, h = board.Size.X, board.Size.Y
+	local margin = (w - n * TARGET_CELL) / 2
+	local cell = UDim2.fromScale(margin * 0.9 / w, margin * 0.9 / h)
+	for i = 1, n do
+		textLabel(gui, tostring(i), UDim2.fromScale((margin + (i - 0.5) * TARGET_CELL) / w, margin / 2 / h), cell)
+		textLabel(gui, rowLetter(i), UDim2.fromScale(margin / 2 / w, (margin + (i - 0.5) * TARGET_CELL) / h), cell)
+	end
+end
+
+-- The same on the flat case around your own ocean, reading upright from your seat.
+local function labelOcean(model: Instance, ocean: CFrame, n: number)
+	local half = (n + 1) / 2
+	local edge = n * OCEAN_CELL / 2 + 0.06
+	local function label(text: string, x: number, z: number)
+		local part = Instance.new("Part")
+		part.Name = "Coord_" .. text
+		part.Anchored, part.CanCollide, part.CanQuery, part.CanTouch = true, false, false, false
+		part.Transparency = 1
+		part.Size = Vector3.new(0.11, 0.01, 0.11)
+		part.CFrame = ocean * CFrame.new(x, BASE_H + 0.006, z) -- -Z away from the seat: upright for them
+		local gui = Instance.new("SurfaceGui")
+		gui.Face = Enum.NormalId.Top
+		gui.LightInfluence = 0.2
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 400
+		gui.Parent = part
+		textLabel(gui, text, UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1))
+		part.Parent = model
+	end
+	for i = 1, n do
+		label(tostring(i), (i - half) * OCEAN_CELL, -edge)
+		label(rowLetter(i), -edge, (i - half) * OCEAN_CELL)
+	end
+end
+
 function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	local model = Instance.new("Model")
 	model.Name = "GameBoard"
@@ -80,6 +143,7 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			-- Your own ocean in Table view: place your fleet on it (renderer "ocean:<seat>";
 			-- uv X runs along columns, Z along rows toward the seat).
 			Scene.tappable(water, `ocean:{seat}`)
+			labelOcean(model, ocean, n)
 			-- Target board standing up, its grid side facing the seat (+Z).
 			local tspan = n * TARGET_CELL
 			local height = tspan + 0.2
@@ -88,6 +152,7 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			-- TapMargin (a share of the board's width and height) in from each edge.
 			Scene.tappable(targetBoard, `target:{seat}`)
 			targetBoard:SetAttribute("TapMargin", 0.1 / height)
+			labelTarget(targetBoard, n)
 			Models.block(model, "TargetFoot", Vector3.new(tspan + 0.3, 0.05, 0.16), target * CFrame.new(0, 0.025, 0.13), CASE)
 			-- Faint grid lines on the target board: thin strips just in front of its face.
 			for i = 0, n do
@@ -113,7 +178,13 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 			if not Scene.changed(memo, view) then
 				return
 			end
-			local last = view.lastShot
+			-- The latest shots get a glowing ring: the last one, or the whole last salvo.
+			local recent: { [string]: boolean } = {}
+			for _, shot in (view.lastSalvo or { view.lastShot }) do
+				if type(shot) == "table" then
+					recent[`{shot.seat}:{shot.row}:{shot.col}`] = true
+				end
+			end
 			Scene.redraw(live, function(folder)
 				for seat, board in view.boards do
 					local ocean = frameFor(boardCF, layout, seat, OCEAN_D)
@@ -136,12 +207,13 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 						Models.block(folder, "Hull", size, mid * CFrame.new(0, 0.06, 0), if ship.sunk then HULL_SUNK else HULL)
 					end
 					-- Pegs the enemy put on this ocean.
+					-- WATER (squares known empty next to a sunk ship) was never fired at: no peg.
 					for i, code in board.shotsAt do
-						if code ~= 0 then
+						if code ~= 0 and code ~= Rules.WATER then
 							local row, col = (i - 1) // n + 1, (i - 1) % n + 1
 							local cf = oceanCell(ocean, n, row, col) * CFrame.new(0, hullTop[i] or 0, 0)
 							Models.cyl(folder, "Peg", 0.1, 0.12, cf, if code == Rules.MISS then MISS else HIT)
-							if last and last.seat ~= seat and last.row == row and last.col == col then
+							if recent[`{3 - seat}:{row}:{col}`] then
 								Models.cyl(folder, "LastShot", 0.2, 0.02, cf, LAST, Enum.Material.Neon)
 							end
 						end
@@ -152,7 +224,8 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 					for i, code in (mine and mine.shotsAt) or {} do
 						if code ~= 0 then
 							local row, col = (i - 1) // n + 1, (i - 1) % n + 1
-							Models.ball(folder, "Peg", if code == Rules.MISS then 0.08 else 0.11, targetCell(target, n, row, col, top) * CFrame.new(0, 0, 0.05), if code == Rules.MISS then MISS else HIT)
+							local size = if code == Rules.WATER then 0.035 elseif code == Rules.MISS then 0.08 else 0.11
+							Models.ball(folder, "Peg", size, targetCell(target, n, row, col, top) * CFrame.new(0, 0, 0.05), if code == Rules.MISS or code == Rules.WATER then MISS else HIT)
 						end
 					end
 				end

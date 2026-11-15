@@ -212,8 +212,9 @@ rules.SeaStrike = {
 		"Hit every square of a ship to sink it. Sink the whole fleet to win.",
 	},
 	sections = {
-		{ title = "Your fleet", lines = { "Carrier (5), Battleship (4), Cruiser (3), Submarine (3), Destroyer (2).", "Ships go across or down, never diagonal, and can't overlap. They may touch.", "Shuffle places them at random. When the setup clock runs out, you're made ready." } },
-		{ title = "Firing", lines = { "On your turn, fire at one square of the enemy grid you haven't tried yet.", "You hear hit or miss. When a ship's last square is hit, it sinks and everyone hears which ship it was." } },
+		{ title = "Your fleet", lines = { "Carrier (5), Battleship (4), Cruiser (3), Submarine (3), Destroyer (2).", "Ships go across or down, never diagonal, and can't overlap. They may touch (unless No touching is on).", "Shuffle places them at random. When the setup clock runs out, you're made ready." } },
+		{ title = "Firing", lines = { "On your turn, fire at one square of the enemy grid you haven't tried yet. Squares are named like B7: row letter, column number.", "You hear hit or miss. When a ship's last square is hit, it sinks and everyone hears which ship it was." } },
+		{ title = "House rules", lines = { "Salvo: one shot for every ship you still have afloat. \"One at a time\" shows each result; \"Call them all\": pick every square, then they land together.", "No touching: ships can't touch, even at a corner. When a ship sinks, the water around it is marked for the shooter.", "Hit again: a hit lets you fire again." } },
 		{ title = "Tips", lines = { "After a hit, try the squares next to it. Two hits in a line show which way the ship lies.", "Ships need room: big empty areas are where the big ships hide." } },
 	},
 }
