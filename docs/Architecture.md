@@ -32,6 +32,9 @@ Each match is played at a table in the room when one is free: players and bots s
 Party games (Sketch & Guess, Trivia Night) let several seats move at once and run on a clock instead of turns:
 - A game with `getTimer` returns `{ id, seconds }` for the current phase. `MatchService` runs that timer (instead of the AFK turn timer) and calls `onTimeout` when it runs out. Changing `id` starts a new timer; moves that keep the id (strokes, guesses) don't reset it. Clients get `turnEndsAt` and `timed = true` to draw a countdown.
 - A game with `textField` gets typed text filtered on the server (`TextService:FilterStringAsync` + `GetNonChatStringForBroadcastAsync`). The result goes in `move.shown`, overwriting anything the client sent, and only `shown` is ever displayed to others. Correct guesses are never displayed.
+- Typed text is user-to-user chat, so it follows Roblox's chat rules: a player `TextChatService:CanUserChatAsync` says can't chat still plays, but their text is never shown; and each viewer only sees text from players `CanUsersChatAsync(from, to)` allows (cached per match, checked ahead at match start). The game's `hideText(view, hidden)` blanks the rest; the table's public screen never shows players' typed text.
+- `elapsedField`: Match stamps the seconds since the phase clock started on each move, before `validateMove`, overwriting the client's value (Trivia speed points, Sketch guess limit).
+- `serverData` in GameCatalog: answer banks and word lists live in `server/Data` and reach the rules through options, so clients never get them.
 - `options.bots` lists the seats that start as bots, so Sketch & Guess knows who can draw.
 - `getSeatInfo` adds a line under each seat in the table view (card counts, scores). `getScores` goes into the match-finished summary.
 
