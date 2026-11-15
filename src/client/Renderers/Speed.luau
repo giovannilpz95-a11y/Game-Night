@@ -19,6 +19,12 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 	local shownTops = { 0, 0 }
 	local arrivals = CardFx.arrivals()
 	local wasStuck = false
+	local wasCountdown = false
+	local docked = false
+	-- Idle hint: after a few seconds without a play, one playable card pulses.
+	local version = 0
+	local hintVersion = -1
+	local HINT_SECONDS = 5
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 
@@ -95,6 +101,20 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		Size = UDim2.new(1, 0, 0.28, 0),
 		Parent = root,
 	})
+	-- Table view hides the felt: the race's news (countdown, no moves, the deal) goes here.
+	local dockStatus = Kit.label("", {
+		TextSize = 22,
+		Font = Theme.FontBold,
+		TextColor3 = Theme.Accent,
+		TextStrokeTransparency = 0.3,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.new(0, 0, 0.6, 0),
+		Size = UDim2.new(1, 0, 0, 28),
+		Visible = false,
+		ZIndex = 8,
+		Parent = root,
+	})
+	local lastKey: string? = nil
 
 	local function render()
 		local view = snapshot.view
@@ -102,9 +122,26 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		local them = if me == 1 then 2 elseif me == 2 then 1 else 2
 		local mine = me or 1
 
-		-- Center piles: drop in new top cards.
+		-- Something changed: restart the idle-hint clock.
+		local key = `{view.tops[1]}|{view.tops[2]}|{table.concat(view.hand or {}, ",")}|{tostring(view.stuck)}|{tostring(view.countdown)}`
+		if key ~= lastKey then
+			lastKey = key
+			version += 1
+			local mark = version
+			task.delay(HINT_SECONDS, function()
+				if version == mark and snapshot and root.Parent then
+					hintVersion = mark
+					render()
+				end
+			end)
+		end
+
+		-- Center piles: drop in new top cards (face down during the countdown).
 		for pile = 1, 2 do
-			if shownTops[pile] ~= view.tops[pile] then
+			if view.tops[pile] == nil then
+				shownTops[pile] = 0
+				PlayingCard.show(centerSlots[pile], nil, true)
+			elseif shownTops[pile] ~= view.tops[pile] then
 				shownTops[pile] = view.tops[pile]
 				local face = PlayingCard.show(centerSlots[pile], view.tops[pile])
 				face.Rotation = (view.tops[pile] % 5) * 3 - 6
@@ -132,20 +169,50 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 			CardFx.pop("FLIP!", Theme.Accent)
 		end
 		wasStuck = view.stuck == true
-		if view.stuck then
+		-- 3-2-1, then GO! as both center cards turn over.
+		if view.countdown and not wasCountdown then
+			CardFx.pop("READY?", Theme.Accent)
+		elseif wasCountdown and not view.countdown and not view.dealOver then
+			CardFx.pop("GO!", Theme.Good)
+		end
+		wasCountdown = view.countdown == true
+		local a = view.lastAction
+		local function nameOf(seat: number?): string
+			if seat == me then
+				return "You"
+			end
+			return if seat and snapshot.seats[seat] then snapshot.seats[seat].name else "Nobody"
+		end
+		local deal = view.dealOver
+		if view.countdown then
+			status.Text = if (view.target or 0) > 0 then `Deal {view.dealNumber}: get ready...` else "Get ready..."
+		elseif deal then
+			status.Text = if deal.winner == 0 then "A tie! Next deal..." else `SPEED! {nameOf(deal.winner)} won the deal: +{deal.points}`
+		elseif view.stuck then
 			status.Text = "No moves! Flipping new cards..."
 		elseif snapshot.result then
 			status.Text = ""
 		else
-			status.Text = "GO!"
+			local left = (view.flipLimit or 40) - (view.flips or 0)
+			status.Text = if left <= 5 then `GO! {left} flips left` else "GO!"
 		end
+		if a and a.kind == "deal" and a.seat and a.seat ~= 0 and status:GetAttribute("Deal") ~= view.dealNumber then
+			status:SetAttribute("Deal", view.dealNumber)
+			CardFx.pop("SPEED!", Theme.Bad)
+		end
+		local scoreText = ""
+		if (view.target or 0) > 0 and me then
+			scoreText = `  ·  You {view.scores[me]} · {theirName} {view.scores[them]} (to {view.target})`
+		end
+		dockStatus.Text = if status.Text == "GO!" then "" else status.Text
+		dockStatus.Visible = docked and dockStatus.Text ~= ""
 
 		if not me then
 			myLabel.Text = "Watching"
 			Kit.clear(hand)
 			return
 		end
-		myLabel.Text = `Your draw pile: {view.drawCounts[mine]}`
+		myLabel.Text = `Your draw pile: {view.drawCounts[mine]}{scoreText}`
 		local playable = view.playable or {}
 		if selected and not playable[tostring(selected)] then
 			selected = nil
@@ -157,7 +224,8 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 			glows[pile].Enabled = fits
 			if fits then
 				local card = selected :: number
-				Kit.button(`{if pile == 1 then "Left" else "Right"} pile ({PlayingCards.short(view.tops[pile])})`, function()
+				-- Named by the top card: "left" depends on where you sit.
+				Kit.button(`On the {PlayingCards.short(view.tops[pile])}`, function()
 					selected = nil
 					sendMove({ kind = "play", card = card, pile = pile })
 				end, { Size = UDim2.new(0, 150, 1, 0), TextSize = 14, LayoutOrder = pile, Parent = pileRow })
@@ -165,10 +233,16 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		end
 		pileRow.Visible = selected ~= nil
 		myLabel.Visible = selected == nil
+		-- Nothing is grayed out: playable cards lift, and after a quiet spell one of them pulses.
 		local cards = {}
+		local hinted = false
 		for _, id in view.hand or {} do
 			local piles = playable[tostring(id)]
-			table.insert(cards, { id = id, raised = piles ~= nil, dim = piles == nil, glow = id == selected, enabled = piles ~= nil })
+			local hint = piles ~= nil and not hinted and hintVersion == version and selected == nil
+			if hint then
+				hinted = true
+			end
+			table.insert(cards, { id = id, raised = piles ~= nil, glow = id == selected or hint, enabled = piles ~= nil })
 		end
 		local faces = PlayingCard.renderHand(hand, cards, function(id: number)
 			local piles = playable[tostring(id)]
@@ -206,7 +280,8 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 	-- Table view docks the bottom of this screen (MatchView.DOCK, held): the table's cards
 	-- are on the 3D table, so the top rows and the felt go and your hand is held like real
 	-- cards, a big fan along the bottom edge running a little off the screen.
-	local function setDocked(docked: boolean)
+	local function setDocked(isDocked: boolean)
+		docked = isDocked
 		theirHand.Visible = not docked
 		felt.Visible = not docked
 		myLabel.TextStrokeTransparency = if docked then 0.35 else 1

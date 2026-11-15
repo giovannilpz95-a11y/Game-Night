@@ -88,7 +88,16 @@ return function(rules: any, opts: Options): Report
 			return
 		end
 		local timer = if rules.getTimer then rules.getTimer(state) else nil
-		for _, seat in rules.getActiveSeats(state) do
+		-- Seats that may move out of turn get a try too (they may pass on it), like the server.
+		local seats = table.clone(rules.getActiveSeats(state))
+		if rules.getInterruptSeats then
+			for _, seat in rules.getInterruptSeats(state) do
+				if not table.find(seats, seat) then
+					table.insert(seats, seat)
+				end
+			end
+		end
+		for _, seat in seats do
 			if pending[seat] == nil then
 				asSeat(seat)
 				local delay = Config.BotMoveDelay
@@ -157,7 +166,34 @@ return function(rules: any, opts: Options): Report
 		now = nextAt
 		pending[seat] = nil
 		local active = table.find(rules.getActiveSeats(state), seat) ~= nil
-		if active then
+		local interrupt = not active and rules.getInterruptSeats ~= nil and table.find(rules.getInterruptSeats(state), seat) ~= nil
+		if interrupt and rules.chooseBotMove then
+			-- Out of turn the game's own bot decides; nil means "let it go", and a bad move
+			-- is simply refused (no random fallback), like Match.playForSeat.
+			asSeat(seat)
+			local ok, move = pcall(rules.chooseBotMove, state, seat, rng)
+			if not ok then
+				table.insert(report.errors, `chooseBotMove: {move}`)
+			elseif move ~= nil then
+				local valid, why = rules.validateMove(state, seat, move)
+				if not valid then
+					report.rejected += 1
+					if #report.rejectReasons < 5 then
+						table.insert(report.rejectReasons, tostring(why))
+					end
+				else
+					local applied, err = pcall(rules.applyMove, state, seat, move)
+					if not applied then
+						table.insert(report.errors, `applyMove: {err}`)
+						report.stuck = "applyMove threw"
+						break
+					end
+					report.moves += 1
+					result = rules.getResult(state)
+					schedule()
+				end
+			end
+		elseif active then
 			asSeat(seat)
 			local started = os.clock()
 			local ok, move = pcall(GameModule.chooseBotMove, rules, state, seat, rng)

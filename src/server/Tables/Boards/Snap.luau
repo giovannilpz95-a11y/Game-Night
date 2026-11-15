@@ -1,5 +1,6 @@
 -- Snap at the table: each player's face-down pile with its count, and their face-up pile
--- beside it with the top card showing, so everyone can spot a match.
+-- beside it with the top card showing, so everyone can spot a match, plus the Snap Pool in
+-- the middle.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
@@ -15,6 +16,14 @@ function Snap.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			Cards.speech(folder, boardCF, layout, said.seat, "SNAP!", Color3.fromRGB(255, 226, 140))
 		elseif said and said.kind == "badSnap" then
 			Cards.speech(folder, boardCF, layout, said.seat, "Oops!", Color3.fromRGB(255, 190, 190))
+		end
+		-- The Snap Pool in the middle: wrong snaps go here, a match with its top wins it.
+		local poolCount = view.poolCount or 0
+		if poolCount > 0 then
+			local cf = Scene.pile(folder, Cards.center(boardCF, 0), math.max(0, poolCount - 1), false)
+			if view.poolTop then
+				Scene.card(folder, cf, Scene.playingFront(PlayingCards, view.poolTop), 1.15)
+			end
 		end
 		for seat, count in view.downCounts or {} do
 			Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 0.9, -0.55), count, true)

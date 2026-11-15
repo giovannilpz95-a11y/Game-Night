@@ -1,6 +1,7 @@
 -- Snap table: every player's face-up pile across the felt (name and cards left under each),
 -- your face-down pile at the bottom (tap it, or Flip, on your turn) with a big SNAP!
--- button beside it (Space also snaps). Both sit in the bottom strip that Table view keeps
+-- button beside it (Space also snaps). The Snap Pool sits in the middle of the row while it
+-- holds cards. Both sit in the bottom strip that Table view keeps
 -- on screen. Matches are never highlighted; spotting them is
 -- the game.
 
@@ -69,14 +70,42 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 				snapped[s] = true
 			end
 		end
+		-- The Snap Pool (wrong snaps) sits in the middle of the row while it holds cards.
+		local order = {}
 		for seat = 1, seatCount do
-			local x = (seat - 0.5) / seatCount
+			table.insert(order, seat)
+		end
+		local poolCount = view.poolCount or 0
+		if poolCount > 0 then
+			table.insert(order, math.floor(seatCount / 2) + 1, 0)
+		end
+		local slots = #order
+		for i, seat in order do
+			local x = (i - 0.5) / slots
 			local slot = PlayingCard.slot({
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(x, 0.5),
-				Size = UDim2.fromScale(0.95 / seatCount, if seatCount > 4 then 0.5 else 0.58),
+				Size = UDim2.fromScale(0.95 / slots, if slots > 4 then 0.5 else 0.58),
 				Parent = piles,
 			})
+			if seat == 0 then
+				if view.poolTop then
+					local face = PlayingCard.show(slot, view.poolTop)
+					Kit.new("UIStroke", { Color = Color3.fromRGB(150, 160, 255), Thickness = 3, Parent = face })
+				end
+				Kit.label(`Snap Pool · {poolCount}`, {
+					TextSize = 13,
+					Font = Theme.FontBold,
+					TextColor3 = Color3.fromRGB(180, 190, 255),
+					TextXAlignment = Enum.TextXAlignment.Center,
+					AnchorPoint = Vector2.new(0.5, 0),
+					Position = UDim2.new(x, 0, 0.82, 0),
+					Size = UDim2.new(1 / slots, -4, 0, 16),
+					ZIndex = 6,
+					Parent = piles,
+				})
+				continue
+			end
 			local top = view.tops[tostring(seat)]
 			if top then
 				local face = PlayingCard.show(slot, top)
@@ -94,7 +123,7 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				AnchorPoint = Vector2.new(0.5, 0),
 				Position = UDim2.new(x, 0, 0.82, 0),
-				Size = UDim2.new(1 / seatCount, -4, 0, 16),
+				Size = UDim2.new(1 / slots, -4, 0, 16),
 				ZIndex = 6,
 				Parent = piles,
 			})
@@ -102,11 +131,32 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 
 		local text = ""
 		if a and a.kind == "snap" then
-			text = `{nameOf(a.seat)} snapped and won {a.count} cards!`
+			text = if a.pool then `{nameOf(a.seat)} snapped the pool and won {a.count} cards!` else `{nameOf(a.seat)} snapped and won {a.count} cards!`
+		elseif a and a.kind == "badSnap" and a.pool then
+			text = `{nameOf(a.seat)} snapped too soon: {a.count} {if a.count == 1 then "card" else "cards"} to the Snap Pool`
 		elseif a and a.kind == "badSnap" then
 			text = if (a.count or 1) > 1 then `{nameOf(a.seat)} snapped too soon and gave {nameOf(a.to)} {a.count} cards` else `{nameOf(a.seat)} snapped too soon and gave {nameOf(a.to)} a card`
 		end
+		local left = if (view.limit or 0) > 0 then view.limit - view.flips else nil
+		if text == "" and left and left <= 100 then
+			text = `{left} flips left: then most cards wins`
+		end
 		status.Text = text
+
+		-- Table view hides the felt: the pool, the flips left and the last snap go on screen.
+		local info = { if me and alive then `You · {total(view, me)} cards` else "Snap" }
+		if poolCount > 0 then
+			table.insert(info, `Snap Pool: {poolCount} {if poolCount == 1 then "card" else "cards"}`)
+		end
+		if left then
+			table.insert(info, if left <= 100 then `{left} flips left` else `Most cards after {view.limit} flips`)
+		end
+		if view.ownersOnly then
+			table.insert(info, "Owners only")
+		end
+		table.insert(info, if view.penalty == "pool" then "Wrong snap: pile to the pool" elseif view.penalty == 2 then "Wrong snap: 2 cards" else "Wrong snap: 1 card")
+		CardTable.info(ui, info)
+		CardTable.notice(ui, if text ~= "" and a and a.kind ~= "flip" then text else nil, nil, if a and a.kind == "snap" then Theme.Accent else Color3.fromRGB(180, 190, 255))
 		-- SNAP! (or a wrong call) pops off the table; the winner gathers the piles.
 		if snaps(CardFx.key(a, view.pause)) and a then
 			if a.kind == "snap" then
@@ -139,7 +189,8 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 		elseif myTurn then
 			ui.prompt.Text = "Your flip! Then watch for matching cards"
 		else
-			ui.prompt.Text = if view.color then "SNAP when two piles show the same rank and color!" else "SNAP when two piles show the same rank!"
+			local what = if view.color then "the same rank and color" else "the same rank"
+			ui.prompt.Text = if poolCount > 0 then `SNAP when two piles (or a pile and the pool) show {what}!` else `SNAP when two piles show {what}!`
 		end
 
 		-- Your face-down pile: one card back with the count on it (tap it to flip).

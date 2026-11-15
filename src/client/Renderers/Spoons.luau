@@ -1,6 +1,8 @@
 -- Spoons table: the spoons in the middle of the felt, everyone's status around the top,
--- your 5 cards along the bottom. Tap a card to pass it left. Four of a kind lights up
--- the GRAB button, and once anyone grabs, the button flashes for everyone.
+-- your 5 cards along the bottom. Tap a card to pass it left (free passing: whenever you
+-- hold 5). The GRAB button is always there; four of a kind lights it up. The first grab is
+-- quiet (only a spoon goes missing); once the scramble is on, it flashes for everyone.
+-- In Table view the news (scramble, who is out) shows over your hand.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -90,6 +92,20 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	})
 	local hand = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.74, 0), Size = UDim2.new(1, 0, 0.26, 0), Parent = root })
+	-- Table view: the felt is hidden, so the round's news goes over the GRAB button.
+	local dockNews = Kit.label("", {
+		TextSize = 20,
+		Font = Theme.FontBold,
+		TextColor3 = Theme.Accent,
+		TextStrokeTransparency = 0.3,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.new(0, 0, 0.6, -30),
+		Size = UDim2.new(1, 0, 0, 26),
+		Visible = false,
+		ZIndex = 8,
+		Parent = root,
+	})
+	local docked = false
 
 	local function nameOf(seat: number?): string
 		if not seat then
@@ -115,7 +131,8 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 		for seat = 1, #snapshot.seats do
 			local isOut = view.out[tostring(seat)] ~= nil
 			local hasSpoon = view.spoonHolders[tostring(seat)] ~= nil
-			local status = if isOut then "out" elseif hasSpoon then "🥄" elseif view.phase == "pass" and passed[seat] then "passed" else ""
+			local waiting = view.free and view.phase == "pass" and (view.handCounts and view.handCounts[seat] or 5) < 5
+			local status = if isOut then "out" elseif hasSpoon then "🥄" elseif view.phase == "pass" and (passed[seat] or waiting) then "waiting" else ""
 			-- Letters mode: the letters so far, like a game of HORSE.
 			local letters = view.letters and view.letters[tostring(seat)]
 			if letters and not isOut then
@@ -167,7 +184,10 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		Kit.clear(reveal)
-		if view.phase == "pass" then
+		if view.phase == "pass" and view.youHaveSpoon then
+			banner.Text = "Shh... you've got a spoon. Who'll notice?"
+			banner.TextColor3 = Theme.Good
+		elseif view.phase == "pass" then
 			banner.Text = `Round {view.round} · pass {view.passNumber}`
 			banner.TextColor3 = Theme.Text
 		elseif view.phase == "scramble" then
@@ -175,8 +195,9 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			banner.TextColor3 = Theme.Bad
 		elseif view.phase == "reveal" then
 			local letters = view.lastLetter and view.letters and view.letters[tostring(view.lastLetter)]
-			banner.Text = if view.lastOut then `{nameOf(view.lastOut)} didn't get a spoon and is out!`
-				elseif letters then `{nameOf(view.lastLetter)} didn't get a spoon: {letters}!`
+			local why = if view.lastFalseGrab then "grabbed too soon" else "didn't get a spoon"
+			banner.Text = if view.lastOut then `{nameOf(view.lastOut)} {why} and {if view.lastOut == me then "are" else "is"} out!`
+				elseif letters then `{nameOf(view.lastLetter)} {why}: {letters}!`
 				else "Round over"
 			banner.TextColor3 = Theme.Accent
 		end
@@ -188,9 +209,13 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			PlayingCard.renderHand(reveal, cards, nil)
 		end
 
+		-- You can always reach for a spoon; it lights up when it's a sure thing.
 		local canGrab = me ~= nil and not view.youAreOut and not view.youHaveSpoon
-			and (view.phase == "scramble" or (view.phase == "pass" and view.hasFour))
+			and (view.phase == "scramble" or view.phase == "pass")
+		local hot = view.phase == "scramble" or view.hasFour
 		grabButton.Visible = canGrab and snapshot.result == nil
+		grabButton.TextTransparency = if hot or view.spoonGone then 0 else 0.35
+		grabButton.BackgroundTransparency = if hot then 0 else 0.35
 		-- A jammed round was dealt again (see Spoons.MAX_PASSES).
 		if shownFreshDeals ~= nil and (view.freshDeals or 0) > shownFreshDeals then
 			CardFx.pop("Nobody got four! Fresh deal", Theme.Accent)
@@ -205,8 +230,18 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			TweenService:Create(grabPulse, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 		end
 		lastPhase = view.phase
-		-- The prompt sits where the button goes; the button says it all when it's up.
-		prompt.Visible = not grabButton.Visible
+		-- The prompt sits under the button.
+		prompt.Visible = true
+		prompt.Position = if grabButton.Visible then UDim2.new(0, 0, 0.6, 52) else UDim2.new(0, 0, 0.6, 14)
+		local news = ""
+		if view.phase == "scramble" or view.phase == "reveal" then
+			news = banner.Text
+		elseif view.phase == "pass" and view.youHaveSpoon then
+			news = banner.Text
+		end
+		dockNews.Text = news
+		dockNews.TextColor3 = banner.TextColor3
+		dockNews.Visible = docked and news ~= ""
 
 		if not me then
 			prompt.Text = "Watching"
@@ -216,8 +251,8 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			prompt.Text = "Safe! You got a spoon."
 		elseif view.phase == "pass" and view.hasFour then
 			prompt.Text = "Four of a kind! Grab a spoon, quietly..."
-		elseif view.phase == "pass" and view.youPassed then
-			prompt.Text = "Passed. Waiting for the next card..."
+		elseif view.phase == "pass" and not view.canPass then
+			prompt.Text = if view.free then "Waiting for the next card... watch the spoons!" else "Passed. Waiting for the next card..."
 		elseif view.phase == "pass" then
 			prompt.Text = "Tap a card to pass it left. Collect four of a kind!"
 		else
@@ -226,10 +261,10 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 
 		local cards = {}
 		local counts = PlayingCards.rankCounts(view.hand or {})
-		local canPass = view.phase == "pass" and not view.youPassed and not view.youAreOut
+		local canPass = view.canPass == true
 		for _, id in view.hand or {} do
 			local r = PlayingCards.rank(id)
-			table.insert(cards, { id = id, glow = counts[r] >= 3, enabled = canPass, dim = not canPass and view.phase == "pass" })
+			table.insert(cards, { id = id, glow = counts[r] >= 3, enabled = canPass })
 		end
 		local faces = PlayingCard.renderHand(hand, cards, function(id: number)
 			if canPass then
@@ -270,7 +305,8 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 	-- Table view docks the bottom of this screen (MatchView.DOCK, held): the table's cards
 	-- are on the 3D table, so the top rows and the felt go and your hand is held like real
 	-- cards, a big fan along the bottom edge running a little off the screen.
-	local function setDocked(docked: boolean)
+	local function setDocked(isDocked: boolean)
+		docked = isDocked
 		players.Visible = not docked
 		felt.Visible = not docked
 		prompt.TextStrokeTransparency = if docked then 0.35 else 1
