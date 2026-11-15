@@ -177,7 +177,7 @@ local function rentLines(pos: number): { { string } }
 	return { { "1 utility", "4x the dice" }, { "Both utilities", "10x the dice" } }
 end
 
-function Estates.create(container: Frame, sendMove: (any) -> ())
+function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((any) -> ())?)
 	local snapshot: any = nil
 	local docked = false
 	-- Table view without the board or players list: the action panel becomes a bar along
@@ -853,6 +853,11 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 			tradeDraft.get[wantPos] = true
 		end
 		userPopup = { kind = "trade" }
+		-- Drafting isn't a move: ask the server for more time so the turn clock doesn't
+		-- run out behind the pop-up.
+		if sendRequest then
+			sendRequest({ action = "drafting" })
+		end
 		rerender()
 	end
 
@@ -872,6 +877,9 @@ function Estates.create(container: Frame, sendMove: (any) -> ())
 		tradeDraft.giveCards, tradeDraft.getCards = t.get.cards, t.give.cards
 		tradeDraft.counter = true
 		userPopup = { kind = "trade" }
+		if sendRequest then
+			sendRequest({ action = "drafting" })
+		end
 		rerender()
 	end
 

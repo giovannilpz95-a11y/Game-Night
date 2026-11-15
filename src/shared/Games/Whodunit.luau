@@ -862,6 +862,39 @@ function Whodunit.chooseBotMove(state, seat: number, rng: Random): any?
 	return nil
 end
 
+-- A person's clock ran out (or they're away): keep the game moving, but never accuse for
+-- someone who isn't there (the bot would, and could win the game for an empty chair).
+function Whodunit.chooseAfkMove(state, seat: number, rng: Random): any?
+	if isOver(state) then
+		return nil
+	end
+	if state.phase == "show" then
+		local options = matchingCards(state, seat, state.suggestion)
+		return if #options > 0 then { kind = "show", card = pick(options, rng) } else nil
+	end
+	if seat ~= state.turn then
+		return nil
+	end
+	if state.phase == "move" then
+		local options = legalRooms(state, seat)
+		return if #options > 0 then { kind = "move", room = pick(options, rng) } else nil
+	elseif state.phase == "suggest" then
+		local move = { kind = "end" }
+		if Whodunit.validateMove(state, seat, move) then
+			return move
+		end
+		local know = Whodunit.deduce(state, seat, "easy")
+		return {
+			kind = "suggest",
+			suspect = chooseNamed(state, seat, know, "suspect", rng),
+			item = chooseNamed(state, seat, know, "item", rng),
+		}
+	elseif state.phase == "after" then
+		return { kind = "end" }
+	end
+	return nil
+end
+
 -- Stats for the profile (see shared/StatsCatalog.luau).
 function Whodunit.getMatchStats(state): { [number]: { [string]: number } }
 	local out = {}
