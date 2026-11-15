@@ -278,7 +278,7 @@ rules.Werewolf = {
 rules.SketchGuess = {
 	goal = "Score the most by guessing drawings fast and drawing well.",
 	card = {
-		"When it's your turn to draw, pick a word and draw it. No letters or numbers!",
+		"When it's your turn to draw, pick a word and build it from stamps. No letters or numbers!",
 		"Everyone else types guesses. Earlier guesses score more.",
 		"Letters of the word are revealed as time goes on.",
 	},
@@ -287,10 +287,10 @@ rules.SketchGuess = {
 			title = "Drawing",
 			lines = {
 				"Pick one of three words: easy, medium or hard.",
-				"Draw with the pen, or the line, box and oval tools (tap Solid for filled boxes and ovals). White is the eraser.",
-				"Fill pours your color into a closed area, like a paint bucket.",
-				"Undo takes back your last line, shape or fill. You score for every player who guesses it.",
-				"On a computer: P pen, L line, B box, O oval, F fill, Ctrl+Z undo.",
+				"Pick a stamp (circle, square, stick, triangle, heart, star...) and a color, then tap the canvas to place it. Drag to move it.",
+				"Tap a stamp to select it, then make it bigger, smaller, wider, taller, turn it, recolor it, or send it to the front or back. Up to 40 stamps.",
+				"Undo takes back your last stamp. You score for every player who guesses it.",
+				"On a computer: the wheel resizes, R turns (Shift+R back), Delete removes, Ctrl+Z undo.",
 			},
 		},
 		{

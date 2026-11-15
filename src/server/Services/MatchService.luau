@@ -367,6 +367,11 @@ local function startMatch(leader: Player, request: any)
 
 	-- Only pass options we've checked; never forward the client's table as-is.
 	local options: any = { botLevel = Config.DefaultBotLevel, bots = {}, rules = ruleValues }
+	if catalogEntry.id == "SketchGuess" and not Config.SketchFreeDraw then
+		-- Stamps only, whatever the house rules say (no free-form drawing; see Config).
+		options.rules = table.clone(ruleValues)
+		options.rules.tools = "stamps"
+	end
 	if catalogEntry.custom == "words" then
 		options.customWords = customContent
 	elseif catalogEntry.custom == "quiz" then

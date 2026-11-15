@@ -47,6 +47,11 @@ local Config = {
 	TableColumns = 5, -- code-built tables are laid out in rows of this many
 	BoardSize = 6, -- studs across a square 3D board
 	TableHoldSeconds = 15, -- after a match: the final board and bots stay this long (under the results)
+	-- Sketch & Guess drawing tools. false (launch): every table is stamps only, pre-made
+	-- stamps and no pen, lines, boxes, ovals or fill, and the "Drawing tools" house rule is
+	-- hidden. true: pen and shapes (free-form user creation, which makes the whole
+	-- experience 16+ on Roblox; only for a separate 16+ place). See docs/Launch.md.
+	SketchFreeDraw = false,
 	-- Games with a 3D board on the table (client/Table3D and server/Tables/Boards).
 	-- Other games still seat everyone at the table, but play in the 2D view.
 	Boards3D = { Chess = true, Checkers = true, FourInARow = true, TicTacToe = true },
