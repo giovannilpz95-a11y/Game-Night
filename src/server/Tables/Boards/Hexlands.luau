@@ -96,8 +96,10 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 	local seaSize = 9 * S * 1.2
 	Models.cyl(model, "Rim", seaSize + 0.5, 0.16, boardCF, Models.WALNUT, Enum.Material.Wood)
 	Models.cyl(model, "Sea", seaSize, 0.2, boardCF, SEA)
-	-- Harbors: a wooden pier on each harbor edge, pointing out to sea.
-	for _, e in Rules.harborEdges or {} do
+	-- Harbors: a wooden pier on each harbor edge, pointing out to sea. Their 3:1 / 2:1
+	-- signs go up once the match's harbor kinds are known (buildTiles).
+	local pierEnds: { CFrame } = {}
+	for i, e in Rules.harborEdges or {} do
 		local edge = Rules.edges[e]
 		local a, b = Rules.vertices[edge.a], Rules.vertices[edge.b]
 		local mx, my = (a.x + b.x) / 2, (a.y + b.y) / 2
@@ -106,6 +108,7 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 		local facing = CFrame.lookAt(pier.Position, (boardCF * CFrame.new(mx * 2 * S, 0.22, my * 2 * S)).Position, boardCF.UpVector)
 		Models.block(model, "Pier", Vector3.new(0.24, 0.05, 0.62), facing, Models.WOOD, Enum.Material.Wood)
 		Models.block(model, "PierEnd", Vector3.new(0.34, 0.09, 0.1), facing * CFrame.new(0, 0, -0.3), Models.WALNUT, Enum.Material.Wood)
+		pierEnds[i] = facing * CFrame.new(0, 0, -0.3)
 	end
 	local tiles = Instance.new("Folder")
 	tiles.Name = "Tiles"
@@ -179,8 +182,31 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 			end
 			if tile.number and tile.number > 0 then
 				local red = tile.number == 6 or tile.number == 8
+				local ink = if red then Color3.fromRGB(200, 40, 40) else Color3.fromRGB(40, 30, 24)
 				Models.cyl(tiles, "Number", S * 0.5, 0.05, top, Color3.fromRGB(245, 236, 214))
-				Scene.flatText(tiles, top * CFrame.new(0, 0.055, 0), S * 0.34, S * 0.34, tostring(tile.number), { TextColor3 = if red then Color3.fromRGB(200, 40, 40) else Color3.fromRGB(40, 30, 24) })
+				local number = Scene.flatText(tiles, top * CFrame.new(0, 0.055, 0), S * 0.36, S * 0.36, tostring(tile.number), { TextColor3 = ink })
+				-- The dots under the number: how likely it is to come up, like the printed tokens.
+				number.Size = UDim2.fromScale(1, 0.7)
+				local pips = Instance.new("TextLabel")
+				pips.BackgroundTransparency = 1
+				pips.Position = UDim2.fromScale(0, 0.62)
+				pips.Size = UDim2.fromScale(1, 0.34)
+				pips.TextScaled = true
+				pips.Font = Enum.Font.GothamBold
+				pips.TextColor3 = ink
+				pips.Text = string.rep("•", Rules.PIPS[tile.number] or 0)
+				pips.Parent = number.Parent
+			end
+		end
+		-- Harbor signs: 3:1 for any resource, 2:1 plus the resource for the special ones.
+		for i, harbor in view.harbors or {} do
+			local cf = pierEnds[i]
+			if cf then
+				local info = Rules.resourceInfo[harbor.kind]
+				local text = if info then `2:1 {info.name}` else "3:1"
+				Scene.floatText(tiles, cf * CFrame.new(0, 0.32, 0), if info then 1.3 else 0.7, 0.34, text, {
+					TextColor3 = if info then info.color:Lerp(Color3.new(0, 0, 0), 0.35) else Color3.fromRGB(40, 30, 24),
+				})
 			end
 		end
 	end
@@ -225,7 +251,10 @@ function Hexlands.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 				end
 				if view.bandit and Rules.hexes[view.bandit] then
 					local center = Rules.hexes[view.bandit]
-					bandit(dynamic, at(boardCF, center.x + 0.38, center.y, TOP_Y))
+					-- Beside the number, halfway between two of the land's scenery pieces
+					-- (they sit at 120-degree steps from h * 37 degrees), so they never touch.
+					local angle = math.rad(view.bandit * 37 + 60)
+					bandit(dynamic, at(boardCF, center.x + math.cos(angle) * 0.42, center.y + math.sin(angle) * 0.42, TOP_Y))
 				end
 				-- The roll that just paid: a glowing halo under the number on every hex that
 				-- paid, with what it paid floating over it.

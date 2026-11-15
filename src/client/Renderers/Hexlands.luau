@@ -7,6 +7,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local Rules = require(ReplicatedStorage.Shared.Games.Hexlands)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
@@ -28,6 +29,7 @@ local SEA = Color3.fromRGB(70, 150, 200)
 local HIGHLIGHT = Color3.fromRGB(255, 255, 255)
 local TOKEN = Color3.fromRGB(250, 240, 210)
 local DARK = Color3.fromRGB(40, 36, 50)
+local TOUCH = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 local function at(x: number, y: number): UDim2
 	return UDim2.fromScale((x + EXTENT) * UNIT, (y + EXTENT) * UNIT)
@@ -87,6 +89,13 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 	local lastGainKey = ""
 	local bankGive: string? = nil
 	local lastDice = ""
+	-- Turning trades down without a tap: "turn" (this turn only, keyed by round:seat) or
+	-- "all" (the whole game), like CATAN Universe's auto-decline.
+	local declineTurn: string? = nil
+	local declineAll = false
+	local declinedId: number? = nil
+	local showFullLog = false
+	local lastSevenKey = ""
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 	local rerender: () -> () = function() end
@@ -115,8 +124,8 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		local victims = {}
 		for _, v in Rules.hexVertices[h] do
 			local owner = view.owner[v]
-			if owner ~= 0 and owner ~= me and not table.find(victims, owner) and view.players[owner].cards > 0
-				and not (view.friendly and (view.players[owner].points or 0) <= 2) then
+			local protected = if view.protected then view.protected[owner] else (view.friendly and (view.players[owner] and view.players[owner].points or 0) <= 2)
+			if owner ~= 0 and owner ~= me and not table.find(victims, owner) and view.players[owner].cards > 0 and not protected then
 				table.insert(victims, owner)
 			end
 		end
@@ -519,12 +528,14 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 
 	-- A +/- counter per resource (discards, trade offers).
 	local function counterRows(counts: { [string]: number }, limit: (string) -> number)
-		local r = row(48)
+		-- Phones get 38 px buttons (24 px was too small to hit reliably).
+		local buttonH = if TOUCH then 38 else 24
+		local r = row(buttonH + 24)
 		for _, res in RES do
 			local cell = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.2, -6, 1, 0), Parent = r }, { Kit.list(2) })
 			local n = counts[res] or 0
 			Kit.label(`{info[res].icon} {n}`, { TextSize = 14, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 18), Parent = cell })
-			local buttons = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24), Parent = cell }, { Kit.list(2, true) })
+			local buttons = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, buttonH), Parent = cell }, { Kit.list(2, true) })
 			button(buttons, "−", function()
 				counts[res] = math.max(0, n - 1)
 				rerender()
@@ -587,7 +598,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		elseif phase == "trade" then
 			local t = view.trade
 			if me and t.from == me then
-				return "Your trade offer: pick who to trade with"
+				return if t.picking then "Answers are in: pick who to trade with" else "Your trade offer: waiting for answers"
 			elseif me and (t.answers[me] or -1) == 0 then
 				return `{nameOf(t.from)} offers you a trade`
 			end
@@ -706,6 +717,11 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		button(r, "Decline", function()
 			sendMove({ kind = "reject" })
 		end, 0.34, true, Theme.Bad)
+		local quiet = row(32)
+		button(quiet, "Not trading this turn", function()
+			declineTurn = `{view.round}:{view.turn}`
+			sendMove({ kind = "reject" })
+		end, 1, true, Theme.PanelLight)
 	end
 
 	-- Sections ----------------------------------------------------------------------
@@ -906,6 +922,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			if picker and view.canPlay[picker.card] then
 				local need = if picker.card == "harvest" then 2 else 1
 				note(if need == 2 then `Pick 2 to take from the bank ({#picker.picks}/2):` else "Pick a resource to collect from everyone:")
+				local picks = picker.picks
 				resourceRow(function(res)
 					return info[res].icon
 				end, function(res)
@@ -917,6 +934,18 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 					else
 						rerender()
 					end
+				end, function(res)
+					-- Harvest: only what the bank still has (counting a pick already made).
+					if need ~= 2 then
+						return true
+					end
+					local taken = 0
+					for _, r in picks do
+						if r == res then
+							taken += 1
+						end
+					end
+					return (view.bank[res] or 0) > taken
 				end)
 			else
 				picker = nil
@@ -954,6 +983,9 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			end
 			if view.biggestGuard == seat then
 				table.insert(badges, "🛡 Biggest Guard")
+			end
+			if view.protected and view.protected[seat] then
+				table.insert(badges, "Safe from the Bandit")
 			end
 			-- Cards in hand turn red over the hand limit (a 7 would cost them half).
 			local over = p.cards > (view.handLimit or 7)
@@ -1038,11 +1070,64 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 
 	local function renderLog(view: any)
 		heading("News")
-		for i = #view.log, 1, -1 do
+		local shown = if showFullLog then #view.log else math.min(#view.log, 10)
+		for i = #view.log, #view.log - shown + 1, -1 do
 			local entry = view.log[i]
 			local who = if entry.seat then nameOf(entry.seat) .. " " else ""
 			local target = if entry.target then " " .. nameOf(entry.target) else ""
 			note(`{who}{entry.text}{target}`, if entry.seat then Theme.Seat[entry.seat] else Theme.SubText)
+		end
+		if #view.log > 10 then
+			local r = row(30)
+			button(r, if showFullLog then "Show less" else `Show all ({#view.log})`, function()
+				showFullLog = not showFullLog
+				rerender()
+			end, 1, true, Theme.PanelLight)
+		end
+	end
+
+	-- The bank's stock (it can run out: then nobody gets that resource on a roll).
+	local function renderBank(view: any)
+		local parts = {}
+		for _, res in RES do
+			local n = view.bank[res] or 0
+			table.insert(parts, if n <= 3 then `<font color="#ff7a7a">{info[res].icon}{n}</font>` else `{info[res].icon}{n}`)
+		end
+		note(`Bank: {table.concat(parts, "  ")}  ·  {view.deckLeft} action cards`)
+	end
+
+	-- End of the game: where everyone's points came from, Monuments revealed.
+	local function renderFinal(view: any)
+		heading("Final scores")
+		local seats = {}
+		for seat in view.players do
+			table.insert(seats, seat)
+		end
+		table.sort(seats, function(a, b)
+			return (view.players[a].points or 0) > (view.players[b].points or 0)
+		end)
+		for _, seat in seats do
+			local p = view.players[seat]
+			local b = p.breakdown
+			if b then
+				local parts = {}
+				if b.camps > 0 then
+					table.insert(parts, `{b.camps} camp{if b.camps == 1 then "" else "s"}`)
+				end
+				if b.towns > 0 then
+					table.insert(parts, `{b.towns} town{if b.towns == 1 then "" else "s"} ({b.towns * 2})`)
+				end
+				if b.road then
+					table.insert(parts, "Longest Road (2)")
+				end
+				if b.guard then
+					table.insert(parts, "Biggest Guard (2)")
+				end
+				if b.monuments > 0 then
+					table.insert(parts, `{b.monuments} Monument{if b.monuments == 1 then "" else "s"} revealed`)
+				end
+				note(`<b>{nameOf(seat)}  {p.points}★</b>  {table.concat(parts, " · ")}`, Theme.Seat[seat])
+			end
 		end
 	end
 
@@ -1060,9 +1145,13 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		if phase == "over" or snapshot.result then
-			prompt.bar(nil)
 			prompt.ask(nil)
 			prompt.chips(nil)
+			if phase == "over" then
+				prompt.bar("over", "Game over", { { text = "Final scores", onClick = panel("Final scores") } })
+			else
+				prompt.bar(nil)
+			end
 			return
 		end
 		-- Your hand, as chips over the bar.
@@ -1111,6 +1200,10 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				{ text = "Decline", color = Theme.Bad, onClick = function()
 					sendMove({ kind = "reject" })
 				end },
+				{ text = "Not this turn", color = Theme.PanelLight, onClick = function()
+					declineTurn = `{view.round}:{view.turn}`
+					sendMove({ kind = "reject" })
+				end },
 			})
 		else
 			prompt.ask(nil)
@@ -1131,7 +1224,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		elseif phase == "discard" and me and view.discards[me] > 0 and you then
 			prompt.bar("discard", status, { { text = "Pick cards to discard", color = Theme.Bad, onClick = panel("Discard") } })
 		elseif phase == "trade" and me and view.trade.from == me then
-			prompt.bar("myTrade", "Your trade offer: waiting for answers", {
+			prompt.bar(if view.trade.picking then "myTradePick" else "myTrade", status, {
 				{ text = "See answers", onClick = panel("Your trade") },
 				{ text = "Call it off", color = Theme.PanelLight, onClick = function()
 					sendMove({ kind = "cancel" })
@@ -1190,6 +1283,13 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 		if counter and not (view.trade and view.trade.id == counter.id) then
 			counter = nil
+		end
+		-- Auto-decline: offers this turn (Not trading this turn) or all game.
+		if view.phase == "trade" and me and view.trade.from ~= me and (view.trade.answers[me] or -1) == 0 then
+			if (declineAll or declineTurn == `{view.round}:{view.turn}`) and declinedId ~= view.trade.id then
+				declinedId = view.trade.id
+				task.defer(sendMove, { kind = "reject" })
+			end
 		end
 
 		-- Hexes.
@@ -1272,6 +1372,11 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		end
 		local key = if d then `{d[1]},{d[2]},{snapshot.moveNumber}` else ""
 		if d and key ~= lastDice and view.log[#view.log] and string.find(view.log[#view.log].text, "rolled", 1, true) then
+			-- A 7: nothing pays and the Bandit is coming.
+			if d[1] + d[2] == 7 and key ~= lastSevenKey then
+				lastSevenKey = key
+				HudKit.callout(if tableMode then prompt.layer else root, "7! The Bandit moves", Color3.fromRGB(255, 120, 100), 0.3)
+			end
 			-- What the roll paid you, called out (the resource cards flying in).
 			local gain = view.lastGain
 			if me and gain and gain.roll == d[1] + d[2] and gain.roll ~= 7 then
@@ -1329,7 +1434,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 		local turnSeat = if view.phase == "over" then nil else view.turn
 		HudKit.turnTint(side, turnSeat, mine)
 		HudKit.statusCard(statusText(view, me), turnSeat, mine, { LayoutOrder = nextOrder(), Parent = side })
-		note(`First to {view.target} points wins · round {math.min(view.round, view.maxRounds)} of {view.maxRounds}`)
+		note(`First to {view.target} points wins · round {math.min(view.round, view.maxRounds)} of {view.maxRounds}{if view.duel then " · Duel rules" else ""}`)
 		if view.steal and view.steal.res then
 			local s = view.steal
 			if s.to == me then
@@ -1338,9 +1443,20 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				note(`{nameOf(s.to)} took your {info[s.res].icon} {info[s.res].name}`)
 			end
 		end
+		if view.phase == "over" then
+			renderFinal(view)
+		end
 		renderCards(view, me)
 		renderActions(view, me)
 		renderPlayers(view, me)
+		if view.phase ~= "over" and me then
+			local r = row(30)
+			button(r, if declineAll then "✓ Turning down every trade offer" else "Turn down every trade offer", function()
+				declineAll = not declineAll
+				rerender()
+			end, 1, true, if declineAll then Theme.Accent else Theme.PanelLight)
+		end
+		renderBank(view)
 		renderDiceStats(view)
 		renderLog(view)
 		renderTable(view, me)
