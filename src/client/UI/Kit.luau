@@ -155,7 +155,14 @@ function Kit.headline(label: TextLabel | TextButton, upper: boolean?)
 	if Kit.HeadlineFace then
 		label.FontFace = Kit.HeadlineFace
 		if upper ~= false then
+			-- Stays in capitals when the text changes later ("Rematch" -> "Starting...").
 			label.Text = label.Text:upper()
+			label:GetPropertyChangedSignal("Text"):Connect(function()
+				local caps = label.Text:upper()
+				if label.Text ~= caps then
+					label.Text = caps
+				end
+			end)
 		end
 	end
 end

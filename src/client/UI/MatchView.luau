@@ -658,6 +658,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local bandGradient = HudKit.gradient(Theme.PanelLight, Theme.Panel)
 	bandGradient.Parent = resultBand
 	local resultLabel = Kit.label("", { TextSize = 26, Font = Theme.FontTitle, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 52, Parent = resultBand })
+	Kit.headline(resultLabel) -- Lounge: tall condensed capitals ("YOU WIN!")
 	-- Two lines, so longer reasons (a Whodunit solution) wrap instead of being cut off.
 	local reasonLabel = Kit.label("", { TextSize = 15, TextColor3 = Theme.SubText, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, Position = UDim2.new(0, 0, 0, BAND_H + 4), Size = UDim2.new(1, 0, 0, 38), ZIndex = 51, Parent = resultOverlay })
 	local standings = Kit.new("ScrollingFrame", {
@@ -739,6 +740,12 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ZIndex = 51,
 		Parent = resultOverlay,
 	})
+	if Kit.lounge then
+		-- The Lounge's PLAY button look: condensed capitals and a soft glow.
+		Kit.headline(rematchButton)
+		rematchButton.TextSize = 24
+		Kit.new("UIStroke", { Name = "Glow", Color = Theme.Accent, Transparency = 0.55, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = rematchButton })
+	end
 	local closeButton: TextButton
 	local renderResult: () -> ()
 	local resultHidden = false -- put away for the renderer's end action (Game Review)
@@ -1023,7 +1030,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		local cardH = math.min(420, available)
 		resultOverlay.Size = UDim2.fromOffset(cardW, cardH)
 		resultOverlay.Position = UDim2.fromOffset(info.width / 2, top + available / 2)
-		resultLabel.TextSize = if compact then 22 else 26
+		resultLabel.TextSize = (if compact then 22 else 26) + (if Kit.lounge then 8 else 0)
 		-- 12 px padding on each side of the card.
 		resultBand.Size = UDim2.new(1, 0, 0, if compact then BAND_H - 8 else BAND_H)
 		standings.Size = UDim2.new(1, 0, 0, math.max(0, cardH - 24 - TOP_H - REWARD_H - 52 - 4))
@@ -1354,6 +1361,13 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if outcome == "win" then
 			bandGradient.Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(240, 150, 30))
 			resultRing.Color = Theme.Accent
+		elseif Kit.lounge and outcome == "draw" then
+			-- Lounge: neon cyan for a draw, violet for everything else.
+			bandGradient.Color = ColorSequence.new(Theme.Gem, Color3.fromRGB(40, 110, 220))
+			resultRing.Color = Theme.Gem
+		elseif Kit.lounge then
+			bandGradient.Color = ColorSequence.new(Theme.Wood, Theme.FeltDark)
+			resultRing.Color = if outcome == "lose" then Theme.Stroke else Theme.Wood
 		elseif outcome == "draw" then
 			bandGradient.Color = ColorSequence.new(Color3.fromRGB(96, 168, 255), Color3.fromRGB(58, 92, 196))
 			resultRing.Color = Color3.fromRGB(96, 168, 255)
@@ -1460,14 +1474,31 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				row.Rim.Color = HudKit.seatColor(index)
 			end
 			local avatarSize = rowH - 8
+			-- Lounge: a big place number down the left, like a leaderboard.
+			local avatarX = 6
+			if Kit.lounge then
+				local placeText = if won and not (result and result.isDraw) then "1" elseif rankOf[index] then tostring(rankOf[index]) else ""
+				local placeLabel = Kit.label(placeText, {
+					Position = UDim2.fromOffset(4, 0),
+					Size = UDim2.new(0, 22, 1, 0),
+					TextSize = rowH - 12,
+					TextColor3 = if won then Theme.Accent else Theme.SubText,
+					TextXAlignment = Enum.TextXAlignment.Center,
+					TextWrapped = false,
+					ZIndex = 54,
+					Parent = row,
+				})
+				Kit.headline(placeLabel)
+				avatarX = 28
+			end
 			HudKit.avatar(index, s, {
 				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.new(0, 6, 0.5, 0),
+				Position = UDim2.new(0, avatarX, 0.5, 0),
 				Size = UDim2.fromOffset(avatarSize, avatarSize),
 				ZIndex = 53,
 				Parent = row,
 			})
-			local textX = avatarSize + 14
+			local textX = avatarX + avatarSize + 8
 			local medal = if won then "🏆 " elseif result and result.isDraw then "🤝 " else ""
 			Kit.label(`{medal}{nameOf(index)}`, {
 				Position = UDim2.new(0, textX, 0, 0),
@@ -1567,6 +1598,12 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ZIndex = 51,
 		Parent = resultOverlay,
 	})
+	if Kit.lounge then
+		for _, button in { closeButton, endActionButton } do
+			Kit.headline(button)
+			button.TextSize = 22
+		end
+	end
 
 	-- 30 times a second is smooth for the timer bars and a third of the work on a 90 Hz phone.
 	Frame.every("TurnText", 1 / 30, function()

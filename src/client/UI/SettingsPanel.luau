@@ -16,6 +16,8 @@ local Theme = Kit.Theme
 
 local SettingsPanel = {}
 
+local LOUNGE = Kit.lounge
+
 local SAVE_DELAY = 0.8 -- seconds after the last change before it's sent to be saved
 local LOW_DETAIL = "GameNightLowDetail" -- Workspace attribute client/Perf obeys
 
@@ -73,7 +75,19 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 		local frame = Kit.paper({ Name = title, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order, ZIndex = z, Parent = parent })
 		Kit.new("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 12), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), Parent = frame })
 		Kit.list(8).Parent = frame
-		Kit.label(title, { Font = Theme.FontTitle, TextSize = 18, TextColor3 = Theme.Ink, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 0, ZIndex = z, Parent = frame })
+		local heading = Kit.label(title, { Font = Theme.FontTitle, TextSize = 18, TextColor3 = Theme.Ink, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 0, ZIndex = z, Parent = frame })
+		if LOUNGE then
+			-- Lounge: glass cards with a hairline edge and condensed capital headings.
+			frame.BackgroundTransparency = 0.1
+			local outline = frame:FindFirstChild("Outline") :: UIStroke?
+			if outline then
+				outline.Color = Color3.new(1, 1, 1)
+				outline.Transparency = 0.84
+			end
+			Kit.headline(heading)
+			heading.TextSize = 22
+			heading.Size = UDim2.new(1, 0, 0, 28)
+		end
 		return frame
 	end
 
@@ -95,17 +109,18 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 			Size = UDim2.new(1, -20, 0, 10),
 			ZIndex = z,
 			Parent = hit,
-		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Color = Theme.Wood, Thickness = 1.5, Transparency = 0.3 }) })
+		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Color = if LOUNGE then Theme.Stroke else Theme.Wood, Thickness = 1.5, Transparency = 0.3 }) })
 		local fill = Kit.new("Frame", { BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = z + 1, Parent = track }, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		local knob = Kit.new("Frame", {
-			BackgroundColor3 = Theme.Paper,
+			-- Lounge: a white knob ringed in gold, so it stands out on the dark track.
+			BackgroundColor3 = if LOUNGE then Theme.Text else Theme.Paper,
 			BorderSizePixel = 0,
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0, 0.5),
 			Size = UDim2.fromOffset(22, 22),
 			ZIndex = z + 2,
 			Parent = track,
-		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Color = Theme.WoodDark, Thickness = 2.5 }) })
+		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Color = if LOUNGE then Theme.Accent else Theme.WoodDark, Thickness = 2.5 }) })
 		local function show(share: number)
 			share = math.clamp(share, 0, 1)
 			fill.Size = UDim2.fromScale(share, 1)
@@ -158,7 +173,7 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 				button.TextColor3 = if on then Theme.AccentText else Theme.Ink
 				local edge = button:FindFirstChild("Edge") :: UIStroke?
 				if edge then
-					edge.Color = if on then Theme.WoodDark else Theme.Wood
+					edge.Color = if on then Theme.WoodDark elseif LOUNGE then Theme.Stroke else Theme.Wood
 				end
 			end
 		end
@@ -183,7 +198,8 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 	local function action(parent: Instance, order: number, text: string, onClick: () -> ())
 		Kit.button(text, onClick, {
 			BackgroundColor3 = Theme.Wood,
-			TextColor3 = Theme.Paper,
+			-- The Lounge's Wood is bright violet and its Paper is dark: white text reads better.
+			TextColor3 = if LOUNGE then Theme.Text else Theme.Paper,
 			TextSize = 15,
 			Size = UDim2.new(1, 0, 0, 40),
 			LayoutOrder = order,
