@@ -24,6 +24,7 @@ local TableActionService = require(script.Parent.Services.TableActionService)
 local ReactionService = require(script.Parent.Services.ReactionService)
 local ShowtimeService = require(script.Parent.Services.ShowtimeService)
 local PartyChatService = require(script.Parent.Services.PartyChatService)
+local HeadLookService = require(script.Parent.Services.HeadLookService)
 
 Net.init()
 -- The room first, so the tables stand in it. It's decor: if it ever fails, the games
@@ -79,6 +80,9 @@ Net.event(Net.Names.ChatRequest).OnServerEvent:Connect(guarded(PartyChatService.
 Net.event(Net.Names.TableAction).OnServerEvent:Connect(guarded(TableActionService.init(MatchService)))
 Net.event(Net.Names.Reaction).OnServerEvent:Connect(guarded(ReactionService.init(MatchService)))
 Net.event(Net.Names.Showtime).OnServerEvent:Connect(guarded(ShowtimeService.init(MatchService.skipIntro)))
+-- Head look comes several times a second while someone looks around, so it has its own
+-- limit (HeadLookService) instead of using up the shared request budget.
+Net.event(Net.Names.HeadLook).OnServerEvent:Connect(HeadLookService.init(MatchService))
 
 Players.PlayerRemoving:Connect(function(player)
 	limiter:forget(player.UserId)

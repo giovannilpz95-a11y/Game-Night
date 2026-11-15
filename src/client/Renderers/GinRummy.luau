@@ -139,11 +139,13 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 		PlayingCard.renderHand(row, cards, nil)
 	end
 
+	local canDrawStock = false -- your turn to draw (the stock on the table is clickable)
 	function render()
 		local view = snapshot.view
 		local me = snapshot.yourSeat
 		local active = CardTable.isActive(snapshot, me)
 		local drawing = active and view.phase == "draw"
+		canDrawStock = drawing == true
 		local discarding = active and view.phase == "discard"
 		local them = if me then 3 - me else 2
 		local you = if me then me else 1
@@ -347,6 +349,19 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 			render()
 		end,
 		setDocked = ui.setDocked,
+		-- Table view: click the stock on the table to draw from it (it glows a little
+		-- while you can). Table3D/SceneTap.
+		tapTable = function(id: any)
+			if id == "draw" and canDrawStock then
+				sendMove({ kind = "draw", from = "stock" })
+			end
+		end,
+		canTap = function(id: any): boolean
+			return id == "draw" and canDrawStock
+		end,
+		tableMarks = function(): { [any]: any }?
+			return if canDrawStock then { draw = "target" } else nil
+		end,
 		destroy = function()
 			for _, connection in connections do
 				connection:Disconnect()

@@ -29,6 +29,8 @@ local HudKit = require(script.Parent.HudKit)
 local Layout = require(script.Parent.Layout)
 local TablePrompt = require(script.Parent.TablePrompt)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
+local FreeLook = require(script.Parent.Parent.Table3D.FreeLook)
+local RunService = game:GetService("RunService")
 local Avatars = require(script.Parent.Parent.Table3D.Avatars)
 local EmoteWheel = require(script.Parent.EmoteWheel)
 local ReactionFx = require(script.Parent.ReactionFx)
@@ -225,6 +227,10 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	local tableMode = false -- Table view of a game that plays without its panel
 	local relayout: () -> ()
 	local dockSpec: () -> { side: string, size: number, held: boolean? }
+	-- Hand peek: the held hand's resting place (nil when no held hand is up) and height.
+	local peekRest: Vector2? = nil
+	local peekHeight = 0
+	local peekOffset = 0
 	local table3D = Table3D.create(parent :: ScreenGui, function(move: any)
 		sendMatch({ action = "move", move = move })
 	end, function()
@@ -281,11 +287,98 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Table3D.setCalm(not Table3D.isCalm())
 		calmButton.Text = calmText()
 	end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, ZIndex = 41, Parent = menu })
+	-- The seat camera (Table3D/FreeLook): eye level or raised, how fast the mouse turns
+	-- your head, and which way is up. All last the session.
+	local eyeButton: TextButton
+	local function eyeText(): string
+		return if Table3D.isEyeLevel() then "View: Eye level" else "View: Raised"
+	end
+	eyeButton = Kit.button(eyeText(), function()
+		Table3D.setEyeLevel(not Table3D.isEyeLevel())
+		eyeButton.Text = eyeText()
+	end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 5, ZIndex = 41, Parent = menu })
+	local invertButton: TextButton
+	local function invertText(): string
+		return if FreeLook.isInvertY() then "Invert look: On" else "Invert look: Off"
+	end
+	invertButton = Kit.button(invertText(), function()
+		FreeLook.setInvertY(not FreeLook.isInvertY())
+		invertButton.Text = invertText()
+	end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 6, ZIndex = 41, Parent = menu })
+	-- Mouse speed: a slider from a quarter of normal to three times (even steps on a log
+	-- scale, so normal sits near the middle).
+	local speedRow = Kit.new("Frame", {
+		Name = "MouseSpeed",
+		BackgroundColor3 = Theme.Panel,
+		Size = UDim2.new(1, 0, 0, 52),
+		LayoutOrder = 7,
+		ZIndex = 41,
+		Parent = menu,
+	}, { Kit.corner(10) })
+	local speedLabel = Kit.label("", { TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 8, 0, 4), Size = UDim2.new(1, -16, 0, 20), ZIndex = 42, Parent = speedRow })
+	local speedTrack = Kit.new("TextButton", {
+		Name = "Track",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Theme.PanelLight,
+		Position = UDim2.new(0, 14, 0, 32),
+		Size = UDim2.new(1, -28, 0, 8),
+		ZIndex = 42,
+		Parent = speedRow,
+	}, { Kit.corner(4) })
+	local speedFill = Kit.new("Frame", { BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, Size = UDim2.fromScale(0.5, 1), ZIndex = 43, Parent = speedTrack }, { Kit.corner(4) })
+	local speedKnob = Kit.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(18, 18),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		ZIndex = 44,
+		Parent = speedTrack,
+	}, { Kit.corner(9) })
+	local function speedShare(): number
+		local lo, hi = math.log(FreeLook.SPEED_MIN), math.log(FreeLook.SPEED_MAX)
+		return (math.log(FreeLook.getSensitivity()) - lo) / (hi - lo)
+	end
+	local function showSpeed()
+		local share = speedShare()
+		speedFill.Size = UDim2.fromScale(share, 1)
+		speedKnob.Position = UDim2.fromScale(share, 0.5)
+		speedLabel.Text = string.format("Mouse speed: %.2gx", FreeLook.getSensitivity())
+	end
+	local function setSpeedAt(x: number)
+		local share = math.clamp((x - speedTrack.AbsolutePosition.X) / math.max(1, speedTrack.AbsoluteSize.X), 0, 1)
+		local lo, hi = math.log(FreeLook.SPEED_MIN), math.log(FreeLook.SPEED_MAX)
+		local value = math.exp(lo + (hi - lo) * share)
+		-- Snaps to normal speed near the middle.
+		if math.abs(value - 1) < 0.06 then
+			value = 1
+		end
+		FreeLook.setSensitivity(value)
+		showSpeed()
+	end
+	local draggingSpeed = false
+	speedTrack.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSpeed = true
+			setSpeedAt(input.Position.X)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if draggingSpeed and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			setSpeedAt(input.Position.X)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSpeed = false
+		end
+	end)
+	showSpeed()
 	if openSound then
 		Kit.button("Sound", function()
 			closeMenu()
 			openSound()
-		end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 5, ZIndex = 41, Parent = menu })
+		end, { BackgroundColor3 = Theme.Panel, TextColor3 = Theme.Text, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 9, ZIndex = 41, Parent = menu })
 	end
 	-- Game offers in the menu (Chess/Checkers: Offer a draw, Take back a move). The game's
 	-- view lists them as { label, move } for your seat (shared/Offers).
@@ -707,6 +800,30 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = header,
 	})
 
+	-- The mouse lock (Table3D/FreeLook), under the seat list in Table view on a computer.
+	-- Locked, the mouse turns your head and a click lands on the crosshair; Alt frees it
+	-- to click the screen (the button is a reminder then: there's no cursor to click it).
+	local lockButton = Kit.button("", function()
+		FreeLook.toggle()
+	end, {
+		Name = "MouseLock",
+		BackgroundColor3 = Theme.Panel,
+		BackgroundTransparency = 0.15,
+		TextColor3 = Theme.Text,
+		TextSize = 14,
+		Font = Theme.FontBold,
+		Visible = false,
+		ZIndex = 21,
+		Parent = root,
+	})
+	local function showLock(locked: boolean)
+		lockButton.Text = if locked then "🔒 Mouse locked · Alt" else "🔓 Lock mouse · Alt"
+		lockButton.BackgroundColor3 = if locked then Theme.Panel else Theme.Accent
+		lockButton.TextColor3 = if locked then Theme.Text else Theme.AccentText
+	end
+	showLock(FreeLook.isLocked())
+	FreeLook.onChanged(showLock)
+
 	-- The 😀 wheel: animated reactions while you have a seat, plus emotes for your avatar
 	-- when you're seated at a 3D table.
 	local reactionRemote = Net.event(Net.Names.Reaction)
@@ -751,6 +868,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 	end
 
 	function relayout()
+		peekRest = nil
 		local info = Layout.get()
 		local compact = info.compact
 		local in3D = table3D.isActive()
@@ -807,6 +925,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		else
 			seatsPanel.Size = UDim2.fromOffset(seatsW, available)
 		end
+		lockButton.Visible = in3D and FreeLook.hasMouse() and root.Visible
+		lockButton.Size = UDim2.fromOffset(seatsW, if compact then 30 else 34)
+		lockButton.Position = UDim2.fromOffset(left, top + seatsPanel.Size.Y.Offset + 6)
 		local boardX = left + seatsW + 8
 		-- The seat list down the left, as a share of the screen: seated board cameras keep
 		-- the board clear of it.
@@ -856,6 +977,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 				end
 				dock.Position = UDim2.fromOffset(dockX, top + boardH - h)
 				dock.Size = UDim2.fromOffset(dockW, h)
+				peekRest = if held then Vector2.new(dockX, top + boardH - h) else nil
+				peekHeight = h
 				board.Position = UDim2.fromOffset(0, h - boardH)
 				dockLip.Position = UDim2.fromOffset(0, 0)
 				dockLip.Size = UDim2.new(1, 0, 0, 3)
@@ -1403,6 +1526,34 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if root.Visible then
 			updateTurnText()
 		end
+		-- What needs the mouse free (Table3D/FreeLook): the menu, a question, the end card,
+		-- and your turn in a game you play through on-screen cards and buttons (the view
+		-- turns back to the table then; Alt locks it again). Tables you play by clicking the
+		-- board itself (chess and the like) keep the crosshair.
+		local shown = root.Visible and snapshot ~= nil
+		FreeLook.hold("menu", shown and menu.Visible)
+		FreeLook.hold("ask", shown and askPanel.Visible)
+		FreeLook.hold("result", shown and (resultOverlay.Visible or isOver()))
+		FreeLook.hold("turn", shown and table3D.isActive() and not table3D.playable() and isMyTurn())
+	end)
+
+	-- Hand peek: look down and your held cards come up to you; look up and they drop away
+	-- so you can see the table.
+	RunService.RenderStepped:Connect(function(dt)
+		if not (peekRest and dock.Visible and table3D.isActive()) then
+			peekOffset = 0
+			return
+		end
+		local pitch = FreeLook.lookPitch()
+		local want = 0
+		if pitch < -0.12 then
+			want = -math.clamp((-pitch - 0.12) / 0.3, 0, 1) * 0.2 * peekHeight
+		elseif pitch > 0.08 then
+			want = math.clamp((pitch - 0.08) / 0.3, 0, 1) * 0.7 * peekHeight
+		end
+		peekOffset += (want - peekOffset) * (1 - math.exp(-dt * 12))
+		local rest = peekRest :: Vector2
+		dock.Position = UDim2.fromOffset(rest.X, rest.Y + math.floor(peekOffset + 0.5))
 	end)
 
 	return {

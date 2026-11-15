@@ -9,6 +9,7 @@ local GuiService = game:GetService("GuiService")
 
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Kit = require(script.Parent.Kit)
+local KeyPick = require(script.Parent.KeyPick)
 local Audio = require(script.Parent.Parent.Audio)
 local Theme = Kit.Theme
 
@@ -200,11 +201,14 @@ end
 -- Hover for an overlapping fan: exactly one card is up at a time, the top-most one under
 -- the mouse. (Per-card MouseEnter/MouseLeave can't do this: the cards' boxes overlap, so
 -- two could be entered at once, and leaving one for the card under it fires nothing.)
--- Returns add(slot, lift, drop) for each card and clear() before a redraw.
-export type Hover = { add: (slot: GuiObject, lift: () -> (), drop: () -> ()) -> (), clear: () -> () }
+-- Returns add(slot, lift, drop, play) for each card and clear() before a redraw. With
+-- `play`, the card can also be picked with A / D or the arrows and played with Enter
+-- (UI/KeyPick); the mouse and the keys share the one lifted card, whichever moved last.
+export type Hover = { add: (slot: GuiObject, lift: () -> (), drop: () -> (), play: (() -> ())?) -> (), clear: () -> () }
 function PlayingCard.hover(container: GuiObject): Hover
-	local entries: { { slot: GuiObject, lift: () -> (), drop: () -> () } } = {}
+	local entries: { { slot: GuiObject, lift: () -> (), drop: () -> (), play: (() -> ())? } } = {}
 	local current: any = nil
+	local mouseOn: any = nil -- the card the mouse was last over
 	local function set(entry: any)
 		if entry == current then
 			return
@@ -241,23 +245,64 @@ function PlayingCard.hover(container: GuiObject): Hover
 				end
 			end
 		end
-		set(best)
+		-- Only a move onto another card (or off the hand) changes the pick, so a card
+		-- picked with the keys stays up while the mouse rests.
+		if best ~= mouseOn then
+			mouseOn = best
+			set(best)
+		end
 	end
 	local moved = UserInputService.InputChanged:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseMovement then
+		-- A locked mouse (Table view's look-around) sits in the middle: it isn't pointing.
+		if input.UserInputType == Enum.UserInputType.MouseMovement and UserInputService.MouseBehavior == Enum.MouseBehavior.Default then
 			update(UserInputService:GetMouseLocation())
 		end
 	end)
+	-- The keys: cards in hand order, while the hand is on screen.
+	local function onScreen(): boolean
+		return container.Visible and container.Parent ~= nil and not Kit.inPreview(container) and container:FindFirstAncestorWhichIsA("ScreenGui") ~= nil and (container:FindFirstAncestorWhichIsA("ScreenGui") :: ScreenGui).Enabled
+	end
+	local removeKeys = KeyPick.add({
+		priority = KeyPick.HAND,
+		ordered = true,
+		choices = function(): { KeyPick.Choice }
+			local out: { KeyPick.Choice } = {}
+			if not onScreen() then
+				return out
+			end
+			for _, entry in entries do
+				local slot = entry.slot
+				if entry.play and slot.Parent and slot.Visible then
+					local at, size = slot.AbsolutePosition, slot.AbsoluteSize
+					table.insert(out, { key = entry, x = at.X + size.X / 2, y = at.Y + size.Y / 2 })
+				end
+			end
+			return out
+		end,
+		current = function(): any
+			return current
+		end,
+		select = function(entry: any)
+			set(entry)
+		end,
+		confirm = function(entry: any)
+			if entry.play then
+				entry.play()
+			end
+		end,
+	})
 	container.Destroying:Once(function()
 		moved:Disconnect()
+		removeKeys()
 	end)
 	return {
-		add = function(slot: GuiObject, lift: () -> (), drop: () -> ())
-			table.insert(entries, { slot = slot, lift = lift, drop = drop })
+		add = function(slot: GuiObject, lift: () -> (), drop: () -> (), play: (() -> ())?)
+			table.insert(entries, { slot = slot, lift = lift, drop = drop, play = play })
 		end,
 		clear = function()
 			entries = {}
 			current = nil
+			mouseOn = nil
 		end,
 	}
 end
@@ -333,18 +378,19 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 		end
 		if onClick then
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
+			local function play()
+				if card.enabled ~= false then
+					onClick(if card.key ~= nil then card.key else card.id)
+				end
+			end
 			hover.add(slot, function()
 				slot.ZIndex = 10
 				TweenService:Create(face, LIFT, { Position = UDim2.fromScale(0, -0.22), Rotation = 0 }):Play()
 			end, function()
 				slot.ZIndex = 1
 				TweenService:Create(face, LIFT, { Position = rest, Rotation = offset * spread }):Play()
-			end)
-			button.Activated:Connect(function()
-				if card.enabled ~= false then
-					onClick(if card.key ~= nil then card.key else card.id)
-				end
-			end)
+			end, play)
+			button.Activated:Connect(play)
 		end
 	end
 	return faces

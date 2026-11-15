@@ -1118,20 +1118,21 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 			-- neighbours.
 			local lift = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			-- One card at a time (PlayingCard.hover picks the top card under the mouse).
+			local function play()
+				if not canPlay then
+					return
+				end
+				jumping = not myTurn
+				playCard(id)
+			end
 			handHover.add(slot, function()
 				slot.ZIndex = 10
 				TweenService:Create(face, lift, { Position = UDim2.fromScale(0, -0.22), Rotation = 0 }):Play()
 			end, function()
 				slot.ZIndex = 1
 				TweenService:Create(face, lift, { Position = rest, Rotation = offset * spread }):Play()
-			end)
-			button.Activated:Connect(function()
-				if not canPlay then
-					return
-				end
-				jumping = not myTurn
-				playCard(id)
-			end)
+			end, play)
+			button.Activated:Connect(play)
 		end
 		squeezeHand()
 		refitSoon()
@@ -1175,6 +1176,19 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 				actionList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 			end
 			squeezeHand()
+		end,
+		-- Table view: look at the draw pile on the table and click it to draw (it glows a
+		-- little whenever drawing is something you can do). Table3D/SceneTap.
+		tapTable = function(id: any)
+			if id == "draw" and drawAction.Visible then
+				sendMove({ kind = "draw" })
+			end
+		end,
+		canTap = function(id: any): boolean
+			return id == "draw" and drawAction.Visible
+		end,
+		tableMarks = function(): { [any]: any }?
+			return if drawAction.Visible then { draw = "target" } else nil
 		end,
 		destroy = function()
 			ContextActionService:UnbindAction(WHEEL_ACTION)

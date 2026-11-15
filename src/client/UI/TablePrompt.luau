@@ -17,9 +17,12 @@ local TweenService = game:GetService("TweenService")
 local Kit = require(script.Parent.Kit)
 local Juice = require(script.Parent.Juice)
 local HudKit = require(script.Parent.HudKit)
+local Frame = require(script.Parent.Parent.Frame)
+local FreeLook = require(script.Parent.Parent.Table3D.FreeLook)
 local Theme = Kit.Theme
 
 local TablePrompt = {}
+local count = 0
 
 -- Height the bar, its line and the chips take at the bottom of the screen (the seated
 -- camera keeps the board above it).
@@ -227,6 +230,31 @@ function TablePrompt.new(parent: GuiObject)
 	local onSheetClose: (() -> ())? = nil
 
 	local api = {}
+
+	-- A question card or a sheet needs the mouse: while one is up on screen, the seat
+	-- camera's mouse lock lets go (Table3D/FreeLook), and takes it back after.
+	count += 1
+	local holdKey = `prompt{count}`
+	local function onScreen(): boolean
+		local at: Instance? = layer
+		while at and at:IsA("GuiObject") do
+			if not at.Visible then
+				return false
+			end
+			at = at.Parent
+		end
+		return layer:FindFirstAncestorWhichIsA("ScreenGui") ~= nil
+	end
+	local stopHold = Frame.every(holdKey, 0.1, function()
+		local shown = onScreen()
+		FreeLook.hold(holdKey .. "ask", shown and askCard.Visible)
+		FreeLook.hold(holdKey .. "sheet", shown and sheetWindow.Visible)
+	end)
+	layer.Destroying:Once(function()
+		stopHold()
+		FreeLook.hold(holdKey .. "ask", false)
+		FreeLook.hold(holdKey .. "sheet", false)
+	end)
 
 	local barKey = ""
 	function api.bar(key: string?, line: string?, buttons: { Button }?)
