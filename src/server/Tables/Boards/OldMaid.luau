@@ -11,7 +11,8 @@ local OldMaid = {}
 function OldMaid.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
 		for seat, count in view.handCounts or {} do
-			Scene.hand(folder, boardCF, layout, seat, count)
+			-- The player being picked from may push a card up as bait: everyone sees it.
+			Scene.hand(folder, boardCF, layout, seat, count, if seat == view.target and not view.over then view.lifted else nil)
 			local pairs = (view.pairs or {})[seat] or {}
 			if #pairs > 0 then
 				-- One stack for all the pairs (never a pile of separate cards).
@@ -20,7 +21,7 @@ function OldMaid.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			end
 		end
 		-- At the end, the Old Maid lies face up in the middle.
-		if view.over and view.loser then
+		if (view.over or view.roundOver) and view.loser and view.oldMaid and view.oldMaid ~= 0 then
 			Scene.card(folder, Cards.center(boardCF, 0), Scene.playingFront(PlayingCards, view.oldMaid), 1.4)
 		end
 	end, Color3.fromRGB(120, 70, 120))

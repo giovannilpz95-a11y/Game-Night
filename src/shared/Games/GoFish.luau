@@ -4,12 +4,17 @@
 -- On your turn ask another player for a rank you hold. If they have any, they hand them
 -- all over and you go again. If not: "Go fish!" You draw one card; if it's the rank you
 -- asked for you go again, otherwise the turn passes. Four of a kind is put down as a
--- book straight away. A player whose hand is empty draws a card on their turn (if the
--- pond is empty too, they sit out). When all 13 books are down, most books wins.
+-- book straight away. A hand that runs empty is refilled from the pond to the starting
+-- size straight away (cardgames.io; house rule off: draw one card on your turn instead).
+-- When all 13 books are down, most books wins; a tie goes to the books' card value
+-- (Pagat: 2-10 face value, J 11, Q 12, K 13, A 15), and is shared after that.
+-- A lucky fish is shown to everyone (it's public at a real table).
 --
 -- House rules (options.rules): pairs (collect pairs instead of books of four: 26 to
 -- find), luckyFish (default on: fishing the rank you asked for lets you go again),
--- handSize (0 = 7 with 2-3 players, 5 with more).
+-- handSize (0 = 7 with 2-3 players, 5 with more), refill (default on), quick (the game
+-- ends as soon as the pond or any hand runs out), askedNext (after "Go fish!" the turn
+-- goes to the player you asked).
 --
 -- Moves: { kind = "ask", target = seat, rank = 1..13 }
 
@@ -59,8 +64,19 @@ function GoFish.new(seatCount: number, options: any?, rng: Random?)
 		over = false,
 		bookSize = if rules.pairs == true then 2 else 4,
 		luckyFish = rules.luckyFish ~= false,
+		handSize = handSize,
+		refill = rules.refill ~= false,
+		quick = rules.quick == true,
+		askedNext = rules.askedNext == true,
+		-- Public memory of "Go fish!" answers: denied[seat][rank] = true until that seat
+		-- picks up a card that could be it. Hard bots skip those asks.
+		denied = {},
+		log = {}, -- the last few asks, for the ask history on screen
 		botLevel = (options and options.botLevel) or "medium",
 	}
+	for seat = 1, seatCount do
+		state.denied[seat] = {}
+	end
 	-- A dealt hand can already hold a book.
 	for seat = 1, seatCount do
 		GoFish._collectBooks(state, seat)
@@ -109,8 +125,41 @@ local function drawCard(state, seat: number): number?
 	local id = table.remove(state.pond)
 	if id then
 		table.insert(state.hands[seat], id)
+		state.denied[seat] = {} -- an unknown card: it could be anything now
 	end
 	return id
+end
+
+-- An empty hand refills to the starting size straight away (house rule, on by default).
+local function refill(state, seat: number)
+	if not state.refill or #state.hands[seat] > 0 or #state.pond == 0 then
+		return
+	end
+	for _ = 1, state.handSize or 5 do
+		if not drawCard(state, seat) then
+			break
+		end
+	end
+	GoFish._collectBooks(state, seat)
+	if #state.hands[seat] == 0 then
+		refill(state, seat) -- dealt straight into books: go again
+	end
+end
+
+-- Quick game (house rule): over as soon as the pond or any hand runs out.
+local function quickOver(state): boolean
+	if not state.quick then
+		return false
+	end
+	if #state.pond == 0 then
+		return true
+	end
+	for seat = 1, state.seatCount do
+		if #state.hands[seat] == 0 then
+			return true
+		end
+	end
+	return false
 end
 
 local function someoneHasCards(state, except: number): boolean
@@ -125,7 +174,7 @@ end
 -- Makes sure the player whose turn it is can ask someone, drawing or skipping as needed.
 function GoFish._settleTurn(state)
 	for _ = 1, state.seatCount * 2 + 2 do
-		if totalBooks(state) >= 52 // (state.bookSize or 4) then
+		if totalBooks(state) >= 52 // (state.bookSize or 4) or quickOver(state) then
 			state.over = true
 			return
 		end
@@ -214,7 +263,14 @@ function GoFish.applyMove(state, seat: number, move: any)
 		end
 	end
 	state.asked[seat][r] = true
+	state.denied[seat][r] = nil
 	local action: any = { seat = seat, target = target, rank = r, got = #given }
+	local function remember()
+		table.insert(state.log, { seat = seat, target = target, rank = r, got = action.got, fished = action.fished, lucky = action.luckyFish })
+		while #state.log > 5 do
+			table.remove(state.log, 1)
+		end
+	end
 	if #given > 0 then
 		state.hands[target] = keep
 		state.asked[target][r] = nil
@@ -223,10 +279,15 @@ function GoFish.applyMove(state, seat: number, move: any)
 		end
 		action.books = GoFish._collectBooks(state, seat)
 		state.lastAction = action
+		remember()
+		-- Emptied hands refill at once, so taking someone's last cards keeps your turn going.
+		refill(state, target)
+		refill(state, seat)
 		-- Go again (settle handles an empty hand or an empty table).
 		GoFish._settleTurn(state)
 		return
 	end
+	state.denied[target][r] = true
 	-- Go fish!
 	local id = drawCard(state, seat)
 	action.fished = id ~= nil
@@ -234,14 +295,32 @@ function GoFish.applyMove(state, seat: number, move: any)
 	if id then
 		state.lastDrawn = { seat = seat, card = id }
 	end
+	if action.luckyFish then
+		action.card = id -- shown to everyone, like at a real table
+	end
 	action.books = GoFish._collectBooks(state, seat)
 	state.lastAction = action
+	remember()
+	refill(state, seat)
 	if action.luckyFish then
+		GoFish._settleTurn(state)
+	elseif state.askedNext then
+		state.turn = target
 		GoFish._settleTurn(state)
 	else
 		nextTurn(state)
 	end
 end
+
+-- Pagat's tie-break: the books' card value (2-10 face value, J 11, Q 12, K 13, A 15).
+local function bookValue(state, seat: number): number
+	local total = 0
+	for _, r in state.books[seat] do
+		total += if r == 1 then 15 else r
+	end
+	return total
+end
+GoFish.bookValue = bookValue
 
 function GoFish.getResult(state): GameModule.Result?
 	if not state.over then
@@ -256,11 +335,24 @@ function GoFish.getResult(state): GameModule.Result?
 			table.insert(best, seat)
 		end
 	end
-	return {
-		winners = best,
-		isDraw = #best > 1,
-		reason = if #best > 1 then `Tied with {top} books` else `Most books ({top})`,
-	}
+	local word = if (state.bookSize or 4) == 2 then "pairs" else "books"
+	if #best == 1 then
+		return { winners = best, isDraw = false, reason = `Most {word} ({top})` }
+	end
+	-- Tied on books: the higher cards win.
+	local tied, value = {}, -1
+	for _, seat in best do
+		local v = bookValue(state, seat)
+		if v > value then
+			tied, value = { seat }, v
+		elseif v == value then
+			table.insert(tied, seat)
+		end
+	end
+	if #tied == 1 then
+		return { winners = tied, isDraw = false, reason = `Tied on {top} {word}: higher cards win` }
+	end
+	return { winners = tied, isDraw = false, reason = `Shared win: {top} {word} each` }
 end
 
 function GoFish.getView(state, seat: number?)
@@ -288,6 +380,9 @@ function GoFish.getView(state, seat: number?)
 		-- Only the player who fished sees what they drew.
 		drawnCard = if state.lastDrawn and state.lastDrawn.seat == seat then state.lastDrawn.card else nil,
 		askableRanks = askable,
+		log = GameModule.copy(state.log),
+		bookSize = state.bookSize,
+		quick = state.quick,
 	}
 end
 
@@ -325,6 +420,10 @@ function GoFish.chooseBotMove(state, seat: number, rng: Random): any?
 		-- They asked for it, so they have it. Hard bots always remember; medium half the time.
 		if state.asked[move.target][move.rank] and (state.botLevel == "hard" or rng:NextNumber() < 0.5) then
 			score += 10
+		end
+		-- They just said "Go fish!" to it: hard bots don't ask them again.
+		if state.botLevel == "hard" and state.denied[move.target] and state.denied[move.target][move.rank] then
+			score -= 6
 		end
 		score += #state.hands[move.target] * 0.05 -- bigger hands are better odds
 		if score > bestScore then

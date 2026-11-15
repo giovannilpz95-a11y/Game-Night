@@ -462,9 +462,10 @@ rules.GoFish = {
 		"They don't? Go fish: draw a card. Draw what you asked for to go again.",
 	},
 	sections = {
-		{ title = "Your turn", lines = { "Ask one player for a rank you already have at least one of.", "Get any and ask again. Otherwise draw from the pond." } },
-		{ title = "Books", lines = { "Four of a kind is put down as a book straight away.", "An empty hand draws a card on its turn." } },
-		{ title = "Winning", lines = { "When all 13 books are down, the most books wins." } },
+		{ title = "Your turn", lines = { "Ask one player for a rank you already have at least one of.", "Get any and ask again. Otherwise draw from the pond.", "Watch the ask history: whoever asked for a rank still has it." } },
+		{ title = "Books", lines = { "Four of a kind is put down as a book straight away.", "Run out of cards and you're dealt back up to your starting hand (7 with 2-3 players, 5 with more)." } },
+		{ title = "Winning", lines = { "When all 13 books are down (26 pairs with the Pairs rule), the most wins.", "Tied? The higher books win (2-10 face value, J 11, Q 12, K 13, A 15)." } },
+		{ title = "House rules", lines = { "Pairs: collect pairs instead of fours.", "Lucky fish (on): fishing the rank you asked for lets you go again.", "Refill empty hand (on), Turn goes to who you asked, Quick game (ends when the pond or a hand runs out)." } },
 	},
 }
 
@@ -495,6 +496,7 @@ rules.Cheat = {
 		{ title = "Doubting", lines = { "After each play everyone else gets a few seconds to doubt it.", "The cards are turned over. If any isn't the called rank, the player who bluffed takes the whole pile.", "If they were honest, the doubter takes it. Nobody doubts: play goes on." } },
 		{ title = "Winning", lines = { "First to empty their hand (and survive any doubt) wins.", "A very long game ends early: fewest cards left wins." } },
 		{ title = "Big tables", lines = { "With 6 or more players two decks are shuffled together (a host can change this), so up to 8 of a rank are out there." } },
+		{ title = "House rules", lines = { "Up, down or same: claim the same rank as the last play, or one above or below (the first play is still Aces).", "Any rank: the leader names a rank and everyone follows it until a doubt.", "Allow pass: pass instead of playing; if everyone passes, the pile is set aside.", "Four of a kind is put aside.", "Rounds (3 or 5): first out scores 0, the next fewest cards 1, the most cards 3, the rest 2. Fewest points wins." } },
 	},
 }
 
@@ -517,15 +519,28 @@ rules.President = {
 rules.SlapStack = {
 	goal = "Win every card in the deck.",
 	card = {
-		"Take turns flipping your top card onto the pile.",
-		"Two of the same rank on top? SLAP! First good slap takes the pile.",
+		"Take turns flipping your top card onto the pile (F or Enter flips).",
+		"Two of the same rank on top? SLAP! (Space) First good slap takes the pile.",
 		"Face cards are challenges: the next player must flip a face card or Ace in time.",
 	},
 	sections = {
-		{ title = "Flipping", lines = { "On your turn, tap Flip! to put your top card on the pile." } },
-		{ title = "Challenges", lines = { "A Jack gives the next player 1 try to flip a face card or Ace, a Queen 2, a King 3, an Ace 4.", "If they do, the challenge passes on. If not, the challenger takes the pile." } },
-		{ title = "Slaps", lines = { "Anyone can slap when the top two cards match (a double) or the top and third match (a sandwich).", "The first good slap takes the whole pile. A bad slap costs you a card." } },
-		{ title = "Winning", lines = { "No cards and you're out. Last player with cards wins. After the flip limit, most cards wins." } },
+		{ title = "Flipping", lines = { "On your turn, tap Flip!, tap your pile or press F to put your top card on the pile." } },
+		{ title = "Challenges", lines = { "A Jack gives the next player 1 try to flip a face card or Ace, a Queen 2, a King 3, an Ace 4.", "If they do, the challenge passes on. If not, the challenger takes the pile (anyone can still slap first)." } },
+		{
+			title = "Slaps",
+			lines = {
+				"Anyone can slap when the top two cards match (a double). Sandwiches (7-4-7) count too unless the host turns them off; the host can add more slaps below.",
+				"The first good slap takes the whole pile. A bad slap burns a card face down under the pile, and you can't slap again until the next card.",
+			},
+		},
+		{
+			title = "Running out",
+			lines = {
+				"Out of cards? Keep watching: one good slap gets you back in (once per game). Three bad slaps while out and you're out for good.",
+				"When one player has every card, they flip 3 last-chance cards so the others can try to slap back in.",
+			},
+		},
+		{ title = "Winning", lines = { "The last player with cards wins. A very long game (1000 flips) ends with most cards winning." } },
 	},
 }
 
@@ -595,13 +610,14 @@ rules.OldMaid = {
 	goal = "Get rid of all your cards. Whoever is left holding the Old Maid loses.",
 	card = {
 		"Pairs go down by themselves.",
-		"On your turn, tap one of your neighbor's face-down cards to take it.",
-		"Don't get stuck with the Queen of Spades: she never pairs.",
+		"On your turn, tap one of the face-down cards of the player on your right to take it.",
+		"Don't get stuck with the odd card (the Queen of Spades, unless the host picked another): it never pairs.",
 	},
 	sections = {
 		{ title = "Setup", lines = { "One Queen is taken out, so the Queen of Spades (the Old Maid) has no partner.", "All the other cards are dealt out. Pairs (two of the same rank) go down straight away." } },
-		{ title = "Your turn", lines = { "Take one face-down card from the next player who still has cards.", "If it makes a pair, the pair goes down.", "Hands are shuffled after every pick, so nobody knows where the Old Maid is." } },
+		{ title = "Your turn", lines = { "Take one face-down card from the player on your right who still has cards. Then the turn passes left, and they take one of yours.", "If it makes a pair, the pair goes down.", "Hands are shuffled after every pick, so nobody knows where the Old Maid is.", "While someone picks from you, you can shuffle or lift a card as bait." } },
 		{ title = "Winning", lines = { "No cards left? You're safe.", "The last player holding cards has the Old Maid and loses. Everyone else wins." } },
+		{ title = "House rules", lines = { "Pairs: same rank, or same rank and color.", "Odd card: Old Maid (Queen of Spades), Black Peter (Jack of Spades), or Mystery (a random card comes out face down: you find out at the end).", "To 6 points: first out scores 0, the next 1, and so on; the loser scores the most. Fewest points when someone reaches 6 wins." } },
 	},
 }
 

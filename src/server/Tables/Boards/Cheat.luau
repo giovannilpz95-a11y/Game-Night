@@ -31,6 +31,14 @@ function Cheat.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 		elseif play and view.phase == "doubt" then
 			-- The claim, said out loud: the whole game is whether you believe it.
 			Cards.speech(folder, boardCF, layout, play.seat, Cards.rankSaid(play.rank, play.count))
+			-- Who already believes it (the rest are still deciding).
+			for seat in view.handCounts or {} do
+				if (view.passed or {})[tostring(seat)] then
+					Cards.speech(folder, boardCF, layout, seat, "I believe you", Color3.fromRGB(200, 240, 200))
+				end
+			end
+		elseif view.phase == "play" and view.lastPass and (view.passes or 0) > 0 then
+			Cards.speech(folder, boardCF, layout, view.lastPass, "Pass", Color3.fromRGB(220, 220, 235))
 		end
 	end, Color3.fromRGB(70, 52, 110))
 end

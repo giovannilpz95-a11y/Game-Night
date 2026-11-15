@@ -51,7 +51,17 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 		CardTable.seatChips(ui.seats, snapshot, chips)
 
 		Kit.clear(ui.content)
-		if view.over then
+		local rr = view.roundResult
+		if view.roundOver and rr then
+			-- Between rounds (game to 6): who got stuck, and the points.
+			local who = if rr.loser == me then "You were" elseif rr.loser then `{nameOf(rr.loser)} was` else "Nobody was"
+			CardTable.feltText(ui.content, `Round {rr.round}: {who} left with the odd card`, 0.06, 18).TextColor3 = Theme.Accent
+			if view.oldMaid and view.oldMaid ~= 0 then
+				local slot = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.55), Size = UDim2.fromScale(1, 0.5), Parent = ui.content })
+				local face = PlayingCard.show(slot, view.oldMaid)
+				Kit.new("UIStroke", { Color = MAID_RED, Thickness = 4, Parent = face })
+			end
+		elseif view.over then
 			local loserText = if view.loser == me then "You're left with the Old Maid!" elseif view.loser then `{nameOf(view.loser)} is left with the Old Maid!` else "Game over"
 			CardTable.feltText(ui.content, loserText, 0.06, 20).TextColor3 = Theme.Accent
 			local slot = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.6), Size = UDim2.fromScale(1, 0.62), Parent = ui.content })
@@ -123,6 +133,31 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 				holding = true
 			end
 		end
+		-- Table view: the points and the odd card go on screen (the felt is hidden).
+		local info = {}
+		if (view.goal or 0) > 0 then
+			table.insert(info, `Round {view.round} · to {view.goal} points`)
+			for seat = 1, #snapshot.seats do
+				table.insert(info, `{nameOf(seat)}: {view.points[seat] or 0}`)
+			end
+		end
+		if view.mystery then
+			table.insert(info, "Mystery card: the odd one is a secret")
+		end
+		CardTable.info(ui, if #info > 0 then info else nil)
+		if view.roundOver and rr then
+			local lines = {}
+			for seat = 1, #snapshot.seats do
+				table.insert(lines, `{nameOf(seat)} +{rr.added[seat] or rr.added[tostring(seat)] or 0} (now {view.points[seat] or 0})`)
+			end
+			local who = if rr.loser == me then "You were stuck with it!" elseif rr.loser then `{nameOf(rr.loser)} was stuck with it` else "Round over"
+			CardTable.notice(ui, who, lines)
+		elseif view.over and view.mystery and view.removed then
+			CardTable.notice(ui, "The mystery card", { `{PlayingCards.name(view.removed)} came out, so its partner had no pair.` })
+		else
+			CardTable.notice(ui, nil)
+		end
+
 		local myCount = if me then view.handCounts[me] or 0 else 0
 		if not me then
 			ui.prompt.Text = "Watching"

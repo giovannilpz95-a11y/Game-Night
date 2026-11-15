@@ -51,6 +51,10 @@ function GoFish.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			else
 				Cards.speech(folder, boardCF, layout, ask.target, "Go fish!", Color3.fromRGB(170, 220, 255))
 			end
+			-- A lucky fish is shown to the table, face up in front of the fisher.
+			if ask.luckyFish and ask.card then
+				Scene.card(folder, Scene.seatSpot(boardCF, layout, ask.seat, 2.3), Scene.playingFront(PlayingCards, ask.card), 1.2)
+			end
 		end
 		for i = 1, math.min(view.pondCount or 0, 52) do
 			Scene.card(folder, Cards.center(boardCF, 0) * spots[i], nil)

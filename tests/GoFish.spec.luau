@@ -12,7 +12,9 @@ return function(T)
 			s.hands[seat] = hand
 			s.books[seat] = {}
 			s.asked[seat] = {}
+			s.denied[seat] = {}
 		end
+		s.log = {}
 		s.pond = pond
 		s.turn = 1
 		s.over = false
@@ -73,6 +75,52 @@ return function(T)
 		T.eq(GoFish.getView(s, 1).drawnCard, C(3, 1))
 		T.eq(GoFish.getView(s, 2).drawnCard, nil)
 		T.eq(GoFish.getView(s, 2).hand[1], C(9, 1))
+	end)
+
+	T.test("taking someone's last cards: their hand refills at once and you keep asking", function()
+		local s = setup({ { C(5, 1), C(8, 1) }, { C(5, 2) }, { C(9, 1) } }, { C(2, 1), C(3, 1), C(4, 1), C(6, 1), C(7, 1), C(10, 1), C(11, 1), C(12, 1) })
+		s.handSize = 7
+		ask(s, 1, 2, 5)
+		T.eq(#s.hands[2], 7, "refilled to the starting size")
+		T.eq(s.turn, 1, "your turn goes on")
+		local off = setup({ { C(5, 1), C(8, 1) }, { C(5, 2) } }, { C(2, 1), C(3, 1) })
+		off.refill = false
+		ask(off, 1, 2, 5)
+		T.eq(off.turn, 2, "house rule off: your turn ends and they draw one on theirs")
+		T.eq(#off.hands[2], 1)
+	end)
+
+	T.test("a tie on books goes to the higher cards, then it's shared", function()
+		local s = setup({ { C(2, 1) }, { C(3, 1) } }, {})
+		s.books = { { 13, 2 }, { 12, 3 } }
+		s.over = true
+		local result = GoFish.getResult(s) :: any
+		T.eq(#result.winners, 2, "K+2 and Q+3 are both worth 15")
+		T.eq(result.isDraw, false, "a shared win")
+		s.books = { { 1, 2 }, { 13, 3 } }
+		result = GoFish.getResult(s) :: any
+		T.eq(#result.winners, 1)
+		T.eq(result.winners[1], 1, "the Ace counts 15")
+	end)
+
+	T.test("a lucky fish is shown to everyone; the log keeps the last asks", function()
+		local s = setup({ { C(5, 1) }, { C(9, 1) } }, { C(2, 1), C(5, 4) })
+		ask(s, 1, 2, 5)
+		T.eq(GoFish.getView(s, 2).lastAction.card, C(5, 4))
+		T.eq(#GoFish.getView(s, 2).log, 1)
+		T.eq(GoFish.getView(s, 2).log[1].rank, 5)
+		T.ok(s.denied[2][5], "seat 2 said go fish to 5s")
+	end)
+
+	T.test("house rules: the turn goes to the player you asked; a quick game ends when the pond runs out", function()
+		local s = setup({ { C(5, 1) }, { C(9, 1) }, { C(10, 1) } }, { C(2, 1), C(3, 1) })
+		s.askedNext = true
+		ask(s, 1, 3, 5)
+		T.eq(s.turn, 3)
+		local q = setup({ { C(5, 1), C(6, 1) }, { C(9, 1) } }, { C(3, 1) })
+		q.quick = true
+		ask(q, 1, 2, 5)
+		T.ok(q.over, "the pond is empty")
 	end)
 
 	T.test("bot games always finish with all 13 books", function()
