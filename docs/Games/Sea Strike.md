@@ -19,3 +19,4 @@ Back to [[Home]] · see [[Tables]].
 - AFK: `chooseAfkMove` fires at medium strength (easy at an easy table), never the table's hard bot.
 - Coordinates like the paper game: rows A-J down the side, columns 1-10 along the top, on the 2D grids, the 3D target board (SurfaceGui) and the 3D ocean case. Call-outs say "Hit! B7" and "They hit your Cruiser!". The last shot (or whole last salvo) keeps a gold outline in 2D and a glowing ring in 3D.
 - Table view: a gold sight follows the mouse over the target board on your turn (local parts, `SeaStrikeAim`).
+- 3D target board: ships you've sunk get a dark strip under their pegs (`SunkStrip`, 0.037 out from the face so it clears the grid lines; see the Overlaps spec).

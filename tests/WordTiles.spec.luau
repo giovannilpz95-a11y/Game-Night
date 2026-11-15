@@ -234,6 +234,10 @@ return function(T)
 		local cat = s.log[1].score
 		T.eq(s.scores[1], cat + 20)
 		T.eq(#WordTiles.getActiveSeats(s), 0)
+		local last = s.log[#s.log]
+		T.eq(last.kind, "end", "the final sums are in the log")
+		T.eq(last.adjust[1], 20)
+		T.eq(last.adjust[2], -20)
 	end)
 
 	T.test("too many scoreless turns end the game", function()

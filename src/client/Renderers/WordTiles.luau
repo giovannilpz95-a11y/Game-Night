@@ -718,6 +718,16 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 			return `{nameOf(play.seat)}: {table.concat(words, ", ")} +{play.score}{bonus}`
 		elseif play.kind == "exchange" then
 			return `{nameOf(play.seat)} swapped {play.count} tiles`
+		elseif play.kind == "end" then
+			-- Final sums: tiles left on racks come off, and whoever went out gets them.
+			local parts = {}
+			for seat, delta in play.adjust or {} do
+				if delta ~= 0 then
+					table.insert(parts, `{nameOf(seat)} {if delta > 0 then "+" else "−"}{math.abs(delta)}`)
+				end
+			end
+			local head = if play.reason == "out" then `{nameOf(play.seat)} went out` else "No one could score"
+			return if #parts > 0 then `🏁 {head}: {table.concat(parts, ", ")} (tiles left)` else `🏁 {head}`
 		end
 		return `{nameOf(play.seat)} passed`
 	end

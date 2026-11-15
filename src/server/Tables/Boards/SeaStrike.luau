@@ -221,6 +221,18 @@ function SeaStrike.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 					-- This seat's own shots, on its target board.
 					local mine = view.boards[3 - seat]
 					local top = 0.1 + n * TARGET_CELL
+					-- Ships you've sunk get a dark strip under their pegs, like the apps'
+					-- greyed-out wrecks.
+					for _, ship in (mine and mine.ships) or {} do
+						if ship.sunk then
+							local cells = Rules.cellsOf(ship)
+							local a = targetCell(target, n, cells[1][1], cells[1][2], top)
+							local b = targetCell(target, n, cells[#cells][1], cells[#cells][2], top)
+							local long = ship.len * TARGET_CELL - 0.03
+							local size = if ship.dir == "h" then Vector3.new(long, TARGET_CELL * 0.7, 0.004) else Vector3.new(TARGET_CELL * 0.7, long, 0.004)
+							Models.block(folder, "SunkStrip", size, a:Lerp(b, 0.5) * CFrame.new(0, 0, 0.037), HULL_SUNK) -- in front of the grid lines, clear of every face
+						end
+					end
 					for i, code in (mine and mine.shotsAt) or {} do
 						if code ~= 0 then
 							local row, col = (i - 1) // n + 1, (i - 1) % n + 1
