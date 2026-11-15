@@ -17,6 +17,14 @@ local Theme = Kit.Theme
 local SeasonPanel = {}
 
 local PREMIUM = Color3.fromRGB(255, 196, 64)
+-- The Midnight Lounge draws the pass as a season page: the season's name huge, your tier
+-- in a neon box with a glowing bar, a big yellow "Get premium", and tall glass reward
+-- cards (mockup: ui-mockups/c-lounge/04-pass.jpg).
+local LOUNGE = Kit.lounge
+local NEON = Color3.fromRGB(124, 92, 255)
+local CYAN = Color3.fromRGB(56, 225, 255)
+local CELL_H = if LOUNGE then 150 else 104
+local COLUMN = if LOUNGE then 124 else 92
 local STAR = Color3.fromRGB(255, 220, 90)
 local TIER_COLORS = {
 	Common = Color3.fromRGB(176, 170, 204),
@@ -84,17 +92,29 @@ local function rewardLook(reward: Season.Reward): (string?, string, Color3?)
 end
 
 function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurchase: (any) -> ())
-	local window = Kit.modal(parent, { name = "PassWindow", maxSize = Vector2.new(900, 640) })
+	local window = Kit.modal(parent, { name = "PassWindow", maxSize = if LOUNGE then Vector2.new(1400, 860) else Vector2.new(900, 640) })
 	local body = window.body
 
 	local title = Kit.label("🎟️ Game Night Pass", { TextSize = 22, Font = Theme.FontTitle, Size = UDim2.new(1, -48, 0, 28), Parent = body })
 	local subtitle = Kit.label("", { TextSize = 13, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, -48, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = body })
+	local headTop = 52
+	if LOUNGE then
+		-- Kicker on top ("SEASON 1 · 15 DAYS LEFT"), the season's name big under it.
+		subtitle.Position = UDim2.fromOffset(2, 0)
+		subtitle.Font = Theme.FontBold
+		subtitle.TextColor3 = CYAN
+		subtitle.TextSize = 15
+		title.Position = UDim2.fromOffset(0, 18)
+		title.Size = UDim2.new(1, -48, 0, 52)
+		title.TextSize = 48
+		headTop = 78
+	end
 
 	local content = Kit.new("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(0, 52),
-		Size = UDim2.new(1, 0, 1, -52),
+		Position = UDim2.fromOffset(0, headTop),
+		Size = UDim2.new(1, 0, 1, -headTop),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ScrollBarThickness = 4,
@@ -181,6 +201,113 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 		Kit.new("UISizeConstraint", { MinSize = Vector2.new(0, 70), Parent = c })
 	end
 
+	-- The Lounge's header: tier box and glowing bar on the left, "Get premium" on the right.
+	local function renderHeaderLounge(view: any)
+		local c = Kit.glass({ Name = "Header", Size = UDim2.new(1, -8, 0, 96), LayoutOrder = 1, Parent = content }, 14)
+		local tier = Season.tierFor(view.stars)
+		local into, need = Season.progress(view.stars)
+		local box = Kit.label(tostring(tier), {
+			Font = Theme.FontTitle,
+			TextSize = 40,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			BackgroundColor3 = NEON,
+			BackgroundTransparency = 0,
+			Position = UDim2.fromOffset(14, 14),
+			Size = UDim2.fromOffset(68, 68),
+			Parent = c,
+		})
+		Kit.corner(12).Parent = box
+		Kit.headline(box)
+		local sideW = 340
+		Kit.label(if tier >= Season.Tiers then `Tier {tier} of {Season.Tiers} · MAX` else `Tier {tier} of {Season.Tiers}`, {
+			Font = Theme.FontBold,
+			TextSize = 18,
+			TextWrapped = false,
+			Position = UDim2.fromOffset(98, 18),
+			Size = UDim2.new(1, -(98 + sideW + 24 + 140), 0, 22),
+			Parent = c,
+		})
+		Kit.label(if tier >= Season.Tiers then `{commas(view.stars)} ⭐` else `{commas(into)} / {commas(need)} ⭐`, {
+			Font = Theme.FontBold,
+			TextSize = 16,
+			TextColor3 = STAR,
+			TextWrapped = false,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -(sideW + 24), 0, 18),
+			Size = UDim2.fromOffset(160, 22),
+			Parent = c,
+		})
+		local bar, setBar = Kit.progress(NEON, {
+			Position = UDim2.fromOffset(98, 52),
+			Size = UDim2.new(1, -(98 + sideW + 24), 0, 12),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 0.88,
+			Parent = c,
+		})
+		local fill = bar:FindFirstChild("Fill")
+		if fill then
+			local old = fill:FindFirstChild("Shade")
+			if old then
+				old:Destroy()
+			end
+			Kit.new("UIGradient", { Color = ColorSequence.new(NEON, CYAN), Parent = fill })
+			Kit.new("UIStroke", { Color = CYAN, Transparency = 0.7, Thickness = 2, Parent = fill })
+		end
+		setBar(if tier >= Season.Tiers then 1 else into / need)
+
+		local side = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -14, 0.5, 0),
+			Size = UDim2.fromOffset(sideW, 72),
+			Parent = c,
+		})
+		if view.premium then
+			Kit.tag("⭐ PREMIUM PASS", PREMIUM, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Parent = side })
+		else
+			local gemButton: TextButton
+			gemButton = Kit.button(`GET PREMIUM · {Season.Premium.gems} 💎`, function()
+				if wallet.gems < Season.Premium.gems then
+					Kit.nope(gemButton)
+				end
+				sendEconomy({ action = "seasonPremium" })
+			end, { Font = Theme.FontTitle, TextSize = 22, Size = UDim2.new(1, 0, 0, 40), Parent = side })
+			Kit.headline(gemButton, false)
+			local ready = wallet.seasonProductReady == true
+			Kit.secondary(if ready then `or R$ {Season.Premium.robux}` else "R$ soon", function()
+				if ready then
+					sendPurchase({ action = "buySeasonPass" })
+				end
+			end, { TextSize = 13, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1 / 3, -4, 0, 28), Parent = side })
+		end
+		local row = Kit.new("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(1, 1),
+			Position = UDim2.new(1, 0, 1, 0),
+			Size = UDim2.new(if view.premium then 1 else 2 / 3, 0, 0, 28),
+			Parent = side,
+		})
+		local rowList = Kit.list(6, true)
+		rowList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+		rowList.Parent = row
+		if view.unclaimed > 0 then
+			local claim = Kit.button(`🎁 Claim all ({view.unclaimed})`, function()
+				sendEconomy({ action = "seasonClaim", all = true })
+			end, { BackgroundColor3 = Theme.Good, TextColor3 = Theme.AccentText, TextSize = 13, Size = UDim2.new(0.5, -3, 1, 0), LayoutOrder = 1, Parent = row })
+			Kit.bump(claim)
+		end
+		if tier < Season.Tiers then
+			local skip: TextButton
+			skip = Kit.secondary(`Skip a tier · {Season.TierSkipGems} 💎`, function()
+				if wallet.gems < Season.TierSkipGems then
+					Kit.nope(skip)
+				end
+				sendEconomy({ action = "seasonTiers", count = 1 })
+			end, { TextSize = 13, Size = UDim2.new(0.5, -3, 1, 0), LayoutOrder = 2, Parent = row })
+		end
+	end
+
 	local function tabs(order: number)
 		local row = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 34), LayoutOrder = order, Parent = content }, { Kit.list(8, true) })
 		for i, t in { { key = "rewards", name = "🎁 Rewards" }, { key = "quests", name = "🎯 Quests" } } do
@@ -195,29 +322,47 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 	-- One reward cell on the track.
 	local function cell(parentFrame: Instance, reward: Season.Reward?, state: string, premiumCell: boolean, onClaim: () -> ())
 		local frame = Kit.new("Frame", {
-			BackgroundColor3 = if premiumCell then Color3.fromRGB(70, 56, 30) else Theme.PanelLight,
-			BackgroundTransparency = if reward then 0 else 0.6,
+			BackgroundColor3 = if LOUNGE then (if premiumCell then NEON else Theme.Panel) elseif premiumCell then Color3.fromRGB(70, 56, 30) else Theme.PanelLight,
+			BackgroundTransparency = if reward then (if LOUNGE then 0.25 else 0) else 0.6,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 104),
+			Size = UDim2.new(1, 0, 0, CELL_H),
 			Parent = parentFrame,
-		}, { Kit.corner(10) })
+		}, { Kit.corner(if LOUNGE then 12 else 10) })
+		if LOUNGE then
+			-- Glass that darkens toward the bottom.
+			Kit.new("UIGradient", { Name = "Shade", Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(110, 105, 135)), Parent = frame })
+		end
 		if not reward then
 			return
 		end
 		local icon, caption, color = rewardLook(reward)
-		Kit.new("UIStroke", { Color = if state == "ready" then Theme.Accent else (color or Theme.Stroke), Thickness = if state == "ready" then 3 else 1.5, Transparency = if state == "locked" then 0.6 else 0, Parent = frame })
+		Kit.new("UIStroke", {
+			Color = if state == "ready" then Theme.Accent elseif LOUNGE then (color or Color3.new(1, 1, 1)) else (color or Theme.Stroke),
+			Thickness = if state == "ready" then 3 elseif LOUNGE then 1 else 1.5,
+			Transparency = if state == "ready" then 0 elseif LOUNGE then (if color then 0.4 else 0.82) elseif state == "locked" then 0.6 else 0,
+			Parent = frame,
+		})
+		local iconTop = if LOUNGE then math.floor(CELL_H * 0.22) else 6
 		if icon then
-			Kit.label(icon, { TextSize = 30, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 0, 36), Parent = frame })
+			Kit.label(icon, { TextSize = if LOUNGE then 40 else 30, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, iconTop), Size = UDim2.new(1, 0, 0, if LOUNGE then 46 else 36), Parent = frame })
 		elseif reward.gems then
-			Kit.gemIcon(30, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Parent = frame })
+			Kit.gemIcon(if LOUNGE then 40 else 30, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, iconTop + 4), Parent = frame })
 		else
-			Kit.coinIcon(Economy.UniversalCoin.color, 28, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Parent = frame })
+			Kit.coinIcon(Economy.UniversalCoin.color, if LOUNGE then 36 else 28, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, iconTop + 4), Parent = frame })
 		end
-		Kit.label(caption, { TextSize = 11, Font = Theme.FontBold, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(2, 44), Size = UDim2.new(1, -4, 0, 28), TextYAlignment = Enum.TextYAlignment.Top, Parent = frame })
+		Kit.label(caption, {
+			TextSize = if LOUNGE then 14 else 11,
+			Font = Theme.FontBold,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Position = UDim2.fromOffset(2, if LOUNGE then iconTop + 54 else 44),
+			Size = UDim2.new(1, -4, 0, if LOUNGE then 34 else 28),
+			TextYAlignment = Enum.TextYAlignment.Top,
+			Parent = frame,
+		})
 		if state == "claimed" then
 			Kit.label("✅", { TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -4), Size = UDim2.new(1, 0, 0, 22), Parent = frame })
 		elseif state == "ready" then
-			local b = Kit.button("Claim", onClaim, { BackgroundColor3 = Theme.Accent, TextColor3 = Theme.AccentText, TextSize = 12, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -4), Size = UDim2.new(1, -8, 0, 24), Parent = frame })
+			local b = Kit.button("Claim", onClaim, { BackgroundColor3 = Theme.Accent, TextColor3 = Theme.AccentText, TextSize = if LOUNGE then 14 else 12, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6), Size = UDim2.new(1, -12, 0, if LOUNGE then 30 else 24), Parent = frame })
 			Kit.bump(b)
 		else
 			Kit.label(if state == "premium" then "🔒" else "", { TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -4), Size = UDim2.new(1, 0, 0, 22), Parent = frame })
@@ -231,9 +376,10 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 
 	local function renderTrack(view: any, track: Season.Track)
 		local tier = Season.tierFor(view.stars)
-		local holder = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 262), LayoutOrder = 3, Parent = content })
-		Kit.label("FREE", { Font = Theme.FontBold, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(0, 30), Size = UDim2.fromOffset(60, 104), TextXAlignment = Enum.TextXAlignment.Center, Parent = holder })
-		Kit.label("⭐\nPREMIUM", { Font = Theme.FontBold, TextSize = 12, TextColor3 = PREMIUM, Position = UDim2.fromOffset(0, 142), Size = UDim2.fromOffset(60, 104), TextXAlignment = Enum.TextXAlignment.Center, Parent = holder })
+		local columnH = 22 + 6 + CELL_H + 6 + CELL_H
+		local holder = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, columnH + 12), LayoutOrder = 3, Parent = content })
+		Kit.label("FREE", { Font = Theme.FontBold, TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.fromOffset(0, 28), Size = UDim2.fromOffset(60, CELL_H), TextXAlignment = Enum.TextXAlignment.Center, Parent = holder })
+		Kit.label("⭐\nPREMIUM", { Font = Theme.FontBold, TextSize = 12, TextColor3 = PREMIUM, Position = UDim2.fromOffset(0, 34 + CELL_H), Size = UDim2.fromOffset(60, CELL_H), TextXAlignment = Enum.TextXAlignment.Center, Parent = holder })
 		local scroll = Kit.new("ScrollingFrame", {
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
@@ -246,31 +392,35 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 			Parent = holder,
 		}, { Kit.list(8, true) })
 		trackScroll = scroll
-		local COLUMN = 92
 		for t = 1, Season.Tiers do
-			local column = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(COLUMN, 250), LayoutOrder = t, Parent = scroll }, { Kit.list(6) })
+			local column = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(COLUMN, columnH), LayoutOrder = t, Parent = scroll }, { Kit.list(6) })
 			local reached = t <= tier
-			Kit.label(`{t}`, {
-				Font = Theme.FontBold,
-				TextSize = 15,
+			local number = Kit.label(`{t}`, {
+				Font = if LOUNGE then Theme.FontTitle else Theme.FontBold,
+				TextSize = if LOUNGE then 22 else 15,
 				TextXAlignment = Enum.TextXAlignment.Center,
 				BackgroundColor3 = if reached then STAR else Theme.Background,
-				BackgroundTransparency = if reached then 0 else 0.3,
-				TextColor3 = if reached then Theme.AccentText else Theme.SubText,
+				BackgroundTransparency = if LOUNGE then 1 elseif reached then 0 else 0.3,
+				TextColor3 = if LOUNGE then (if t == tier then Theme.Accent elseif reached then Theme.Text else Theme.SubText) elseif reached then Theme.AccentText else Theme.SubText,
 				Size = UDim2.new(1, 0, 0, 22),
 				LayoutOrder = 0,
 				Parent = column,
 			})
+			if LOUNGE and t == tier then
+				-- Your tier: a soft yellow glow around the column's cards.
+				Kit.headline(number)
+				Kit.new("UIStroke", { Color = Theme.Accent, Transparency = 0.35, Thickness = 2, Parent = Kit.new("Frame", { Name = "Current", BackgroundTransparency = 1, Position = UDim2.fromOffset(-3, 25), Size = UDim2.new(1, 6, 1, -22), ZIndex = 2, Parent = column }, { Kit.corner(14) }) })
+			end
 			local key = tostring(t)
 			local free = track.free[t]
 			local freeState = if not reached then "locked" elseif view.free[key] then "claimed" else "ready"
-			local freeHolder = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 104), LayoutOrder = 1, Parent = column })
+			local freeHolder = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, CELL_H), LayoutOrder = 1, Parent = column })
 			cell(freeHolder, free, freeState, false, function()
 				sendEconomy({ action = "seasonClaim", track = "free", tier = t })
 			end)
 			local premium = track.premium[t]
 			local premiumState = if not view.premium then "premium" elseif not reached then "locked" elseif view.paid[key] then "claimed" else "ready"
-			local premiumHolder = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 104), LayoutOrder = 2, Parent = column })
+			local premiumHolder = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, CELL_H), LayoutOrder = 2, Parent = column })
 			cell(premiumHolder, premium, premiumState, true, function()
 				sendEconomy({ action = "seasonClaim", track = "premium", tier = t })
 			end)
@@ -359,9 +509,17 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 			return
 		end
 		local track, rerun = Season.track(view.number)
-		title.Text = `🎟️ Season {view.number}: {track.name}{if rerun then " (encore)" else ""}`
-		subtitle.Text = `{track.blurb}  Ends in {timeLeft(Season.endsAt(view.number) - os.time())}.{if view.finalWeek then "  ⭐ Final week: double Stars!" else ""}`
-		renderHeader(view, track)
+		if LOUNGE then
+			local daysLeft = math.max(0, math.ceil((Season.endsAt(view.number) - os.time()) / 86400))
+			title.Text = `{track.name}{if rerun then " (encore)" else ""}`
+			Kit.headline(title)
+			subtitle.Text = `SEASON {view.number}  ·  {daysLeft} {if daysLeft == 1 then "DAY" else "DAYS"} LEFT{if view.finalWeek then "  ·  DOUBLE STARS THIS WEEK" else ""}`
+			renderHeaderLounge(view)
+		else
+			title.Text = `🎟️ Season {view.number}: {track.name}{if rerun then " (encore)" else ""}`
+			subtitle.Text = `{track.blurb}  Ends in {timeLeft(Season.endsAt(view.number) - os.time())}.{if view.finalWeek then "  ⭐ Final week: double Stars!" else ""}`
+			renderHeader(view, track)
+		end
 		tabs(2)
 		if tab == "rewards" then
 			renderTrack(view, track)
