@@ -20,6 +20,7 @@ local HudKit = require(script.Parent.Parent.UI.HudKit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
 local Audio = require(script.Parent.Parent.Audio)
+local ClockPills = require(script.Parent.Parent.UI.ClockPills)
 local Theme = Kit.Theme
 
 local Chess = {}
@@ -98,21 +99,29 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 	local nav = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 1, -34), Size = UDim2.new(1, 0, 0, 30), Parent = side }, { Kit.list(4, true) })
 	local navButtons: { [string]: TextButton } = {}
 	local stepTo: (number?) -> ()
-	for i, spec in { { "back", "<" }, { "forward", ">" }, { "live", "Live" } } do
+	local flipOverride = false -- the Flip button: look from the other side
+	local showPgn: () -> ()
+	for i, spec in { { "back", "<" }, { "forward", ">" }, { "live", "Live" }, { "flip", "Flip" }, { "pgn", "PGN" } } do
 		navButtons[spec[1]] = Kit.button(spec[2], function()
 			local total = snapshot and #snapshot.view.past or 0
 			if spec[1] == "back" then
 				stepTo(math.max(0, (viewing or total) - 1))
 			elseif spec[1] == "forward" then
 				stepTo(if viewing then viewing + 1 else nil)
+			elseif spec[1] == "flip" then
+				flipOverride = not flipOverride
+				Audio.play("click")
+				render()
+			elseif spec[1] == "pgn" then
+				showPgn()
 			else
 				stepTo(nil)
 			end
 		end, {
 			BackgroundColor3 = Theme.Panel,
 			TextColor3 = Theme.Text,
-			TextSize = 14,
-			Size = if spec[1] == "live" then UDim2.new(0.4, -4, 1, 0) else UDim2.new(0.3, -3, 1, 0),
+			TextSize = 13,
+			Size = if spec[1] == "live" or spec[1] == "flip" or spec[1] == "pgn" then UDim2.new(0.22, -4, 1, 0) else UDim2.new(0.17, -3, 1, 0),
 			LayoutOrder = i,
 			Parent = nav,
 		})
@@ -141,6 +150,15 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		ScrollBarThickness = 4,
 		Parent = side,
 	}, { Kit.list(2) })
+	-- Chess clocks (a Party Host house rule): both times on top of the side panel.
+	local clocks = ClockPills.create({ Size = UDim2.new(1, 0, 0, 28), TextScaled = true, Parent = side })
+	Kit.new("UITextSizeConstraint", { MaxTextSize = 16, Parent = clocks.label })
+	local function layoutSide(timed: boolean)
+		local top = if timed then 34 else 0
+		capturedLabel.Position = UDim2.new(0, 0, 0, top)
+		moves.Position = UDim2.new(0, 0, 0, 50 + top)
+		moves.Size = UDim2.new(1, 0, 1, -88 - top)
+	end
 
 	local promotionPicker: Frame? = nil
 
@@ -425,6 +443,18 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		Parent = inner,
 	}, { Kit.corner(4) })
 	local evalFill = Kit.new("Frame", { BackgroundColor3 = Color3.fromRGB(250, 248, 240), BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 0.5), Parent = evalBar }, { Kit.corner(4) })
+	-- The number on the bar, like Lichess: "+1.2" (White better), "-0.4", "M3" (mate in 3).
+	local evalText = Kit.label("", {
+		Name = "EvalText",
+		TextSize = 11,
+		Font = Theme.FontBold,
+		TextColor3 = Theme.Text,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 0, -2),
+		Size = UDim2.new(0, 40, 0, 14),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = evalBar,
+	})
 	local function center(row: number, col: number): Vector2
 		local p = grid.cell(row, col).Position
 		return Vector2.new(p.X.Scale + 1 / 16, p.Y.Scale + 1 / 16)
@@ -530,7 +560,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		local view = snapshot.view
-		local flipped = snapshot.yourSeat == 2
+		local flipped = (snapshot.yourSeat == 2) ~= flipOverride
 		if flipped ~= shownFlipped then
 			shownFlipped = flipped
 			clearMarks()
@@ -657,11 +687,16 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end
 		local white, black = capturedText(1), capturedText(2)
 		local function lead(seat: number): string
-			local d = worth[seat] - worth[3 - seat]
+			-- From the board when the view has it, so a promotion shows up as a lead.
+			local d = if view.lead then view.lead[seat] else worth[seat] - worth[3 - seat]
 			return if d > 0 then `  +{d}` else ""
 		end
 		capturedLabel.Text = `White took: {white}{lead(1)}\nBlack took: {black}{lead(2)}`
-		local openingName = ChessReview.opening(view.moveList)
+		local fens = table.create(#view.past)
+		for i, p in view.past do
+			fens[i] = p.fen
+		end
+		local openingName = ChessReview.openingFromFens(fens)
 		if openingName then
 			capturedLabel.Text ..= `\n{openingName}`
 		end
@@ -699,6 +734,12 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			evalFill.AnchorPoint = if flipped then Vector2.new(0, 0) else Vector2.new(0, 1)
 			evalFill.Position = if flipped then UDim2.fromScale(0, 0) else UDim2.fromScale(0, 1)
 			evalFill.Size = UDim2.fromScale(1, whiteShare)
+			if shown and shown.mateIn then
+				evalText.Text = `{if shown.mateIn < 0 then "-" else ""}M{math.abs(shown.mateIn)}`
+			else
+				local pawns = math.floor(cp / 10 + 0.5) / 10
+				evalText.Text = if pawns > 0 then `+{pawns}` elseif pawns < 0 then tostring(pawns) else "0.0"
+			end
 		end
 		if view.checks then
 			capturedLabel.Text ..= `\nChecks: White {view.checks[1]}/3 · Black {view.checks[2]}/3`
@@ -759,15 +800,45 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		if review and reviewFor == key then
 			return
 		end
-		review = ChessReview.new(view.startFen, view.past, { depth = 4, seconds = 0.2 })
+		-- A deeper search than the bots use, spread over frames: the search yields every
+		-- ~12 ms of work, and the loop below resumes it once a frame.
+		local sliceStart = os.clock()
+		review = ChessReview.new(view.startFen, view.past, {
+			depth = 6,
+			nodes = 12000,
+			tick = function()
+				if os.clock() - sliceStart > 0.012 then
+					coroutine.yield()
+				end
+			end,
+		})
 		reviewFor = key
 		reviewing = true
 		Audio.play("click")
 		render()
 		task.spawn(function()
 			local current = review
-			while not destroyed and current == review and not current:step() do
-				render()
+			local worker = coroutine.create(function()
+				while not current:step() do
+					coroutine.yield()
+				end
+			end)
+			local shownProgress = -1
+			while not destroyed and current == review do
+				sliceStart = os.clock()
+				local ok, err = coroutine.resume(worker)
+				if not ok then
+					warn(`[GameNight] Game Review failed: {err}`)
+					reviewing = false
+					return
+				end
+				if coroutine.status(worker) == "dead" then
+					break
+				end
+				if current.progress ~= shownProgress then
+					shownProgress = current.progress
+					render()
+				end
 				task.wait()
 			end
 			if destroyed or current ~= review then
@@ -780,10 +851,114 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end)
 	end
 
+	-- "PGN": the game as text in a box you can select and copy (Roblox games can't write
+	-- to the clipboard), to paste into Lichess or chess.com.
+	local pgnPanel: Frame? = nil
+	function showPgn()
+		if pgnPanel then
+			pgnPanel:Destroy()
+			pgnPanel = nil
+			return
+		end
+		if not snapshot then
+			return
+		end
+		local view = snapshot.view
+		local result = "*"
+		if snapshot.result then
+			if snapshot.result.isDraw then
+				result = "1/2-1/2"
+			elseif snapshot.result.winners[1] == 1 then
+				result = "1-0"
+			elseif snapshot.result.winners[1] == 2 then
+				result = "0-1"
+			end
+		end
+		local seats = snapshot.seats or {}
+		local text = ChessRules.pgn(view.moveList, view.startFen, result, seats[1] and seats[1].name, seats[2] and seats[2].name)
+		local panel = Kit.panel({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.8, 0, 0.7, 0), ZIndex = 20, Parent = root })
+		Kit.label("Select all and copy (Ctrl+A, Ctrl+C), then paste into any chess site.", { TextSize = 13, TextWrapped = true, Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 6), ZIndex = 21, Parent = panel })
+		local box = Kit.new("TextBox", {
+			Text = text,
+			ClearTextOnFocus = false,
+			TextEditable = false,
+			MultiLine = true,
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			Font = Enum.Font.Code,
+			TextSize = 13,
+			TextColor3 = Theme.Text,
+			BackgroundColor3 = Theme.Panel,
+			Position = UDim2.new(0, 8, 0, 42),
+			Size = UDim2.new(1, -16, 1, -84),
+			ZIndex = 21,
+			Parent = panel,
+		}, { Kit.corner(6) })
+		Kit.button("Close", function()
+			showPgn()
+		end, { Size = UDim2.new(0, 90, 0, 30), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -8, 1, -6), ZIndex = 21, Parent = panel })
+		pgnPanel = panel
+		task.defer(function()
+			if box.Parent then
+				box:CaptureFocus()
+				box.SelectionStart = 1
+				box.CursorPosition = #box.Text + 1
+			end
+		end)
+	end
+
+	-- Left and right arrow keys step through the moves while the 2D board is on screen
+	-- (in Table view the keys pick seats and pieces instead).
+	local function boardShown(): boolean
+		local node: Instance? = root
+		while node do
+			if node:IsA("GuiObject") and not node.Visible then
+				return false
+			elseif node:IsA("ScreenGui") then
+				return node.Enabled
+			end
+			node = node.Parent
+		end
+		return false
+	end
+	table.insert(connections, UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or not snapshot or UserInputService:GetFocusedTextBox() or not boardShown() then
+			return
+		end
+		local total = #snapshot.view.past
+		if input.KeyCode == Enum.KeyCode.Left then
+			stepTo(math.max(0, (viewing or total) - 1))
+		elseif input.KeyCode == Enum.KeyCode.Right then
+			stepTo(if viewing then viewing + 1 else nil)
+		end
+	end))
+
+	-- Distinct sounds for captures, checks, castling and promotions, keyed off the move's
+	-- notation (the plain set-down sound plays for every move already).
+	local function moveSound(san: string)
+		if string.find(san, "#", 1, true) or string.find(san, "+", 1, true) then
+			Audio.play("chessCheck")
+		elseif string.find(san, "=", 1, true) then
+			Audio.play("chessPromote")
+		elseif string.sub(san, 1, 3) == "O-O" then
+			Audio.play("chessCastle")
+		elseif string.find(san, "x", 1, true) then
+			Audio.play("chessCapture")
+		end
+	end
+
 	return {
 		update = function(newSnapshot: any)
 			local hadMoves = snapshot and #snapshot.view.moveList or 0
+			local sameGame = snapshot ~= nil and snapshot.view.startFen == newSnapshot.view.startFen
 			snapshot = newSnapshot
+			clocks.set(snapshot)
+			layoutSide(snapshot.view.clock ~= nil)
+			local nowMoves = #snapshot.view.moveList
+			if sameGame and nowMoves == hadMoves + 1 then
+				moveSound(snapshot.view.moveList[nowMoves])
+			end
 			if review and reviewFor ~= snapshot.view.startFen .. #snapshot.view.past and snapshot.result == nil then
 				review, reviewFor, reviewing = nil, nil, false -- a rematch started
 			end
@@ -818,6 +993,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end,
 		destroy = function()
 			destroyed = true
+			clocks.destroy()
 			for _, connection in connections do
 				connection:Disconnect()
 			end

@@ -202,6 +202,10 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 	local seats = 2
 	local botLevel = Config.DefaultBotLevel
 	local BOT_LEVEL_NAMES = { easy = "Easy bots", medium = "Medium bots", hard = "Hard bots" }
+	-- Alone against a bot in a two-player game you may pick who starts (White in Chess, X
+	-- in Tic-Tac-Toe). Rematches then alternate on their own.
+	local playAs: string? = nil -- nil (random) | "first" | "second"
+	local PLAY_AS_NAMES = { first = "Go first", second = "Go second" }
 
 	local function clampSeats()
 		if not chosen then
@@ -230,7 +234,9 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 	local plus = stepper("+", 1, 4)
 	local startButton = Kit.button("Start", function()
 		if chosen then
-			sendMatch({ action = "start", gameId = chosen.id, seats = seats, botLevel = botLevel, rules = picks, custom = customSlot })
+			local members = if party then #party.members else 1
+			local pickSide = members == 1 and seats == 2
+			sendMatch({ action = "start", gameId = chosen.id, seats = seats, botLevel = botLevel, rules = picks, custom = customSlot, playAs = if pickSide then playAs else nil })
 		end
 	end, { BackgroundColor3 = Theme.Good, Size = UDim2.new(0, 110, 0, 40), TextSize = 18, LayoutOrder = 6, Parent = bar })
 	-- Tapping cycles Easy -> Medium -> Hard. Only shown when bots will play.
@@ -240,6 +246,11 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 		botLevel = Config.BotLevels[index % #Config.BotLevels + 1]
 		render()
 	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 112, 0, 40), TextSize = 14, LayoutOrder = 5, Parent = bar })
+	local sideButton: TextButton
+	sideButton = Kit.button("", function()
+		playAs = if playAs == nil then "first" elseif playAs == "first" then "second" else nil
+		renderBar()
+	end, { BackgroundColor3 = Theme.PanelLight, TextColor3 = Theme.Text, Size = UDim2.new(0, 96, 0, 40), TextSize = 14, LayoutOrder = 5, Visible = false, Parent = bar })
 
 	------------------------------------------------------------------------------
 	-- The Café's game panel (wide windows only): built once, filled by renderDetail.
@@ -970,8 +981,11 @@ function GamePicker.create(parent: Instance, sendMatch: (any) -> (), hooks: any)
 			local members = if party then #party.members else 1
 			levelButton.Visible = seats > members
 			levelButton.Text = BOT_LEVEL_NAMES[botLevel] or botLevel
+			sideButton.Visible = members == 1 and seats == 2
+			sideButton.Text = if playAs then PLAY_AS_NAMES[playAs] else "Random start"
 		else
 			levelButton.Visible = false
+			sideButton.Visible = false
 			seatsLabel.Text = ""
 			minus.Visible = false
 			plus.Visible = false

@@ -20,6 +20,7 @@ local UserInputService = game:GetService("UserInputService")
 local HapticService = game:GetService("HapticService")
 
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
+local GameClock = require(ReplicatedStorage.Shared.GameClock)
 local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Kit = require(script.Parent.Kit)
 local Frame = require(script.Parent.Parent.Frame)
@@ -1109,7 +1110,9 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			end
 			local whole = math.ceil(left)
 			local color = timerColor(left)
-			text ..= `  <font color="{hex(color)}">{whole}s</font>`
+			-- Chess clocks read as minutes ("4:05"), the turn timer as seconds.
+			local shown = if snapshot.view and snapshot.view.clock then GameClock.format(left) else `{whole}s`
+			text ..= `  <font color="{hex(color)}">{shown}</font>`
 			timerTrack.Visible = true
 			timerFill.Size = UDim2.fromScale(math.clamp(left / timerTotal, 0, 1), 1)
 			timerFill.BackgroundColor3 = color
@@ -1362,6 +1365,26 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 			resultRing.Color = Theme.Stroke
 		end
 		reasonLabel.Text = if result and result.reason then result.reason else ""
+		-- The running score across rematches (server Core/Series), like Google's "2 - 1".
+		local series = snapshot.series
+		if series and series.games >= 2 then
+			local parts = {}
+			if #snapshot.seats == 2 then
+				local me = snapshot.yourSeat or 1
+				local other = 3 - me
+				table.insert(parts, `Series: {nameOf(me)} {series.wins[me] or 0} - {series.wins[other] or 0} {nameOf(other)}`)
+			else
+				for index in snapshot.seats do
+					table.insert(parts, `{nameOf(index)} {series.wins[index] or 0}`)
+				end
+				parts = { "Wins: " .. table.concat(parts, " · ") }
+			end
+			if series.draws > 0 then
+				table.insert(parts, `{series.draws} drawn`)
+			end
+			local line = table.concat(parts, ", ")
+			reasonLabel.Text = if reasonLabel.Text ~= "" then `{reasonLabel.Text}\n{line}` else line
+		end
 		if not wasShown then
 			HudKit.shine(resultBand, 53)
 			if outcome == "win" then

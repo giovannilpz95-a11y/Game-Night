@@ -13,14 +13,15 @@ function Palace.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
 		for seat, count in view.handCounts or {} do
 			Scene.hand(folder, boardCF, layout, seat, count)
-			local ups = (view.up or {})[seat] or {}
+			-- Each face-up card stays on its own face-down card (upSlots), not packed left.
+			local ups = (view.upSlots and view.upSlots[seat]) or (view.up or {})[seat] or {}
 			for i, slot in (view.down or {})[seat] or {} do
 				local spot = Scene.seatSpot(boardCF, layout, seat, 2.1, (i - 2) * 0.7) * CFrame.new(0, (i - 1) * 2 * Scene.STACK, 0)
 				if slot then
 					Scene.card(folder, spot, nil)
 				end
 				local up = ups[i]
-				if up then
+				if up then -- false = that slot's face-up card was played
 					Scene.card(folder, spot * CFrame.new(0, Scene.STACK, 0.15), Scene.playingFront(PlayingCards, up))
 				end
 			end
@@ -42,7 +43,14 @@ function Palace.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 		Scene.pile(folder, Cards.center(boardCF, 1.7, 0.6) * CFrame.Angles(0, math.rad(25), 0), view.burned or 0)
 		-- The burn: the pile goes up in flames and the player calls it.
 		if action and action.burned then
-			Cards.speech(folder, boardCF, layout, action.seat, "Burn! Again!", Color3.fromRGB(255, 190, 120))
+			-- "Again!" only when they still have cards to play.
+			local left = (view.handCounts and view.handCounts[action.seat] or 0) + #((view.up or {})[action.seat] or {})
+			for _, here in (view.down or {})[action.seat] or {} do
+				if here then
+					left += 1
+				end
+			end
+			Cards.speech(folder, boardCF, layout, action.seat, if left > 0 then "Burn! Again!" else "Burn!", Color3.fromRGB(255, 190, 120))
 			local flame = Instance.new("Part")
 			flame.Name = "Burn"
 			flame.Anchored = true

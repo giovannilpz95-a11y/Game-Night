@@ -382,7 +382,10 @@ return function(T)
 		s.players[1].pos = 5
 		s.players[1].cash = 10
 		play(s, 1, { kind = "roll" })
-		T.eq(s.players[1].bankrupt, true, "can't raise 600, so bankrupt at once")
+		T.eq(s.phase, "debt", "can't raise 600 by selling, but a trade could still save them")
+		T.eq((Estates.validateMove(s, 1, { kind = "payDebt" })), false)
+		play(s, 1, { kind = "bankrupt" })
+		T.eq(s.players[1].bankrupt, true)
 		T.eq(s.owner[pebble], 2)
 		local result = Estates.getResult(s)
 		T.ok(result)
@@ -453,7 +456,13 @@ return function(T)
 		s.owner[maple], s.owner[willow] = 1, 1
 		s.owner[birch] = 2
 		play(s, 1, { kind = "offer", to = 2, give = { cash = 150 }, get = { props = { birch } } })
-		T.eq(Estates.chooseBotMove(s, 2, T.Random.new(1)).kind, "reject")
+		local answer = Estates.chooseBotMove(s, 2, T.Random.new(1))
+		T.eq(answer.kind, "counter", "too cheap for a set-finisher: it asks for more")
+		T.eq(answer.get.cash, 390, "twice the price plus a house per street")
+		s.phase = "turn"
+		s.trade = nil
+		play(s, 1, { kind = "offer", to = 2, give = { cash = 400 }, get = { props = { birch } } })
+		T.eq(Estates.chooseBotMove(s, 2, T.Random.new(1)).kind, "accept", "a fair premium sells it")
 		s.phase = "turn"
 		s.trade = nil
 		play(s, 1, { kind = "offer", to = 2, give = { props = { maple } }, get = { cash = 50 } })
@@ -480,7 +489,7 @@ return function(T)
 		T.eq(move.kind, "offer")
 		T.eq(move.to, 2)
 		T.eq(move.get.props[1], birch)
-		T.eq(move.give.cash, 216, "hard bots pay 1.8x")
+		T.eq(move.give.cash, 468, "hard bots pay the set premium: (2 x 120 + 3 x 50) x 1.2")
 		play(s, 1, move)
 		T.eq(Estates.getActiveSeats(s)[1], 2)
 		play(s, 2, { kind = "accept" })
@@ -648,5 +657,179 @@ return function(T)
 		end
 		plain.players[1].cash = 5000
 		T.eq((Estates.canBuild(plain, 1, group[1])), true, "off by default")
+	end)
+
+	T.test("deep review: card decks have every-player cards and Sushi night", function()
+		local lucky, mail = Estates.decks.lucky.cards, Estates.decks.mail.cards
+		T.eq(#lucky, 16)
+		T.eq(#mail, 16)
+		local sushi = nil
+		for _, card in lucky do
+			if string.find(card.text, "Sushi") then
+				sushi = card
+			end
+		end
+		T.eq(sushi.to, posOf("Sushi Street"))
+		-- Pay each player.
+		local s = newGame(3)
+		local payEach = nil
+		for i, card in lucky do
+			if card.kind == "payEach" then
+				payEach = i
+			end
+		end
+		s.decks.lucky = { payEach }
+		local before2, before3 = s.players[2].cash, s.players[3].cash
+		-- A roll of 1 + 2 from space 5 lands on Lucky Break (8).
+		s.players[1].pos = 5
+		s.rng = scripted({ 1, 2 })
+		play(s, 1, { kind = "roll" })
+		T.eq(s.players[2].cash, before2 + 50)
+		T.eq(s.players[3].cash, before3 + 50)
+	end)
+
+	T.test("deep review: quick hotels after 3 houses", function()
+		local s = Estates.new(2, { botLevel = "medium", rules = { quickHotels = true } }, T.Random.new(1))
+		local skyline, diamond = posOf("Skyline Tower"), posOf("Diamond Point")
+		s.owner[skyline], s.owner[diamond] = 1, 1
+		s.players[1].cash = 5000
+		for _ = 1, 3 do
+			play(s, 1, { kind = "build", pos = skyline })
+			play(s, 1, { kind = "build", pos = diamond })
+		end
+		T.eq(s.housesLeft, 26)
+		play(s, 1, { kind = "build", pos = skyline })
+		T.eq(s.houses[skyline], 5, "a hotel after 3 houses")
+		T.eq(s.housesLeft, 29, "the 3 houses go back")
+		play(s, 1, { kind = "sell", pos = skyline })
+		T.eq(s.houses[skyline], 3)
+	end)
+
+	T.test("deep review: a hotel sold in a house shortage sells the set down evenly", function()
+		local s = newGame(2)
+		local maple, willow, birch = posOf("Maple Row"), posOf("Willow Way"), posOf("Birch Avenue")
+		s.owner[maple], s.owner[willow], s.owner[birch] = 1, 1, 1
+		s.houses[maple], s.houses[willow], s.houses[birch] = 5, 5, 5
+		s.hotelsLeft = 9
+		s.housesLeft = 2
+		local cash = s.players[1].cash
+		play(s, 1, { kind = "sell", pos = maple })
+		-- 2 houses in the bank, 3 streets: the highest even level is 0.
+		T.eq(s.houses[maple], 0)
+		T.eq(s.houses[willow], 0)
+		T.eq(s.houses[birch], 0)
+		T.eq(s.hotelsLeft, 12)
+		T.eq(s.housesLeft, 2)
+		T.eq(s.players[1].cash, cash + 15 * 25, "every level sold at half the house cost")
+		-- With 7 houses in the bank the set goes to 2 houses each.
+		local t = newGame(2)
+		t.owner[maple], t.owner[willow], t.owner[birch] = 1, 1, 1
+		t.houses[maple], t.houses[willow], t.houses[birch] = 5, 5, 4
+		t.hotelsLeft = 10
+		t.housesLeft = 3
+		local plan = Estates.hotelSale(t, maple)
+		T.eq(plan.levels[maple], 2)
+		T.eq(plan.levels[birch], 2)
+		T.eq(plan.housesLeft, 1)
+	end)
+
+	T.test("deep review: taking over a mortgaged deed costs 10%", function()
+		local s = newGame(2)
+		local birch = posOf("Birch Avenue")
+		s.owner[birch] = 2
+		s.mortgaged[birch] = true
+		play(s, 1, { kind = "offer", to = 2, give = { cash = 100 }, get = { props = { birch } } })
+		local cash = s.players[1].cash
+		play(s, 2, { kind = "accept" })
+		T.eq(s.owner[birch], 1)
+		T.eq(s.players[1].cash, cash - 100 - 6, "10% of the $60 mortgage value")
+	end)
+
+	T.test("deep review: bankrupt to the bank puts every deed up for auction", function()
+		local s = newGame(3)
+		local pebble, acorn = posOf("Pebble Lane"), posOf("Acorn Street")
+		s.owner[pebble], s.owner[acorn] = 1, 1
+		s.phase = "debt"
+		s.debt = { amount = 5000, to = nil, why = "test" }
+		play(s, 1, { kind = "bankrupt" })
+		T.eq(s.phase, "auction")
+		T.eq(s.auction.pos, pebble)
+		T.eq(#s.auctionQueue, 1)
+		Estates.onTimeout(s) -- nobody bids
+		T.eq(s.phase, "auction")
+		T.eq(s.auction.pos, acorn)
+		Estates.onTimeout(s)
+		T.eq(s.phase, "turn")
+		T.eq(s.turn, 2)
+	end)
+
+	T.test("deep review: no giveaways between people", function()
+		local s = newGame(2)
+		local diamond = posOf("Diamond Point")
+		s.owner[diamond] = 1
+		rejects(s, 1, { kind = "offer", to = 2, give = { props = { diamond }, cash = 1000 }, get = { cash = 10 } })
+		rejects(s, 1, { kind = "offer", to = 2, give = { cash = 10 }, get = { cash = 1200 } })
+		T.ok(Estates.validateMove(s, 1, { kind = "offer", to = 2, give = { props = { diamond } }, get = { cash = 300 } }))
+	end)
+
+	T.test("deep review: anyone can send one offer while someone is between actions", function()
+		local s = newGame(3)
+		local birch = posOf("Birch Avenue")
+		s.owner[birch] = 1
+		T.eq(s.turn, 1)
+		local seats = Estates.getInterruptSeats(s)
+		T.ok(table.find(seats, 2) and table.find(seats, 3))
+		rejects(s, 2, { kind = "roll" })
+		T.ok(Estates.getView(s, 2).canOffer)
+		play(s, 2, { kind = "offer", to = 1, give = { cash = 150 }, get = { props = { birch } } })
+		T.eq(Estates.getActiveSeats(s)[1], 1, "the player whose turn it is answers")
+		play(s, 1, { kind = "reject" })
+		T.eq(s.phase, "turn")
+		T.eq(s.turn, 1)
+		T.eq(table.find(Estates.getInterruptSeats(s), 2), nil, "one off-turn offer a turn")
+		T.eq(Estates.getView(s, 2).canOffer, false)
+		s.phase = "buy"
+		T.eq(#Estates.getInterruptSeats(s), 0, "only between actions")
+	end)
+
+	T.test("deep review: game length choices", function()
+		local short = Estates.new(4, { rules = { length = "short" } }, T.Random.new(1))
+		local normal = Estates.new(4, nil, T.Random.new(1))
+		local long = Estates.new(4, { rules = { length = "long" } }, T.Random.new(1))
+		local endless = Estates.new(4, { rules = { length = "bankrupt" } }, T.Random.new(1))
+		T.ok(short.maxRounds < normal.maxRounds and normal.maxRounds < long.maxRounds)
+		T.eq(endless.maxRounds, 0)
+		T.eq(Estates.getView(endless, 1).endless, true)
+		local first = Estates.new(3, { rules = { length = "first" } }, T.Random.new(1))
+		first.phase = "debt"
+		first.debt = { amount = 5000, to = nil, why = "test" }
+		Estates.applyMove(first, 1, { kind = "bankrupt" })
+		T.eq(first.phase, "over")
+		T.eq(first.reason, "First bankruptcy: richest player wins")
+	end)
+
+	T.test("deep review: bots counter, swap sets and mortgage to finish a set", function()
+		-- Swap: each holds the street the other needs.
+		local s = Estates.new(2, { botLevel = "medium" }, T.Random.new(1))
+		local maple, willow, birch = posOf("Maple Row"), posOf("Willow Way"), posOf("Birch Avenue")
+		local pebble = posOf("Pebble Lane")
+		local market, fair, regal = posOf("Daisy Court"), posOf("Tulip Terrace"), posOf("Orchid Plaza")
+		s.owner[maple], s.owner[willow], s.owner[regal] = 1, 1, 1
+		s.owner[birch], s.owner[market], s.owner[fair] = 2, 2, 2
+		local move = Estates.chooseBotMove(s, 1, T.Random.new(1))
+		T.eq(move.kind, "offer")
+		T.eq(move.give.props[1], regal, "gives the street that finishes their set")
+		T.eq(move.get.props[1], birch)
+		play(s, 1, move)
+		T.eq(Estates.chooseBotMove(s, 2, T.Random.new(1)).kind, "accept", "a set for a set")
+		-- Mortgage a loose deed to afford the street that finishes a set.
+		local t = Estates.new(2, { botLevel = "medium" }, T.Random.new(1))
+		t.owner[maple], t.owner[willow], t.owner[pebble] = 1, 1, 1
+		t.players[1].cash = 100
+		t.players[1].pos = birch
+		t.phase = "buy"
+		local buy = Estates.chooseBotMove(t, 1, T.Random.new(1))
+		T.eq(buy.kind, "mortgage")
+		T.eq(buy.pos, pebble)
 	end)
 end

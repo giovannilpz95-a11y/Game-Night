@@ -160,4 +160,104 @@ return function(T)
 			T.ok(Checkers.getResult(s) ~= nil, "game should finish")
 		end
 	end)
+
+	local function playOut(s, maxPlies, seed)
+		local rng = T.Random.new(seed)
+		local plies = 0
+		while not Checkers.getResult(s) and plies < maxPlies do
+			local seat = Checkers.getActiveSeats(s)[1]
+			local move = GameModule.chooseBotMove(Checkers, s, seat, rng)
+			T.ok(Checkers.validateMove(s, seat, move), "bot made an illegal move")
+			Checkers.applyMove(s, seat, move)
+			plies += 1
+		end
+		return Checkers.getResult(s)
+	end
+
+	T.test("the hard bot wins two kings against one", function()
+		for i, start in { { { 5, 4 }, { 4, 7 }, { 1, 2 } }, { { 6, 5 }, { 7, 2 }, { 8, 7 } } } do
+			local s = empty("hard")
+			s.board[start[1][1]][start[1][2]] = 3
+			s.board[start[2][1]][start[2][2]] = 3
+			s.board[start[3][1]][start[3][2]] = 4
+			local result = playOut(s, 80, i)
+			T.ok(result ~= nil and result.winners[1] == 1, `start {i}: {result and result.reason or "not finished"}`)
+		end
+	end)
+
+	T.test("the same position three times is a draw", function()
+		local s = empty("medium")
+		s.board[8][1] = 3
+		s.board[1][8] = 4
+		s.board[1][2] = 2 -- a man so light isn't stuck
+		local function go(seat, from, to)
+			if Checkers.getResult(s) then
+				return
+			end
+			local move = { from = from, path = { to } }
+			T.ok(Checkers.validateMove(s, seat, move))
+			Checkers.applyMove(s, seat, move)
+		end
+		for _ = 1, 3 do
+			go(1, { 8, 1 }, { 7, 2 })
+			go(2, { 1, 8 }, { 2, 7 })
+			go(1, { 7, 2 }, { 8, 1 })
+			go(2, { 2, 7 }, { 1, 8 })
+		end
+		local result = Checkers.getResult(s)
+		T.ok(result and result.isDraw, "drawn")
+		T.eq(result.reason, "Threefold repetition")
+	end)
+
+	T.test("offers: undo your own move on their turn, abort at the start, draw cool-down", function()
+		local s = Checkers.new(2)
+		T.eq(Checkers.getView(s, 1).menuActions[1].label, "Abort game")
+		local first = Checkers.getLegalMoves(s, 1)[1]
+		Checkers.applyMove(s, 1, first)
+		-- Dark asks to take back their move while Light thinks: one ply comes off.
+		T.eq(Checkers.getInterruptSeats(s)[1], 1)
+		T.ok(Checkers.validateMove(s, 1, { type = "offer", kind = "takeback" }))
+		Checkers.applyMove(s, 1, { type = "offer", kind = "takeback" })
+		T.eq(Checkers.getActiveSeats(s)[1], 2)
+		Checkers.applyMove(s, 2, { type = "answer", accept = true })
+		T.eq(#s.undo, 0)
+		T.eq(s.turn, 1)
+		-- Abort before the first moves ends with no winner.
+		T.ok(Checkers.validateMove(s, 1, { type = "abort" }))
+		Checkers.applyMove(s, 1, { type = "abort" })
+		T.eq(Checkers.getResult(s).reason, "Game aborted")
+		-- A declined draw offer can't be repeated for a while.
+		local d = Checkers.new(2)
+		for _ = 1, 2 do
+			local seat = d.turn
+			Checkers.applyMove(d, seat, Checkers.getLegalMoves(d, seat)[1])
+		end
+		Checkers.applyMove(d, 1, { type = "offer", kind = "draw" })
+		Checkers.applyMove(d, 2, { type = "answer", accept = false })
+		for _ = 1, 4 do
+			local seat = d.turn
+			Checkers.applyMove(d, seat, Checkers.getLegalMoves(d, seat)[1])
+		end
+		T.eq((Checkers.validateMove(d, 1, { type = "offer", kind = "draw" })), false)
+	end)
+
+	T.test("a takeback takes the crowning stat back too", function()
+		local s = empty("medium")
+		s.board[2][3] = 1
+		s.board[8][1] = 2
+		s.board[7][8] = 2
+		Checkers.applyMove(s, 1, { from = { 2, 3 }, path = { { 1, 2 } } })
+		T.eq(s.matchStats[1].kings, 1)
+		Checkers.applyMove(s, 1, { type = "offer", kind = "takeback" })
+		Checkers.applyMove(s, 2, { type = "answer", accept = true })
+		T.eq(s.matchStats[1].kings, 0)
+	end)
+
+	T.test("taking the last piece says so", function()
+		local s = empty("medium")
+		s.board[5][4] = 1
+		s.board[4][5] = 2
+		Checkers.applyMove(s, 1, { from = { 5, 4 }, path = { { 3, 6 } } })
+		T.eq(Checkers.getResult(s).reason, "All pieces captured")
+	end)
 end

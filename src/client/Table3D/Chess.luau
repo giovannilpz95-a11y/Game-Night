@@ -8,6 +8,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ChessRules = require(ReplicatedStorage.Shared.Games.Chess)
 local Press = require(script.Parent.Parent.UI.Press)
+local PieceView = require(script.Parent.Parent.UI.PieceView)
+local ClockPills = require(script.Parent.Parent.UI.ClockPills)
 
 local Chess = {}
 
@@ -26,6 +28,15 @@ end
 
 function Chess.create(ctx: any)
 	local snapshot: any = nil
+	-- Chess clocks (house rule): both times over the table, under the header.
+	local clocks = if ctx.gui
+		then ClockPills.create({
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 62),
+			Size = UDim2.fromOffset(260, 28),
+			Parent = ctx.gui,
+		})
+		else nil
 	local selected: string? = nil
 	local picker: Frame? = nil
 	local hovered: string? = nil -- the square under the mouse
@@ -147,16 +158,28 @@ function Chess.create(ctx: any)
 		layout.Padding = UDim.new(0, 8)
 		layout.Parent = frame
 		local white = snapshot.yourSeat == 1
-		for _, choice in { { "q", "Q" }, { "r", "R" }, { "b", "B" }, { "n", "N" } } do
+		for _, choice in { { "q", "Q", "Queen" }, { "r", "R", "Rook" }, { "b", "B", "Bishop" }, { "n", "N", "Knight" } } do
 			local button = Instance.new("TextButton")
 			button.Size = UDim2.fromOffset(52, 56)
-			button.BackgroundColor3 = Color3.fromRGB(240, 222, 190)
-			-- Plain letters: Roblox fonts have no chess glyphs.
-			button.Text = choice[2]
+			-- The piece itself (its 3D model in a viewport), with the letter as a fallback
+			-- when the models aren't there (Roblox fonts have no chess glyphs).
+			button.Text = ""
 			button.Font = Enum.Font.GothamBlack
 			button.TextScaled = true
-			button.BackgroundColor3 = if white then Color3.fromRGB(250, 246, 236) else Color3.fromRGB(40, 36, 44)
-			button.TextColor3 = if white then Color3.fromRGB(40, 36, 44) else Color3.fromRGB(250, 246, 236)
+			button.BackgroundColor3 = Color3.fromRGB(240, 222, 190)
+			button.TextColor3 = Color3.fromRGB(40, 36, 44)
+			local icon = PieceView.create("Chess", `{choice[3]}_{if white then "White" else "Black"}`, function()
+				local letter = Instance.new("TextLabel")
+				letter.BackgroundTransparency = 1
+				letter.Size = UDim2.fromScale(1, 1)
+				letter.Font = Enum.Font.GothamBlack
+				letter.TextScaled = true
+				letter.Text = choice[2]
+				letter.TextColor3 = Color3.fromRGB(40, 36, 44)
+				return letter
+			end, { yaw = if choice[1] == "n" then (if white then -120 else 60) else nil })
+			icon.Active = false
+			icon.Parent = button
 			Instance.new("UICorner").Parent = button
 			button.Parent = frame
 			Press.connect(button, function()
@@ -176,6 +199,9 @@ function Chess.create(ctx: any)
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
+			if clocks then
+				clocks.set(snapshot)
+			end
 			if not myTurn() then
 				selected = nil
 				closePicker()
@@ -255,7 +281,12 @@ function Chess.create(ctx: any)
 			hovered = if r and c then squareOf(r :: number, c :: number) else nil
 			return lift() and hovered ~= selected
 		end,
-		destroy = closePicker,
+		destroy = function()
+			closePicker()
+			if clocks then
+				clocks.destroy()
+			end
+		end,
 	}
 end
 

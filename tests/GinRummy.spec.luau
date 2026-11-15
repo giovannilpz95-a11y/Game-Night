@@ -83,7 +83,7 @@ return function(T)
 		T.eq(s.scores[1], 31)
 		T.eq(s.phase, "reveal")
 		GinRummy.onTimeout(s)
-		T.eq(s.phase, "draw")
+		T.eq(s.phase, "upcard")
 		T.eq(#s.hands[1], 10)
 		T.eq(s.turn, 2, "dealer swaps")
 	end)
@@ -130,5 +130,108 @@ return function(T)
 				T.ok(GinRummy.getResult(s) ~= nil, `{level} game should finish`)
 			end
 		end
+	end)
+
+	T.test("the first upcard: non-dealer, then dealer may take it; both pass means stock only", function()
+		local s = GinRummy.new(2, nil, T.Random.new(5))
+		T.eq(s.phase, "upcard")
+		local first = s.turn
+		T.eq(first, 3 - s.dealer)
+		T.eq((GinRummy.validateMove(s, first, { kind = "draw", from = "stock" })), false, "decide on the upcard first")
+		T.eq((GinRummy.validateMove(s, first, { kind = "upcard", take = "yes" })), false)
+		T.eq((GinRummy.validateMove(s, s.dealer, { kind = "upcard", take = true })), false, "not the dealer's turn yet")
+		apply(s, first, { kind = "upcard", take = false })
+		T.eq(s.turn, s.dealer)
+		T.eq(s.phase, "upcard")
+		apply(s, s.dealer, { kind = "upcard", take = false })
+		T.eq(s.turn, first)
+		T.eq(s.phase, "draw")
+		T.eq((GinRummy.validateMove(s, first, { kind = "draw", from = "discard" })), false, "both passed: stock only")
+		T.eq(#GinRummy.getLegalMoves(s, first), 1)
+		apply(s, first, { kind = "draw", from = "stock" })
+		T.eq(s.stockOnly, false)
+
+		-- Taking it: it's your card, and you discard next (not that card).
+		local t = GinRummy.new(2, nil, T.Random.new(6))
+		local up = t.discard[#t.discard]
+		local who = t.turn
+		apply(t, who, { kind = "upcard", take = true })
+		T.eq(t.phase, "discard")
+		T.ok(table.find(t.hands[who], up) ~= nil)
+		T.eq((GinRummy.validateMove(t, who, { kind = "discard", card = up })), false)
+	end)
+
+	T.test("after a wash the same dealer deals again", function()
+		local s = setup({ filler(10), filler(10) }, { C(13, D) }, { C(5, D), C(6, D), C(7, D) })
+		local dealer = s.dealer
+		apply(s, 1, { kind = "draw", from = "stock" })
+		apply(s, 1, { kind = "discard", card = s.hands[1][1] })
+		T.eq(s.showdown.kind, "wash")
+		GinRummy.onTimeout(s)
+		T.eq(s.dealer, dealer)
+	end)
+
+	T.test("the hand limit grows with the target", function()
+		T.eq(GinRummy.handLimit(50), 15)
+		T.eq(GinRummy.handLimit(100), 25)
+		T.eq(GinRummy.handLimit(150), 35)
+		local s = GinRummy.new(2, { rules = { target = 150 } }, T.Random.new(1))
+		T.eq(s.maxHands, 35)
+	end)
+
+	T.test("Oklahoma: a spade upcard doubles the hand", function()
+		local knocker = { C(1, S), C(2, S), C(3, S), C(9, H), C(9, D), C(9, CL), C(5, H), C(6, H), C(7, H), C(4, D) }
+		local defender = { C(8, H), C(9, S), C(10, D), C(10, CL), C(10, H), C(2, D), C(3, CL), C(13, D), C(13, CL), C(12, S) }
+		local s = setup({ knocker, defender }, { C(6, CL) }, filler(20))
+		s.doubled = true
+		apply(s, 1, { kind = "draw", from = "stock" })
+		apply(s, 1, { kind = "knock", card = s.hands[1][11] })
+		T.eq(s.scores[1], 62, "31 doubled")
+		T.eq(s.showdown.doubled, true)
+		-- And the deal sets it from the upcard's suit.
+		for seed = 1, 20 do
+			local o = GinRummy.new(2, { rules = { oklahoma = true } }, T.Random.new(seed))
+			T.eq(o.doubled, PlayingCards.suit(o.discard[1]) == S)
+		end
+	end)
+
+	T.test("classic bonuses: game bonus, 25 per hand won, shutout doubles", function()
+		local gin = { C(1, S), C(2, S), C(3, S), C(9, H), C(9, D), C(9, CL), C(5, H), C(6, H), C(7, H), C(8, H) }
+		local s = setup({ gin, { C(2, D), C(3, CL), C(4, H), C(10, D), C(10, CL), C(10, H), C(10, S), C(13, S), C(12, CL), C(11, D) } }, { C(13, D) }, filler(20))
+		s.scores = { 40, 0 }
+		s.handsWon = { 2, 0 }
+		apply(s, 1, { kind = "draw", from = "stock" })
+		apply(s, 1, { kind = "knock", card = s.hands[1][11] })
+		T.ok(s.over)
+		local f = s.final
+		T.eq(f[1].points, 104)
+		T.eq(f[1].boxes, 75)
+		T.eq(f[1].shutout, true)
+		T.eq(f[1].total, (104 + 75) * 2 + 100)
+		T.eq(f[2].total, 0)
+		T.eq(GinRummy.getResult(s).winners[1], 1)
+		T.ok(GinRummy.getView(s, 2).final ~= nil)
+		-- Off: no tally.
+		local o = GinRummy.new(2, { rules = { bonuses = false } }, T.Random.new(1))
+		T.eq(o.bonuses, false)
+	end)
+
+	T.test("the knocker's melds are laid out to block lay offs", function()
+		-- The 7S can sit in the run (4-5-6-7S + 7H 7D 7C) or in the set (4-5-6S + four 7s):
+		-- no deadwood either way. Holding the 8S, the defender could lay off on the long run,
+		-- so the knocker shows the four 7s and the short run.
+		local options = Melds.bestOptions({ C(4, S), C(5, S), C(6, S), C(7, S), C(7, H), C(7, D), C(7, CL) })
+		T.ok(#options >= 2, "several equal arrangements")
+		for _, o in options do
+			T.eq(o.value, 0)
+		end
+		local knocker = { C(4, S), C(5, S), C(6, S), C(7, S), C(7, H), C(7, D), C(7, CL), C(1, D), C(2, CL), C(1, CL) }
+		local defender = { C(8, S), C(10, D), C(10, CL), C(10, H), C(2, D), C(3, CL), C(13, D), C(13, CL), C(12, S), C(11, H) }
+		local s = setup({ knocker, defender }, { C(6, CL) }, { C(9, H), C(12, D), C(9, D) })
+		apply(s, 1, { kind = "draw", from = "stock" }) -- the 9 of diamonds
+		apply(s, 1, { kind = "knock", card = C(9, D) })
+		local d = s.showdown.hands["2"]
+		T.eq(#d.layoffs, 0, "the 8S has nowhere to go")
+		T.eq(s.showdown.hands["1"].value, 4)
 	end)
 end

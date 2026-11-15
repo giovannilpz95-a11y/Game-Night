@@ -72,6 +72,11 @@ Sounds.Effects = {
 	flip = asset(9119709616, PSE, "Swish Sweetener 29 (SFX)", 0.45, { speed = 1.6, vary = 0.05 }), -- a secret card turns face up
 	draw = asset(9118104432, PSE, "Record Sleeve Pulled Out Back In 22 (SFX)", 0.45, { speed = 1.3, vary = 0.05, varyVolume = 0.1, streak = 0.45, streakCap = 5 }), -- a card off the deck
 	piece = asset(9118621947, PSE, "Rock Impacts 2 (SFX)", 0.5, { speed = 1.35, vary = 0.08, varyVolume = 0.12 }), -- a piece set down on the board
+	-- chess moves, like chess.com and Lichess (client/Renderers/Chess)
+	chessCapture = asset(9118621947, PSE, "Rock Impacts 2 (SFX)", 0.65, { speed = 1.0, vary = 0.05 }), -- a heavier knock
+	chessCheck = builtIn("electronicpingshort.wav", 0.4, { speed = 1.35, notes = { 0, 3 }, noteGap = 0.07 }),
+	chessCastle = asset(9118621947, PSE, "Rock Impacts 2 (SFX)", 0.5, { speed = 1.3, notes = { 0, 2 }, noteGap = 0.12 }), -- king, then rook
+	chessPromote = builtIn("electronicpingshort.wav", 0.45, { speed = 1.1, notes = { 0, 4, 7, 12 }, noteGap = 0.06 }),
 	lift = asset(9113929265, PSE, "Coral On Granite 7 (SFX)", 0.2, { speed = 1.5, vary = 0.08 }), -- a piece picked up
 	dice = asset(9114073627, PSE, "Dice Roll Roll On Pavement 4 (SFX)", 0.6, { vary = 0.05, varyVolume = 0.1 }),
 	slap = asset(9114677797, PSE, "Group Clapping Rhythmic Constant Hits 99 (SFX)", 0.6, { speed = 0.9, vary = 0.06 }),
