@@ -354,7 +354,7 @@ local CALLOUT_TOP = 0.17 -- the lane's first slot, a fraction of the screen's he
 local CALLOUT_STEP = 50 -- pixels between stacked call-outs
 local laneUsed: { [number]: boolean } = {}
 function HudKit.callout(parent: Instance, text: string, color: Color3?, y: number?)
-	local topLane = Focus.get() ~= nil and (y or 0.4) < 0.6
+	local topLane = Focus.get() ~= nil and (y or 0.4) < 0.6 and not Kit.inPreview(parent)
 	local slot: number? = nil
 	local home: UDim2
 	local size: UDim2

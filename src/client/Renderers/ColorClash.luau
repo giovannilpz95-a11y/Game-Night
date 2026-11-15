@@ -385,10 +385,11 @@ function ColorClash.create(container: Frame, sendMove: (any) -> ())
 	end, { Size = UDim2.new(0, 190, 1, 0), BackgroundColor3 = Color3.fromRGB(150, 90, 230), TextColor3 = Color3.new(1, 1, 1), LayoutOrder = 3, Visible = false, Parent = actions })
 	local shownAction: string? = nil
 	local shownJump: string? = nil
-	-- Call-outs float over the middle of the whole screen (in Table view this board is
-	-- only the strip along the bottom).
+	-- Call-outs float over the whole screen (in Table view this board is only the strip
+	-- along the bottom). In a game picker preview they stay inside the tile.
 	local function say(text: string, color: Color3?, y: number?)
-		HudKit.callout(container:FindFirstAncestorWhichIsA("ScreenGui") or root, text, color, y)
+		local screen = if Kit.inPreview(container) then nil else container:FindFirstAncestorWhichIsA("ScreenGui")
+		HudKit.callout(screen or root, text, color, y)
 	end
 	Kit.onPress(drawButton, function()
 		if drawAction.Visible then

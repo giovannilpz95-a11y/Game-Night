@@ -163,8 +163,8 @@ function Cards.messyPile(folder: Instance, boardCF: CFrame, layout: Scene.Layout
 end
 
 -- A speech bubble over a seat, as if that player said it out loud ("Go fish!", "I doubt
--- it!", "Snap!"). It floats above where their head is, behind their side of the table, and
--- stays until the scene redraws without it (the next action). Seen by the whole room.
+-- it!", "Snap!"). It floats above where their head is, behind their side of the table, for
+-- a couple of seconds (client/Table3D/Speech fades it). Seen by the whole room.
 function Cards.speech(folder: Instance, boardCF: CFrame, layout: Scene.Layout, seat: number?, text: string, color: Color3?)
 	local info = seat and layout.seats[seat]
 	if not info then
@@ -186,6 +186,12 @@ function Cards.speech(folder: Instance, boardCF: CFrame, layout: Scene.Layout, s
 	pad.Parent = label
 	local gui = label.Parent :: BillboardGui
 	gui.MaxDistance = 60
+	-- Each screen shows it for a moment and fades it (client/Table3D/Speech): the board
+	-- is redrawn on every move, and a bubble that stayed up hung over the table in the
+	-- middle of a seated player's view.
+	local holder = gui.Parent :: Instance
+	holder:SetAttribute("SpeechKey", `{seat}|{text}`)
+	holder:AddTag("GameNightSpeech")
 end
 
 -- "Aces", "7s", "Kings": how a rank is said out loud.

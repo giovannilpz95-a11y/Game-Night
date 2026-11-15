@@ -171,7 +171,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 			end
 			-- A vote just picked the category: say so.
 			if view.phase == "question" and wasPick and view.pickedCategory then
-				HudKit.callout(container:FindFirstAncestorWhichIsA("ScreenGui") or root, `🎯 {string.upper(view.pickedCategory)}!`, Theme.Accent)
+				HudKit.callout((if Kit.inPreview(container) then nil else container:FindFirstAncestorWhichIsA("ScreenGui")) or root, `🎯 {string.upper(view.pickedCategory)}!`, Theme.Accent)
 			end
 			wasPick = view.phase == "pick"
 		end
