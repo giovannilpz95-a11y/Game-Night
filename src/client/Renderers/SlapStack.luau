@@ -1,7 +1,8 @@
 -- Slap Stack table: players along the top, the middle pile with its top three cards
 -- fanned out, a big SLAP button beside your pile at the bottom (Space also slaps; it sits
 -- in the strip Table view keeps on screen) and FLIP on your turn (F or Enter flips).
--- Out of cards? The SLAP button stays while you can still slap back in.
+-- Out of cards? The SLAP button stays while you can still slap back in. In Table view a
+-- tap on the 3D middle pile slaps too.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -218,7 +219,26 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	-- Table view: tapping the 3D middle pile slaps (Table3D/SceneTap). Always tappable
+	-- while you may slap, so the hover glow never gives a match away.
+	local function maySlap(): boolean
+		if not snapshot or not snapshot.yourSeat or snapshot.result then
+			return false
+		end
+		local view = snapshot.view
+		local mine = view.pileCounts[snapshot.yourSeat] or 0
+		return (view.centerCount or 0) > 0 and (mine > 0 or view.canSlapIn == true)
+	end
+
 	return {
+		tapTable = function(id: any)
+			if id == "pile" and maySlap() then
+				sendMove({ kind = "slap" })
+			end
+		end,
+		canTap = function(id: any): boolean
+			return id == "pile" and maySlap()
+		end,
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
 			render()

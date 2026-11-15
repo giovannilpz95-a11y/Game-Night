@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayingCards = require(ReplicatedStorage.Shared.Cards.PlayingCards)
 local Scene = require(script.Parent.Parent.Scene)
 local Cards = require(script.Parent._Cards)
+local Models = require(script.Parent.Parent.Models)
 
 local SlapStack = {}
 
@@ -43,6 +44,12 @@ function SlapStack.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 		Cards.messyPile(folder, boardCF, layout, Cards.center(boardCF, 0), history.items, function(id)
 			return Scene.playingFront(PlayingCards, id)
 		end)
+		-- Tap or click the middle pile to slap (Table3D/SceneTap -> renderer.tapTable).
+		local pad = Models.block(folder, "SlapPad", Vector3.new(2.6, 0.5, 2.6), Cards.center(boardCF, 0) * CFrame.new(0, 0.25, 0), Color3.new(1, 1, 1))
+		pad.Transparency = 1
+		pad.CanCollide = false
+		pad.CanQuery = true
+		pad:SetAttribute("TapId", "pile")
 	end, Color3.fromRGB(130, 46, 52))
 end
 
