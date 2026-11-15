@@ -158,6 +158,9 @@ local function broadcast(entry: Entry)
 				local snapshot = snapshotFor(entry, index, seat.userId)
 				snapshot.turnEndsAt = entry.turnEndsAt
 				snapshot.timed = entry.timerId ~= nil
+				-- You may move out of turn right now (a snap, a slap, a jump-in): the how-to
+				-- card steps aside for that too.
+				snapshot.canInterrupt = table.find(entry.match:getInterruptSeats(), index) ~= nil
 				snapshot.table = entry.table
 				snapshot.series = Series.forSeats(entry.series, entry.match.seats)
 				matchStateRemote:FireClient(player, snapshot)

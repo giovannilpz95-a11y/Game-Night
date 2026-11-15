@@ -35,13 +35,18 @@ function Spoons.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 			if not out[tostring(seat)] then
 				Scene.hand(folder, boardCF, layout, seat, handCounts[seat] or 4)
 				-- Free passing: cards waiting for this player, face down in front of them.
+				-- Beside the hand, near the player's edge: clear of the spoons in the middle.
 				if (queues[seat] or 0) > 0 then
-					Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 1.5, 0.6), queues[seat], false)
+					Scene.pile(folder, Scene.seatSpot(boardCF, layout, seat, 1.5, 1.3), queues[seat], true)
 				end
 			end
 			if holders[tostring(seat)] then
 				spoon(folder, Scene.seatSpot(boardCF, layout, seat, 2.2))
 			end
+		end
+		-- The dealer's deck, on the dealer's other side.
+		if view.dealer and (view.deckCount or 0) > 0 and not out[tostring(view.dealer)] then
+			Scene.pile(folder, Scene.seatSpot(boardCF, layout, view.dealer, 1.5, -1.3), view.deckCount, true)
 		end
 		-- The reveal: the four of a kind that started it, face up in the middle.
 		if view.phase ~= "pass" and view.revealHand then

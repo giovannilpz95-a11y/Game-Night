@@ -74,6 +74,7 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 	Kit.new("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 30, Parent = grabButton })
 	Kit.new("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), Parent = grabButton })
 	local grabPulse = Kit.new("UIScale", { Parent = grabButton })
+	local hotColor, hotText = grabButton.BackgroundColor3, grabButton.TextColor3
 	local keyConnection = UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
 		if processed or not grabButton.Visible then
 			return
@@ -214,8 +215,12 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			and (view.phase == "scramble" or view.phase == "pass")
 		local hot = view.phase == "scramble" or view.hasFour
 		grabButton.Visible = canGrab and snapshot.result == nil
-		grabButton.TextTransparency = if hot or view.spoonGone then 0 else 0.35
-		grabButton.BackgroundTransparency = if hot then 0 else 0.35
+		-- Never washed out: a calm, readable button until it's a sure thing, then it lights up.
+		local lit = hot or view.spoonGone
+		grabButton.TextTransparency = 0
+		grabButton.BackgroundTransparency = 0
+		grabButton.BackgroundColor3 = if lit then hotColor else Theme.PanelLight
+		grabButton.TextColor3 = if lit then hotText else Theme.Text
 		-- A jammed round was dealt again (see Spoons.MAX_PASSES).
 		if shownFreshDeals ~= nil and (view.freshDeals or 0) > shownFreshDeals then
 			CardFx.pop("Nobody got four! Fresh deal", Theme.Accent)
@@ -238,6 +243,17 @@ function Spoons.create(container: Frame, sendMove: (any) -> ())
 			news = banner.Text
 		elseif view.phase == "pass" and view.youHaveSpoon then
 			news = banner.Text
+		end
+		-- Table view: how many cards wait for you (free passing) and the dealer's deck.
+		if news == "" and docked and view.phase == "pass" and not view.youAreOut then
+			local bits = {}
+			if (view.waitingForYou or 0) > 0 then
+				table.insert(bits, `{view.waitingForYou} waiting for you`)
+			end
+			if view.deckCount then
+				table.insert(bits, `Deck {view.deckCount}`)
+			end
+			news = table.concat(bits, " · ")
 		end
 		dockNews.Text = news
 		dockNews.TextColor3 = banner.TextColor3

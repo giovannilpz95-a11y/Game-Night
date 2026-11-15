@@ -245,9 +245,9 @@ local function placeBadges()
 	local inset = GuiService:GetGuiInset()
 	for i, button in assigned do
 		local label = badge(i)
-		local screen = button:FindFirstAncestorWhichIsA("ScreenGui")
-		local offset = if screen and not screen.IgnoreGuiInset then inset else Vector2.zero
-		local at = button.AbsolutePosition + offset
+		-- AbsolutePosition is measured from under Roblox's top bar even in an IgnoreGuiInset
+		-- screen like this one (a Studio check found every number a top bar too high).
+		local at = button.AbsolutePosition + inset
 		label.Position = UDim2.fromOffset(at.X + 4, at.Y + 4)
 		label.Visible = button.Parent ~= nil
 	end

@@ -451,7 +451,8 @@ function OldMaid.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, state.seatCount do
 		local n = #state.hands[seat]
-		info[seat] = if n == 0 then "Safe!" else `{n} cards · {#state.pairs[seat]} pairs`
+		local p = #state.pairs[seat]
+		info[seat] = if n == 0 then "Safe!" else `{n} {if n == 1 then "card" else "cards"} · {p} {if p == 1 then "pair" else "pairs"}`
 		if state.goal > 0 then
 			info[seat] = `{state.points[seat]} pts · ` .. info[seat]
 		end

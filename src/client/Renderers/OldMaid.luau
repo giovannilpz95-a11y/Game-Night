@@ -19,6 +19,7 @@ local MAID_RED = Color3.fromRGB(235, 70, 90)
 function OldMaid.create(container: Frame, sendMove: (any) -> ())
 	local snapshot: any = nil
 	local ui = CardTable.layout(container)
+	local mineRow: Frame? = nil -- Table view: your own cards while you pick from a neighbour
 	local arrivals = CardFx.arrivals()
 	local draws = CardFx.watch()
 	local shownShuffles: number? = nil
@@ -183,6 +184,19 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 
+		if mineRow then
+			mineRow:Destroy()
+			mineRow = nil
+		end
+		if myTurn and ui.docked and #(view.hand or {}) > 0 then
+			-- Table view: your own cards stay in sight, small, over the cards you pick from.
+			mineRow = CardTable.cardRow(ui.root, view.hand, {
+				AnchorPoint = Vector2.new(0.5, 1),
+				Position = UDim2.new(0.5, 0, 0.545, -4),
+				Size = UDim2.new(0.5, 0, 0.1, 0),
+				ZIndex = 4,
+			})
+		end
 		if myTurn then
 			-- The target's cards, face down, where your hand usually is: tap one to take it.
 			local backs = {}

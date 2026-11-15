@@ -328,6 +328,12 @@ function Speed.getView(state, seat: number?)
 		dealOver = GameModule.copy(state.dealOver),
 		wrap = state.wrap,
 		sameRank = state.sameRank,
+		-- The header line (Speed has no turns: both play at once).
+		status = if state.winner then nil
+			elseif state.countdown then "Get ready..."
+			elseif state.dealOver then "Deal over"
+			elseif state.stuck then "Nobody can play: new center cards"
+			else "SPEED! Both play at once",
 	}
 end
 

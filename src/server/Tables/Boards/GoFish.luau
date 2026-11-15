@@ -19,11 +19,23 @@ end
 
 function GoFish.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	local rng = Random.new(7) -- same messy pond every redraw
+	-- Each card lies just above the cards it overlaps (not above every card before it),
+	-- so the pond stays a low, flat spread instead of a tower.
 	local spots = {}
+	local placed: { Vector2 } = {}
+	local levels: { number } = {}
 	for i = 1, 52 do
 		local a = rng:NextNumber() * math.pi * 2
 		local d = math.sqrt(rng:NextNumber()) * 1.3
-		spots[i] = CFrame.new(math.cos(a) * d, i * Scene.STACK, math.sin(a) * d) * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0)
+		local at = Vector2.new(math.cos(a) * d, math.sin(a) * d)
+		local level = 1
+		for j, other in placed do
+			if (other - at).Magnitude < Scene.CARD_H then
+				level = math.max(level, levels[j] + 1)
+			end
+		end
+		placed[i], levels[i] = at, level
+		spots[i] = CFrame.new(at.X, level * Scene.STACK, at.Y) * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0)
 	end
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
 		for seat, count in view.handCounts or {} do

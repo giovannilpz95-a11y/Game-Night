@@ -714,8 +714,12 @@ local function tuckCardIfNeeded()
 	if type(snap) ~= "table" or snap.matchId ~= cardShownFor or cardTuckedFor == snap.matchId or not rulesPanel.cardOpen() then
 		return
 	end
+	-- The game needs you on a clock (a phase timer or your turn clock), or you may jump in
+	-- out of turn (Snap, Slap Stack, Spoons): the card steps aside after a short read.
 	local seat = snap.yourSeat
-	if not (snap.timed and seat and type(snap.activeSeats) == "table" and table.find(snap.activeSeats, seat)) then
+	local mine = seat ~= nil and type(snap.activeSeats) == "table" and table.find(snap.activeSeats, seat) ~= nil
+	local clocked = snap.timed or snap.turnEndsAt ~= nil
+	if not ((mine and clocked) or snap.canInterrupt == true) then
 		return
 	end
 	local waited = os.clock() - cardOpenedAt
