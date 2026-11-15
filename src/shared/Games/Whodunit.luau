@@ -18,7 +18,9 @@
 --   2. suggest  { kind = "suggest", suspect = 1..6, item = 1..6 }   (the room is where you are)
 --               The named suspect's pawn and the item are moved into your room. Going round
 --               the table, the first seat holding any of the three cards shows you one in
---               secret. If they hold just one, it's shown for them.
+--               secret. They always pick it themselves, even with only one match, so the
+--               table can't tell how many they hold. A suggestion is optional: { kind = "end" }
+--               in this step skips it.
 --   3. show     { kind = "show", card = id }   (the seat that must show picks which card)
 --   4. after    { kind = "end" }   or accuse.
 -- Any time on your turn (except while someone is showing):
@@ -30,9 +32,15 @@
 -- like most app versions), openShow (a card shown to answer a suggestion is shown to
 -- everyone: an easier, faster family game), leftover (on by default: with 4 or 5 seats
 -- the cards that don't deal evenly lie face up for everyone, like the official rules and
--- Clue by Marmalade, instead of some hands getting one more).
+-- Clue by Marmalade, instead of some hands getting one more), stay (stay in your room and
+-- suggest again, like the 2023 rules).
+--
+-- The first seat is random (2023 rules).
 
 local GameModule = require(script.Parent.Parent.GameModule)
+
+local solvedCounts: (any) -> { number }
+local deducedFor: (any, number) -> { any }
 
 local Whodunit = {}
 
@@ -41,7 +49,7 @@ Whodunit.minSeats = 3
 Whodunit.maxSeats = 6
 
 local TURN_LIMIT = 300
-local LOG_IN_VIEW = 40
+local LOG_IN_VIEW = 120
 
 -- Theme data. Swap this table to ship a themed mansion (names only; art is client side).
 Whodunit.theme = {
@@ -173,6 +181,9 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 		table.sort(hands[seat])
 	end
 
+	-- 2023 rules: a random first player (seat 1 is usually the host).
+	local first = random:NextInteger(1, seatCount)
+
 	local canStay, eliminated = {}, {}
 	for seat = 1, seatCount do
 		canStay[seat] = true -- the first turn may stay in the start room
@@ -190,7 +201,7 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 		itemRoom = table.clone(ITEM_START),
 		canStay = canStay,
 		eliminated = eliminated,
-		turn = 1,
+		turn = first,
 		phase = "move",
 		suggestion = nil, -- the log entry of this turn's suggestion
 		log = {}, -- every suggestion: { seat, suspect, item, room, passed = { seat }, shower?, card? }
@@ -202,6 +213,7 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 		lastAction = nil,
 		anyRoom = options ~= nil and type(options.rules) == "table" and options.rules.anyRoom == true,
 		openShow = options ~= nil and type(options.rules) == "table" and options.rules.openShow == true,
+		stay = options ~= nil and type(options.rules) == "table" and options.rules.stay == true,
 	}
 end
 
@@ -237,7 +249,7 @@ local function legalRooms(state, seat: number): { number }
 			end
 		end
 	end
-	if state.canStay[seat] then
+	if state.canStay[seat] or state.stay then
 		table.insert(out, 1, here)
 	end
 	return out
@@ -380,8 +392,9 @@ function Whodunit.validateMove(state, seat: number, move: any): (boolean, string
 		end
 		return true
 	elseif kind == "end" then
-		if state.phase ~= "after" then
-			return false, "Make a suggestion first"
+		-- A suggestion is optional (it gives information away too); moving isn't.
+		if state.phase == "move" then
+			return false, "Pick a room first"
 		end
 		return true
 	end
@@ -453,17 +466,51 @@ function Whodunit.applyMove(state, seat: number, move: any)
 		local other = (seat - 1 + step) % state.seatCount + 1
 		local matches = matchingCards(state, other, entry)
 		if #matches > 0 then
+			-- Always their pick, even with one match: skipping the step for a single card
+			-- told the whole table how many matches they held.
 			entry.shower = other
-			if #matches == 1 then
-				finishShow(state, matches[1])
-			else
-				state.phase = "show"
-			end
+			state.phase = "show"
 			return
 		end
 		table.insert(entry.passed, other)
 	end
 	state.phase = "after" -- nobody could disprove it
+end
+
+-- { card, holder } for every card `seat` can pin to one holder (hard deduction).
+function deducedFor(state, seat: number): { any }
+	local know = Whodunit.deduce(state, seat, "hard")
+	local out = {}
+	for id = 1, #cards do
+		local holder = nil
+		local count = 0
+		for h = 1, state.seatCount + 1 do
+			if know.possible[id][h] then
+				count += 1
+				holder = h
+			end
+		end
+		if count == 1 then
+			table.insert(out, { card = id, holder = holder })
+		end
+	end
+	return out
+end
+
+-- How many of the three case-file cards each seat could pin down from what it saw.
+function solvedCounts(state): { number }
+	local out = {}
+	for seat = 1, state.seatCount do
+		local know = Whodunit.deduce(state, seat, "hard")
+		local count = 0
+		for _, category in { "suspect", "item", "room" } do
+			if #know.candidates[category] == 1 then
+				count += 1
+			end
+		end
+		out[seat] = count
+	end
+	return out
 end
 
 function Whodunit.getResult(state): GameModule.Result?
@@ -559,7 +606,16 @@ function Whodunit.getView(state, seat: number?)
 		showOptions = if showing then matchingCards(state, mySeat :: number, state.suggestion) else {},
 		lastAction = GameModule.copy(state.lastAction),
 		solution = if over then GameModule.copy(state.solution) else nil,
+		-- At the end every hand is shown, with how many case-file cards each player had
+		-- worked out (solvedCount, from what they were allowed to know).
+		hands = if over then GameModule.copy(state.hands) else nil,
+		solvedCount = if over then solvedCounts(state) else nil,
 		winner = state.winner,
+		canSkip = myTurn and state.phase == "suggest",
+		openShow = state.openShow,
+		-- Smart notes (an optional switch on the client): every card whose holder you can
+		-- work out from what you've been allowed to see. holder = seatCount + 1 is the case file.
+		deduced = if mySeat and not over then deducedFor(state, mySeat) else nil,
 	}
 end
 
@@ -570,6 +626,11 @@ function Whodunit.getSeatInfo(state): { [number]: string }
 		info[seat] = if state.eliminated[seat] then `{where} · out` else where
 	end
 	return info
+end
+
+-- A turn for the AFK clock: one turn per player, plus the showing step (someone else's).
+function Whodunit.getTurnKey(state): any
+	return if state.phase == "show" then `{state.turns}:show` else state.turns
 end
 
 function Whodunit.getBotDelay(state, seat: number, rng: Random): number
@@ -749,6 +810,8 @@ end
 
 -- Bots ------------------------------------------------------------------------------
 
+local focusedSuggestion: (any, number, any, Random) -> any?
+
 local function pick(list: { any }, rng: Random): any
 	return list[rng:NextInteger(1, #list)]
 end
@@ -816,6 +879,49 @@ local function chooseNamed(state, seat: number, know, category: string, rng: Ran
 	return rng:NextInteger(1, if category == "suspect" then SUSPECTS else ITEMS)
 end
 
+-- Hard bots test one unknown at a time: a suggestion where exactly one of the three cards
+-- could still be in the case file, the other two from their own hand when possible (so
+-- whatever is shown answers about that one card).
+function focusedSuggestion(state, seat: number, know, rng: Random): any?
+	local room = roomOf(state, seat)
+	local isCandidate = {}
+	for _, category in { "suspect", "item", "room" } do
+		for _, id in know.candidates[category] do
+			isCandidate[id] = true
+		end
+	end
+	local mine = {}
+	for _, id in state.hands[seat] do
+		mine[id] = true
+	end
+	local best, bestScore = {}, -1
+	for su = 1, SUSPECTS do
+		for it = 1, ITEMS do
+			local ids = { suspectCard(su), itemCard(it), roomCard(room) }
+			local unknown, own = 0, 0
+			for _, id in ids do
+				if isCandidate[id] then
+					unknown += 1
+				elseif mine[id] then
+					own += 1
+				end
+			end
+			if unknown == 1 then
+				if own > bestScore then
+					best, bestScore = { { su, it } }, own
+				elseif own == bestScore then
+					table.insert(best, { su, it })
+				end
+			end
+		end
+	end
+	if #best == 0 then
+		return nil
+	end
+	local choice = pick(best, rng)
+	return { kind = "suggest", suspect = choice[1], item = choice[2] }
+end
+
 function Whodunit.chooseBotMove(state, seat: number, rng: Random): any?
 	if isOver(state) then
 		return nil
@@ -847,7 +953,7 @@ function Whodunit.chooseBotMove(state, seat: number, rng: Random): any?
 
 	if state.phase == "move" then
 		local options = legalRooms(state, seat)
-		if state.botLevel == "easy" and rng:NextNumber() < 0.5 then
+		if state.botLevel == "easy" and rng:NextNumber() < 0.25 then
 			return { kind = "move", room = pick(options, rng) }
 		end
 		-- Head for the nearest room that might be the scene.
@@ -870,6 +976,12 @@ function Whodunit.chooseBotMove(state, seat: number, rng: Random): any?
 		end
 		return { kind = "move", room = pick(if #best > 0 then best else options, rng) }
 	elseif state.phase == "suggest" then
+		if state.botLevel == "hard" then
+			local focused = focusedSuggestion(state, seat, know, rng)
+			if focused then
+				return focused
+			end
+		end
 		return {
 			kind = "suggest",
 			suspect = chooseNamed(state, seat, know, "suspect", rng),

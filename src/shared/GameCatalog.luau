@@ -29,6 +29,7 @@ export type Entry = {
 	serverData: { [string]: string }?, -- options key -> module in ServerScriptService Data (answers clients must never see)
 }
 
+local Config = require(script.Parent.Config)
 local Toggle = require(script.Parent.HouseRules).Toggle
 
 local entries: { Entry } = {
@@ -151,7 +152,10 @@ local entries: { Entry } = {
 		-- Off for launch (Giovanni, 2026-11-04). The game is built and tested; set this to
 		-- "ready" to turn it back on.
 		-- Held from launch: freehand drawing counts as "free-form user creation", which
-		-- Roblox limits to 16+ for the whole experience. See docs/Launch.md.
+		-- Roblox limits to 16+ for the whole experience. With Config.SketchFreeDraw = false
+		-- (the default) every table is stamps only (pre-made stamps, no pen). Turn this on
+		-- only after Roblox confirms in writing that stamps aren't free-form creation.
+		-- See docs/Launch.md blocker 1.
 		status = "soon",
 		coin = "party",
 		typicalMinutes = 10,
@@ -173,6 +177,7 @@ local entries: { Entry } = {
 			},
 			{
 				key = "tools",
+				freeDrawOnly = true, -- only where Config.SketchFreeDraw is on (else stamps only)
 				name = "Drawing tools",
 				hint = "Shapes only: lines, boxes and ovals, no free pen.",
 				choices = { { label = "Pen and shapes", value = "all" }, { label = "Shapes only", value = "shapes" } },
@@ -339,7 +344,7 @@ local entries: { Entry } = {
 		description = "Someone swiped the Golden Trophy. Find who, with what, and where.",
 		minSeats = 3,
 		maxSeats = 6,
-		turnSeconds = 45,
+		turnSeconds = 70, -- the whole turn (move, suggest, end); showing a card gets its own
 		status = "ready",
 		coin = "whodunit",
 		typicalMinutes = 10,
@@ -349,6 +354,7 @@ local entries: { Entry } = {
 			{ key = "anyRoom", name = "Walk anywhere", hint = "Move to any room on your turn, not just the next one.", choices = Toggle, default = 1 },
 			{ key = "openShow", name = "Show cards to all", hint = "A card shown to answer a suggestion is shown to everyone. Easier, faster games.", choices = Toggle, default = 1 },
 			{ key = "leftover", name = "Leftover cards face up", hint = "With 4 or 5 players, the cards that don't deal evenly lie face up for everyone instead of making some hands bigger.", choices = Toggle, default = 2 },
+			{ key = "stay", name = "Stay and suggest", hint = "Stay in your room and suggest again instead of leaving (2023 rules).", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -963,6 +969,19 @@ local entries: { Entry } = {
 }
 
 local GameCatalog = {}
+
+-- Rules that only make sense with freehand drawing allowed (see Config.SketchFreeDraw).
+if not Config.SketchFreeDraw then
+	for _, entry in entries do
+		if entry.houseRules then
+			for i = #entry.houseRules, 1, -1 do
+				if entry.houseRules[i].freeDrawOnly then
+					table.remove(entry.houseRules, i)
+				end
+			end
+		end
+	end
+end
 
 GameCatalog.entries = entries
 

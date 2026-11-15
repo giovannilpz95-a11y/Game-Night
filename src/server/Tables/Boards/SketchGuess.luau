@@ -2,7 +2,7 @@
 -- table, with the hint (or the word at the reveal) underneath. Drawing and guessing stay
 -- in each player's 2D view (docked beside the table in Table view). A player who hides or
 -- reports a drawing has this screen hidden on their own client too. Only new strokes are
--- added each update; a clear or undo redraws the canvas.
+-- added each update; a clear, undo or stamp edit (view.strokeRev changes) redraws it.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SketchCanvas = require(ReplicatedStorage.Shared.SketchCanvas)
@@ -35,6 +35,7 @@ function SketchGuess.create(boardCF: CFrame, parent: Instance, _layout: Scene.La
 
 	local rendered = 0
 	local renderedLast: string? = nil
+	local renderedRev: number? = nil
 	local raster = SketchCanvas.newRaster() -- one for all four sides: fill buckets
 
 	local function drawStroke(s: any)
@@ -53,7 +54,10 @@ function SketchGuess.create(boardCF: CFrame, parent: Instance, _layout: Scene.La
 			if best then
 				strokes = best.strokes
 			end
-			local consistent = #strokes >= rendered and (rendered == 0 or (strokes[rendered] and strokes[rendered].points == renderedLast))
+			local rev = if best then -1 else view.strokeRev
+			local consistent = #strokes >= rendered
+				and (rendered == 0 or (strokes[rendered] and strokes[rendered].points == renderedLast))
+				and rev == renderedRev
 			if not consistent then
 				for _, side in sides do
 					side.canvas:ClearAllChildren()
@@ -67,6 +71,7 @@ function SketchGuess.create(boardCF: CFrame, parent: Instance, _layout: Scene.La
 			end
 			rendered = #strokes
 			renderedLast = if rendered > 0 then strokes[rendered].points else nil
+			renderedRev = rev
 
 			-- The spectator view never has the word until the reveal.
 			local caption = if view.word then string.upper(view.word) elseif view.hint then view.hint else (view.status or "")
