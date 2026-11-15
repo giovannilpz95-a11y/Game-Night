@@ -21,6 +21,7 @@ return function(T)
 			{ S(4), S(5), I(4), I(5), R(4), R(5) },
 			{ S(6), I(6), R(6), R(7), R(8), R(9) },
 		}
+		s.turn = 1 -- the first seat is random; these tests start with seat 1
 		return s
 	end
 
@@ -83,7 +84,10 @@ return function(T)
 		-- Suspect 6 and item 4: seat 2 holds item 4, seat 3 holds suspect 6.
 		play(s, 1, { kind = "suggest", suspect = 6, item = 4 })
 		T.eq(s.suggestion.shower, 2)
-		T.eq(s.suggestion.card, I(4), "one match is shown automatically")
+		T.eq(s.phase, "show", "even one match is the shower's pick (no leak)")
+		T.eq(Whodunit.getActiveSeats(s)[1], 2)
+		play(s, 2, { kind = "show", card = I(4) })
+		T.eq(s.suggestion.card, I(4))
 		T.eq(s.phase, "after")
 		T.eq(s.itemRoom[4], 2, "the item moves into the room")
 		T.eq(s.suspectRoom[6], 2, "the suspect's pawn moves into the room")
@@ -118,9 +122,11 @@ return function(T)
 		T.ok(Whodunit.validateMove(s, 2, { kind = "move", room = 2 }), "pulled in, so may stay")
 		play(s, 2, { kind = "move", room = 2 })
 		play(s, 2, { kind = "suggest", suspect = 1, item = 1 })
+		play(s, 1, { kind = "show", card = R(2) })
 		play(s, 2, { kind = "end" })
 		play(s, 3, { kind = "move", room = 7 })
 		play(s, 3, { kind = "suggest", suspect = 3, item = 1 })
+		play(s, 1, { kind = "show", card = S(3) })
 		play(s, 3, { kind = "end" })
 		T.eq((Whodunit.validateMove(s, 1, { kind = "move", room = 2 })), false, "seat 1 wasn't pulled, must leave")
 	end)
@@ -129,6 +135,7 @@ return function(T)
 		local s = setup()
 		play(s, 1, { kind = "move", room = 2 })
 		play(s, 1, { kind = "suggest", suspect = 6, item = 4 })
+		play(s, 2, { kind = "show", card = I(4) })
 		T.eq(Whodunit.getView(s, 1).suggestion.card, I(4), "the asker sees it")
 		T.eq(Whodunit.getView(s, 2).suggestion.card, I(4), "the shower knows what they showed")
 		T.eq(Whodunit.getView(s, 3).suggestion.card, nil, "others don't")
@@ -195,6 +202,58 @@ return function(T)
 		T.eq(#result.winners, 0)
 	end)
 
+	T.test("a suggestion is optional, but moving isn't", function()
+		local s = setup()
+		T.eq((Whodunit.validateMove(s, 1, { kind = "end" })), false, "move first")
+		play(s, 1, { kind = "move", room = 2 })
+		T.ok(Whodunit.getView(s, 1).canSkip)
+		play(s, 1, { kind = "end" })
+		T.eq(s.turn, 2)
+		T.eq(#s.log, 0, "nothing was asked")
+	end)
+
+	T.test("house rule: stay in your room and suggest again", function()
+		local s = Whodunit.new(3, { rules = { stay = true } }, T.Random.new(4))
+		local seat = s.turn
+		local here = s.suspectRoom[seat]
+		s.canStay[seat] = false
+		T.ok(Whodunit.validateMove(s, seat, { kind = "move", room = here }), "may stay with the rule on")
+		local plain = Whodunit.new(3, nil, T.Random.new(4))
+		plain.canStay[plain.turn] = false
+		T.eq((Whodunit.validateMove(plain, plain.turn, { kind = "move", room = plain.suspectRoom[plain.turn] })), false)
+	end)
+
+	T.test("the first seat is random, and the end shows every hand", function()
+		local firsts = {}
+		for seed = 1, 30 do
+			firsts[Whodunit.new(4, nil, T.Random.new(seed)).turn] = true
+		end
+		T.ok(firsts[1] and firsts[2] and firsts[3] and firsts[4], "every seat starts sometimes")
+		local s = setup()
+		T.eq(Whodunit.getView(s, 2).hands, nil, "hidden during play")
+		play(s, 1, { kind = "accuse", suspect = 1, item = 1, room = 1 })
+		local view = Whodunit.getView(s, 2)
+		T.eq(#view.hands, 3)
+		T.eq(view.hands[3][1], S(6))
+		T.eq(#view.solvedCount, 3)
+	end)
+
+	T.test("hard bots test one unknown card at a time", function()
+		local s = setup()
+		s.botLevel = "hard"
+		play(s, 1, { kind = "move", room = 2 }) -- seat 1 holds the Music Room: not a candidate
+		local move = Whodunit.chooseBotMove(s, 1, T.Random.new(3))
+		T.eq(move.kind, "suggest")
+		local know = Whodunit.deduce(s, 1, "hard")
+		local unknown = 0
+		for _, id in { S(move.suspect), I(move.item) } do
+			if table.find(know.candidates.suspect, id) or table.find(know.candidates.item, id) then
+				unknown += 1
+			end
+		end
+		T.eq(unknown, 1)
+	end)
+
 	T.test("rejects junk moves from the network", function()
 		local s = setup()
 		T.eq((Whodunit.validateMove(s, 1, "x")), false)
@@ -217,6 +276,7 @@ return function(T)
 		play(s, 2, { kind = "move", room = 9 })
 		play(s, 2, { kind = "suggest", suspect = 1, item = 2 })
 		T.eq(s.suggestion.shower, 3)
+		play(s, 3, { kind = "show", card = R(9) })
 		play(s, 2, { kind = "end" })
 		-- Seat 1 didn't see the card, only that seat 3 holds one of {S1, I2, R9}. Seat 1
 		-- holds I2. Now a suggestion of S1 that nobody can disprove rules S1 out for seat 3.
