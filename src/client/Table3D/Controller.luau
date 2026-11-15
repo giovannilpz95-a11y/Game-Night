@@ -392,7 +392,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 				local info = snapshot.seatInfo and snapshot.seatInfo[matchSeat]
 				local who = pill:FindFirstChild("Who") :: TextLabel
 				local infoLabel = pill:FindFirstChild("Info") :: TextLabel
-				who.Text = (if s.kind == "bot" then "🤖 " else "") .. tostring(s.name)
+				-- People show their account level (NameTagService sets the attribute).
+				local person = if s.kind ~= "bot" and type(s.userId) == "number" then Players:GetPlayerByUserId(s.userId) else nil
+				local level = person and person:GetAttribute("Level")
+				who.Text = (if s.kind == "bot" then "🤖 " elseif type(level) == "number" then `Lv {level} · ` else "") .. tostring(s.name)
 				infoLabel.Text = if type(info) == "string" then info else ""
 				local turn = pill:FindFirstChild("Turn") :: UIStroke
 				turn.Enabled = table.find(snapshot.activeSeats or {}, matchSeat) ~= nil

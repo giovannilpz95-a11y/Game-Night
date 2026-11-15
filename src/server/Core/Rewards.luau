@@ -12,6 +12,7 @@ local Daily = require(script.Parent.Daily)
 local Stats = require(script.Parent.Stats)
 local Weekly = require(script.Parent.Weekly)
 local SeasonPass = require(script.Parent.SeasonPass)
+local Levels = require(script.Parent.Levels)
 
 local Rewards = {}
 
@@ -48,25 +49,21 @@ export type Payout = {
 	stars: number, -- Game Night Pass Stars (shared/Season), quests included
 	tiers: { number }, -- pass tiers reached
 	weeklyQuests: { string }, -- texts of weekly quests completed
+	questXp: number, -- part of `xp` from quests and sweeps
+	sweeps: { string }, -- sweep lines ("Daily sweep! ...")
+	levelLines: { string }, -- level milestone rewards ("Unlocked: Title: Rookie")
+	universal: number, -- Universal Coins from level milestones
 }
 
 local function round(x: number): number
 	return math.floor(x + 0.5)
 end
 
--- Adds XP and pays Gems for each level reached. Returns the new levels.
+-- Adds XP and pays everything for each level reached (Core/Levels). Returns the new
+-- levels and the Gems they paid.
 function Rewards.addXp(data: Profile.Data, xp: number): ({ number }, number)
-	data.xp += math.max(0, math.floor(xp))
-	local reached = {}
-	local gems = 0
-	while data.xp >= Economy.xpForLevel(data.level) do
-		data.xp -= Economy.xpForLevel(data.level)
-		data.level += 1
-		table.insert(reached, data.level)
-		gems += Economy.levelUpGems(data.level)
-	end
-	Profile.addGems(data, gems)
-	return reached, gems
+	local result = Levels.addXp(data, xp)
+	return result.reached, result.gems
 end
 
 function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
@@ -82,6 +79,10 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 		stars = 0,
 		tiers = {},
 		weeklyQuests = {},
+		questXp = 0,
+		sweeps = {},
+		levelLines = {},
+		universal = 0,
 	}
 	local now = ctx.now or os.time()
 	local daily = data.daily
@@ -181,6 +182,8 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 		won = ctx.won,
 		minutes = paidMinutes,
 		vsHumans = not vsBots,
+		isDraw = ctx.isDraw,
+		extra = ctx.extra,
 	}
 	local dailyDone = Daily.recordMatch(data, event)
 	local weeklyDone = SeasonPass.recordWeekly(data, now, event)
@@ -207,10 +210,18 @@ function Rewards.applyMatch(data: Profile.Data, ctx: MatchContext): Payout
 	table.sort(payout.tiers)
 
 	-- XP from time played; level-ups pay Gems too
-	payout.xp = math.max(1, round(Economy.XpPerMinute * paidMinutes))
-	local levels, levelGems = Rewards.addXp(data, payout.xp)
-	payout.levelUps = levels
-	payout.gems = gems + levelGems
+	-- (quest XP was added by payQuests above; its level-ups come first)
+	local playXp = math.max(1, round(Economy.XpPerMinute * paidMinutes))
+	local levels = Levels.addXp(data, playXp)
+	payout.questXp = questPay.xp
+	payout.xp = playXp + questPay.xp
+	payout.sweeps = SeasonPass.questLines(questPay)
+	payout.levelUps = table.clone(questPay.levels.reached)
+	table.move(levels.reached, 1, #levels.reached, #payout.levelUps + 1, payout.levelUps)
+	payout.levelLines = table.clone(questPay.levels.lines)
+	table.move(levels.lines, 1, #levels.lines, #payout.levelLines + 1, payout.levelLines)
+	payout.universal = questPay.levels.universal + levels.universal
+	payout.gems = gems + questPay.levels.gems + levels.gems
 
 	return payout
 end
@@ -224,14 +235,23 @@ function Rewards.describe(payout: Payout): { string }
 	if payout.gems > 0 then
 		table.insert(lines, `+{payout.gems} {Economy.GemsName}`)
 	end
+	if payout.xp > 0 then
+		table.insert(lines, if payout.questXp > 0 then `+{payout.xp} XP ({payout.questXp} from quests)` else `+{payout.xp} XP`)
+	end
 	for _, level in payout.levelUps do
 		table.insert(lines, `Level up! You're level {level}`)
+	end
+	for _, line in payout.levelLines do
+		table.insert(lines, line)
 	end
 	for _, text in payout.challenges do
 		table.insert(lines, `Quest done: {text}`)
 	end
 	for _, text in payout.weeklyQuests do
 		table.insert(lines, `Weekly quest done: {text}`)
+	end
+	for _, line in payout.sweeps do
+		table.insert(lines, line)
 	end
 	if payout.stars > 0 then
 		table.insert(lines, `+{payout.stars} ⭐ Pass Stars`)

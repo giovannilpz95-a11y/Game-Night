@@ -139,6 +139,14 @@ function AnalyticsService.matchPayout(player: Player, data: any, payout: any)
 	end
 end
 
+-- Levels reached outside a match payout (quest or achievement XP).
+function AnalyticsService.levelUps(player: Player, levels: { number })
+	for _, level in levels do
+		send("LogProgressionCompleteEvent", player, AnalyticsEvents.ProgressionPath, level - 1, `Level {level - 1}`)
+		send("LogProgressionStartEvent", player, AnalyticsEvents.ProgressionPath, level, `Level {level}`)
+	end
+end
+
 -- The daily login reward was just paid. `before` is the wallet before it.
 function AnalyticsService.dailyLogin(player: Player, data: any, before: AnalyticsEvents.Wallet)
 	AnalyticsService.logChange(player, data, before, AnalyticsEvents.Transaction.TimedReward, "DailyLogin")

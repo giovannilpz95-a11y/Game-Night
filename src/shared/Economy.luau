@@ -82,8 +82,41 @@ function Economy.levelUpGems(newLevel: number): number
 	return math.min(25, 10 + (newLevel - 2))
 end
 
--- Badges (shared/Badges.luau): one-time Gems for bronze, silver and gold badges
-Economy.BadgeGems = { 5, 15, 40 }
+-- Achievements (shared/Achievements): what each tier pays, once. Tier 1 Bronze to tier 5
+-- Diamond, each bigger than the last. General achievements pay Gems; a game's own pay that
+-- game's Coins (earned by playing it, like every Coin) and Gems from Gold up. Every tier
+-- pays account XP too.
+Economy.AchievementRewards = {
+	general = { gems = { 5, 10, 20, 35, 60 }, xp = { 50, 100, 200, 400, 800 } },
+	game = { coins = { 50, 120, 250, 500, 1000 }, gems = { 0, 0, 5, 10, 20 }, xp = { 50, 100, 200, 400, 800 } },
+	mastery = { gems = 50, xp = 500 }, -- every achievement of a game at Gold: plus its title
+}
+
+-- Account level milestones (Core/Levels), on top of Economy.levelUpGems every level. Titles
+-- are ShopCatalog items (notForSale, `level = N`).
+Economy.LevelMilestones = {
+	[5] = { item = "level_title_5", universal = 250 },
+	[10] = { item = "level_title_10", universal = 500 },
+	[15] = { universal = 750 },
+	[20] = { item = "level_title_20", universal = 1000 },
+	[25] = { gems = 50, universal = 1000 },
+	[30] = { item = "level_title_30", universal = 1500 },
+	[40] = { universal = 2000 },
+	[50] = { item = "level_title_50", gems = 100, universal = 2500 },
+	[75] = { item = "level_title_75", gems = 150, universal = 3000 },
+	[100] = { item = "level_title_100", gems = 250, universal = 5000 },
+}
+
+-- The next milestone above `level`: (level, reward) or nil.
+function Economy.nextLevelMilestone(level: number): (number?, any)
+	local best = nil
+	for at in Economy.LevelMilestones do
+		if at > level and (best == nil or at < best) then
+			best = at
+		end
+	end
+	return best, if best then Economy.LevelMilestones[best] else nil
+end
 
 -- VIP perks that touch numbers
 Economy.VipPlayBonus = 0.25 -- +25% Gems and Coins from play

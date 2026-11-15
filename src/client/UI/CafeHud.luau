@@ -36,6 +36,7 @@ export type Actions = {
 	party: () -> (),
 	tables: () -> (),
 	stats: () -> (),
+	achievements: (() -> ())?,
 	shop: () -> (),
 	pass: () -> (),
 	avatar: () -> (),
@@ -384,6 +385,9 @@ function CafeHud.create(parent: Instance, actions: Actions)
 		end)
 		Kit.pressable(row)
 		moreRows[key] = row
+	end
+	if actions.achievements then
+		moreRow("Achievements", 0, "🏆", "Achievements", actions.achievements)
 	end
 	moreRow("Tables", 1, "🎲", "Tables in this server", actions.tables)
 	moreRow("Host", 2, "👑", "Host tools", actions.host)

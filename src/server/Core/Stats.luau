@@ -8,6 +8,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StatsCatalog = require(ReplicatedStorage.Shared.StatsCatalog)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
+local Achievements = require(ReplicatedStorage.Shared.Achievements)
 
 local Stats = {}
 
@@ -173,6 +174,14 @@ function Stats.recordCurrency(data: any, entry: { flow: string, currency: string
 	end
 end
 
+-- Quests finished: kind "daily" | "weekly" | "dailySweeps" | "weeklySweeps".
+function Stats.addQuests(data: any, kind: string, amount: number?)
+	local quests = data.stats.quests
+	if type(quests[kind]) == "number" then
+		quests[kind] += amount or 1
+	end
+end
+
 -- Social counters: invitesSent, friendsJoined (people who joined your party from your
 -- invite), partiesJoined (invites you accepted).
 function Stats.addSocial(data: any, key: string, amount: number?)
@@ -197,6 +206,8 @@ function Stats.view(data: any, private: boolean): any
 	local games = {}
 	local tried = 0
 	local cardWins = 0
+	local winsBy: { [string]: number } = {}
+	local playsBy: { [string]: number } = {}
 	for gameId in stats.games do
 		local row = Stats.gameRow(data, gameId)
 		if row.played > 0 then
@@ -205,6 +216,10 @@ function Stats.view(data: any, private: boolean): any
 		local entry = GameCatalog.get(gameId)
 		if entry and entry.coin == "cards" then
 			cardWins += row.wins
+		end
+		if entry then
+			winsBy[entry.category] = (winsBy[entry.category] or 0) + row.wins
+			playsBy[entry.category] = (playsBy[entry.category] or 0) + row.played
 		end
 		local copy = table.clone(row)
 		copy.extra = table.clone(row.extra)
@@ -230,10 +245,19 @@ function Stats.view(data: any, private: boolean): any
 			daysPlayed = stats.daysPlayed,
 			loginStreak = data.login.streak,
 			bestLoginStreak = math.max(data.login.best or 0, data.login.streak),
+			winsBy = winsBy,
+			playsBy = playsBy,
+			questsDone = stats.quests.daily + stats.quests.weekly,
+			dailySweeps = stats.quests.dailySweeps,
+			weeklySweeps = stats.quests.weeklySweeps,
+			questStreak = data.questStreak.count,
+			bestQuestStreak = data.questStreak.best,
+			mastered = Achievements.masteredCount(data.achievements),
 		},
 		social = table.clone(stats.social),
 		games = games,
 		badges = table.clone(data.badges),
+		achievements = table.clone(data.achievements),
 		weekly = { week = data.weekly.week, points = table.clone(data.weekly.points) },
 	}
 	-- Totals are public (badges read them); the per-coin breakdown is yours only.

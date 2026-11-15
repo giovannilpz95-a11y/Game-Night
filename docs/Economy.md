@@ -39,7 +39,7 @@ minOwnMoves = 1,        -- optional (default 1): a player who made fewer moves t
 
 Only moves a player sends count as their own: moves the turn timer or a bot plays for an idle player don't, so sitting back while bots play earns nothing. Trivia Night asks for 3 answers.
 
-Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The daily login calendar pays Gems or Universal Coins (see [[Friends]]). The first win of the day and each daily quest pay Gems, and matches and quests earn Game Night Pass Stars (see [[Season pass]]); XP from time played levels the account up, and level-ups pay Gems. Badges pay Gems once each (see [[Progression]]).
+Winners get +50%, win streaks add up to +50%, bot-only tables pay half (and stop after 20 a day), and VIP adds +25%. The daily login calendar pays Gems or Universal Coins (see [[Friends]]). The first win of the day and each daily quest pay Gems, and matches and quests earn Game Night Pass Stars (see [[Season pass]]); XP from play, quests and achievements levels the account up; level-ups pay Gems and milestone levels pay titles and Universal Coins. Achievement tiers pay Gems, or a game's own Coins for that game's achievements, once each (see [[Progression]]).
 
 For bonuses inside a game, or for games that don't use `MatchService`, call `EconomyService` from server code:
 

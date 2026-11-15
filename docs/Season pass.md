@@ -31,13 +31,19 @@ The **Game Night Pass** is a 4-week season with 30 tiers. Players climb it with 
 | Daily quest (3 a day) | 200 each (plus 5 Gems, as before) |
 | Premium bonus daily quest | 200 |
 | Weekly quest (5 a week) | 1,000 each |
+| Daily sweep (every daily quest done) | 150, +25 a day of quest streak (up to 7 days) |
+| Weekly sweep (all five) | 750 |
 
 1,500 Stars a tier, 45,000 for all 30. A player who plays about 45 minutes most days and does their quests finishes in the season; a few games a week reaches the middle (a test checks both). Only matches that pay Coins give match Stars, so resigning, too-short games, the bot limit and win-trading limits all apply.
 
 ## Quests
 - **Daily** (`data.daily.challenges`): the same three as before (finish 3 games, win a game you play, try the game you play least), now worth Stars too. Premium adds a fourth, the **bonus quest**. One free **swap** (🔄) a day replaces an unfinished quest with another from the small pool.
 - **Weekly** (`data.season.weekly`): five, one from each theme: play a lot, win, people (or reactions), variety (or a category like "card games"), time played. New ones every Monday 00:00 UTC.
-- Kinds: `play`, `win`, `minutes`, `variety`, `react`; any of them can be limited to a game, a GameCatalog category, or games with another person (`humans`).
+- Kinds: `play`, `win`, `minutes`, `variety`, `react`, `stat` (add up one of a game's own StatsCatalog stats: "Capture 6 pieces in Chess") and `streak` (win N in a row; a loss restarts it, a draw keeps it); any of them can be limited to a game, a GameCatalog category, or games with another person (`humans`).
+- **Daily slots:** 1) something for any game (finish 3, 20 minutes, win 2, or 2 different games), 2) the game you play most: its own quest from `Quests.GameGoals` or a win in it, 3) the game you've played least.
+- **Game quests:** `Quests.GameGoals[gameId]` has a daily and a weekly quest for each game (games not listed use `Quests.DefaultGoals`). The weekly variety slot can hold one game's weekly quest, the win slot "Win 3 in a row".
+- **XP:** every quest pays account XP too (daily 50, bonus 50, weekly 250), so quests feed both the pass and your level.
+- **Sweeps:** finishing every daily quest (not the bonus one) pays `Season.DailySweep` (+10 Gems, +150 Stars, +100 XP); all five weekly quests pay `Season.WeeklySweep` (+30 Gems, +750 Stars, +500 XP). Days in a row with a daily sweep are the **quest streak** (`data.questStreak`): each day adds 25 Stars to the daily sweep, up to 7 days. The Pass window's Quests tab shows both bonuses and the streak.
 - **Themed weekly quests:** a track can list `weekly` quests (`Season.QuestSpec`), each tagged with the theme slot it fills (1 play, 2 win, 3 people/reactions, 4 variety/category, 5 time). They join that slot's options, and every week one slot is always a themed quest. A themed category quest is skipped when no ready game has the category.
 
 ## Premium

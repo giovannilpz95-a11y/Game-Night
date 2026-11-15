@@ -28,6 +28,7 @@ local Looks = require(script.Parent.Parent.Core.Looks)
 local Tips = require(script.Parent.Parent.Core.Tips)
 local AudioSettings = require(script.Parent.Parent.Core.AudioSettings)
 local ClientSettings = require(script.Parent.Parent.Core.ClientSettings)
+local NameTagService = require(script.Parent.NameTagService)
 local DataService = require(script.Parent.DataService)
 local AnalyticsService = require(script.Parent.AnalyticsService)
 
@@ -79,6 +80,7 @@ function EconomyService.push(player: Player)
 	end
 	local starter, starterEndsAt = starterAvailable(data)
 	local vip = isVip(player)
+	NameTagService.update(player) -- level and title over their head
 	walletRemote:FireClient(player, {
 		gems = data.gems,
 		coins = data.coins,
@@ -579,6 +581,21 @@ function EconomyService.reactionSent(player: Player)
 		end
 		if result.stars > 0 then
 			table.insert(lines, `+{result.stars} ⭐ Pass Stars`)
+		end
+		if result.xp > 0 then
+			table.insert(lines, `+{result.xp} XP`)
+		end
+		for _, line in SeasonPass.questLines(result) do
+			table.insert(lines, line)
+		end
+		for _, level in result.levels.reached do
+			table.insert(lines, `Level up! You're level {level}`)
+		end
+		for _, line in result.levels.lines do
+			table.insert(lines, line)
+		end
+		if #result.levels.reached > 0 then
+			AnalyticsService.levelUps(player, result.levels.reached)
 		end
 		sendReward(player, "Quest", lines)
 		AnalyticsService.logChange(player, data, before, "Gameplay", "Quest")
