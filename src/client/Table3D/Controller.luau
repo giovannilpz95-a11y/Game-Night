@@ -1243,14 +1243,33 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 	end
 
+	-- A Kit.needsMouse window (shown) under this screen point.
+	local function overWindow(at: Vector2): boolean
+		local playerGui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not playerGui then
+			return false
+		end
+		for _, gui in playerGui:GetGuiObjectsAtPosition(at.X, at.Y) do
+			local node: Instance? = gui
+			while node and node ~= playerGui do
+				if node:IsA("GuiObject") and CollectionService:HasTag(node, "GameNightNeedsMouse") then
+					return true
+				end
+				node = node.Parent
+			end
+		end
+		return false
+	end
+
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed or not active or not board then
 			return
 		end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			-- Mouse locked: the click lands on the crosshair.
+			-- Mouse locked: the click lands on the crosshair, unless a window that wants the
+			-- mouse (the how-to-play card, a pop-up) is under it: then it's for that window.
 			local at = FreeLook.pointer(Vector2.new(input.Position.X, input.Position.Y))
-			if at then
+			if at and not overWindow(at) then
 				clickAt(at)
 			end
 		end

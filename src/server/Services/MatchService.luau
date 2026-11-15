@@ -313,12 +313,9 @@ function strike(entry: Entry, seat: number)
 	end
 	entry.strikes[seat] = (entry.strikes[seat] or 0) + 1
 	if entry.strikes[seat] >= Config.AwayAfterTimeouts and not match:isAway(seat) then
+		-- The match screen's own "You're away... I'm back" pop-up says so (a toast on top
+		-- of it covered its text).
 		match:setAway(seat, true)
-		local s = match.seats[seat]
-		local player = s and s.userId and Players:GetPlayerByUserId(s.userId)
-		if player then
-			notify(player, "You're marked away, so safe moves are made for you. Tap I'm back to play again.")
-		end
 	end
 end
 
