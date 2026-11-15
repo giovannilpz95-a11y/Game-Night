@@ -799,7 +799,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 			if narrow then
 				-- Phone: the big tile on top, the rest two to a row.
 				local big = Kit.new("Frame", { Name = "Featured", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 100), LayoutOrder = order, Parent = content }, {
-					Kit.new("UIAspectRatioConstraint", { AspectRatio = 1.7, DominantAxis = Enum.DominantAxis.Width }),
+					Kit.new("UIAspectRatioConstraint", { AspectRatio = 1.7, DominantAxis = Enum.DominantAxis.Width, AspectType = Enum.AspectType.ScaleWithParentSize }),
 				})
 				order += 1
 				tile(big, picks[1], UDim2.new(), UDim2.fromScale(1, 1), true)
@@ -814,7 +814,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				-- The big tile on the left (38%), six in a 3 x 2 grid beside it. Gaps are
 				-- 1% across and 3% down; the board's shape keeps the small tiles near square.
 				local board = Kit.new("Frame", { Name = "Featured", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 100), LayoutOrder = order, Parent = content }, {
-					Kit.new("UIAspectRatioConstraint", { AspectRatio = 2.45, DominantAxis = Enum.DominantAxis.Width }),
+					Kit.new("UIAspectRatioConstraint", { AspectRatio = 2.45, DominantAxis = Enum.DominantAxis.Width, AspectType = Enum.AspectType.ScaleWithParentSize }),
 				})
 				order += 1
 				local BIG_W, GAP_X, GAP_Y = 0.38, 0.01, 0.03

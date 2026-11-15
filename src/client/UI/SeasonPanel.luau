@@ -406,21 +406,29 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 				LayoutOrder = 0,
 				Parent = column,
 			})
-			if LOUNGE and t == tier then
-				-- Your tier: a soft yellow glow around the column's cards.
+			local current = LOUNGE and t == tier
+			if current then
 				Kit.headline(number)
-				Kit.new("UIStroke", { Color = Theme.Accent, Transparency = 0.35, Thickness = 2, Parent = Kit.new("Frame", { Name = "Current", BackgroundTransparency = 1, Position = UDim2.fromOffset(-3, 25), Size = UDim2.new(1, 6, 1, -22), ZIndex = 2, Parent = column }, { Kit.corner(14) }) })
 			end
 			local key = tostring(t)
 			local free = track.free[t]
 			local freeState = if not reached then "locked" elseif view.free[key] then "claimed" else "ready"
 			local freeHolder = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, CELL_H), LayoutOrder = 1, Parent = column })
+			-- Your tier: its two cards ringed in yellow.
+			local function ring(holder: Frame)
+				if current then
+					Kit.corner(12).Parent = holder
+					Kit.new("UIStroke", { Color = Theme.Accent, Transparency = 0.2, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = holder })
+				end
+			end
+			ring(freeHolder)
 			cell(freeHolder, free, freeState, false, function()
 				sendEconomy({ action = "seasonClaim", track = "free", tier = t })
 			end)
 			local premium = track.premium[t]
 			local premiumState = if not view.premium then "premium" elseif not reached then "locked" elseif view.paid[key] then "claimed" else "ready"
 			local premiumHolder = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, CELL_H), LayoutOrder = 2, Parent = column })
+			ring(premiumHolder)
 			cell(premiumHolder, premium, premiumState, true, function()
 				sendEconomy({ action = "seasonClaim", track = "premium", tier = t })
 			end)
