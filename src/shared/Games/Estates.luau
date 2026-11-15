@@ -734,6 +734,10 @@ end
 local function moveBy(state, seat: number, steps: number)
 	local p = state.players[seat]
 	local target = (p.pos - 1 + steps) % #spaces + 1
+	-- Where the dice put the token, so the client can stop there before a card or Go to
+	-- Jail sends it on (view players[s].landed).
+	state.moveCount = (state.moveCount or 0) + 1
+	p.landed = { pos = target, n = state.moveCount }
 	moveTo(state, seat, target, nil)
 end
 
@@ -1650,6 +1654,7 @@ function Estates.getView(state, seat: number?)
 			cards = #p.cards,
 			laps = p.laps or 0,
 			worth = Estates.netWorth(state, s),
+			landed = if p.landed then table.clone(p.landed) else nil,
 		}
 	end
 	local owner = {}
