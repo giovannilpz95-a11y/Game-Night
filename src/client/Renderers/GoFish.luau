@@ -204,7 +204,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 				Kit.label(nameOf(seat), { Font = Theme.FontBold, TextSize = 15, TextColor3 = color, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.fromOffset(22, 0), Size = UDim2.new(1, -22, 0, 18), Parent = box })
 				Kit.label(`{view.handCounts[seat]} cards`, { TextSize = 13, TextColor3 = color, Position = UDim2.new(0, 0, 0, 20), Size = UDim2.new(1, 0, 0, 16), Parent = box })
 				Kit.label(booksText(view.books[seat]), { TextSize = 12, TextColor3 = color, Position = UDim2.new(0, 0, 0, 38), Size = UDim2.new(1, 0, 0, 16), Parent = box })
-				box.Activated:Connect(function()
+				Kit.onPress(box, function()
 					if canAsk then
 						ask(seat)
 					end

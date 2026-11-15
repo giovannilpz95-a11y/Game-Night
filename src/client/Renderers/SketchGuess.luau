@@ -173,7 +173,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			LayoutOrder = i,
 			Parent = swatches,
 		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Thickness = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }) })
-		b.Activated:Connect(function()
+		Kit.onPress(b, function()
 			brushColor = i
 			refreshTools()
 		end)
@@ -190,7 +190,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			Size = UDim2.fromOffset(dot, dot),
 			Parent = b,
 		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-		b.Activated:Connect(function()
+		Kit.onPress(b, function()
 			brushSize = i
 			refreshTools()
 		end)

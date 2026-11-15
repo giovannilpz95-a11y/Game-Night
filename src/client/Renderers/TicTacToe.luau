@@ -82,7 +82,7 @@ function TicTacToe.create(container: Frame, sendMove: (any) -> ())
 			LayoutOrder = i,
 			Parent = grid,
 		}, { Kit.corner(12) })
-		cell.Activated:Connect(function()
+		Kit.onPress(cell, function()
 			if snapshot and snapshot.view.board[i] == 0 and table.find(snapshot.activeSeats, snapshot.yourSeat) then
 				hovered = nil
 				sendMove({ cell = i })

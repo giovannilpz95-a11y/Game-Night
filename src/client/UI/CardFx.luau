@@ -456,6 +456,7 @@ function CardFx.drawnPrompt(anchor: Instance): (id: number?, buttons: { DrawnBut
 			Parent = screen,
 		})
 		Kit.new("UISizeConstraint", { MaxSize = Vector2.new(560, 320), Parent = band })
+		Kit.hotkeyArea(band :: Frame)
 		slot = Kit.new("Frame", {
 			BackgroundTransparency = 1,
 			AnchorPoint = Vector2.new(0.5, 0),

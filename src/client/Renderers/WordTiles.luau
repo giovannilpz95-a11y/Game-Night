@@ -301,7 +301,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 		unseenBox.Visible = not unseenBox.Visible
 		Juice.popIn(unseenBox)
 	end
-	bagLabel.Activated:Connect(showUnseen)
+	Kit.onPress(bagLabel, showUnseen)
 
 	local function pendingAt(row: number, col: number): number?
 		for id, p in placed do
@@ -664,7 +664,7 @@ function WordTiles.create(container: Frame, sendMove: (any) -> ())
 					startDrag(id, input, slot)
 				end
 			end)
-			slot.Activated:Connect(function()
+			Kit.onPress(slot, function()
 				if over then
 					return
 				elseif swapMode then

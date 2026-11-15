@@ -262,6 +262,8 @@ function PlayingCard.hover(container: GuiObject): Hover
 	local function onScreen(): boolean
 		return container.Visible and container.Parent ~= nil and not Kit.inPreview(container) and container:FindFirstAncestorWhichIsA("ScreenGui") ~= nil and (container:FindFirstAncestorWhichIsA("ScreenGui") :: ScreenGui).Enabled
 	end
+	-- Number keys (UI/Hotkeys) leave the cards alone: A / D and Enter are for those.
+	container:SetAttribute("NoHotkey", true)
 	local removeKeys = KeyPick.add({
 		priority = KeyPick.HAND,
 		ordered = true,
@@ -449,7 +451,7 @@ function PlayingCard.renderHand(container: Frame, cards: { any }, onClick: ((num
 		end
 		if onClick then
 			local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
-			button.Activated:Connect(function()
+			Kit.onPress(button, function()
 				if card.enabled ~= false then
 					onClick(if card.key ~= nil then card.key else card.id)
 				end

@@ -30,6 +30,7 @@ local Layout = require(script.Parent.Layout)
 local TablePrompt = require(script.Parent.TablePrompt)
 local Table3D = require(script.Parent.Parent.Table3D.Controller)
 local FreeLook = require(script.Parent.Parent.Table3D.FreeLook)
+local Hotkeys = require(script.Parent.Hotkeys)
 local RunService = game:GetService("RunService")
 local Avatars = require(script.Parent.Parent.Table3D.Avatars)
 local EmoteWheel = require(script.Parent.EmoteWheel)
@@ -249,6 +250,7 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		Parent = root,
 	})
 	Kit.list(6).Parent = menu
+	Kit.needsMouse(menu) -- open, its items are the ones with number keys (UI/Hotkeys)
 	local function closeMenu()
 		menu.Visible = false
 	end
@@ -453,12 +455,22 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		end
 	end
 
-	menuButton.Activated:Connect(function()
+	local function toggleMenu()
 		menu.Visible = not menu.Visible
 		if menu.Visible then
 			Kit.popIn(menu)
 		end
+	end
+	Kit.onPress(menuButton, toggleMenu)
+	-- Keys for the buttons on screen while the mouse is locked; M is the menu. The header
+	-- (M, Alt and the menu cover it) and the seat list don't get numbers.
+	Hotkeys.setScope(root)
+	Hotkeys.setMenu(function()
+		if root.Visible and snapshot ~= nil then
+			toggleMenu()
+		end
 	end)
+	header:SetAttribute("NoHotkey", true)
 	-- Header buttons are pills, like the lobby's round buttons.
 	for _, button in { menuButton, rulesButton } do
 		local corner = button:FindFirstChildOfClass("UICorner")
@@ -816,6 +828,8 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		ZIndex = 21,
 		Parent = root,
 	})
+	lockButton:SetAttribute("NoHotkey", true) -- that's Alt
+	seatsPanel:SetAttribute("NoHotkey", true)
 	local function showLock(locked: boolean)
 		lockButton.Text = if locked then "Mouse locked (Alt)" else "Mouse free (Alt)"
 		lockButton.BackgroundColor3 = if locked then Theme.Panel else Theme.Accent
@@ -1526,15 +1540,6 @@ function MatchView.create(parent: Instance, sendMatch: (any) -> (), isLeader: ()
 		if root.Visible then
 			updateTurnText()
 		end
-		-- What needs the mouse free (Table3D/FreeLook): the menu, a question, the end card,
-		-- and your turn in a game you play through on-screen cards and buttons (the view
-		-- turns back to the table then; Alt locks it again). Tables you play by clicking the
-		-- board itself (chess and the like) keep the crosshair.
-		local shown = root.Visible and snapshot ~= nil
-		FreeLook.hold("menu", shown and menu.Visible)
-		FreeLook.hold("ask", shown and askPanel.Visible)
-		FreeLook.hold("result", shown and (resultOverlay.Visible or isOver()))
-		FreeLook.hold("turn", shown and table3D.isActive() and not table3D.playable() and isMyTurn())
 	end)
 
 	-- Hand peek: look down and your held cards come up to you; look up and they drop away

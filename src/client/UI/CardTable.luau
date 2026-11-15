@@ -273,7 +273,7 @@ function CardTable.seatChips(frame: Frame, snapshot: any, chips: { any })
 			})
 		end
 		if clickable then
-			box.Activated:Connect(chip.onClick)
+			Kit.onPress(box, chip.onClick)
 			Kit.pressable(box)
 		end
 	end

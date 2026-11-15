@@ -268,7 +268,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		if isSelected then
 			HudKit.pulse(ring, 0, 0.4)
 		end
-		card.Activated:Connect(function()
+		Kit.onPress(card, function()
 			if canPick(seat) then
 				selected = if selected == seat then nil else seat
 				render()

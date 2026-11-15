@@ -192,7 +192,7 @@ function Palace.create(container: Frame, sendMove: (any) -> ())
 					PlayingCard.empty(slot)
 				end
 				local button = Kit.new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 9, Parent = slot })
-				button.Activated:Connect(function()
+				Kit.onPress(button, function()
 					if setup and swapFrom and up then
 						sendMove({ kind = "swap", hand = swapFrom, up = up })
 						swapFrom = nil

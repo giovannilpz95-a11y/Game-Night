@@ -119,7 +119,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 			Parent = button,
 		})
 		Kit.new("UIStroke", { Name = "Ring", Color = Color3.new(1, 1, 1), Thickness = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
-		button.Activated:Connect(function()
+		Kit.onPress(button, function()
 			local view = snapshot and snapshot.view
 			local voting = view and view.phase == "pick"
 			if view and (view.phase == "question" or voting) and view.yourAnswer == nil and view.answers and view.answers[i] and table.find(snapshot.activeSeats, snapshot.yourSeat) then

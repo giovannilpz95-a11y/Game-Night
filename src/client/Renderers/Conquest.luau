@@ -173,7 +173,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			Parent = map,
 		})
 		Kit.new("UITextSizeConstraint", { MaxTextSize = 13, Parent = name })
-		node.Activated:Connect(function()
+		Kit.onPress(node, function()
 			onNode(t)
 		end)
 		nodes[t] = { button = node, stroke = stroke }
@@ -502,7 +502,7 @@ function Conquest.create(container: Frame, sendMove: (any) -> ())
 			if picked then
 				Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3, Parent = card })
 			end
-			card.Activated:Connect(function()
+			Kit.onPress(card, function()
 				local at = table.find(pickedCards, i)
 				if at then
 					table.remove(pickedCards, at)

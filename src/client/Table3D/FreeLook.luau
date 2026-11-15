@@ -9,13 +9,14 @@
 -- The look is an offset from the seat camera's resting view (Controller), kept inside a
 -- neck's range (shared/SeatLook), and eases back to that view when your turn starts.
 --
--- Some moments need the mouse (a pop-up asking something, the end card, your turn in a
--- game played through on-screen cards and buttons): they hold it free with hold(); it
--- locks again when they're done, if you had it locked. Alt still wins until the next one.
+-- Only you change the lock (Alt or the button): nothing on screen frees the mouse by
+-- itself (Giovanni, 2026-11-15: "it constantly switches off... dont really want it doing
+-- that"). Everything stays playable locked: the crosshair clicks the table, A / D and
+-- Enter pick cards (UI/KeyPick), number keys press the buttons on screen (UI/Hotkeys).
+-- Roblox's own menu and typing in chat let go of the mouse while they're open.
 --
 -- Where you look is sent to the server (HeadLook), so the others see your head turn.
 
-local CollectionService = game:GetService("CollectionService")
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -30,12 +31,10 @@ local LOOK_RATE = 30 -- how fast the view follows the mouse (smooths out jitter)
 local RECENTER_RATE = 7 -- how fast it eases back to the table on your turn
 local SEND_EVERY = 0.25 -- seconds between head updates to the server
 local SEND_ANGLE = math.rad(4) -- a turn smaller than this isn't worth sending
-local HINT_TIME = 6
+local HINT_TIME = 9
 
 local active = false
 local preferLocked = true -- the player's choice (Alt / the button), for the session
-local holds: { [string]: boolean } = {}
-local overrideHolds = false -- Alt pressed while something held the mouse: lock anyway
 local target: SeatLook.Look = { yaw = 0, pitch = 0 }
 local shown: SeatLook.Look = { yaw = 0, pitch = 0 }
 local recentering = false
@@ -48,6 +47,12 @@ local hintShown = false
 local sensitivity = 1 -- the match menu's Mouse speed slider (session)
 local invertY = false -- the match menu's Invert look toggle (session)
 local aiming = false -- the crosshair is over something you can pick (it grows)
+-- Frames of mouse movement to throw away: right after the mouse locks, Roblox moves the
+-- cursor to the middle of the screen and reports that jump as movement, which turned
+-- the view off to one side.
+local skipDelta = 0
+local lastMode = "free" -- "locked", "right" (right button held) or "free"
+local MAX_DELTA = 600 -- pixels in one frame: more than a hand can flick, a warp
 
 type Touch = { start: Vector2, moved: number, at: number, looking: boolean, ended: boolean }
 local touches: { [InputObject]: Touch } = {}
@@ -68,7 +73,6 @@ function FreeLook.isLocked(): boolean
 	return active
 		and usesMouse()
 		and preferLocked
-		and (overrideHolds or next(holds) == nil)
 		and not GuiService.MenuIsOpen
 		and UserInputService:GetFocusedTextBox() == nil
 end
@@ -95,28 +99,7 @@ end
 
 -- Alt or the lock button: lock the mouse if it's free, free it if it's locked.
 function FreeLook.toggle()
-	if FreeLook.isLocked() then
-		preferLocked = false
-		overrideHolds = false
-	else
-		preferLocked = true
-		overrideHolds = next(holds) ~= nil
-	end
-	notify()
-end
-
--- Something on screen needs the mouse (`on`), or is done with it. A new reason frees the
--- mouse even if Alt locked it over an earlier one.
-function FreeLook.hold(reason: string, on: boolean)
-	if on and not holds[reason] then
-		holds[reason] = true
-		overrideHolds = false
-	elseif not on and holds[reason] then
-		holds[reason] = nil
-		if next(holds) == nil then
-			overrideHolds = false
-		end
-	end
+	preferLocked = not FreeLook.isLocked()
 	notify()
 end
 
@@ -227,17 +210,19 @@ local function ensureGui()
 	local h = Instance.new("TextLabel")
 	h.Name = "Hint"
 	h.AnchorPoint = Vector2.new(0.5, 0)
-	h.Position = UDim2.new(0.5, 0, 0.5, 26)
-	h.Size = UDim2.fromOffset(420, 30)
+	h.Position = UDim2.fromScale(0.5, 0.62)
+	h.Size = UDim2.fromOffset(640, 52)
 	h.BackgroundColor3 = Color3.fromRGB(24, 20, 40)
 	h.BackgroundTransparency = 0.3
 	h.TextColor3 = Color3.new(1, 1, 1)
 	h.Font = Enum.Font.GothamBold
-	h.TextSize = 16
-	h.Text = "Move the mouse to look around  ·  Alt frees the mouse"
+	h.TextSize = 15
+	h.LineHeight = 1.1
+	h.TextWrapped = true
+	h.Text = "Move the mouse to look · click what the dot is on\nA/D pick a card · Enter plays · 1-9 press buttons · M menu · Alt frees the mouse"
 	h.Visible = false
 	local hc = Instance.new("UICorner")
-	hc.CornerRadius = UDim.new(0.5, 0)
+	hc.CornerRadius = UDim.new(0, 14)
 	hc.Parent = h
 	h.Parent = screen
 	screen.Parent = playerGui
@@ -330,63 +315,34 @@ local function sendLook(dir: Vector3?)
 	(remote :: RemoteEvent):FireServer(dir)
 end
 
--- Windows tagged by UI/Kit.needsMouse (rules, the how-to-play card, the shop, modals):
--- whether one is on screen now.
-local NEEDS_MOUSE = "GameNightNeedsMouse"
-local function windowOpen(): boolean
-	for _, gui in CollectionService:GetTagged(NEEDS_MOUSE) do
-		if gui:IsA("GuiObject") then
-			local shown = true
-			local at: Instance? = gui
-			while at and at:IsA("GuiObject") do
-				if not at.Visible then
-					shown = false
-					break
-				end
-				at = at.Parent
-			end
-			local screen = gui:FindFirstAncestorWhichIsA("LayerCollector")
-			if shown and screen and screen.Enabled and screen:IsDescendantOf(Players.LocalPlayer) then
-				return true
-			end
-		end
-	end
-	return false
-end
-local windowCheckAt = 0
 
 -- Called by the table camera every frame it's on, before it places the camera.
 function FreeLook.step(dt: number)
 	if not active then
 		return
 	end
-	if os.clock() >= windowCheckAt then
-		windowCheckAt = os.clock() + 0.15
-		FreeLook.hold("window", windowOpen())
-	end
 	local locked = FreeLook.isLocked()
-	if locked then
-		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-		UserInputService.MouseIconEnabled = false
+	local mode = if locked then "locked" elseif rightHeld and usesMouse() and not GuiService.MenuIsOpen then "right" else "free"
+	if mode ~= lastMode then
+		lastMode = mode
+		skipDelta = 2 -- the lock's jump to the middle isn't you turning
+	end
+	if mode == "free" then
+		restoreMouse()
+	else
+		UserInputService.MouseBehavior = if locked then Enum.MouseBehavior.LockCenter else Enum.MouseBehavior.LockCurrentPosition
+		UserInputService.MouseIconEnabled = not locked
 		wroteMouse = true
 		local delta = UserInputService:GetMouseDelta()
-		if delta.Magnitude > 0 then
+		if skipDelta > 0 then
+			skipDelta -= 1
+		elseif delta.Magnitude > 0 and delta.Magnitude < MAX_DELTA then
 			turn(delta.X, delta.Y, SeatLook.MOUSE)
 		end
-		if not hintShown then
+		if locked and not hintShown then
 			hintShown = true
 			hintUntil = os.clock() + HINT_TIME
 		end
-	elseif rightHeld and usesMouse() and not GuiService.MenuIsOpen then
-		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
-		UserInputService.MouseIconEnabled = true
-		wroteMouse = true
-		local delta = UserInputService:GetMouseDelta()
-		if delta.Magnitude > 0 then
-			turn(delta.X, delta.Y, SeatLook.MOUSE)
-		end
-	else
-		restoreMouse()
 	end
 	-- The right stick on a gamepad.
 	if UserInputService.GamepadEnabled then
@@ -454,6 +410,7 @@ function FreeLook.setActive(value: boolean)
 	else
 		restoreMouse()
 		rightHeld = false
+		lastMode = "free"
 		table.clear(touches)
 		if dot then
 			(dot :: Frame).Visible = false

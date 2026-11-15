@@ -191,7 +191,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			local visual = pieceVisual(choice[2] * (if white then 1 else -1))
 			visual.ZIndex = 7
 			visual.Parent = button
-			button.Activated:Connect(function()
+			Kit.onPress(button, function()
 				closePicker()
 				selected = nil
 				sendMove({ from = from, to = to, promotion = choice[1] })

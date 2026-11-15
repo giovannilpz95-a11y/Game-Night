@@ -449,7 +449,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 					}, { Kit.corner(8) })
 				end
 			end
-			tile.Activated:Connect(function()
+			Kit.onPress(tile, function()
 				if isLegal then
 					sendMove({ kind = "move", room = room })
 				end
@@ -582,7 +582,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 						Size = UDim2.new(colWidth, -4, 1, -4),
 						Parent = back,
 					}, { Kit.corner(4) })
-					cell.Activated:Connect(function()
+					Kit.onPress(cell, function()
 						if auto == nil then
 							marks[id] = marks[id] or {}
 							marks[id][seat] = mark % #MARKS + 1
@@ -779,7 +779,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		list.Parent = row
 		for i, id in view.showOptions do
 			local tile = bigCard(row, id, i, 130, 33)
-			tile.Activated:Connect(function()
+			Kit.onPress(tile, function()
 				Audio.play("card")
 				showOverlay.Visible = false
 				sendMove({ kind = "show", card = id })
@@ -1055,7 +1055,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			ZIndex = 60,
 			Parent = root,
 		})
-		holder.Activated:Connect(function()
+		Kit.onPress(holder, function()
 			holder:Destroy()
 		end)
 		local stage = Kit.new("Frame", {

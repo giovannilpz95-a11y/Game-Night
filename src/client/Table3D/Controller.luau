@@ -22,6 +22,7 @@ local Kit = require(script.Parent.Parent.UI.Kit)
 local Focus = require(script.Parent.Focus)
 local FreeLook = require(script.Parent.FreeLook)
 local KeyPick = require(script.Parent.Parent.UI.KeyPick)
+local Hotkeys = require(script.Parent.Parent.UI.Hotkeys)
 local Lift = require(script.Parent.Lift)
 local SceneTap = require(script.Parent.SceneTap)
 local Audio = require(script.Parent.Parent.Audio)
@@ -582,6 +583,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		anyActive = value
 		FreeLook.setActive(value)
 		KeyPick.setEnabled(value)
+		Hotkeys.setEnabled(value)
 		keyCell, pointerCell = nil, nil
 		keyCursor.Adornee = nil
 		-- Handlers with their own on-screen bits (chess draw offers) hide them in 2D.
@@ -1155,9 +1157,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			wasCinematic = false
 			return
 		end
-		-- Showtime's shots aren't yours to steer: the mouse stays free through them.
-		FreeLook.hold("showtime", cinematic)
 		FreeLook.step(dt)
+		Hotkeys.step(FreeLook.isLocked())
 		if cinematic then
 			if not wasCinematic then
 				wasCinematic = true
@@ -1170,6 +1171,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			-- from the intro's last shot. Seated boards cut straight to the seat: gliding
 			-- from wherever the camera was before the intro swept across the room.
 			wasCinematic = false
+			-- Showtime's shots weren't yours to steer: start facing the table again.
+			FreeLook.recenter(true)
 			shown = camera.CFrame
 			placeCamera()
 			if seatedBoard and home then

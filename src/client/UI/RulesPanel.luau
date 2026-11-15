@@ -230,7 +230,7 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 		Parent = screen,
 	})
 	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 1.5, Parent = chip })
-	chip.Activated:Connect(function()
+	Kit.onPress(chip, function()
 		chip.Visible = false
 		card.Visible = cardGameId ~= nil
 	end)
@@ -253,7 +253,7 @@ function RulesPanel.create(screen: Instance, hooks: { replayTour: () -> () })
 	local function renderHide()
 		hideBox.Text = if cardHidden then "✓" else ""
 	end
-	hideRow.Activated:Connect(function()
+	Kit.onPress(hideRow, function()
 		cardHidden = not cardHidden
 		renderHide()
 		if onHide then
