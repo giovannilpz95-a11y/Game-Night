@@ -22,12 +22,17 @@
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
 local Offers = require(script.Parent.Parent.Offers)
+local GameClock = require(script.Parent.Parent.GameClock)
 
 local Checkers = {}
 
 Checkers.id = "Checkers"
 Checkers.minSeats = 2
 Checkers.maxSeats = 2
+-- House rule "timeControl": real game clocks, as in Chess (shared/GameClock). Out of time
+-- loses.
+Checkers.clock = true
+Checkers.turnClock = true
 
 local SIZE = 8
 local NO_PROGRESS_LIMIT = 80 -- plies (40 moves each)
@@ -118,6 +123,9 @@ function Checkers.new(seatCount: number, options: any?, _rng: Random?)
 		optionalCaptures = options ~= nil and options.rules ~= nil and options.rules.forcedCaptures == false,
 		flyingKings = options ~= nil and options.rules ~= nil and options.rules.flyingKings == true,
 		backCaptures = options ~= nil and options.rules ~= nil and options.rules.backCaptures == true,
+		-- Shop items each seat has equipped (checked by the server; see shared/CheckersStyle).
+		cosmetics = if options and type(options.cosmetics) == "table" then options.cosmetics else nil,
+		clock = GameClock.new(options and options.rules and options.rules.timeControl), -- nil = casual
 	}
 	-- How often each position (board + side to move) has come up: three times is a draw.
 	state.history = { [(hashBoard(board, 1))] = 1 }
@@ -403,7 +411,15 @@ end
 
 function Checkers.applyMove(state, seat: number, move: any)
 	if Offers.isMove(move) then
+		-- The side to move's clock keeps running through offers: settle it now.
+		if state.clock and GameClock.settle(state.clock, state.turn, move.at, #state.undo) then
+			Checkers.flag(state, state.turn)
+			return
+		end
 		local accepted = Offers.apply(state, seat, move, undoOne, state.turn)
+		if accepted == "takeback" and state.clock then
+			GameClock.restart(state.clock, move.at)
+		end
 		if accepted == "draw" then
 			state.isDraw = true
 			state.reason = "Draw agreed"
@@ -411,6 +427,10 @@ function Checkers.applyMove(state, seat: number, move: any)
 			state.isDraw = true
 			state.reason = "Game aborted"
 		end
+		return
+	end
+	if state.clock and GameClock.onMove(state.clock, seat, move.at, #state.undo) then
+		Checkers.flag(state, seat) -- out of time before the move landed
 		return
 	end
 	table.insert(state.undo, {
@@ -465,6 +485,38 @@ function Checkers.applyMove(state, seat: number, move: any)
 	end
 end
 
+-- `seat` ran out of time: the other side wins.
+function Checkers.flag(state, seat: number)
+	if isOver(state) then
+		return
+	end
+	if state.clock then
+		state.clock.bank[seat] = 0
+	end
+	state.offer = nil
+	state.winner = 3 - seat
+	state.reason = "Time out"
+end
+
+-- The game clock (only with a time control, and only once both sides have moved).
+function Checkers.getTimer(state): { id: number, seconds: number }?
+	if isOver(state) then
+		return nil
+	end
+	return GameClock.timer(state.clock, #state.undo, state.turn, state.offer ~= nil)
+end
+
+function Checkers.onTimeout(state)
+	if isOver(state) or not state.clock then
+		return
+	end
+	if state.offer and GameClock.offerTimedOut(state.clock, state.turn) == "decline" then
+		state.offer = nil -- no answer in time: turned down
+		return
+	end
+	Checkers.flag(state, state.turn)
+end
+
 function Checkers.getResult(state): GameModule.Result?
 	if state.winner then
 		return { winners = { state.winner }, isDraw = false, reason = state.reason }
@@ -483,6 +535,7 @@ function Checkers.getView(state, seat: number?): any
 	view.takebacks = nil
 	view.drawBlocked = nil
 	view.matchStats = nil
+	view.clock = GameClock.view(state.clock, #undo, if isOver(state) then nil else state.turn)
 	view.moveCount = #undo
 	if seat and not isOver(state) and not state.offer and seat == state.turn then
 		local moves, mustJump = generate(state.board, seat, optsOf(state))

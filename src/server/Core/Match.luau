@@ -27,6 +27,7 @@ export type Match = typeof(setmetatable(
 		moveNumber: number,
 		aborted: boolean,
 		lastMove: { seat: number, move: any, number: number }?,
+		now: (() -> number)?, -- server clock for games with chess clocks (MatchService sets it)
 	},
 	Match
 ))
@@ -109,6 +110,11 @@ function Match.submitMove(self: Match, seat: number, move: any): (boolean, strin
 	local ok, err = self.rules.validateMove(self.state, seat, move)
 	if not ok then
 		return false, err or "That move isn't allowed"
+	end
+	-- Games with chess clocks (GameModule `clock`) get the server time on every move;
+	-- whatever the client put there is overwritten.
+	if self.rules.clock and type(move) == "table" then
+		move.at = if self.now then self.now() else nil
 	end
 	self.rules.applyMove(self.state, seat, move)
 	self.moveNumber += 1

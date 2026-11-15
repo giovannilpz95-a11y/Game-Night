@@ -20,6 +20,7 @@ local HudKit = require(script.Parent.Parent.UI.HudKit)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
 local Audio = require(script.Parent.Parent.Audio)
+local ClockPills = require(script.Parent.Parent.UI.ClockPills)
 local Theme = Kit.Theme
 
 local Chess = {}
@@ -149,6 +150,15 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		ScrollBarThickness = 4,
 		Parent = side,
 	}, { Kit.list(2) })
+	-- Chess clocks (a Party Host house rule): both times on top of the side panel.
+	local clocks = ClockPills.create({ Size = UDim2.new(1, 0, 0, 28), TextScaled = true, Parent = side })
+	Kit.new("UITextSizeConstraint", { MaxTextSize = 16, Parent = clocks.label })
+	local function layoutSide(timed: boolean)
+		local top = if timed then 34 else 0
+		capturedLabel.Position = UDim2.new(0, 0, 0, top)
+		moves.Position = UDim2.new(0, 0, 0, 50 + top)
+		moves.Size = UDim2.new(1, 0, 1, -88 - top)
+	end
 
 	local promotionPicker: Frame? = nil
 
@@ -943,6 +953,8 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 			local hadMoves = snapshot and #snapshot.view.moveList or 0
 			local sameGame = snapshot ~= nil and snapshot.view.startFen == newSnapshot.view.startFen
 			snapshot = newSnapshot
+			clocks.set(snapshot)
+			layoutSide(snapshot.view.clock ~= nil)
 			local nowMoves = #snapshot.view.moveList
 			if sameGame and nowMoves == hadMoves + 1 then
 				moveSound(snapshot.view.moveList[nowMoves])
@@ -981,6 +993,7 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		end,
 		destroy = function()
 			destroyed = true
+			clocks.destroy()
 			for _, connection in connections do
 				connection:Disconnect()
 			end

@@ -12,6 +12,10 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local HouseRules = require(ReplicatedStorage.Shared.HouseRules)
 local Match = require(script.Parent.Parent.Core.Match)
+local Series = require(script.Parent.Parent.Core.Series)
+local Economy = require(ReplicatedStorage.Shared.Economy)
+local ShopCatalog = require(ReplicatedStorage.Shared.ShopCatalog)
+local DataService = require(script.Parent.DataService)
 local TableService = require(script.Parent.TableService)
 local HostService = require(script.Parent.HostService)
 local TableActionService = require(script.Parent.TableActionService)
@@ -40,6 +44,7 @@ type Entry = {
 	clockId: number, -- bumped whenever the turn clock restarts (stale clocks do nothing)
 	drafted: any?, -- the turn key that already got the drafting extension
 	timerOwn: { [number]: number }?, -- turnClock games: ownMoves when the current phase clock started
+	series: Series.Tally?, -- the running score across rematches (Core/Series)
 }
 
 local partyService: any = nil
@@ -49,7 +54,7 @@ local matchOfUser: { [number]: string } = {}
 
 -- The last game each party started, so the end screen's Rematch can start it again.
 -- Only already-checked values are kept; startMatch checks them again anyway.
-local lastStarts: { [string]: { request: any, at: number } } = {}
+local lastStarts: { [string]: { request: any, at: number, series: Series.Tally? } } = {}
 local REMATCH_MEMORY = 30 * 60 -- seconds
 
 local matchStateRemote: RemoteEvent
@@ -78,6 +83,7 @@ local function broadcast(entry: Entry)
 				snapshot.turnEndsAt = entry.turnEndsAt
 				snapshot.timed = entry.timerId ~= nil
 				snapshot.table = entry.table
+				snapshot.series = Series.forSeats(entry.series, entry.match.seats)
 				matchStateRemote:FireClient(player, snapshot)
 			end
 		end
@@ -90,6 +96,9 @@ local function finish(entry: Entry)
 	end
 	entry.ended = true
 	entry.intro = false
+	if entry.series and not entry.match.aborted and entry.match.result then
+		Series.record(entry.series, entry.match.seats, entry.match.result)
+	end
 	entry.turnEndsAt = nil
 	entry.timerId = nil
 	-- Winners at a table celebrate first (players stay seated for it); the celebration is
@@ -377,7 +386,7 @@ function scheduleTurn(entry: Entry)
 	end
 end
 
-local function startMatch(leader: Player, request: any)
+local function startMatch(leader: Player, request: any, rematch: boolean?)
 	local party = partyService.getParty(leader.UserId)
 	if not party then
 		return
@@ -439,11 +448,33 @@ local function startMatch(leader: Player, request: any)
 	end
 
 	local rng = Random.new()
-	-- Shuffle seats so the leader doesn't always go first.
-	for i = #seats, 2, -1 do
-		local j = rng:NextInteger(1, i)
-		seats[i], seats[j] = seats[j], seats[i]
+	-- A rematch with the same people moves everyone round one seat (two players swap
+	-- colours and who starts) and keeps the series score. Otherwise seats are shuffled so
+	-- the leader doesn't always go first.
+	local saved = lastStarts[party.id]
+	local series: Series.Tally
+	if rematch and saved and saved.series and Series.continues(saved.series, catalogEntry.id, seats) then
+		series = saved.series
+		seats = Series.rotate(series, seats)
+	else
+		for i = #seats, 2, -1 do
+			local j = rng:NextInteger(1, i)
+			seats[i], seats[j] = seats[j], seats[i]
+		end
+		-- Playing alone against bots, you may pick your side ("first" = seat 1).
+		if memberCount == 1 and (request.playAs == "first" or request.playAs == "second") then
+			local mine = 1
+			for i, s in seats do
+				if s.kind == "player" then
+					mine = i
+				end
+			end
+			local want = if request.playAs == "first" then 1 else #seats
+			seats[mine], seats[want] = seats[want], seats[mine]
+		end
+		series = Series.new(catalogEntry.id, seats)
 	end
+	Series.seat(series, seats)
 
 	-- Only pass options we've checked; never forward the client's table as-is.
 	local options: any = { botLevel = Config.DefaultBotLevel, bots = {}, rules = ruleValues }
@@ -458,6 +489,25 @@ local function startMatch(leader: Player, request: any)
 	for index, seat in seats do
 		if seat.kind == "bot" then
 			table.insert(options.bots, index)
+		end
+	end
+	-- Shop cosmetics each player has equipped for this game's shop (only items they own),
+	-- for games that draw them (Checkers: shared/CheckersStyle).
+	local shop = catalogEntry.coin or Economy.DefaultCoin
+	options.cosmetics = {}
+	for index, seat in seats do
+		local player = seat.kind == "player" and seat.userId and Players:GetPlayerByUserId(seat.userId)
+		local data = player and DataService.get(player)
+		local slots = data and data.equipped and data.equipped[shop]
+		if slots then
+			local mine = {}
+			for slot, itemId in slots do
+				local item = ShopCatalog.get(itemId)
+				if item and item.shop == shop and item.slot == slot and (data.owned[itemId] or ShopCatalog.isFree(itemId)) then
+					mine[slot] = itemId
+				end
+			end
+			options.cosmetics[index] = mine
 		end
 	end
 
@@ -481,7 +531,12 @@ local function startMatch(leader: Player, request: any)
 		ownMoves = {},
 		strikes = {},
 		clockId = 0,
+		series = series,
 	}
+	-- Chess clocks (GameModule `clock`) read the time off each move.
+	entry.match.now = function()
+		return workspace:GetServerTimeNow()
+	end
 	matches[matchId] = entry
 	for _, userId in party.members do
 		matchOfUser[userId] = matchId
@@ -534,7 +589,8 @@ local function startMatch(leader: Player, request: any)
 	end
 	lastStarts[party.id] = {
 		at = now,
-		request = { gameId = catalogEntry.id, seats = seatCount, botLevel = options.botLevel, rules = picks, custom = customSlot },
+		request = { gameId = catalogEntry.id, seats = seatCount, botLevel = options.botLevel, rules = picks, custom = customSlot, playAs = if request.playAs == "first" or request.playAs == "second" then request.playAs else nil },
+		series = series,
 	}
 
 	local lines = HouseRules.describe(catalogEntry, ruleValues)
@@ -660,7 +716,7 @@ function handlers.rematch(player: Player, _request: any)
 	if not saved then
 		return notify(player, "Pick a game to play")
 	end
-	startMatch(player, saved.request)
+	startMatch(player, saved.request, true)
 end
 
 function handlers.resign(player: Player, _request: any)
@@ -741,6 +797,7 @@ function handlers.sync(player: Player, _request: any)
 		snapshot.turnEndsAt = entry.turnEndsAt
 		snapshot.timed = entry.timerId ~= nil
 		snapshot.table = entry.table
+		snapshot.series = Series.forSeats(entry.series, entry.match.seats)
 		matchStateRemote:FireClient(player, snapshot)
 	else
 		matchStateRemote:FireClient(player, nil)

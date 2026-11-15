@@ -15,12 +15,18 @@
 local GameModule = require(script.Parent.Parent.GameModule)
 local Offers = require(script.Parent.Parent.Offers)
 local BotThink = require(script.Parent.Parent.BotThink)
+local GameClock = require(script.Parent.Parent.GameClock)
 
 local Chess = {}
 
 Chess.id = "Chess"
 Chess.minSeats = 2
 Chess.maxSeats = 2
+-- House rule "timeControl": real chess clocks (shared/GameClock). Moves carry the server
+-- time, the side to move's bank is the phase clock, and a fallen flag loses (a draw if the
+-- other side couldn't mate anyway). "casual" keeps the per-move turn timer.
+Chess.clock = true
+Chess.turnClock = true
 
 local PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING = 1, 2, 3, 4, 5, 6
 Chess.Pieces = { PAWN = PAWN, KNIGHT = KNIGHT, BISHOP = BISHOP, ROOK = ROOK, QUEEN = QUEEN, KING = KING }
@@ -685,6 +691,7 @@ function Chess.new(seatCount: number, options: any?, rng: Random?)
 		kingOfTheHill = rules.kingOfTheHill == true,
 		threeCheck = rules.threeCheck == true,
 		checks = { 0, 0 }, -- checks each seat has given (three-check)
+		clock = GameClock.new(rules.timeControl), -- nil = casual (the turn timer)
 	}
 	state.history[positionKey(pos)] = 1
 	Offers.init(state)
@@ -884,7 +891,16 @@ end
 
 function Chess.applyMove(state, seat: number, move: any)
 	if Offers.isMove(move) then
-		local accepted = Offers.apply(state, seat, move, undoOne, turnSeat(state))
+		-- The side to move's clock keeps running through offers: settle it now.
+		local turn = turnSeat(state)
+		if state.clock and turn and GameClock.settle(state.clock, turn, move.at, #state.undo) then
+			Chess.flag(state, turn)
+			return
+		end
+		local accepted = Offers.apply(state, seat, move, undoOne, turn)
+		if accepted == "takeback" and state.clock then
+			GameClock.restart(state.clock, move.at)
+		end
 		if accepted == "draw" then
 			state.isDraw = true
 			state.reason = "Draw agreed"
@@ -896,6 +912,10 @@ function Chess.applyMove(state, seat: number, move: any)
 	end
 	local pos = state.pos
 	local m = findMove(state, move) :: Move
+	if state.clock and GameClock.onMove(state.clock, seat, move.at, #state.undo) then
+		Chess.flag(state, seat) -- out of time before the move landed
+		return
+	end
 	table.insert(state.undo, {
 		fen = Chess.toFen(pos),
 		lastMove = state.lastMove,
@@ -945,6 +965,60 @@ function Chess.applyMove(state, seat: number, move: any)
 	end
 end
 
+-- Can this side (1 White, -1 Black) still mate at all? A lone king or king and one minor
+-- piece can't, so flagging against it is a draw (FIDE 6.9, chess.com, Lichess).
+local function canMate(board, side: number): boolean
+	local minors = 0
+	for sq = 0, 63 do
+		local v = board[sq] * side
+		if v == PAWN or v == ROOK or v == QUEEN then
+			return true
+		elseif v == KNIGHT or v == BISHOP then
+			minors += 1
+		end
+	end
+	return minors >= 2
+end
+
+-- `seat` ran out of time.
+function Chess.flag(state, seat: number)
+	if isOver(state) then
+		return
+	end
+	if state.clock then
+		state.clock.bank[seat] = 0
+	end
+	state.offer = nil
+	local other = 3 - seat
+	if canMate(state.pos.board, seatToSide(other)) then
+		state.winner = other
+		state.reason = "Time out"
+	else
+		state.isDraw = true
+		state.reason = "Time out, but no mating material"
+	end
+end
+
+-- The chess clock (only with a time control, and only once both sides have moved).
+function Chess.getTimer(state): { id: number, seconds: number }?
+	if isOver(state) then
+		return nil
+	end
+	return GameClock.timer(state.clock, #state.undo, turnSeat(state), state.offer ~= nil)
+end
+
+function Chess.onTimeout(state)
+	local turn = turnSeat(state)
+	if not turn or not state.clock then
+		return
+	end
+	if state.offer and GameClock.offerTimedOut(state.clock, turn) == "decline" then
+		state.offer = nil -- no answer in time: turned down
+		return
+	end
+	Chess.flag(state, turn)
+end
+
 function Chess.getResult(state): GameModule.Result?
 	if state.winner then
 		return { winners = { state.winner }, isDraw = false, reason = state.reason }
@@ -987,6 +1061,7 @@ function Chess.getView(state, seat: number?): any
 		-- Material lead in pawns from what is on the board (so promotions count), as
 		-- chess.com and Lichess show it: lead[seat] is 0 unless that seat is ahead.
 		lead = Chess.materialLead(pos.board),
+		clock = GameClock.view(state.clock, #state.undo, turnSeat(state)),
 		-- Every earlier position, for stepping back through the move list:
 		-- past[i] is the board after move i (and that move's squares).
 		past = {},

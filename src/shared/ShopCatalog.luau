@@ -18,8 +18,10 @@
 -- you at the start of a game, slot "victory" is your celebration when you win. Both are
 -- hub items sold for Gems or Universal Coins, shown on the shop's 🕺 Showtime tab.
 --
--- Cosmetics are not drawn yet: equipping is saved now, and the renderers read
--- `equipped` when the art lands (see docs/Economy.md).
+-- Game cosmetics: MatchService hands each seat's equipped, owned items for the game's shop
+-- to the game as options.cosmetics. Checkers draws its five (shared/CheckersStyle); the
+-- other games' items are saved when equipped and drawn when their art lands (see
+-- docs/Economy.md).
 
 export type Item = {
 	id: string,

@@ -1,20 +1,22 @@
 -- Checkers board. Tap a piece, then a landing square. A multi-jump finishes by itself as
 -- soon as only one route is left (like Board Game Arena and the checkers apps); the rest
--- of that route shows as numbered hops. When a capture is forced, only the pieces that
--- can jump glow. The strip on top counts the pieces each side has taken.
+-- of that route shows as numbered hops (tap the start square to take a half-entered jump
+-- back). When a capture is forced, only the pieces that can jump glow. The strip on top
+-- counts the pieces each side has taken. Shop skins come from shared/CheckersStyle.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Rules = require(ReplicatedStorage.Shared.Games.Checkers)
+local CheckersStyle = require(ReplicatedStorage.Shared.CheckersStyle)
+local Audio = require(script.Parent.Parent.Audio)
 local Kit = require(script.Parent.Parent.UI.Kit)
+local ClockPills = require(script.Parent.Parent.UI.ClockPills)
 local BoardGrid = require(script.Parent.Parent.UI.BoardGrid)
 local PieceView = require(script.Parent.Parent.UI.PieceView)
 local Theme = Kit.Theme
 
 local Checkers = {}
 
-local LIGHT_SQUARE = Color3.fromRGB(236, 220, 192)
-local DARK_SQUARE = Color3.fromRGB(96, 70, 56)
 local GLOW = Color3.fromRGB(255, 214, 102)
 local LAST_MOVE = Color3.fromRGB(150, 120, 70)
 local HINT = Color3.fromRGB(120, 200, 255)
@@ -22,9 +24,14 @@ local HINT = Color3.fromRGB(120, 200, 255)
 local DARK_PIECE = Color3.fromRGB(200, 62, 72)
 local LIGHT_PIECE = Color3.fromRGB(245, 236, 214)
 
-local function pieceVisual(v: number): GuiObject
+local function pieceVisual(v: number, cosmetics: any): GuiObject
 	local dark = (v - 1) % 2 == 0
 	local king = v > 2
+	-- A shop skin draws a plain token in its colour (the 3D model would keep its own).
+	local skin = CheckersStyle.piece(cosmetics, v)
+	if skin then
+		return BoardGrid.token(skin, skin:Lerp(Color3.new(0, 0, 0), 0.4), if king then "K" else "", Color3.new(1, 1, 1))
+	end
 	local name = `{if king then "King" else "Man"}_{if dark then "Dark" else "Light"}`
 	return PieceView.create("Checkers", name, function()
 		local fill = if dark then DARK_PIECE else LIGHT_PIECE
@@ -51,14 +58,30 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	})
 	local boardArea = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 1, -30), Parent = root })
+	-- The game clock (a Party Host house rule), under the strip; the board moves down for it.
+	local clocks = ClockPills.create({
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 28),
+		Size = UDim2.new(0, 260, 0, 26),
+		Parent = root,
+	})
 
 	-- 💡 Hint, like the casual apps: a few per game, worked out here with the medium bot.
 	local HINTS = 3
 	local hintsLeft = HINTS
 	local hinted: any = nil -- the suggested move, until you move
 	local hintButton: TextButton
+	-- Hints are for games against a bot only (like the apps); against a person they'd be
+	-- an engine helping one side.
+	local function againstBot(): boolean
+		if not snapshot or not snapshot.yourSeat then
+			return false
+		end
+		local other = snapshot.seats and snapshot.seats[3 - snapshot.yourSeat]
+		return other ~= nil and other.kind == "bot"
+	end
 	hintButton = Kit.button(`💡 Hint ({HINTS})`, function()
-		if not snapshot or hintsLeft <= 0 or not snapshot.view.legalMoves then
+		if not snapshot or hintsLeft <= 0 or not snapshot.view.legalMoves or not againstBot() then
 			return
 		end
 		local view = snapshot.view
@@ -141,6 +164,10 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 				end
 			end
 			if #partial > 0 then
+				if same(selected, { r, c }) then
+					partial = {} -- tapped the start: take the half-entered jump back
+					render()
+				end
 				return -- mid-jump: must keep going with the same piece
 			end
 		end
@@ -160,6 +187,17 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 		end
 		local view = snapshot.view
 		grid.setFlipped(snapshot.yourSeat == 2)
+		local look = CheckersStyle.board(view.cosmetics)
+		local trailSeat = nil
+		if view.lastMove and #view.lastMove.path > 0 then
+			local landed = view.lastMove.path[#view.lastMove.path]
+			local v = view.board[landed[1]][landed[2]]
+			local first = view.lastMove.path[1]
+			local jumped = #view.lastMove.path > 1 or math.abs(first[1] - view.lastMove.from[1]) > 1
+			if v ~= 0 and jumped and CheckersStyle.hasTrail(view.cosmetics, (v - 1) % 2 + 1) then
+				trailSeat = (v - 1) % 2 + 1
+			end
+		end
 		-- Pieces taken so far (each side starts with 12).
 		local left = { 0, 0 }
 		for r = 1, 8 do
@@ -174,7 +212,7 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 		local taken = `Taken: Dark {12 - left[2]} · Light {12 - left[1]}`
 		hint.Text = if view.mustJump and #legal() > 0 then `You must jump!   {taken}` elseif hinted then `💡 Try the glowing move   {taken}` else taken
 		hint.TextColor3 = if view.mustJump and #legal() > 0 then Theme.Accent else Theme.SubText
-		hintButton.Visible = view.legalMoves ~= nil and snapshot.result == nil and hintsLeft > 0
+		hintButton.Visible = view.legalMoves ~= nil and snapshot.result == nil and hintsLeft > 0 and againstBot()
 		local hintSquares: { [number]: boolean } = {}
 		if hinted then
 			hintSquares[hinted.from[1] * 10 + hinted.from[2]] = true
@@ -215,9 +253,9 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 				local key = r * 10 + c
 				local cell = grid.cell(r, c)
 				local dark = (r + c) % 2 == 1
-				local color = if dark then DARK_SQUARE else LIGHT_SQUARE
+				local color = if dark then look.dark else look.light
 				if dark and lastSquares[key] then
-					color = LAST_MOVE
+					color = if trailSeat then CheckersStyle.TrailColor else (if look == CheckersStyle.DefaultBoard then LAST_MOVE else color:Lerp(LAST_MOVE, 0.6))
 				end
 				if selected and same(selected, { r, c }) or trail[key] then
 					color = GLOW
@@ -267,7 +305,7 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 					local content = grid.content(r, c)
 					content:ClearAllChildren()
 					if v ~= 0 then
-						pieceVisual(v).Parent = content
+						pieceVisual(v, view.cosmetics).Parent = content
 					end
 				end
 			end
@@ -276,8 +314,21 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 
 	return {
 		update = function(newSnapshot: any)
+			local before = snapshot and snapshot.view.moveCount or 0
 			snapshot = newSnapshot
+			clocks.set(snapshot)
+			local top = if snapshot.view.clock then 58 else 30
+			boardArea.Position = UDim2.new(0, 0, 0, top)
+			boardArea.Size = UDim2.new(1, 0, 1, -top)
 			selected, partial = nil, {}
+			-- King Fanfare (shop): a fanfare when that seat crowns a man.
+			local last = snapshot.view.lastMove
+			if last and last.crowned and (snapshot.view.moveCount or 0) == before + 1 then
+				local seat = if last.from[1] > last.path[#last.path][1] then 1 else 2
+				if CheckersStyle.hasFanfare(snapshot.view.cosmetics, seat) then
+					Audio.play("callout")
+				end
+			end
 			if not snapshot.view.legalMoves then
 				hinted = nil
 			end
@@ -287,6 +338,7 @@ function Checkers.create(container: Frame, sendMove: (any) -> ())
 			render()
 		end,
 		destroy = function()
+			clocks.destroy()
 			root:Destroy()
 		end,
 	}

@@ -56,6 +56,12 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 	end, function(r, c)
 		return if (r + c) % 2 == 0 then LIGHT else DARK
 	end, Color3.fromRGB(70, 46, 32))
+	-- a-h and 1-8 on the frame, like Chess.com and Lichess show them.
+	Square.coordinates(board, boardCF, 8, function(c)
+		return string.sub("abcdefgh", c, c)
+	end, function(r)
+		return tostring(9 - r)
+	end)
 
 	local factor = Pieces.setScale("Chess", ALL_NAMES, board.cellSize * 0.8)
 	local shown: { [number]: Instance } = {}
