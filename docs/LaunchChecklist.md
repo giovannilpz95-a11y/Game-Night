@@ -4,18 +4,18 @@ Back to [[Home]] · details in [[Launch]], [[Economy]], [[Store page]], [[Voice 
 
 ## 1. Creator Hub products
 
-Create each under Creator Hub > Game Night > Monetization, then paste the ID into `src/shared/Economy.luau`. An ID of 0 shows "Coming soon", so nothing breaks if one is left for later.
+All ten were created on 2026-11-15 through Open Cloud (universe 10774471881) and their IDs are in the code. To change a price or description, edit it under Creator Hub > Game Night > Monetization; the ID stays the same. An ID of 0 shows "Coming soon", so nothing breaks if one is cleared.
 
-- [ ] **50 Gems**, 49 R$ → `Economy.GemPacks[1].productId`
-- [ ] **110 Gems**, 99 R$ → `Economy.GemPacks[2].productId`
-- [ ] **300 Gems**, 249 R$ → `Economy.GemPacks[3].productId`
-- [ ] **650 Gems**, 499 R$ → `Economy.GemPacks[4].productId`
-- [ ] **1,400 Gems**, 999 R$ → `Economy.GemPacks[5].productId`
-- [ ] **Starter Pack**, 79 R$ (developer product) → `Economy.StarterPack.productId`
-- [ ] **All Reaction Packs**, 499 R$ (developer product) → `Economy.ReactionBundle.productId`
-- [ ] **Game Night Pass (premium)**, 299 R$ (developer product, bought again each season) → `Season.Premium.productId` in `shared/Season.luau`
-- [ ] **VIP** game pass, 399 R$ → `Economy.Passes.vip.gamePassId`
-- [ ] **Party Host** game pass, 199 R$ → `Economy.Passes.partyHost.gamePassId`
+- [x] **50 Gems**, 49 R$ → `Economy.GemPacks[1].productId` (id 3731718478, created 2026-11-15)
+- [x] **110 Gems**, 99 R$ → `Economy.GemPacks[2].productId` (id 3731718553, created 2026-11-15)
+- [x] **300 Gems**, 249 R$ → `Economy.GemPacks[3].productId` (id 3731718555, created 2026-11-15)
+- [x] **650 Gems**, 499 R$ → `Economy.GemPacks[4].productId` (id 3731718559, created 2026-11-15)
+- [x] **1,400 Gems**, 999 R$ → `Economy.GemPacks[5].productId` (id 3731718563, created 2026-11-15)
+- [x] **Starter Pack**, 79 R$ (developer product) → `Economy.StarterPack.productId` (id 3731718566, created 2026-11-15)
+- [x] **All Reaction Packs**, 499 R$ (developer product) → `Economy.ReactionBundle.productId` (id 3731718567, created 2026-11-15)
+- [x] **Game Night Pass (premium)**, 299 R$ (developer product, bought again each season) → `Season.Premium.productId` in `shared/Season.luau` (id 3731718570, created 2026-11-15)
+- [x] **VIP** game pass, 399 R$ → `Economy.Passes.vip.gamePassId` (id 2089036059, created 2026-11-15)
+- [x] **Party Host** game pass, 199 R$ → `Economy.Passes.partyHost.gamePassId` (id 2089198115, created 2026-11-15)
 - [ ] Product images, 512 × 512 (briefs in [[Launch]] section 4)
 - [ ] After pasting: one real-Robux test buy of each in a private server, then rejoin and check it's still there (Gems, items, pass perks). Each developer product must be granted exactly once.
 

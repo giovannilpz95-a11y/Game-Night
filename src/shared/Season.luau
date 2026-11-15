@@ -36,7 +36,7 @@ Season.RerollsPerDay = 1 -- swap one daily quest you don't like for another
 -- Create it in the Creator Hub and paste the id into `productId` (0 = "Coming soon").
 Season.Premium = {
 	key = "seasonPremium",
-	productId = 0,
+	productId = 3731718570,
 	robux = 299,
 	gems = 500,
 }
