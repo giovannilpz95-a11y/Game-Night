@@ -148,7 +148,9 @@ end
 
 local function broadcast(entry: Entry)
 	-- The table shows the spectator view, so nothing hidden ends up in the world.
-	TableService.update(entry.match.id, snapshotFor(entry, nil, nil))
+	local tableSnapshot = snapshotFor(entry, nil, nil)
+	tableSnapshot.turnEndsAt = entry.turnEndsAt -- boards with a clock on screen (Trivia)
+	TableService.update(entry.match.id, tableSnapshot)
 	for index, seat in entry.match.seats do
 		if seat.kind == "player" and seat.userId then
 			local player = Players:GetPlayerByUserId(seat.userId)
