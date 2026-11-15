@@ -222,7 +222,17 @@ rules.FiveDice = {
 		{ title = "Your turn", lines = { "Roll up to three times. Between rolls, tap dice to keep (hold) them.", "You can stop early. Then tap a box on your card and Score.", "If the roll doesn't fit the box you pick, it scores 0 there." } },
 		{ title = "Upper boxes", lines = { "Ones to Sixes: add up the dice showing that number.", "Reach 63 in the upper boxes for a 35 point bonus (three of each number gets you there)." } },
 		{ title = "Lower boxes", lines = { "3 of a kind, 4 of a kind: add up all five dice.", "Full house (three + two): 25. Small straight (four in a row): 30. Large straight (five in a row): 40.", "Big Five (five the same): 50. Chance: add up anything." } },
-		{ title = "Extra Big Fives", lines = { "Roll another Big Five after scoring 50 there: +100 bonus.", "It's also a joker: it must go in its number's upper box if that's open, otherwise it scores in full in any lower box." } },
+		{ title = "Extra Big Fives", lines = {
+			"Roll another Big Five after scoring 50 there: +100 bonus.",
+			"It's also a joker: it must go in its number's upper box if that's open. Otherwise it scores in full in any open lower box (Full house 25, straights 30 and 40).",
+			"If every lower box is full too, it goes in any open upper box for 0.",
+			"If you scored 0 in Big Five, later ones are still jokers, but there's no +100.",
+		} },
+		{ title = "House rules", lines = {
+			"Big Five bonus: Official (the joker order above), Free choice (any open box, lower boxes still score in full) or Off (no +100, no joker).",
+			"Everyone rolls at once: all players take their turn together.",
+			"Quick card: only the 7 lower boxes, no upper bonus.",
+		} },
 	},
 }
 
@@ -234,8 +244,9 @@ rules.SeaStrike = {
 		"Hit every square of a ship to sink it. Sink the whole fleet to win.",
 	},
 	sections = {
-		{ title = "Your fleet", lines = { "Carrier (5), Battleship (4), Cruiser (3), Submarine (3), Destroyer (2).", "Ships go across or down, never diagonal, and can't overlap. They may touch.", "Shuffle places them at random. When the setup clock runs out, you're made ready." } },
-		{ title = "Firing", lines = { "On your turn, fire at one square of the enemy grid you haven't tried yet.", "You hear hit or miss. When a ship's last square is hit, it sinks and everyone hears which ship it was." } },
+		{ title = "Your fleet", lines = { "Carrier (5), Battleship (4), Cruiser (3), Submarine (3), Destroyer (2).", "Ships go across or down, never diagonal, and can't overlap. They may touch (unless No touching is on).", "Shuffle places them at random. When the setup clock runs out, you're made ready." } },
+		{ title = "Firing", lines = { "On your turn, fire at one square of the enemy grid you haven't tried yet. Squares are named like B7: row letter, column number.", "You hear hit or miss. When a ship's last square is hit, it sinks and everyone hears which ship it was." } },
+		{ title = "House rules", lines = { "Salvo: one shot for every ship you still have afloat. \"One at a time\" shows each result; \"Call them all\": pick every square, then they land together.", "No touching: ships can't touch, even at a corner. When a ship sinks, the water around it is marked for the shooter.", "Hit again: a hit lets you fire again." } },
 		{ title = "Tips", lines = { "After a hit, try the squares next to it. Two hits in a line show which way the ship lies.", "Ships need room: big empty areas are where the big ships hide." } },
 	},
 }
@@ -251,6 +262,7 @@ rules.Whodunit = {
 		{ title = "The mystery", lines = { "One suspect, one item and one room are hidden in the case file. All the other cards are dealt to players.", "With 4 or 5 players the cards that don't deal evenly lie face up beside the board for everyone.", "Any card you see can't be in the case file." } },
 		{ title = "Your turn", lines = { "Move to a room next to yours, or take a secret passage between opposite corners.", "You have to leave your room each turn, unless someone's suggestion pulled your pawn in (or it's your first turn).", "Suggest a suspect and an item. Their pawn and the item move into your room. Suggesting is optional: you can skip it.", "Going round the table, the first player with any of those cards shows you one in secret." } },
 		{ title = "Accusing", lines = { "Any time on your turn you can accuse: name a suspect, item and room.", "Right: you win. Wrong: you're out, but you still show cards to others.", "After a wrong accusation you don't get to see the case file." } },
+		{ title = "Clue cards (house rule)", lines = { "About one turn in four starts with a Clue card, played at once.", "Peek: the player on your left shows you a random card. Round-up: the players either side each show you a card of one kind, or say they have none.", "Shortcut: walk to any room this turn. Cards shown by a Clue card are secret, like a suggestion's." } },
 		{ title = "Tip", lines = { "Open Detective notes to track what you've seen." } },
 	},
 }
@@ -415,27 +427,30 @@ rules.Speed = {
 	goal = "Be the first to play every card from your hand and your draw pile.",
 	card = {
 		"No turns: both players play at the same time. Be quick!",
-		"Play a card one higher or lower than either center pile (K-A-2 connects).",
+		"Play a card one higher or lower than either center pile (K-A-2 connects unless the host turned it off).",
 		"Your hand refills to 5 by itself. Stuck? New center cards flip in.",
 	},
 	sections = {
-		{ title = "Playing", lines = { "Tap a card in your hand that fits a center pile. If it fits both, tap the pile you want.", "A card fits if it is one rank above or below the top card.", "Ace and King connect, so King-Ace-2 works.", "Your hand refills from your draw pile." } },
-		{ title = "Stuck", lines = { "When neither player can play, a card flips from each side pile onto the center." } },
-		{ title = "Winning", lines = { "First to run out of cards wins. A long stalemate ends it: fewest cards left wins." } },
+		{ title = "Start", lines = { "3, 2, 1... GO! Both center cards turn over at the same moment." } },
+		{ title = "Playing", lines = { "Tap a card in your hand that fits a center pile. If it fits both, tap the pile you want (the buttons name its top card).", "A card fits if it is one rank above or below the top card.", "Ace and King connect, so King-Ace-2 works (a house rule can turn this off).", "Your hand refills from your draw pile." } },
+		{ title = "Stuck", lines = { "When neither player can play, a card flips from each side pile onto the center.", "When the side piles run out, each center pile is shuffled into a new side pile." } },
+		{ title = "Winning", lines = { "First to run out of cards wins. A long stalemate ends it: fewest cards left wins.", "Match to 25: the deal's winner scores a point for every card the other player has left. First to 25 wins." } },
+		{ title = "House rules", lines = { "Ace and King connect (on by default).", "Same rank plays: a card of the same rank also fits.", "Match: one deal, or deals to 25 points." } },
 	},
 }
 
 rules.Spoons = {
 	goal = "Don't be the one left without a spoon. Last player in wins.",
 	card = {
-		"Each pass, you get a card. Tap one of your cards to pass it on.",
-		"Collect four of a kind, then GRAB A SPOON!",
-		"Once anyone grabs a spoon, grab one too, fast. No spoon and you're out.",
+		"Hold 5? Tap one of your cards to pass it on. No turns: pass as fast as you like.",
+		"Collect four of a kind, then GRAB A SPOON! (Quietly: only a missing spoon gives it away.)",
+		"Spot a missing spoon? Grab one too, fast. No spoon and you're out.",
 	},
 	sections = {
-		{ title = "Passing", lines = { "Everyone holds 4 cards and passes at the same time.", "You get a new card, then pass one of your 5 to the next player.", "Too slow? A card is passed for you." } },
-		{ title = "Spoons", lines = { "There's one spoon fewer than players.", "Get four of a kind to grab a spoon. As soon as the first one goes, anyone can grab." } },
+		{ title = "Passing", lines = { "You hold 4 cards plus the one coming in. Pass one of your 5 to the next player.", "No turns: pass whenever you hold 5. Your card waits in front of the next player until they're ready.", "Sit on your cards too long and one is passed for you." } },
+		{ title = "Spoons", lines = { "There's one spoon fewer than players.", "Get four of a kind to grab a spoon. Nobody is told: a spoon just goes missing from the middle.", "Once a spoon is gone, anyone can grab. A second grab and everyone knows: the scramble!" } },
 		{ title = "Winning", lines = { "The player left without a spoon is out. New deal, one spoon fewer, until one player is left." } },
+		{ title = "House rules", lines = { "Passing: free (default) or together.", "Letters: P-I-G or S-P-O-O-N lives instead of out at once.", "False grab: grab without four of a kind and you lose the round.", "Two winners: the last two players both win." } },
 	},
 }
 
@@ -447,9 +462,10 @@ rules.GoFish = {
 		"They don't? Go fish: draw a card. Draw what you asked for to go again.",
 	},
 	sections = {
-		{ title = "Your turn", lines = { "Ask one player for a rank you already have at least one of.", "Get any and ask again. Otherwise draw from the pond." } },
-		{ title = "Books", lines = { "Four of a kind is put down as a book straight away.", "An empty hand draws a card on its turn." } },
-		{ title = "Winning", lines = { "When all 13 books are down, the most books wins." } },
+		{ title = "Your turn", lines = { "Ask one player for a rank you already have at least one of.", "Get any and ask again. Otherwise draw from the pond.", "Watch the ask history: whoever asked for a rank still has it." } },
+		{ title = "Books", lines = { "Four of a kind is put down as a book straight away.", "Run out of cards and you're dealt back up to your starting hand (7 with 2-3 players, 5 with more)." } },
+		{ title = "Winning", lines = { "When all 13 books are down (26 pairs with the Pairs rule), the most wins.", "Tied? The higher books win (2-10 face value, J 11, Q 12, K 13, A 15)." } },
+		{ title = "House rules", lines = { "Pairs: collect pairs instead of fours.", "Lucky fish (on): fishing the rank you asked for lets you go again.", "Refill empty hand (on), Turn goes to who you asked, Quick game (ends when the pond or a hand runs out)." } },
 	},
 }
 
@@ -457,13 +473,14 @@ rules.War = {
 	goal = "Win every card, or hold the most when the battle limit is reached.",
 	card = {
 		"Everyone flips their top card at once. Highest card takes them all.",
-		"A tie for highest is a war: 3 cards face down, then flip again.",
-		"Aces are high.",
+		"A tie for highest is a war: cards face down (3 unless the host picked 1 or 2), then flip again.",
+		"Aces are high. Auto-flip flips for you.",
 	},
 	sections = {
-		{ title = "Battles", lines = { "Tap Flip! Everyone still in flips their top card.", "Highest rank wins all the flipped cards. Slow players are flipped for." } },
-		{ title = "War", lines = { "Tied for highest? Those players each put up to 3 cards face down and flip one more. Highest takes everything. Wars can chain." } },
-		{ title = "Winning", lines = { "Out of cards, you're out. Last player with cards wins.", "After the battle limit, most cards wins." } },
+		{ title = "Battles", lines = { "Tap Flip! Everyone still in flips their top card.", "Highest rank wins all the flipped cards. Slow players are flipped for.", "Switch on Auto-flip and your cards flip by themselves." } },
+		{ title = "War", lines = { "Tied for highest? Those players each put cards face down (3 unless the host picked 1 or 2) and flip one more. Highest takes everything. Wars can chain.", "Tied on your last card? It stays up as your war card, so you can still win." } },
+		{ title = "Winning", lines = { "Out of cards, you're out. Last player with cards wins.", "After the battle limit (200 unless the host picked 60 or no limit), most cards wins." } },
+		{ title = "House rules", lines = { "Peace: lowest card wins, and a tie spells P-E-A-C-E (4 down, the 5th decides).", "Everyone joins the war: with 3-4 players, everyone still in fights it." } },
 	},
 }
 
@@ -479,6 +496,7 @@ rules.Cheat = {
 		{ title = "Doubting", lines = { "After each play everyone else gets a few seconds to doubt it.", "The cards are turned over. If any isn't the called rank, the player who bluffed takes the whole pile.", "If they were honest, the doubter takes it. Nobody doubts: play goes on." } },
 		{ title = "Winning", lines = { "First to empty their hand (and survive any doubt) wins.", "A very long game ends early: fewest cards left wins." } },
 		{ title = "Big tables", lines = { "With 6 or more players two decks are shuffled together (a host can change this), so up to 8 of a rank are out there." } },
+		{ title = "House rules", lines = { "Up, down or same: claim the same rank as the last play, or one above or below (the first play is still Aces).", "Any rank: the leader names a rank and everyone follows it until a doubt.", "Allow pass: pass instead of playing; if everyone passes, the pile is set aside.", "Four of a kind is put aside.", "Rounds (3 or 5): first out scores 0, the next fewest cards 1, the most cards 3, the rest 2. Fewest points wins." } },
 	},
 }
 
@@ -501,15 +519,28 @@ rules.President = {
 rules.SlapStack = {
 	goal = "Win every card in the deck.",
 	card = {
-		"Take turns flipping your top card onto the pile.",
-		"Two of the same rank on top? SLAP! First good slap takes the pile.",
+		"Take turns flipping your top card onto the pile (F or Enter flips).",
+		"Two of the same rank on top? SLAP! (Space) First good slap takes the pile.",
 		"Face cards are challenges: the next player must flip a face card or Ace in time.",
 	},
 	sections = {
-		{ title = "Flipping", lines = { "On your turn, tap Flip! to put your top card on the pile." } },
-		{ title = "Challenges", lines = { "A Jack gives the next player 1 try to flip a face card or Ace, a Queen 2, a King 3, an Ace 4.", "If they do, the challenge passes on. If not, the challenger takes the pile." } },
-		{ title = "Slaps", lines = { "Anyone can slap when the top two cards match (a double) or the top and third match (a sandwich).", "The first good slap takes the whole pile. A bad slap costs you a card." } },
-		{ title = "Winning", lines = { "No cards and you're out. Last player with cards wins. After the flip limit, most cards wins." } },
+		{ title = "Flipping", lines = { "On your turn, tap Flip!, tap your pile or press F to put your top card on the pile." } },
+		{ title = "Challenges", lines = { "A Jack gives the next player 1 try to flip a face card or Ace, a Queen 2, a King 3, an Ace 4.", "If they do, the challenge passes on. If not, the challenger takes the pile (anyone can still slap first)." } },
+		{
+			title = "Slaps",
+			lines = {
+				"Anyone can slap when the top two cards match (a double). Sandwiches (7-4-7) count too unless the host turns them off; the host can add more slaps below.",
+				"The first good slap takes the whole pile. A bad slap burns a card face down under the pile, and you can't slap again until the next card.",
+			},
+		},
+		{
+			title = "Running out",
+			lines = {
+				"Out of cards? Keep watching: one good slap gets you back in (once per game). Three bad slaps while out and you're out for good.",
+				"When one player has every card, they flip 3 last-chance cards so the others can try to slap back in.",
+			},
+		},
+		{ title = "Winning", lines = { "The last player with cards wins. A very long game (1000 flips) ends with most cards winning." } },
 	},
 }
 
@@ -579,13 +610,14 @@ rules.OldMaid = {
 	goal = "Get rid of all your cards. Whoever is left holding the Old Maid loses.",
 	card = {
 		"Pairs go down by themselves.",
-		"On your turn, tap one of your neighbor's face-down cards to take it.",
-		"Don't get stuck with the Queen of Spades: she never pairs.",
+		"On your turn, tap one of the face-down cards of the player on your right to take it.",
+		"Don't get stuck with the odd card (the Queen of Spades, unless the host picked another): it never pairs.",
 	},
 	sections = {
 		{ title = "Setup", lines = { "One Queen is taken out, so the Queen of Spades (the Old Maid) has no partner.", "All the other cards are dealt out. Pairs (two of the same rank) go down straight away." } },
-		{ title = "Your turn", lines = { "Take one face-down card from the next player who still has cards.", "If it makes a pair, the pair goes down.", "Hands are shuffled after every pick, so nobody knows where the Old Maid is." } },
+		{ title = "Your turn", lines = { "Take one face-down card from the player on your right who still has cards. Then the turn passes left, and they take one of yours.", "If it makes a pair, the pair goes down.", "Hands are shuffled after every pick, so nobody knows where the Old Maid is.", "While someone picks from you, you can shuffle or lift a card as bait." } },
 		{ title = "Winning", lines = { "No cards left? You're safe.", "The last player holding cards has the Old Maid and loses. Everyone else wins." } },
+		{ title = "House rules", lines = { "Pairs: same rank, or same rank and color.", "Odd card: Old Maid (Queen of Spades), Black Peter (Jack of Spades), or Mystery (a random card comes out face down: you find out at the end).", "To 6 points: first out scores 0, the next 1, and so on; the loser scores the most. Fewest points when someone reaches 6 wins." } },
 	},
 }
 
@@ -594,12 +626,14 @@ rules.Snap = {
 	card = {
 		"On your turn, flip your top card onto your face-up pile.",
 		"When two face-up piles show the same rank, hit SNAP (or Space) first.",
-		"The snapper wins both piles. A wrong snap gives a card away.",
+		"The snapper wins both piles. A wrong snap sends your pile to the Snap Pool.",
 	},
 	sections = {
-		{ title = "Your turn", lines = { "Tap your pile or Flip to turn your top card face up in front of you.", "When your face-down pile runs out, your face-up pile is turned over and used again." } },
-		{ title = "Snapping", lines = { "Anyone can snap any time two face-up top cards match, even if they aren't yours.", "First good snap takes every matching pile, and that player flips next.", "Snap when nothing matches and your top card goes to the player on your left." } },
-		{ title = "Winning", lines = { "Out of cards, out of the game. The last player with cards wins.", "A very long game ends after 500 flips: most cards wins." } },
+		{ title = "Your turn", lines = { "Tap your pile or Flip to turn your top card face up in front of you.", "When your face-down pile runs out, your face-up pile is turned over and used again. In a long game it's shuffled first." } },
+		{ title = "Snapping", lines = { "Anyone can snap any time two face-up top cards match, even if they aren't yours.", "First good snap takes every matching pile. Play goes on from the player left of whoever flipped last." } },
+		{ title = "Snap Pool", lines = { "Snap when nothing matches and your whole face-up pile goes to the middle: the Snap Pool.", "When a face-up top card matches the pool's top card, the first to snap wins the whole pool." } },
+		{ title = "Winning", lines = { "Out of cards, out of the game. The last player with cards wins.", "A very long game ends after 500 flips (the host can pick 250 or no limit): most cards wins." } },
+		{ title = "House rules", lines = { "Wrong snap costs: pile to the pool, or 1 or 2 cards to the player on your left.", "Match: same rank, or same rank and color.", "Owners only: only the players whose piles match may snap." } },
 	},
 }
 

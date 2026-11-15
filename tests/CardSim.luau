@@ -12,6 +12,14 @@ return function(rules: any, state: any, rng: any, maxSteps: number): number
 		local moved = false
 		if not (timer and rng:NextNumber() < 0.1) then
 			local seats = table.clone(rules.getActiveSeats(state))
+			-- Out-of-turn movers (a snap, a catch) get a look too, like on the server.
+			if rules.getInterruptSeats then
+				for _, seat in rules.getInterruptSeats(state) do
+					if not table.find(seats, seat) then
+						table.insert(seats, seat)
+					end
+				end
+			end
 			for i = #seats, 2, -1 do
 				local j = rng:NextInteger(1, i)
 				seats[i], seats[j] = seats[j], seats[i]

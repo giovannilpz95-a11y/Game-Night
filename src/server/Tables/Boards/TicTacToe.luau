@@ -63,6 +63,7 @@ function TicTacToe.create(boardCF: CFrame, parent: Instance)
 	end
 	local shown: { [number]: Instance } = {}
 	local shownSeat: { [number]: number } = {}
+	local strike: BasePart? = nil -- the gold bar laid across a winning three
 
 	return {
 		model = board.model,
@@ -111,6 +112,26 @@ function TicTacToe.create(boardCF: CFrame, parent: Instance)
 				tints[r * 100 + c] = WIN
 			end
 			Square.tint(board, 3, tints)
+			local line = view.winningLine
+			if line and #line >= 3 and not strike then
+				local a = board.surface(rowCol(line[1]))
+				local b = board.surface(rowCol(line[#line]))
+				local cs = board.cellSize
+				local length = (b.Position - a.Position).Magnitude + cs * 0.9
+				local lift = a.UpVector * cs * 0.24 -- just above the marks (they're 0.18 tall)
+				strike = Pieces.part({
+					Name = "WinStrike",
+					Size = Vector3.new(cs * 0.09, cs * 0.05, length),
+					CFrame = CFrame.lookAt(a.Position:Lerp(b.Position, 0.5) + lift, b.Position + lift, a.UpVector),
+					Color = WIN,
+					Material = Enum.Material.Neon,
+					CanQuery = false,
+					Parent = board.pieces,
+				})
+			elseif not line and strike then
+				strike:Destroy()
+				strike = nil
+			end
 		end,
 		destroy = function()
 			board.model:Destroy()

@@ -37,15 +37,19 @@ local function lastLabel(view: any, seat: number): string?
 	return `{name} +{last.points}{bonus}`
 end
 
--- Tap the cup in Table view to roll (renderer tapTable "cup:<seat>").
-local function cup(parent: Instance, cf: CFrame, seat: number)
-	Scene.tappable(Models.cyl(parent, "Cup", 0.62, 0.66, cf, LEATHER, Enum.Material.Leather), `cup:{seat}`)
-	Scene.tappable(Models.cyl(parent, "CupBand", 0.66, 0.08, cf * CFrame.new(0, 0.5, 0), Models.GOLD, Enum.Material.Metal), `cup:{seat}`)
+-- Tap the cup in Table view to roll (renderer tapTable "cup:<seat>"). It stays by the
+-- roller while they have rolls left; the felt itself never rolls.
+local function cup(parent: Instance, cf: CFrame, seat: number, scale: number?)
+	local k = scale or 1
+	Scene.tappable(Models.cyl(parent, "Cup", 0.62 * k, 0.66 * k, cf, LEATHER, Enum.Material.Leather), `cup:{seat}`)
+	Scene.tappable(Models.cyl(parent, "CupBand", 0.66 * k, 0.08 * k, cf * CFrame.new(0, 0.5 * k, 0), Models.GOLD, Enum.Material.Metal), `cup:{seat}`)
 end
 
 -- Five dice for `p` around `spot`: loose ones scattered in a patch ahead, held ones in a
 -- neat row nearer the seat. `spot` faces the center (-Z points away from the seat).
-local function dice(parent: Instance, spot: CFrame, p: any, seat: number, size: number, spread: number)
+-- `arc`: the tray's center is that far ahead, so the kept dice follow the rim's curve
+-- (a straight row there pokes its end dice into the rim).
+local function dice(parent: Instance, spot: CFrame, p: any, seat: number, size: number, spread: number, arc: number?)
 	local rng = Random.new(p.rollId * 131 + seat * 17)
 	local heldCount = 0
 	for i = 1, Rules.DICE do
@@ -61,12 +65,16 @@ local function dice(parent: Instance, spot: CFrame, p: any, seat: number, size: 
 				heldIndex += 1
 				local x = (heldIndex - (heldCount + 1) / 2) * size * 1.25
 				local cf = spot * CFrame.new(x, 0, 0)
+				if arc then
+					local angle = x / arc
+					cf = spot * CFrame.new(0, 0, -arc) * CFrame.Angles(0, angle, 0) * CFrame.new(0, 0, arc)
+				end
 				-- Tap a die in Table view to keep or free it (renderer tapTable "die:<seat>:<i>").
 				Scene.tappable(Models.die(parent, cf, value, size), `die:{seat}:{i}`)
 				Models.block(parent, "HeldMark", Vector3.new(size * 0.9, 0.012, 0.06), cf * CFrame.new(0, 0.006, size * 0.75), HELD_GLOW, Enum.Material.Neon)
 			else
 				-- Loose: a sloppy patch further from the seat, each die turned its own way.
-				local x = (i - 3) * size * 1.35 + (rng:NextNumber() - 0.5) * size * 0.6
+				local x = (i - 3) * size * (if arc then 1.1 else 1.35) + (rng:NextNumber() - 0.5) * size * (if arc then 0.4 else 0.6)
 				local z = -spread - rng:NextNumber() * size * 0.9
 				local cf = spot * CFrame.new(x, 0, z) * CFrame.Angles(0, math.rad(rng:NextInteger(-35, 35)), 0)
 				Scene.tappable(Models.die(parent, cf, value, size), `die:{seat}:{i}`)
@@ -80,8 +88,8 @@ function FiveDice.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 	model.Name = "GameBoard"
 
 	-- The tray: felt disk inside a ring of rim segments (none overlap the felt).
-	-- Tap the tray in Table view to roll again (renderer tapTable "tray").
-	Scene.tappable(Models.cyl(model, "TrayFelt", TRAY_R * 2, FELT_H, boardCF, FELT, Enum.Material.Fabric), "tray")
+	-- Not tappable: only the cup rolls (a near miss on a die mustn't reroll the hand).
+	Models.cyl(model, "TrayFelt", TRAY_R * 2, FELT_H, boardCF, FELT, Enum.Material.Fabric)
 	local rim: { BasePart } = {}
 	local segments = 16
 	for i = 0, segments - 1 do
@@ -156,16 +164,20 @@ function FiveDice.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 							cup(folder, spot * CFrame.new(0, 0, -0.3), seat)
 						else
 							dice(folder, spot, p, seat, DIE_SMALL, 0.35)
+							if p.rolls < (view.maxRolls or 3) then
+								cup(folder, spot * CFrame.new(1.05, 0, 0.1), seat, 0.7)
+							end
 						end
 					else
 						local dir = info.dir
 						local toward = CFrame.lookAt(surface.Position, (surface * CFrame.new(dir)).Position, boardCF.UpVector)
 						-- toward: -Z points at the seat; turn it so -Z points at the center like seatSpot.
 						local edge = toward * CFrame.new(0, 0, -(TRAY_R - 0.4)) * CFrame.Angles(0, math.pi, 0)
-						if p.rolls == 0 then
+						if p.rolls < (view.maxRolls or 3) then
 							cup(folder, Scene.seatSpot(boardCF, layout, seat, 0.6, -0.4), seat)
-						else
-							dice(folder, edge, p, seat, DIE, 0.55)
+						end
+						if p.rolls > 0 then
+							dice(folder, edge, p, seat, DIE, 0.55, TRAY_R - 0.4)
 						end
 					end
 				end

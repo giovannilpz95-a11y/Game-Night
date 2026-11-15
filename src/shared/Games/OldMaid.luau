@@ -3,10 +3,15 @@
 -- One Queen (the Queen of Clubs) is taken out, and the Queen of Spades never pairs:
 -- she's the Old Maid (the Queens of Hearts and Diamonds pair as usual). The other 51 cards are dealt out. Everyone puts down their pairs
 -- (two cards of the same rank; with the "pairs" house rule, also the same color) straight
--- away. On your turn draw one face-down card from
--- the next player who still has cards (on your left). If it pairs with one of yours, the
--- pair goes down. A player with no cards left is safe. When only one player still holds
--- cards, they're holding the Old Maid and lose; everyone else wins.
+-- away. On your turn draw one face-down card from the player on your right who still has
+-- cards; then the turn passes left, so the player who just drew is drawn from next (Bicycle,
+-- Pagat). If it pairs with one of yours, the pair goes down. A player with no cards left is
+-- safe. When only one player still holds cards, they're holding the Old Maid and lose.
+--
+-- House rules: "card" = "jack" (Black Peter) or "mystery" (one random card comes out face
+-- down, so nobody knows which card won't pair until the end); "target" = 6 plays rounds:
+-- finishing order scores penalty points (first out 0, then 1, 2...; the loser the most) and
+-- the game ends when someone reaches 6: fewest points wins.
 --
 -- The giver's hand is shuffled after every draw, so where the Old Maid sits is never known.
 --
@@ -31,6 +36,8 @@ OldMaid.DRAW_LIMIT = 600 -- safety cap; the Old Maid's holder loses when it's hi
 OldMaid.OLD_MAID = PlayingCards.make(12, 1) -- Queen of Spades
 OldMaid.REMOVED = PlayingCards.make(12, 4) -- Queen of Clubs
 local GIVER_MOVES = 4 -- shuffles and lifts per draw
+OldMaid.ROUND_SECONDS = 5 -- the pause between rounds in a game to 6 points
+OldMaid.NO_ODD = 0 -- mystery mode: no known odd card
 -- House rule "card" = "jack" plays Black Peter: the Jack of Spades is the odd card and
 -- the Jack of Clubs comes out.
 OldMaid.BLACK_PETER = PlayingCards.make(11, 1)
@@ -66,6 +73,16 @@ local function removePairs(hand: { number }, byColor: boolean?, odd: number?): {
 end
 OldMaid.removePairs = removePairs
 
+local function prevWithCards(state, seat: number): number?
+	for i = 1, state.seatCount - 1 do
+		local s = (seat - 1 - i) % state.seatCount + 1
+		if #state.hands[s] > 0 then
+			return s
+		end
+	end
+	return nil
+end
+
 local function nextWithCards(state, seat: number): number?
 	for i = 1, state.seatCount - 1 do
 		local s = (seat - 1 + i) % state.seatCount + 1
@@ -88,19 +105,94 @@ end
 
 local function checkEnd(state)
 	local left = holding(state)
+	local loser, done = nil, false
 	if #left <= 1 then
-		state.loser = left[1]
+		loser, done = left[1], true
+	elseif state.draws >= OldMaid.DRAW_LIMIT then
+		local most = -1
+		for _, seat in left do
+			if table.find(state.hands[seat], state.oldMaid) then
+				loser = seat
+				break
+			end
+			if #state.hands[seat] > most then
+				loser, most = seat, #state.hands[seat]
+			end
+		end
+		done = true
+	end
+	if not done then
+		return
+	end
+	state.loser = loser
+	if state.goal <= 0 then
 		state.over = true
 		return
 	end
-	if state.draws >= OldMaid.DRAW_LIMIT then
-		for _, seat in left do
-			if table.find(state.hands[seat], state.oldMaid or OldMaid.OLD_MAID) then
-				state.loser = seat
-			end
+	-- A game to 6: penalty points by finishing order, the loser the most.
+	local order = table.clone(state.finished)
+	for _, seat in left do
+		if seat ~= loser and not table.find(order, seat) then
+			table.insert(order, seat)
 		end
-		state.over = true
 	end
+	if loser then
+		table.insert(order, loser)
+	end
+	local added = {}
+	for i, seat in order do
+		state.points[seat] += i - 1
+		added[seat] = i - 1
+	end
+	state.roundResult = { loser = loser, added = added, round = state.round, odd = if loser then state.hands[loser][1] else nil }
+	local top = 0
+	for seat = 1, state.seatCount do
+		top = math.max(top, state.points[seat])
+	end
+	if top >= state.goal then
+		state.over = true
+	else
+		state.roundOver = true
+		state.phaseId += 1
+	end
+end
+
+-- Deals a round: the odd card's partner comes out, the rest are dealt, pairs go down.
+local function dealRound(state)
+	local deck = PlayingCards.newDeck(state.rng)
+	if state.mystery then
+		state.removed = table.remove(deck, state.rng:NextInteger(1, #deck))
+	else
+		state.removed = if state.oldMaid == OldMaid.BLACK_PETER then OldMaid.BLACK_PETER_REMOVED else OldMaid.REMOVED
+		table.remove(deck, table.find(deck, state.removed) :: number)
+	end
+	for seat = 1, state.seatCount do
+		state.hands[seat] = {}
+		state.pairs[seat] = state.pairs[seat] or {}
+		if state.round > 1 then
+			state.pairs[seat] = {}
+		end
+	end
+	local start = (state.round - 1) % state.seatCount
+	for i, id in deck do
+		table.insert(state.hands[(i - 1 + start) % state.seatCount + 1], id)
+	end
+	for seat = 1, state.seatCount do
+		state.pairs[seat] = removePairs(state.hands[seat], state.byColor, state.oldMaid)
+		PlayingCards.shuffle(state.hands[seat], state.rng)
+	end
+	state.finished = {}
+	for seat = 1, state.seatCount do
+		if #state.hands[seat] == 0 then
+			table.insert(state.finished, seat)
+		end
+	end
+	state.loser = nil
+	state.lastAction = nil
+	state.lastDrawn = nil
+	state.lifted = nil
+	state.giverMoves = 0
+	state.draws = 0
 end
 
 -- Moves the turn on to someone with cards, and picks who they draw from.
@@ -108,28 +200,29 @@ local function settle(state, from: number)
 	if state.over then
 		return
 	end
+	if state.roundOver then
+		return
+	end
 	local turn = if #state.hands[from] > 0 then from else nextWithCards(state, from)
 	state.turn = turn :: number
-	state.target = nextWithCards(state, state.turn) :: number
+	-- You draw from the player on your right.
+	state.target = prevWithCards(state, state.turn) :: number
 end
 
 function OldMaid.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 6, "Old Maid needs 2-6 seats")
 	local random = rng or Random.new()
-	local deck = PlayingCards.newDeck(random)
 	local rules = if options and type(options.rules) == "table" then options.rules else {}
-	local peter = rules.card == "jack"
-	table.remove(deck, table.find(deck, if peter then OldMaid.BLACK_PETER_REMOVED else OldMaid.REMOVED) :: number)
-	local hands, pairs = {}, {}
+	local hands, pairs, points = {}, {}, {}
 	for seat = 1, seatCount do
 		hands[seat] = {}
 		pairs[seat] = {}
-	end
-	for i, id in deck do
-		table.insert(hands[(i - 1) % seatCount + 1], id)
+		points[seat] = 0
 	end
 	local state = {
-		oldMaid = if peter then OldMaid.BLACK_PETER else OldMaid.OLD_MAID,
+		oldMaid = if rules.card == "jack" then OldMaid.BLACK_PETER elseif rules.card == "mystery" then OldMaid.NO_ODD else OldMaid.OLD_MAID,
+		mystery = rules.card == "mystery",
+		removed = nil, -- the card taken out (secret in mystery mode until the end)
 		seatCount = seatCount,
 		rng = random,
 		hands = hands, -- in a hidden order; the drawer picks a position
@@ -145,27 +238,50 @@ function OldMaid.new(seatCount: number, options: any?, rng: Random?)
 		lifted = nil, -- the position the player being drawn from lifted out of the fan
 		shuffles = 0, -- how many times a giver has shuffled in front of the drawer
 		giverMoves = 0, -- shuffles and lifts during this draw
+		points = points, -- game to 6: penalty points
+		round = 1,
+		roundOver = false,
+		roundResult = nil,
+		finished = {}, -- seats in the order they got rid of their cards this round
+		phaseId = 0,
 		botLevel = (options and options.botLevel) or "medium",
 	}
-	for seat = 1, seatCount do
-		state.pairs[seat] = removePairs(hands[seat], state.byColor, state.oldMaid)
-		PlayingCards.shuffle(hands[seat], random)
-	end
+	state.goal = if type(rules.target) == "number" and rules.target > 0 then rules.target else 0
+	dealRound(state)
 	checkEnd(state)
 	settle(state, 1)
 	return state
 end
 
 function OldMaid.getActiveSeats(state): { number }
-	if state.over then
+	if state.over or state.roundOver then
 		return {}
 	end
 	return { state.turn }
 end
 
+function OldMaid.getTimer(state): { id: number, seconds: number }?
+	if state.roundOver and not state.over then
+		return { id = state.phaseId, seconds = OldMaid.ROUND_SECONDS }
+	end
+	return nil
+end
+
+function OldMaid.onTimeout(state)
+	if not state.roundOver or state.over then
+		return
+	end
+	state.roundOver = false
+	state.round += 1
+	state.phaseId += 1
+	dealRound(state)
+	checkEnd(state)
+	settle(state, (state.round - 1) % state.seatCount + 1)
+end
+
 -- The player being drawn from may shuffle or lift a card while the drawer thinks.
 local function canTease(state, seat: number): boolean
-	return not state.over and seat == state.target and seat ~= state.turn and #state.hands[seat] > 1 and state.giverMoves < GIVER_MOVES
+	return not state.over and not state.roundOver and seat == state.target and seat ~= state.turn and #state.hands[seat] > 1 and state.giverMoves < GIVER_MOVES
 end
 
 function OldMaid.getInterruptSeats(state): { number }
@@ -181,7 +297,7 @@ function OldMaid.getLegalMoves(state, seat: number): { any }
 		end
 		return moves
 	end
-	if state.over or seat ~= state.turn then
+	if state.over or state.roundOver or seat ~= state.turn then
 		return moves
 	end
 	for i = 1, #state.hands[state.target] do
@@ -193,6 +309,9 @@ end
 function OldMaid.validateMove(state, seat: number, move: any): (boolean, string?)
 	if state.over then
 		return false, "The game is over"
+	end
+	if state.roundOver then
+		return false, "Next round coming up"
 	end
 	if type(move) == "table" and (move.kind == "shuffle" or move.kind == "lift") then
 		if not canTease(state, seat) then
@@ -249,6 +368,9 @@ function OldMaid.applyMove(state, seat: number, move: any)
 	for _, s in { from, seat } do
 		if #state.hands[s] == 0 then
 			table.insert(out, s)
+			if not table.find(state.finished, s) then
+				table.insert(state.finished, s)
+			end
 		end
 	end
 	state.lastAction = { seat = seat, from = from, rank = paired[1], out = out }
@@ -266,6 +388,20 @@ function OldMaid.getResult(state): GameModule.Result?
 		if seat ~= state.loser then
 			table.insert(winners, seat)
 		end
+	end
+	if state.goal > 0 then
+		-- Fewest penalty points wins (ties share it).
+		local best = math.huge
+		for seat = 1, state.seatCount do
+			best = math.min(best, state.points[seat])
+		end
+		winners = {}
+		for seat = 1, state.seatCount do
+			if state.points[seat] == best then
+				table.insert(winners, seat)
+			end
+		end
+		return { winners = winners, isDraw = false, reason = `Fewest points when someone reached {state.goal}` }
 	end
 	return { winners = winners, isDraw = false, reason = if state.loser then "Everyone else got rid of their cards" else "Out of cards" }
 end
@@ -292,7 +428,15 @@ function OldMaid.getView(state, seat: number?)
 		lastDrawn = seen,
 		draws = state.draws,
 		loser = state.loser,
-		oldMaid = state.oldMaid or OldMaid.OLD_MAID,
+		-- Mystery mode: nobody knows the odd card until the round is over.
+		oldMaid = if state.mystery then (if (state.over or state.roundOver) and state.loser then state.hands[state.loser][1] else OldMaid.NO_ODD) else state.oldMaid,
+		mystery = state.mystery,
+		removed = if state.mystery and not (state.over or state.roundOver) then nil else state.removed,
+		goal = state.goal,
+		points = table.clone(state.points),
+		round = state.round,
+		roundOver = state.roundOver,
+		roundResult = GameModule.copy(state.roundResult),
 		byColor = state.byColor,
 		over = state.over,
 		lifted = state.lifted,
@@ -308,6 +452,9 @@ function OldMaid.getSeatInfo(state): { [number]: string }
 	for seat = 1, state.seatCount do
 		local n = #state.hands[seat]
 		info[seat] = if n == 0 then "Safe!" else `{n} cards · {#state.pairs[seat]} pairs`
+		if state.goal > 0 then
+			info[seat] = `{state.points[seat]} pts · ` .. info[seat]
+		end
 	end
 	return info
 end
@@ -315,7 +462,7 @@ end
 function OldMaid.getScores(state): { [number]: number }
 	local scores = {}
 	for seat = 1, state.seatCount do
-		scores[seat] = #state.pairs[seat]
+		scores[seat] = if state.goal > 0 then -state.points[seat] else #state.pairs[seat]
 	end
 	return scores
 end
@@ -341,19 +488,19 @@ end
 function OldMaid.chooseBotMove(state, seat: number, rng: Random): any?
 	if canTease(state, seat) then
 		-- Once per draw at most: holding the Old Maid, shuffle her away or lift a decoy.
-		if state.giverMoves > 0 or not table.find(state.hands[seat], OldMaid.OLD_MAID) or rng:NextNumber() > 0.6 then
+		if state.giverMoves > 0 or not table.find(state.hands[seat], state.oldMaid) or rng:NextNumber() > 0.6 then
 			return nil
 		end
 		if state.botLevel == "hard" and rng:NextNumber() < 0.5 then
 			for i, id in state.hands[seat] do
-				if id ~= OldMaid.OLD_MAID then
+				if id ~= state.oldMaid then
 					return { kind = "lift", index = i }
 				end
 			end
 		end
 		return { kind = "shuffle" }
 	end
-	if state.over or seat ~= state.turn then
+	if state.over or state.roundOver or seat ~= state.turn then
 		return nil
 	end
 	-- A lifted card is tempting: easy bots go for it, hard ones smell a trap.

@@ -39,14 +39,73 @@ return function(T)
 			{ C(7, 2), C(3, 1), C(3, 2), C(3, 3), C(5, 1), C(4, 2) },
 		}
 		flipAll(s)
+		T.eq(s.lastBattle, nil, "the war is its own step")
+		T.ok(s.war ~= nil)
+		T.eq(s.lastAction.kind, "war")
+		T.eq(#s.piles[1], 2, "3 cards went face down")
+		T.eq(#s.pot, 8)
+		flipAll(s)
 		T.eq(s.lastBattle.wars, 1)
 		T.eq(s.lastBattle.winner, 1, "Queen beats 5")
 		T.eq(#s.piles[1], 11)
+		T.eq(#s.lastBattle.rounds, 2, "the tie and the war are both kept")
 	end)
 
-	T.test("running out of cards in a war loses", function()
+	T.test("a tie on your last card: it stays as your war card (and can win)", function()
+		local s = War.new(2, nil, T.Random.new(4))
+		s.piles = { { C(7, 1), C(2, 1) }, { C(7, 2) } }
+		flipAll(s)
+		T.eq(s.war.carry[2], C(7, 2))
+		T.eq(#War.getActiveSeats(s), 1)
+		flipAll(s)
+		T.eq(s.lastBattle.winner, 2, "their 7 beats the 2")
+		T.eq(#s.piles[2], 3)
+		T.eq(War.getResult(s).winners[1], 2)
+	end)
+
+	T.test("house rules: everyone joins the war, 2 face down, peace spells P-E-A-C-E", function()
+		local s = War.new(3, { rules = { allIn = true, faceDown = 2 } }, T.Random.new(6))
+		s.piles = {
+			{ C(9, 1), C(2, 1), C(2, 2), C(4, 1), C(5, 1) },
+			{ C(9, 2), C(3, 1), C(3, 2), C(6, 1), C(5, 2) },
+			{ C(4, 3), C(8, 1), C(8, 2), C(13, 1), C(5, 3) },
+		}
+		flipAll(s)
+		T.eq(#s.war.seats, 3, "the 4 joins in too")
+		T.eq(#s.piles[3], 2, "2 cards down")
+		flipAll(s)
+		T.eq(s.lastBattle.winner, 3, "the King")
+		local p = War.new(2, { rules = { peace = true } }, T.Random.new(7))
+		T.eq(p.faceDown, 4)
+	end)
+
+	T.test("auto-flip flips for you after a beat; switch it any time", function()
+		local s = War.new(2, nil, T.Random.new(8))
+		s.piles = { { C(5, 1), C(6, 1) }, { C(9, 1), C(10, 1) } }
+		T.eq(War.getTimer(s), nil)
+		T.ok(War.validateMove(s, 1, { kind = "auto", on = true }))
+		T.eq((War.validateMove(s, 1, { kind = "auto", on = "yes" })), false)
+		War.applyMove(s, 1, { kind = "auto", on = true })
+		T.ok(War.getTimer(s) ~= nil)
+		War.onTimeout(s)
+		T.ok(s.flipped[1], "flipped for you")
+		T.eq(War.getTimer(s), nil, "nobody else has auto on")
+		T.ok(table.find(War.getInterruptSeats(s), 1) ~= nil, "you can still switch it off")
+		T.eq(War.chooseBotMove(s, 1, T.Random.new(1)), nil, "bots don't flip out of turn")
+	end)
+
+	T.test("no battle limit", function()
+		local s = War.new(2, { rules = { battleLimit = 0 } }, T.Random.new(9))
+		s.battles = 5000
+		s.piles = { { C(5, 1), C(6, 1) }, { C(9, 1), C(10, 1) } }
+		flipAll(s)
+		T.eq(War.getResult(s), nil)
+	end)
+
+	T.test("a war card can lose too: then you are out", function()
 		local s = War.new(2, nil, T.Random.new(4))
 		s.piles = { { C(7, 1), C(9, 1) }, { C(7, 2) } }
+		flipAll(s)
 		flipAll(s)
 		local result = War.getResult(s)
 		T.ok(result ~= nil)

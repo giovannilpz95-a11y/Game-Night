@@ -5,11 +5,14 @@
 -- Play: put a hand card on either center pile if it is one rank above or below the top
 -- card (Ace and King connect, so K-A-2 works). Your hand refills to 5 from your draw
 -- pile by itself. Nobody takes turns: whoever is faster plays.
+-- Start: a 3-2-1 countdown, then both center cards flip at once (GO!).
 -- Stuck: when neither player can play, after a short pause a new card flips from each
--- side pile onto the center piles. When the side piles are used up, the center piles
--- are shuffled into new side piles.
--- First to play every card in their hand and draw pile wins. A long stalemate ends the
--- game after FLIP_LIMIT flips: fewest cards left wins.
+-- side pile onto the center piles. When the side piles are used up, each center pile is
+-- shuffled into a new side pile on its own side.
+-- First to play every card in their hand and draw pile wins the deal. A long stalemate ends
+-- it after FLIP_LIMIT flips: fewest cards left wins.
+-- House rule "Match to 25" (Pagat): the deal's winner scores 1 point per card the other
+-- player has left (hand and draw pile); deals go on until someone reaches 25.
 --
 -- Moves: { kind = "play", card = id, pile = 1 | 2 }
 
@@ -27,6 +30,8 @@ local DRAW_SIZE = 15
 local SIDE_SIZE = 5
 Speed.FLIP_LIMIT = 40
 Speed.STUCK_PAUSE = 1.5 -- seconds both players see "no moves" before the flip
+Speed.COUNTDOWN = 3 -- 3-2-1, then GO!
+Speed.DEAL_PAUSE = 4 -- between deals in a match to 25
 
 local rank = PlayingCards.rank
 
@@ -38,10 +43,8 @@ local function fits(state, card: number, top: number): boolean
 end
 Speed.fits = fits
 
-function Speed.new(seatCount: number, options: any?, rng: Random?)
-	assert(seatCount == 2, "Speed is for 2 players")
-	local random = rng or Random.new()
-	local deck = PlayingCards.newDeck(random)
+local function deal(state)
+	local deck = PlayingCards.newDeck(state.rng)
 	local function take(n: number): { number }
 		local out = {}
 		for _ = 1, n do
@@ -49,24 +52,37 @@ function Speed.new(seatCount: number, options: any?, rng: Random?)
 		end
 		return out
 	end
+	state.hands = { take(HAND_SIZE), take(HAND_SIZE) }
+	state.draws = { take(DRAW_SIZE), take(DRAW_SIZE) }
+	state.sides = { take(SIDE_SIZE), take(SIDE_SIZE) }
+	state.centers = { take(1), take(1) } -- centers[pile] top is the last card
+	state.flips = 0
+	state.stuck = false
+	state.countdown = true -- center cards stay face down until GO!
+	state.dealOver = nil
+	state.timerId += 1
+end
+
+function Speed.new(seatCount: number, options: any?, rng: Random?)
+	assert(seatCount == 2, "Speed is for 2 players")
+	local random = rng or Random.new()
 	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local state = {
 		rng = random,
 		wrap = rules.wrap ~= false,
 		sameRank = rules.sameRank == true,
-		hands = { take(HAND_SIZE), take(HAND_SIZE) },
-		draws = { take(DRAW_SIZE), take(DRAW_SIZE) },
-		sides = { take(SIDE_SIZE), take(SIDE_SIZE) },
-		centers = { take(1), take(1) }, -- centers[pile] top is the last card
-		flips = 0,
-		stuckId = 0, -- changes every time the game gets stuck (the flip timer's id)
+		target = if type(rules.target) == "number" and rules.target > 0 then rules.target else 0, -- 0 = one deal
+		scores = { 0, 0 },
+		dealNumber = 1,
+		timerId = 0, -- changes for every countdown, stuck pause and deal break
+		stuckId = 0,
 		lastAction = nil,
 		plays = { 0, 0 },
 		winner = nil,
 		reason = nil,
 		botLevel = (options and options.botLevel) or "medium",
 	}
-	Speed._checkStuck(state)
+	deal(state)
 	return state
 end
 
@@ -97,28 +113,25 @@ function Speed._checkStuck(state)
 	state.stuck = not canPlayAny(state, 1) and not canPlayAny(state, 2)
 	if state.stuck and not wasStuck then
 		state.stuckId += 1
+		state.timerId += 1
 	end
 end
 
 -- Flip one card from each side pile onto the center piles (rebuilding the side piles
 -- from the center piles when they run out).
 local function flip(state)
+	-- Each center pile is shuffled into a new side pile on its own side (any side cards
+	-- still there go back in with it), so both sides always have cards.
 	if #state.sides[1] == 0 or #state.sides[2] == 0 then
-		local pool = {}
 		for pile = 1, 2 do
-			for _, card in state.centers[pile] do
-				table.insert(pool, card)
-			end
+			local pool = table.clone(state.centers[pile])
 			for _, card in state.sides[pile] do
 				table.insert(pool, card)
 			end
+			PlayingCards.shuffle(pool, state.rng)
+			state.sides[pile] = pool
+			state.centers[pile] = {}
 		end
-		PlayingCards.shuffle(pool, state.rng)
-		state.sides = { {}, {} }
-		for i, card in pool do
-			table.insert(state.sides[(i - 1) % 2 + 1], card)
-		end
-		state.centers = { {}, {} }
 	end
 	for pile = 1, 2 do
 		local card = table.remove(state.sides[pile])
@@ -130,13 +143,37 @@ local function flip(state)
 	state.lastAction = { kind = "flip" }
 	if state.flips >= Speed.FLIP_LIMIT then
 		local a, b = cardsLeft(state, 1), cardsLeft(state, 2)
-		state.winner = if a < b then 1 elseif b < a then 2 else 0
-		state.reason = "Stalemate: fewest cards left"
+		Speed._endDeal(state, if a < b then 1 elseif b < a then 2 else 0, "Stalemate: fewest cards left")
 	end
 end
 
+-- A deal is over. One deal: that's the game. Match to 25: score it, and deal again unless
+-- someone got there.
+function Speed._endDeal(state, winner: number, reason: string)
+	state.stuck = false
+	if state.target <= 0 then
+		state.winner = winner
+		state.reason = reason
+		return
+	end
+	local points = 0
+	if winner ~= 0 then
+		points = cardsLeft(state, 3 - winner)
+		state.scores[winner] += points
+	end
+	state.lastAction = { kind = "deal", seat = winner, points = points }
+	if state.scores[1] >= state.target or state.scores[2] >= state.target then
+		local a, b = state.scores[1], state.scores[2]
+		state.winner = if a > b then 1 elseif b > a then 2 else 0
+		state.reason = `First to {state.target} points`
+		return
+	end
+	state.dealOver = { winner = winner, points = points, reason = reason }
+	state.timerId += 1
+end
+
 function Speed.getActiveSeats(state): { number }
-	if state.winner or state.stuck then
+	if state.winner or state.stuck or state.countdown or state.dealOver then
 		return {}
 	end
 	return { 1, 2 }
@@ -144,7 +181,7 @@ end
 
 function Speed.getLegalMoves(state, seat: number): { any }
 	local moves = {}
-	if state.winner or state.stuck or not state.hands[seat] then
+	if state.winner or state.stuck or state.countdown or state.dealOver or not state.hands[seat] then
 		return moves
 	end
 	for _, card in state.hands[seat] do
@@ -160,6 +197,12 @@ end
 function Speed.validateMove(state, seat: number, move: any): (boolean, string?)
 	if state.winner then
 		return false, "The game is over"
+	end
+	if state.countdown then
+		return false, "Wait for GO!"
+	end
+	if state.dealOver then
+		return false, "Next deal coming up"
 	end
 	if state.stuck then
 		return false, "Flipping new cards..."
@@ -193,25 +236,50 @@ function Speed.applyMove(state, seat: number, move: any)
 	state.plays[seat] += 1
 	state.lastAction = { kind = "play", seat = seat, card = move.card, pile = move.pile }
 	if cardsLeft(state, seat) == 0 then
-		state.winner = seat
-		state.reason = "Played every card"
+		Speed._endDeal(state, seat, "Played every card")
+		return
 	end
 	Speed._checkStuck(state)
 end
 
 function Speed.getTimer(state): { id: number, seconds: number }?
-	if state.stuck and not state.winner then
-		return { id = state.stuckId, seconds = Speed.STUCK_PAUSE }
+	if state.winner then
+		return nil
+	end
+	if state.dealOver then
+		return { id = state.timerId, seconds = Speed.DEAL_PAUSE }
+	elseif state.countdown then
+		return { id = state.timerId, seconds = Speed.COUNTDOWN }
+	elseif state.stuck then
+		return { id = state.timerId, seconds = Speed.STUCK_PAUSE }
 	end
 	return nil
 end
 
 function Speed.onTimeout(state)
+	if state.winner then
+		return
+	end
+	if state.dealOver then
+		state.dealNumber += 1
+		deal(state)
+		state.lastAction = { kind = "newDeal" }
+		return
+	end
+	if state.countdown then
+		state.countdown = false
+		state.lastAction = { kind = "go" }
+		Speed._checkStuck(state)
+		return
+	end
 	if not state.stuck then
 		return
 	end
 	flip(state)
 	state.stuck = false
+	if state.dealOver or state.winner then
+		return
+	end
 	Speed._checkStuck(state)
 end
 
@@ -228,7 +296,7 @@ end
 function Speed.getView(state, seat: number?)
 	local hand = if seat and state.hands[seat] then PlayingCards.sortHand(state.hands[seat]) else nil
 	local playable = {}
-	if hand and not state.stuck and not state.winner then
+	if hand and not state.stuck and not state.winner and not state.countdown and not state.dealOver then
 		for _, card in hand do
 			local piles = {}
 			for pile = 1, 2 do
@@ -244,22 +312,40 @@ function Speed.getView(state, seat: number?)
 	return {
 		hand = hand,
 		playable = playable,
-		tops = { top(state, 1), top(state, 2) },
+		tops = if state.countdown then {} else { top(state, 1), top(state, 2) }, -- face down until GO!
 		centerCounts = { #state.centers[1], #state.centers[2] },
 		sideCounts = { #state.sides[1], #state.sides[2] },
 		drawCounts = { #state.draws[1], #state.draws[2] },
 		handCounts = { #state.hands[1], #state.hands[2] },
 		stuck = state.stuck,
+		countdown = state.countdown,
 		flips = state.flips,
+		flipLimit = Speed.FLIP_LIMIT,
 		lastAction = GameModule.copy(state.lastAction),
+		target = state.target,
+		scores = table.clone(state.scores),
+		dealNumber = state.dealNumber,
+		dealOver = GameModule.copy(state.dealOver),
+		wrap = state.wrap,
+		sameRank = state.sameRank,
 	}
 end
 
 function Speed.getSeatInfo(state): { [number]: string }
-	return { `{cardsLeft(state, 1)} cards left`, `{cardsLeft(state, 2)} cards left` }
+	local info = { `{cardsLeft(state, 1)} cards left`, `{cardsLeft(state, 2)} cards left` }
+	if state.target > 0 then
+		for seat = 1, 2 do
+			info[seat] = `{state.scores[seat]} pts · ` .. info[seat]
+		end
+	end
+	return info
 end
 
+-- One deal: cards played. Match to 25: points.
 function Speed.getScores(state): { [number]: number }
+	if state.target > 0 then
+		return { state.scores[1], state.scores[2] }
+	end
 	return { state.plays[1], state.plays[2] }
 end
 
@@ -267,9 +353,15 @@ end
 
 local REACTION = { easy = { 1.8, 1.4 }, medium = { 1.15, 0.8 }, hard = { 0.7, 0.45 } }
 
-function Speed.getBotDelay(state, _seat: number, rng: Random): number
+function Speed.getBotDelay(state, seat: number, rng: Random): number
 	local r = REACTION[state.botLevel] or REACTION.medium
-	return r[1] + rng:NextNumber() * r[2]
+	local delay = r[1] + rng:NextNumber() * r[2]
+	-- A combo: right after its own play, a bot that sees the next card goes quicker.
+	local a = state.lastAction
+	if a and a.kind == "play" and a.seat == seat and state.botLevel ~= "easy" then
+		delay *= 0.6
+	end
+	return delay
 end
 
 function Speed.chooseBotMove(state, seat: number, rng: Random): any?

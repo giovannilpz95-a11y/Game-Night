@@ -88,6 +88,96 @@ return function(T)
 		T.eq(Cheat.getView(s, 3).reveal.cards[1], C(9, 1))
 	end)
 
+	local function setupWith(hands, rules)
+		local s = Cheat.new(#hands, { botLevel = "medium", rules = rules }, T.Random.new(1))
+		s.hands = hands
+		s.pile = {}
+		s.pileFrom = {}
+		s.turn = 1
+		s.discards = {}
+		return s
+	end
+
+	T.test("any rank: the leader names it, everyone follows until a doubt", function()
+		local s = setupWith({ { C(9, 1), C(4, 1) }, { C(9, 2), C(3, 1) }, { C(2, 1), C(6, 1) } }, { anyRank = true })
+		s.called = nil
+		T.eq(#Cheat.claims(s), 13)
+		T.eq((Cheat.validateMove(s, 1, { kind = "play", cards = { C(9, 1) } })), false, "name a rank")
+		apply(s, 1, { kind = "play", cards = { C(9, 1) }, claim = 9 })
+		Cheat.onTimeout(s) -- nobody doubts
+		T.eq(s.called, 9, "follow the 9s")
+		apply(s, 2, { kind = "play", cards = { C(3, 1) }, claim = 9 })
+		apply(s, 3, { kind = "doubt" })
+		Cheat.onTimeout(s)
+		T.eq(s.called, nil, "after a doubt the next player leads fresh")
+	end)
+
+	T.test("allow pass: pass instead of playing; everyone passing sets the pile aside", function()
+		local s = setupWith({ { C(9, 1), C(4, 1) }, { C(9, 2), C(3, 1) }, { C(2, 1), C(6, 1) } }, { allowPass = true })
+		s.called = 5
+		T.eq((Cheat.validateMove(s, 1, { kind = "pass" })), false, "the leader has to play")
+		apply(s, 1, { kind = "play", cards = { C(4, 1) } })
+		Cheat.onTimeout(s)
+		T.eq(s.called, 6)
+		apply(s, 2, { kind = "pass" })
+		apply(s, 3, { kind = "pass" })
+		T.eq(s.turn, 1)
+		T.eq(#s.pile, 1)
+		apply(s, 1, { kind = "pass" })
+		T.eq(#s.pile, 0, "everyone passed: set aside")
+		T.eq(s.called, 7)
+		local off = setupWith({ { C(9, 1), C(4, 1) }, { C(9, 2) }, { C(2, 1) } })
+		off.called = 5
+		off.lastPlay = { seat = 3, count = 1, rank = 4 }
+		T.eq((Cheat.validateMove(off, 1, { kind = "pass" })), false, "off by default")
+	end)
+
+	T.test("discard fours: four of a kind picked up is put aside", function()
+		local s = setupWith({ { C(9, 1), C(9, 2), C(4, 1) }, { C(9, 3), C(9, 4), C(3, 1) }, { C(2, 1), C(6, 1) } }, { discardFours = true })
+		s.called = 5
+		apply(s, 1, { kind = "play", cards = { C(9, 1), C(9, 2) } }) -- claims 5s: a lie
+		apply(s, 2, { kind = "doubt" })
+		T.eq(s.reveal.loser, 1)
+		T.eq(#s.hands[1], 3, "picked the two 9s back up")
+		local t = setupWith({ { C(9, 1), C(4, 1) }, { C(9, 3), C(9, 4), C(9, 2), C(3, 1) }, { C(2, 1), C(6, 1) } }, { discardFours = true })
+		t.called = 9
+		apply(t, 1, { kind = "play", cards = { C(9, 1) } }) -- the truth
+		apply(t, 2, { kind = "doubt" }) -- wrong: seat 2 takes the 9 and makes four
+		T.eq(t.reveal.loser, 2)
+		T.eq(t.reveal.discarded, 9)
+		T.eq(#t.hands[2], 1, "the four 9s are put aside")
+	end)
+
+	T.test("rounds: places score penalty points, fewest after the last round wins", function()
+		local s = setupWith({ { C(4, 1) }, { C(9, 2), C(3, 1) }, { C(2, 1), C(6, 1), C(7, 1) } }, { rounds = 3 })
+		s.called = 4
+		apply(s, 1, { kind = "play", cards = { C(4, 1) } })
+		Cheat.onTimeout(s) -- nobody doubts: seat 1 is out first
+		T.eq(s.phase, "roundOver")
+		T.eq(Cheat.getResult(s), nil)
+		T.eq(s.points[1], 0)
+		T.eq(s.points[2], 1)
+		T.eq(s.points[3], 3, "the most cards")
+		Cheat.onTimeout(s)
+		T.eq(s.round, 2)
+		T.eq(s.phase, "play")
+		local n = 0
+		for seat = 1, 3 do
+			n += #s.hands[seat]
+		end
+		T.eq(n, 52, "a fresh deal")
+		local rng = T.Random.new(9)
+		sim(Cheat, s, rng, 20000)
+		T.ok(Cheat.getResult(s) ~= nil)
+		T.eq(s.round, 3)
+	end)
+
+	T.test("up, down or same: the first play is still Aces", function()
+		local s = Cheat.new(3, { rules = { upDown = true } }, T.Random.new(3))
+		T.eq(#Cheat.claims(s), 1)
+		T.eq(Cheat.claims(s)[1], 1)
+	end)
+
 	T.test("bot games always finish", function()
 		for _, level in { "easy", "medium", "hard" } do
 			for seats = 3, 8 do

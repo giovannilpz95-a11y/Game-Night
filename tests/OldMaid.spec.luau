@@ -96,6 +96,104 @@ return function(T)
 			end
 		end
 	end)
+	T.test("you draw from the player on your right; the turn passes left", function()
+		local s = OldMaid.new(4, nil, T.Random.new(31))
+		s.hands = { { C(2, 1), C(3, 1) }, { C(4, 1), C(5, 1) }, { C(6, 1), C(7, 1) }, { C(8, 1), C(9, 1) } }
+		s.turn = 1
+		s.target = 4
+		local view = OldMaid.getView(s, 1)
+		T.eq(view.target, 4)
+		apply(s, 1, { kind = "draw", index = 1 })
+		T.eq(s.turn, 2, "the turn passes left")
+		T.eq(s.target, 1, "and seat 2 draws from the player who just drew")
+		local fresh = OldMaid.new(3, nil, T.Random.new(32))
+		T.eq(fresh.target, if #fresh.hands[3] > 0 then 3 else 2)
+	end)
+
+	T.test("mystery card: a random card comes out and nobody knows the odd one until the end", function()
+		for seed = 1, 5 do
+			local s = OldMaid.new(3, { rules = { card = "mystery" } }, T.Random.new(seed))
+			T.eq(s.oldMaid, OldMaid.NO_ODD)
+			local total, odd = 0, 0
+			for seat = 1, 3 do
+				total += #s.hands[seat] + #s.pairs[seat] * 2
+				local counts = PlayingCards.rankCounts(s.hands[seat])
+				for r, n in counts do
+					T.ok(n < 2, "no pairs in hand")
+					if r == PlayingCards.rank(s.removed) then
+						odd += n
+					end
+				end
+			end
+			T.eq(total, 51)
+			T.eq(odd, 1, "the removed card's rank has one card left unpaired")
+			T.eq(OldMaid.getView(s, 1).removed, nil, "secret")
+			T.eq(OldMaid.getView(s, 1).oldMaid, OldMaid.NO_ODD)
+			local rng = T.Random.new(seed)
+			sim(OldMaid, s, rng, 5000)
+			T.ok(OldMaid.getResult(s) ~= nil)
+			T.eq(OldMaid.getView(s, 1).removed, s.removed, "shown at the end")
+		end
+	end)
+
+	T.test("to 6 points: finishing order scores penalty points, rounds go on until someone has 6", function()
+		local s = OldMaid.new(3, { rules = { target = 6 } }, T.Random.new(33))
+		s.hands = { { C(9, 2) }, { C(4, 1) }, { C(9, 3), QS, C(4, 2) } }
+		s.pairs = { {}, {}, {} }
+		s.finished = {}
+		s.turn = 1
+		s.target = 3
+		apply(s, 1, { kind = "draw", index = 1 }) -- the 9: seat 1 is out first
+		T.eq(s.finished[1], 1)
+		T.eq(s.turn, 2)
+		s.hands[3] = { QS, C(4, 2) }
+		s.target = 3
+		local four = table.find(s.hands[3], C(4, 2)) :: number
+		apply(s, 2, { kind = "draw", index = four }) -- seat 2 pairs its 4 and is out
+		T.ok(s.roundOver, "round over")
+		T.eq(OldMaid.getResult(s), nil, "the game goes on")
+		T.eq(s.points[1], 0)
+		T.eq(s.points[2], 1)
+		T.eq(s.points[3], 2, "the loser scores the most")
+		T.eq(#OldMaid.getActiveSeats(s), 0)
+		OldMaid.onTimeout(s)
+		T.eq(s.round, 2)
+		T.eq(s.roundOver, false)
+		local cards = 0
+		for seat = 1, 3 do
+			cards += #s.hands[seat] + #s.pairs[seat] * 2
+		end
+		T.eq(cards, 51, "a fresh deal")
+		local rng = T.Random.new(34)
+		sim(OldMaid, s, rng, 50000)
+		local result = OldMaid.getResult(s) :: any
+		T.ok(result ~= nil)
+		local top = 0
+		for seat = 1, 3 do
+			top = math.max(top, s.points[seat])
+		end
+		T.ok(top >= 6)
+	end)
+
+	T.test("Black Peter: the giver bot teases while holding the Jack of Spades, not the Queen", function()
+		local teased, wrong = 0, 0
+		for seed = 1, 100 do
+			local s = OldMaid.new(2, { botLevel = "hard", rules = { card = "jack" } }, T.Random.new(seed))
+			local giver = s.target
+			s.hands[giver] = { OldMaid.BLACK_PETER, C(3, 1), C(5, 1) }
+			if OldMaid.chooseBotMove(s, giver, T.Random.new(seed)) then
+				teased += 1
+			end
+			s.hands[giver] = { QS, C(3, 1), C(5, 1) }
+			s.giverMoves = 0
+			if OldMaid.chooseBotMove(s, giver, T.Random.new(seed)) then
+				wrong += 1
+			end
+		end
+		T.ok(teased > 30, "teases holding Black Peter")
+		T.eq(wrong, 0, "the Queen is a normal card here")
+	end)
+
 	T.test("the player being drawn from can shuffle or lift a card, a few times per draw", function()
 		local s = OldMaid.new(3, nil, T.Random.new(4))
 		local drawer, giver = s.turn, s.target

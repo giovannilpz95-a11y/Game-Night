@@ -31,6 +31,18 @@ local ROOM_COLORS = {
 	Color3.fromRGB(88, 60, 44), -- Library
 }
 local ITEM_ICONS = { "🐔", "🧗", "🦋", "🧲", "☂️", "🎣" }
+local GO_ROUND_STEP = 0.55 -- seconds per seat in the go-round after a suggestion
+local CATEGORY_PLURAL = { suspect = "suspects", item = "items", room = "rooms" }
+
+-- A Clue card's name ("Round-up: rooms").
+local function clueLabel(clue: any): string
+	if clue.kind == "peek" then
+		return "Peek"
+	elseif clue.kind == "shortcut" then
+		return "Shortcut"
+	end
+	return `Round-up: {CATEGORY_PLURAL[clue.category] or "cards"}`
+end
 local MARKS = { "·", "✗", "?", "✓" }
 local MARK_COLORS = { Theme.SubText, Theme.Bad, Theme.Accent, Theme.Good }
 
@@ -53,8 +65,10 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 	local stampMode = false -- "#" mode: tapping a box stamps the latest suggestion number
 	local smartNotes = false -- fill in what can be worked out (off for purists)
 	local lastRooms: { [number]: number } = {} -- suspect -> room on the last render (pawn pops)
+	local lastItems: { [number]: number } = {} -- item -> room on the last render (item pops)
 	local roundKey: number? = nil -- the suggestion whose go-round is playing
 	local roundStart = 0
+	local logWake: number? = nil -- the go-round the log already asked to be redrawn after
 	local endShownFor: string? = nil -- the match whose case file already flipped open
 	local pickSuspect: number? = nil
 	local pickItem: number? = nil
@@ -496,7 +510,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			Kit.list(4, true).Parent = itemRow
 			for item, where in view.itemRoom do
 				if where == room then
-					Kit.new("TextLabel", {
+					local chip = Kit.new("TextLabel", {
 						Text = ITEM_ICONS[item],
 						TextSize = 20,
 						Font = Theme.Font,
@@ -506,6 +520,10 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 						LayoutOrder = item,
 						Parent = itemRow,
 					}, { Kit.corner(8) })
+					-- An item pulled in by a suggestion pops into its new room, like the pawns.
+					if lastItems[item] ~= nil and lastItems[item] ~= where then
+						Juice.popIn(chip, 0.2)
+					end
 				end
 			end
 			Kit.onPress(tile, function()
@@ -515,6 +533,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			end)
 		end
 		lastRooms = table.clone(view.suspectRoom)
+		lastItems = table.clone(view.itemRoom)
 	end
 
 	-- Notes and log -----------------------------------------------------------------
@@ -719,9 +738,25 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		local count = #view.log
+		local total = view.logCount or count
 		for index, entry in view.log do
 			local line = `{nameOf(entry.seat)}: {suggestionText(entry)}.`
-			if view.phase == "show" and view.suggestion ~= nil and index == count then
+			-- The newest line waits for the go-round on the action panel to finish, so the
+			-- log doesn't give away who showed before the chips do.
+			local steps = #entry.passed + (if entry.shower then 1 else 0)
+			local playing = index == count and view.phase == "after" and roundKey == view.logCount and os.clock() < roundStart + steps * GO_ROUND_STEP
+			if playing then
+				line ..= " Going round the table..."
+				local key = roundKey
+				if logWake ~= key then
+					logWake = key
+					task.delay(roundStart + steps * GO_ROUND_STEP - os.clock() + 0.05, function()
+						if roundKey == key and snapshot then
+							render()
+						end
+					end)
+				end
+			elseif view.phase == "show" and view.suggestion ~= nil and index == count then
 				line ..= ` Waiting for {nameOf(entry.shower)} to show a card...`
 			elseif entry.shower then
 				if entry.card then
@@ -739,8 +774,31 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				end
 				line ..= ` (No card: {table.concat(names, ", ")})`
 			end
-			-- Newest first.
-			text(logList, line, count - index + 1, { TextSize = 13, TextColor3 = if index == count then Theme.Text else Theme.SubText })
+			-- Newest first (Clue cards slot in between, at the odd orders).
+			text(logList, line, (count - index + 1) * 2, { TextSize = 13, TextColor3 = if index == count then Theme.Text else Theme.SubText })
+		end
+		for _, clue in view.clues or {} do
+			local after = clue.at - (total - count) -- the suggestion it came after, in this list
+			if after < 0 then
+				continue
+			end
+			local me = snapshot.yourSeat
+			local parts = {}
+			for _, shown in clue.shown do
+				local what = if shown.card then cardName(shown.card) else "a card"
+				local to = if clue.seat == me then "you" else nameOf(clue.seat)
+				table.insert(parts, if shown.from == me then `you showed {to} {what}` else `{nameOf(shown.from)} showed {to} {what}`)
+			end
+			for _, seat in clue.none do
+				table.insert(parts, `{nameOf(seat)} had no {CATEGORY_PLURAL[clue.category] or "cards"}`)
+			end
+			if clue.kind == "shortcut" then
+				table.insert(parts, "any room this turn")
+			end
+			text(logList, `🔍 {nameOf(clue.seat)} drew a Clue card, {clueLabel(clue)}: {table.concat(parts, "; ")}.`, (count - after) * 2 + 1, {
+				TextSize = 13,
+				TextColor3 = Theme.Accent,
+			})
 		end
 		for index, a in view.accusations do
 			local isMe = a.seat == snapshot.yourSeat
@@ -909,7 +967,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 
 	-- The go-round after a suggestion: each seat clockwise lights up in turn with "no
 	-- card", until someone shows one (face down, unless it's to you).
-	local STEP = 0.55
+	local STEP = GO_ROUND_STEP
 	local roundShown = 0
 	local function goRound(view: any, entry: any, order: number): number
 		local me = snapshot.yourSeat
@@ -1104,6 +1162,9 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		if view.phase == "move" then
+			if myTurn and view.shortcut == me then
+				text(actions, "🔍 Clue card, Shortcut: walk to any room this turn.", 3, { Font = Theme.FontBold, TextSize = 14, TextColor3 = Theme.Accent })
+			end
 			if myTurn then
 				if docked then
 					-- Table view: tap a room on the table, or use a button per room you can reach.
@@ -1382,6 +1443,7 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				accuseOpen = false
 				accusePick = { suspect = nil, item = nil, room = nil }
 				lastRooms = {}
+				lastItems = {}
 				roundKey = nil
 				showKey = nil
 			end
@@ -1394,6 +1456,29 @@ function Whodunit.create(container: Frame, sendMove: (any) -> ())
 				local who = if entry.seat == snapshot.yourSeat then "You suggest" else `{nameOf(entry.seat)} suggests`
 				HudKit.callout(root, `🔎 {who} {suggestionText(entry)}`, suspectColor(entry.seat))
 				Audio.play("knock", { volume = 0.5 })
+			end
+			-- A Clue card was drawn: the drawer sees each card turn over; everyone else gets a line.
+			local clues = view.clues or {}
+			local before = if previous and previous.matchId == snapshot.matchId then #(previous.view.clues or {}) else #clues
+			if #clues > before then
+				local clue = clues[#clues]
+				local me = snapshot.yourSeat
+				if clue.seat == me then
+					HudKit.callout(root, `🔍 Clue card: {clueLabel(clue)}`, Theme.Accent)
+					for k, shown in clue.shown do
+						if shown.card then
+							local from, id = shown.from, shown.card
+							task.delay(0.9 + (k - 1) * 1.8, function()
+								if root.Parent then
+									HudKit.revealCard(root, `Clue card · {nameOf(from)} showed you`, cardName(id), `{categoryOf(id)} · not in the case file`)
+									Audio.play("flip")
+								end
+							end)
+						end
+					end
+				else
+					HudKit.callout(root, `🔍 {nameOf(clue.seat)} drew a Clue card: {clueLabel(clue)}`, suspectColor(clue.seat))
+				end
 			end
 			local accusations = snapshot.view.accusations or {}
 			if shownAccusations ~= nil and #accusations > shownAccusations then

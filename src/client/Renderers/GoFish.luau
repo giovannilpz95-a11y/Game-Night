@@ -27,7 +27,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 	opponentList.Parent = opponents
 
 	local felt = PlayingCard.felt({ Position = UDim2.new(0, 0, 0.2, 0), Size = UDim2.new(1, 0, 0.44, 0), Parent = root })
-	local pond = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.3, 0.55), Size = UDim2.fromScale(1, 0.6), Parent = felt })
+	local pond = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.22, 0.55), Size = UDim2.fromScale(1, 0.6), Parent = felt })
 	local pondLabel = Kit.label("", {
 		TextSize = 13,
 		TextColor3 = Theme.SubText,
@@ -36,7 +36,7 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		ZIndex = 6,
 		Parent = pond,
 	})
-	local drawn = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.7, 0.55), Size = UDim2.fromScale(1, 0.6), Parent = felt })
+	local drawn = PlayingCard.slot({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.55, 0.55), Size = UDim2.fromScale(1, 0.6), Parent = felt })
 	local drawnLabel = Kit.label("", {
 		TextSize = 13,
 		TextColor3 = Theme.SubText,
@@ -78,6 +78,20 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 	askList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	askList.Parent = askRow
 	local hand = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0.74, 0), Size = UDim2.new(1, 0, 0.26, 0), Parent = root })
+	-- The ask history (memory is the whole game): the last few asks. On the felt's right in
+	-- the 2D view, beside your hand in Table view.
+	local logPanel = Kit.new("Frame", {
+		BorderSizePixel = 0,
+		Position = UDim2.new(0.79, 0, 0.22, 0),
+		Size = UDim2.new(0.2, 0, 0.4, 0),
+		ZIndex = 7,
+		Parent = root,
+	}, { Kit.corner(10), Kit.padding(6) })
+	HudKit.glass(logPanel, 0.2)
+	local logList = Kit.list(2)
+	logList.Parent = logPanel
+	local docked = false
+	local shownFish: string? = nil
 
 	local function nameOf(seat: number): string
 		if seat == snapshot.yourSeat then
@@ -227,6 +241,45 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 		end
 		lastLabel.Text = describe(view.lastAction)
 
+		-- Ask history, newest first.
+		for _, child in logPanel:GetChildren() do
+			if child:IsA("TextLabel") then
+				child:Destroy()
+			end
+		end
+		local log = view.log or {}
+		Kit.label("Who asked for what", { Font = Theme.FontBold, TextSize = 13, TextColor3 = Theme.Accent, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 0, ZIndex = 8, Parent = logPanel })
+		for i = #log, 1, -1 do
+			local e = log[i]
+			local plural = PlayingCards.rankPlural[e.rank] or "?"
+			local result = if (e.got or 0) > 0 then `got {e.got}` elseif e.lucky then "fished one!" else "Go fish"
+			Kit.label(`{nameOf(e.seat)} → {nameOf(e.target)}: {plural}, {result}`, {
+				TextSize = 12,
+				TextColor3 = if (e.got or 0) > 0 or e.lucky then Theme.Text else Theme.SubText,
+				TextWrapped = true,
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, 0, 0, 14),
+				LayoutOrder = #log - i + 1,
+				ZIndex = 8,
+				Parent = logPanel,
+			})
+		end
+		logPanel.Visible = #log > 0
+		logPanel.Position = if docked then UDim2.new(0.005, 0, 0.62, 0) else UDim2.new(0.79, 0, 0.22, 0)
+		logPanel.Size = if docked then UDim2.new(0.13, 0, 0.36, 0) else UDim2.new(0.2, 0, 0.4, 0)
+
+		-- Table view: the "You fished" card lives on the hidden felt, so pop it once.
+		local fishKey = if view.drawnCard then `{view.drawnCard}:{view.pondCount}` else nil
+		if docked and fishKey and fishKey ~= shownFish then
+			CardFx.pop(`You fished the {PlayingCards.short(view.drawnCard)}`, Color3.fromRGB(110, 190, 255))
+		end
+		shownFish = fishKey
+		-- A lucky fish is public: everyone sees the card.
+		local la = view.lastAction
+		if la and la.luckyFish and la.card and la.seat ~= me then
+			lastLabel.Text ..= ` ({PlayingCards.short(la.card)})`
+		end
+
 		if not me then
 			prompt.Text = "Watching"
 		elseif not myTurn then
@@ -302,7 +355,8 @@ function GoFish.create(container: Frame, sendMove: (any) -> ())
 	-- Table view docks the bottom of this screen (MatchView.DOCK, held): the table's cards
 	-- are on the 3D table, so the top rows and the felt go and your hand is held like real
 	-- cards, a big fan along the bottom edge running a little off the screen.
-	local function setDocked(docked: boolean)
+	local function setDocked(isDocked: boolean)
+		docked = isDocked
 		opponents.Visible = not docked
 		felt.Visible = not docked
 		prompt.TextStrokeTransparency = if docked then 0.35 else 1

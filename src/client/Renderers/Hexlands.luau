@@ -88,6 +88,7 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 	local counter: any = nil -- { id, give, get } from your side while writing a counter-offer
 	local lastGainKey = ""
 	local bankGive: string? = nil
+	local bankTimes = 1 -- x2 does two bank trades in one tap
 	local lastDice = ""
 	-- Turning trades down without a tap: "turn" (this turn only, keyed by round:seat) or
 	-- "all" (the whole game), like CATAN Universe's auto-decline.
@@ -811,15 +812,34 @@ function Hexlands.create(container: Frame, sendMove: (any) -> ())
 				return you.hand[res] >= you.rates[res]
 			end, bankGive)
 			if bankGive then
-				note(`Give {you.rates[bankGive]} {info[bankGive].name} for 1 of:`)
+				local rate = you.rates[bankGive]
+				local canDouble = you.hand[bankGive] >= rate * 2
+				if not canDouble then
+					bankTimes = 1
+				end
+				note(`Give {rate * bankTimes} {info[bankGive].name} for {bankTimes} of:`)
 				resourceRow(function(res)
-					return info[res].icon
+					return if bankTimes == 2 then `{info[res].icon} x2` else info[res].icon
 				end, function(res)
-					sendMove({ kind = "bank", give = bankGive, get = res })
-					bankGive = nil
+					local give, times = bankGive, bankTimes
+					sendMove({ kind = "bank", give = give, get = res })
+					if times == 2 then
+						-- The second swap goes once the first has been applied.
+						task.delay(0.25, function()
+							sendMove({ kind = "bank", give = give, get = res })
+						end)
+					end
+					bankGive, bankTimes = nil, 1
 				end, function(res)
-					return res ~= bankGive and view.bank[res] > 0
+					return res ~= bankGive and view.bank[res] >= bankTimes
 				end)
+				if canDouble then
+					local r2 = row(30)
+					button(r2, if bankTimes == 2 then "x2 on: two trades" else "x2: trade twice", function()
+						bankTimes = if bankTimes == 2 then 1 else 2
+						rerender()
+					end, 0.5, true, if bankTimes == 2 then Theme.Good else Theme.PanelLight).TextColor3 = if bankTimes == 2 then Theme.AccentText else Theme.Text
+				end
 			end
 
 			-- Player trades: "you give" and "you get", then everyone or one player.

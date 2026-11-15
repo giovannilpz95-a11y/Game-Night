@@ -15,8 +15,8 @@ return function(T)
 		T.eq(#s.deck + #s.discard + 25, 4 * 7, "players + 2 ranks")
 	end)
 
-	T.test("passing moves cards left once everyone has passed", function()
-		local s = Spoons.new(3, nil, T.Random.new(2))
+	T.test("together (house rule): passing moves cards left once everyone has passed", function()
+		local s = Spoons.new(3, { rules = { passing = "together" } }, T.Random.new(2))
 		local passed = {}
 		for seat = 1, 3 do
 			passed[seat] = s.hands[seat][1]
@@ -37,7 +37,7 @@ return function(T)
 	-- Two players left, each holding two pairs of the ranks the other needs: with pairs
 	-- always kept, nobody could ever get four (found by the bot audit).
 	local function jammed(seed)
-		local s = Spoons.new(3, { botLevel = "hard" }, T.Random.new(seed))
+		local s = Spoons.new(3, { botLevel = "hard", rules = { passing = "together" } }, T.Random.new(seed))
 		s.out[3] = 1
 		s.dealer = 2
 		s.spoonsLeft = 1
@@ -97,7 +97,10 @@ return function(T)
 		s.hands[1] = { C(5, 1), C(5, 2), C(5, 3), C(5, 4), C(2, 1) }
 		T.ok(Spoons.validateMove(s, 1, { kind = "grab" }))
 		Spoons.applyMove(s, 1, { kind = "grab" })
-		T.eq(s.phase, "scramble")
+		T.eq(s.phase, "pass", "the first grab is quiet")
+		T.ok(s.quiet)
+		T.eq(Spoons.getView(s, 2).firstGrab, nil, "the others aren't told")
+		T.ok(Spoons.getView(s, 2).spoonGone, "but a spoon is missing")
 		T.ok(Spoons.validateMove(s, 2, { kind = "grab" }), "now anyone can grab")
 		T.eq((Spoons.validateMove(s, 1, { kind = "grab" })), false, "one spoon each")
 		Spoons.applyMove(s, 2, { kind = "grab" })
@@ -113,6 +116,8 @@ return function(T)
 		local s = Spoons.new(4, nil, T.Random.new(4))
 		s.hands[2] = { C(5, 1), C(5, 2), C(5, 3), C(5, 4), C(2, 1) }
 		Spoons.applyMove(s, 2, { kind = "grab" })
+		Spoons.onTimeout(s)
+		T.eq(s.phase, "scramble", "the quiet grab gets out")
 		Spoons.onTimeout(s)
 		local out = 0
 		for _ in s.out do
@@ -138,6 +143,78 @@ return function(T)
 		end
 		T.eq(s.out[3], s.round, "spelled PIG: out")
 		T.eq(s.lastOut, 3)
+	end)
+
+	T.test("free passing: pass whenever you hold 5; the card waits for the next player", function()
+		local s = Spoons.new(4, nil, T.Random.new(21))
+		T.ok(s.free)
+		local card = s.hands[2][1]
+		Spoons.applyMove(s, 2, { kind = "pass", card = card })
+		T.eq(#s.hands[2], 4, "seat 2 waits for seat 1's card")
+		T.eq(#s.queue[3], 1, "the card waits in front of seat 3")
+		T.eq((Spoons.validateMove(s, 2, { kind = "pass", card = s.hands[2][1] })), false, "nothing to pass yet")
+		T.eq(table.find(Spoons.getActiveSeats(s), 2), nil)
+		local card1 = s.hands[1][1]
+		Spoons.applyMove(s, 1, { kind = "pass", card = card1 })
+		T.eq(#s.hands[1], 5, "the dealer draws from the deck")
+		T.eq(#s.hands[2], 5, "seat 2 picked up seat 1's card")
+		T.ok(table.find(s.hands[2], card1) ~= nil)
+		Spoons.applyMove(s, 3, { kind = "pass", card = s.hands[3][1] })
+		T.eq(#s.hands[3], 5, "seat 3 picks up the card that was waiting")
+		local discards = #s.discard
+		Spoons.applyMove(s, 4, { kind = "pass", card = s.hands[4][1] })
+		T.eq(#s.discard, discards + 1, "the last player discards")
+	end)
+
+	T.test("free passing: a player who sits on their cards has one passed for them", function()
+		local s = Spoons.new(3, nil, T.Random.new(22))
+		local guard, passedFor, before = 0, false, 0
+		while not passedFor and guard < 40 and s.phase == "pass" do
+			guard += 1
+			for _, seat in { 1, 2 } do
+				if #s.hands[seat] >= 5 then
+					Spoons.applyMove(s, seat, { kind = "pass", card = s.hands[seat][1] })
+				end
+				passedFor = passedFor or s.idle[3] < before -- their wait was reset: a card went for them
+				before = s.idle[3]
+			end
+		end
+		T.ok(passedFor, "seat 3 was passed for")
+		local t = Spoons.new(3, nil, T.Random.new(23))
+		Spoons.onTimeout(t)
+		T.ok(#t.discard + #t.queue[2] + #t.queue[3] > 0, "the pass clock passes for everyone")
+	end)
+
+	T.test("false grab house rule: grabbing without four of a kind loses the round", function()
+		local s = Spoons.new(3, nil, T.Random.new(24))
+		s.hands[2] = { C(5, 1), C(5, 2), C(9, 3), C(9, 1), C(2, 1) }
+		T.eq((Spoons.validateMove(s, 2, { kind = "grab" })), false, "refused without the rule")
+		local t = Spoons.new(3, { rules = { falseGrab = true } }, T.Random.new(24))
+		t.hands[2] = { C(5, 1), C(5, 2), C(9, 3), C(9, 1), C(2, 1) }
+		T.ok(Spoons.validateMove(t, 2, { kind = "grab" }))
+		Spoons.applyMove(t, 2, { kind = "grab" })
+		T.eq(t.out[2], 1)
+		T.eq(t.phase, "reveal")
+		T.eq(Spoons.getView(t, 1).lastFalseGrab, 2)
+	end)
+
+	T.test("two winners house rule ends the game when two are left", function()
+		local s = Spoons.new(3, { rules = { twoWinners = true } }, T.Random.new(25))
+		s.hands[1] = { C(5, 1), C(5, 2), C(5, 3), C(5, 4), C(2, 1) }
+		Spoons.applyMove(s, 1, { kind = "grab" })
+		Spoons.applyMove(s, 2, { kind = "grab" })
+		local result = Spoons.getResult(s) :: any
+		T.eq(#result.winners, 2)
+	end)
+
+	T.test("the scramble clock gives the last spoons to whoever was moving", function()
+		local s = Spoons.new(3, nil, T.Random.new(26))
+		s.hands[1] = { C(5, 1), C(5, 2), C(5, 3), C(5, 4), C(2, 1) }
+		Spoons.applyMove(s, 2, { kind = "pass", card = s.hands[2][1] })
+		Spoons.applyMove(s, 1, { kind = "grab" })
+		Spoons.onTimeout(s) -- the scramble
+		Spoons.onTimeout(s) -- out of time
+		T.eq(s.out[3], 1, "seat 3 never moved")
 	end)
 
 	T.test("other hands stay hidden", function()
@@ -174,6 +251,11 @@ return function(T)
 				local result = Spoons.getResult(s)
 				T.ok(result ~= nil, `{level} {seats}-seat game should finish`)
 				T.eq(#result.winners, 1)
+				local cards = #s.deck + #s.discard
+				for seat = 1, seats do
+					cards += #(s.hands[seat] or {}) + #(s.queue[seat] or {})
+				end
+				T.ok(cards > 0)
 			end
 		end
 	end)

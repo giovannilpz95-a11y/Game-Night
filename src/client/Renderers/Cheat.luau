@@ -33,8 +33,17 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 		local active = CardTable.isActive(snapshot, me)
 		local myTurn = active and view.phase == "play"
 		local canDoubt = active and view.phase == "doubt"
-		local plural = PlayingCards.rankPlural[view.called]
 		local claims = view.claims or { view.called }
+		local leading = #claims > 3 -- any rank: the leader names it
+		local plural = if view.called then PlayingCards.rankPlural[view.called] else "any rank"
+		local function nowText(): string
+			if leading then
+				return "New lead: name any rank"
+			elseif #claims > 1 then
+				return `{PlayingCards.rankPlural[claims[1]]}, {plural} or {PlayingCards.rankPlural[claims[3]]}`
+			end
+			return plural
+		end
 		if not myTurn then
 			selected = {}
 		end
@@ -72,7 +81,7 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 			end
 			CardTable.cardRow(ui.content, cards, { Position = UDim2.fromScale(0.42, 0.34), Size = UDim2.fromScale(0.54, 0.6) })
 		else
-			CardTable.feltText(ui.content, if #claims > 1 then `Now playing: {PlayingCards.rankPlural[claims[1]]}, {plural} or {PlayingCards.rankPlural[claims[3]]}` else `Now playing: {plural}`, 0.06, 22).TextColor3 = Theme.Accent
+			CardTable.feltText(ui.content, if leading then nowText() else `Now playing: {nowText()}`, 0.06, 22).TextColor3 = Theme.Accent
 			if claim then
 				local n = claim.count
 				CardTable.feltText(ui.content, `{nameOf(claim.seat)} played {n} {if n == 1 then "card" else "cards"} as {PlayingCards.rankPlural[claim.rank]}`, 0.26, 16)
@@ -83,7 +92,34 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		local buttons = {}
-		if myTurn and #claims > 1 then
+		if myTurn and leading then
+			-- Any rank: name one of the ranks you hold (or bluff with it).
+			local n = #selected
+			local counts = PlayingCards.rankCounts(view.hand or {})
+			local ranks = {}
+			for r in counts do
+				table.insert(ranks, r)
+			end
+			table.sort(ranks, function(a, b)
+				if counts[a] ~= counts[b] then
+					return counts[a] > counts[b]
+				end
+				return a < b
+			end)
+			for i = 1, math.min(6, #ranks) do
+				local r = ranks[i]
+				table.insert(buttons, {
+					text = if n == 0 then PlayingCards.rankPlural[r] else `{n} as {PlayingCards.rankPlural[r]}`,
+					enabled = n > 0,
+					onClick = function()
+						if #selected > 0 then
+							sendMove({ kind = "play", cards = selected, claim = r })
+							selected = {}
+						end
+					end,
+				})
+			end
+		elseif myTurn and #claims > 1 then
 			-- Up, down or same: one button per rank you may claim.
 			local n = #selected
 			for _, r in claims do
@@ -114,22 +150,78 @@ function Cheat.create(container: Frame, sendMove: (any) -> ())
 			table.insert(buttons, { text = "I doubt it!", color = Theme.Bad, onClick = function()
 				sendMove({ kind = "doubt" })
 			end })
-			table.insert(buttons, { text = "Believe", color = Theme.Good, onClick = function()
+			-- Believing locks you in for this play (it closes the window sooner).
+			table.insert(buttons, { text = "Believe (locks in)", color = Theme.Good, onClick = function()
+				sendMove({ kind = "pass" })
+			end })
+		end
+		if myTurn and view.allowPass and view.lastPlay and not leading then
+			table.insert(buttons, { text = "Pass", color = Theme.PanelLight, onClick = function()
+				selected = {}
 				sendMove({ kind = "pass" })
 			end })
 		end
 		CardTable.buttons(ui.buttons, buttons)
 
+		-- Table view: the felt is hidden, so the game's running lines go on screen.
+		local info = {}
+		if (view.rounds or 1) > 1 then
+			table.insert(info, `Round {view.round} of {view.rounds}`)
+			for seat = 1, #snapshot.seats do
+				table.insert(info, `{nameOf(seat)}: {view.points[seat] or 0} pts`)
+			end
+		else
+			table.insert(info, `Pile: {view.pileCount} cards`)
+		end
+		if view.yourNext and #view.yourNext > 0 then
+			local names = {}
+			for _, r in view.yourNext do
+				table.insert(names, PlayingCards.rankShort[r])
+			end
+			table.insert(info, `Your next: {table.concat(names, ", ")}`)
+		end
+		if view.discards and #view.discards > 0 then
+			local names = {}
+			for _, d in view.discards do
+				table.insert(names, PlayingCards.rankShort[d.rank])
+			end
+			table.insert(info, `Put aside: {table.concat(names, " ")}`)
+		end
+		CardTable.info(ui, info)
+		local rr = view.roundResult
+		if view.phase == "roundOver" and rr then
+			local lines = {}
+			for seat = 1, #snapshot.seats do
+				table.insert(lines, `{nameOf(seat)} +{rr.added[seat] or 0} (now {view.points[seat] or 0})`)
+			end
+			CardTable.notice(ui, `{nameOf(rr.first[1])} went out first!`, lines)
+		elseif view.phase == "reveal" and reveal then
+			local verdict = if reveal.honest then `Honest! {nameOf(reveal.doubter)} picks up {reveal.count}` else `Caught bluffing! {nameOf(reveal.seat)} picks up {reveal.count}`
+			local shown = {}
+			for _, id in reveal.cards do
+				table.insert(shown, PlayingCards.short(id))
+			end
+			local lines = { `The cards: {table.concat(shown, " ")}` }
+			if reveal.discarded then
+				table.insert(lines, `Four {PlayingCards.rankPlural[reveal.discarded]} put aside`)
+			end
+			CardTable.notice(ui, verdict, lines, if reveal.honest then Theme.Good else Theme.Bad)
+		else
+			CardTable.notice(ui, nil)
+		end
+
 		if not me then
 			ui.prompt.Text = "Watching"
 		elseif snapshot.result then
 			ui.prompt.Text = ""
+		elseif myTurn and leading then
+			ui.prompt.Text = "Your lead: pick 1-4 cards, then name the rank. Bluff if you like!"
 		elseif myTurn and #claims > 1 then
-			ui.prompt.Text = `Your turn: play 1-4 cards as {PlayingCards.rankPlural[claims[1]]}, {plural} or {PlayingCards.rankPlural[claims[3]]}`
+			ui.prompt.Text = `Your turn: play 1-4 cards as {nowText()}`
 		elseif myTurn then
 			ui.prompt.Text = `Your turn: play 1-4 cards as {plural}. Bluff if you have to!`
 		elseif canDoubt then
-			ui.prompt.Text = `Did {nameOf(claim and claim.seat)} really play {claim and claim.count or 0} {PlayingCards.rankPlural[claim and claim.rank or view.called]}?`
+			ui.prompt.Text = `Did {nameOf(claim and claim.seat)} really play {claim and claim.count or 0} {PlayingCards.rankPlural[claim and claim.rank or view.called or 1]}?`
 		elseif view.phase == "play" then
 			ui.prompt.Text = `{nameOf(view.turn)} is playing {plural}...`
 		else

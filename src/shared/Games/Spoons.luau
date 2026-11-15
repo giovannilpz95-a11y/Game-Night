@@ -1,13 +1,19 @@
 -- Spoons: pass cards fast, collect four of a kind, grab a spoon. 3-8 seats.
 --
--- There is one spoon fewer than players. Everyone holds 4 cards. Each "pass", every
--- player gets one new card (the dealer from the deck, everyone else from the player on
--- their right) and picks one of their 5 cards to pass left. The last player's pass goes
--- to the discard pile. All players pass at once; the next pass starts when everyone has
--- passed (or the pass clock runs out and a card is passed for the slow players).
--- Four of a kind? Grab a spoon! The moment the first spoon goes, everyone can grab one.
--- Whoever is left without a spoon is out. Fresh deal, one spoon fewer, until one player
--- is left: they win.
+-- There is one spoon fewer than players. Everyone holds 4 cards plus the card coming in,
+-- and passes one of their 5 to the left; the dealer draws from the deck, the last player
+-- passes to the discard pile.
+-- Free passing (default, like a real table): no turns. Pass whenever you hold 5; your card
+-- waits face down in front of the next player until they're ready for it. A player who sits
+-- on their cards while the others keep passing (or when nobody passes for the pass clock)
+-- has a card passed for them.
+-- Together (house rule): everyone passes at once; the next pass starts when all have.
+-- Four of a kind? Grab a spoon, quietly: the first grab shows only as a spoon missing from
+-- the middle. Anyone may grab once a spoon is gone. A second grab, or QUIET_SECONDS, and
+-- everyone knows: the scramble. Whoever is left without a spoon is out (or gets a letter).
+-- Fresh deal, one spoon fewer, until one player (two, with "Two winners") is left.
+-- House rule "False grab": grabbing with no four of a kind before any spoon is gone loses
+-- you the round on the spot.
 --
 -- The deck uses as many ranks as players + 2 (4 cards each), so sets come together at
 -- a good pace with any table size.
@@ -33,7 +39,9 @@ Spoons.PASS_SECONDS = 8 -- house rule "passSeconds" can change it
 Spoons.SCRAMBLE_SECONDS = 5
 Spoons.REVEAL_SECONDS = 4
 Spoons.STALL_PASSES = 12 -- passes in a round before bots start giving up a pair
-Spoons.MAX_PASSES = 60 -- passes in a round before a fresh deal
+Spoons.MAX_PASSES = 60 -- passes in a round before a fresh deal (free passing: the dealer's)
+Spoons.QUIET_SECONDS = 2 -- the first grab stays quiet this long, unless a second grab comes
+Spoons.IDLE_PASS_TIME = 1.3 -- free passing: about how long one pass takes, for the idle limit
 
 local rank = PlayingCards.rank
 
@@ -116,9 +124,17 @@ local function deal(state)
 		state.hands[seat] = hand
 	end
 	state.passed = {}
+	state.queue = {} -- free passing: queue[seat] = cards waiting for them, oldest first
+	state.idle = {} -- free passing: passes by others while this seat sat on 5 cards
+	for _, seat in alive do
+		state.queue[seat] = {}
+		state.idle[seat] = 0
+	end
 	state.spoons = {} -- spoons[seat] = order they grabbed it in
 	state.spoonsLeft = #alive - 1
 	state.phase = "pass"
+	state.quiet = false
+	state.falseGrab = nil
 	state.round += 1
 	state.passNumber = 1
 	state.phaseId += 1
@@ -146,8 +162,13 @@ function Spoons.new(seatCount: number, options: any?, rng: Random?)
 		winner = nil,
 		botLevel = (options and options.botLevel) or "medium",
 		passSeconds = Spoons.PASS_SECONDS,
+		acted = {}, -- acted[seat] = move count at their last move (who's paying attention)
+		moves = 0,
 	}
 	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	state.free = rules.passing ~= "together"
+	state.falseGrabRule = rules.falseGrab == true
+	state.twoWinners = rules.twoWinners == true and seatCount >= 3
 	if type(rules.passSeconds) == "number" and rules.passSeconds > 0 then
 		state.passSeconds = rules.passSeconds
 	end
@@ -196,14 +217,17 @@ local function grabCount(state): number
 end
 
 local function endRound(state)
-	local loser = nil
-	for _, seat in aliveSeats(state) do
-		if not state.spoons[seat] then
-			loser = seat
+	local loser = state.falseGrab
+	if not loser then
+		for _, seat in aliveSeats(state) do
+			if not state.spoons[seat] then
+				loser = seat
+			end
 		end
 	end
 	state.lastOut = nil
 	state.lastLetter = nil
+	state.lastFalseGrab = state.falseGrab
 	if loser and state.word then
 		state.letters[loser] = (state.letters[loser] or 0) + 1
 		state.lastLetter = loser
@@ -216,26 +240,120 @@ local function endRound(state)
 		state.lastOut = loser
 	end
 	local alive = aliveSeats(state)
-	if #alive <= 1 then
+	if #alive <= 1 or (state.twoWinners and #alive <= 2) then
 		state.winner = alive[1]
+		state.winners = alive
 		state.phase = "done"
 		return
 	end
 	state.phase = "reveal"
+	state.quiet = false
 	state.phaseId += 1
 end
 
 local function grab(state, seat: number)
-	local first = grabCount(state) == 0
-	state.spoons[seat] = grabCount(state) + 1
+	local count = grabCount(state)
+	if count == 0 and state.phase == "pass" and not hasFour(state.hands[seat]) then
+		-- A false grab (house rule): you lose the round on the spot.
+		state.falseGrab = seat
+		state.firstGrab = nil
+		endRound(state)
+		return
+	end
+	state.spoons[seat] = count + 1
 	state.spoonsLeft -= 1
-	if first then
+	if count == 0 then
+		-- Quiet: only a spoon missing from the middle gives it away, for a moment.
 		state.firstGrab = { seat = seat, rank = hasFour(state.hands[seat]) }
+		state.quiet = true
+		state.phaseId += 1
+	elseif state.phase == "pass" then
+		-- A second grab: now everyone knows.
 		state.phase = "scramble"
+		state.quiet = false
 		state.phaseId += 1
 	end
 	if state.spoonsLeft <= 0 then
 		endRound(state)
+	end
+end
+
+-- Free passing: the card a seat passes goes into the next player's queue, and anyone
+-- holding 4 picks up the next card waiting for them (the dealer draws from the deck).
+local function pickUp(state, seat: number)
+	if #state.hands[seat] >= 5 then
+		return
+	end
+	if seat == state.dealer then
+		local card = drawOne(state)
+		if card then
+			table.insert(state.hands[seat], card)
+			state.idle[seat] = 0
+		end
+	elseif #state.queue[seat] > 0 then
+		table.insert(state.hands[seat], table.remove(state.queue[seat], 1) :: number)
+		state.idle[seat] = 0
+	end
+end
+
+local function idleLimit(state): number
+	local others = #aliveSeats(state) - 1
+	return math.max(8, math.ceil((state.passSeconds or Spoons.PASS_SECONDS) * others / Spoons.IDLE_PASS_TIME))
+end
+
+local passFree
+
+-- Passes one card for a seat that isn't keeping up (the clock, or everyone else moving on).
+local function passFor(state, seat: number)
+	local hand = state.hands[seat]
+	if #hand < 5 then
+		return
+	end
+	passFree(state, seat, Spoons._worstCard(hand, state.rng))
+end
+
+function passFree(state, seat: number, card: number)
+	local hand = state.hands[seat]
+	table.remove(hand, table.find(hand, card) :: number)
+	local last = prevAlive(state, state.dealer)
+	local nextSeat = nextAlive(state, seat)
+	if seat == last then
+		table.insert(state.discard, card)
+	else
+		table.insert(state.queue[nextSeat], card)
+	end
+	state.phaseId += 1
+	if seat == state.dealer then
+		state.passNumber += 1
+	end
+	pickUp(state, seat)
+	if seat ~= last then
+		pickUp(state, nextSeat)
+	end
+	-- The deck may have run dry with every card in hand; a discard refills it.
+	pickUp(state, state.dealer)
+	if state.passNumber > Spoons.MAX_PASSES then
+		deal(state)
+		state.round -= 1
+		state.freshDeals = (state.freshDeals or 0) + 1
+		return
+	end
+	-- Everyone else sitting on 5 cards waited one more pass.
+	local limit = idleLimit(state)
+	local slow = {}
+	for _, s in aliveSeats(state) do
+		if s ~= seat and #state.hands[s] >= 5 then
+			state.idle[s] += 1
+			if state.idle[s] >= limit and not hasFour(state.hands[s]) and not state.spoons[s] then
+				table.insert(slow, s)
+			end
+		end
+	end
+	for _, s in slow do
+		if state.phase == "pass" and #state.hands[s] >= 5 then
+			state.idle[s] = 0
+			passFor(state, s)
+		end
 	end
 end
 
@@ -244,16 +362,51 @@ function Spoons.getActiveSeats(state): { number }
 		return {}
 	end
 	local out = {}
+	local spoonGone = grabCount(state) > 0
 	for _, seat in aliveSeats(state) do
 		if state.phase == "scramble" then
 			if not state.spoons[seat] then
 				table.insert(out, seat)
 			end
-		elseif not state.passed[seat] or hasFour(state.hands[seat]) then
+		elseif state.spoons[seat] then
+			continue -- safe: nothing left to do this round
+		elseif hasFour(state.hands[seat]) or spoonGone then
+			table.insert(out, seat)
+		elseif state.free then
+			if #state.hands[seat] >= 5 then
+				table.insert(out, seat)
+			end
+		elseif not state.passed[seat] then
 			table.insert(out, seat)
 		end
 	end
 	return out
+end
+
+-- Anyone still in may reach for a spoon at any time (a false grab is refused, or costs the
+-- round with the house rule).
+function Spoons.getInterruptSeats(state): { number }
+	if state.winner or state.phase ~= "pass" then
+		return {}
+	end
+	local active = Spoons.getActiveSeats(state)
+	local out = {}
+	for _, seat in aliveSeats(state) do
+		if not state.spoons[seat] and not table.find(active, seat) then
+			table.insert(out, seat)
+		end
+	end
+	return out
+end
+
+local function canPass(state, seat: number): boolean
+	if state.phase ~= "pass" or state.spoons[seat] then
+		return false
+	end
+	if state.free then
+		return #state.hands[seat] >= 5
+	end
+	return not state.passed[seat]
 end
 
 function Spoons.getLegalMoves(state, seat: number): { any }
@@ -261,10 +414,10 @@ function Spoons.getLegalMoves(state, seat: number): { any }
 	if not table.find(Spoons.getActiveSeats(state), seat) then
 		return moves
 	end
-	if state.phase == "scramble" or hasFour(state.hands[seat]) then
+	if state.phase == "scramble" or hasFour(state.hands[seat]) or grabCount(state) > 0 then
 		table.insert(moves, { kind = "grab" })
 	end
-	if state.phase == "pass" and not state.passed[seat] then
+	if canPass(state, seat) then
 		for _, card in state.hands[seat] do
 			table.insert(moves, { kind = "pass", card = card })
 		end
@@ -289,7 +442,7 @@ function Spoons.validateMove(state, seat: number, move: any): (boolean, string?)
 		if state.spoons[seat] then
 			return false, "You already have a spoon"
 		end
-		if state.phase == "pass" and not hasFour(state.hands[seat]) then
+		if state.phase == "pass" and grabCount(state) == 0 and not hasFour(state.hands[seat]) and not state.falseGrabRule then
 			return false, "You need four of a kind first"
 		end
 		return true
@@ -297,8 +450,11 @@ function Spoons.validateMove(state, seat: number, move: any): (boolean, string?)
 		if state.phase ~= "pass" then
 			return false, "Grab a spoon!"
 		end
-		if state.passed[seat] then
-			return false, "Waiting for the others"
+		if state.spoons[seat] then
+			return false, "You have a spoon: you're safe"
+		end
+		if not canPass(state, seat) then
+			return false, if state.free then "Wait for the next card" else "Waiting for the others"
 		end
 		if not PlayingCards.isCardId(move.card) or not table.find(state.hands[seat], move.card) then
 			return false, "That card isn't in your hand"
@@ -309,8 +465,14 @@ function Spoons.validateMove(state, seat: number, move: any): (boolean, string?)
 end
 
 function Spoons.applyMove(state, seat: number, move: any)
+	state.moves += 1
+	state.acted[seat] = state.moves
 	if move.kind == "grab" then
 		grab(state, seat)
+		return
+	end
+	if state.free then
+		passFree(state, seat, move.card)
 		return
 	end
 	local hand = state.hands[seat]
@@ -357,19 +519,34 @@ local function worstCard(hand: { number }, rng: Random, stalled: boolean?): numb
 	end
 	return best
 end
+Spoons._worstCard = worstCard
 
 function Spoons.getTimer(state): { id: number, seconds: number }?
 	if state.winner or state.phase == "done" then
 		return nil
 	end
-	local seconds = if state.phase == "pass" then (state.passSeconds or Spoons.PASS_SECONDS)
+	local seconds = if state.phase == "pass" and state.quiet then Spoons.QUIET_SECONDS
+		elseif state.phase == "pass" then (state.passSeconds or Spoons.PASS_SECONDS)
 		elseif state.phase == "scramble" then Spoons.SCRAMBLE_SECONDS
 		else Spoons.REVEAL_SECONDS
 	return { id = state.phaseId, seconds = seconds }
 end
 
 function Spoons.onTimeout(state)
-	if state.phase == "pass" then
+	if state.phase == "pass" and state.quiet then
+		-- The quiet grab is out: everyone scrambles.
+		state.quiet = false
+		state.phase = "scramble"
+		state.phaseId += 1
+	elseif state.phase == "pass" and state.free then
+		-- Nobody passed for a whole pass clock: pass for everyone sitting on 5 cards.
+		for _, seat in aliveSeats(state) do
+			if state.phase == "pass" and #(state.hands[seat] or {}) >= 5 and not hasFour(state.hands[seat]) then
+				passFor(state, seat)
+			end
+		end
+		state.phaseId += 1
+	elseif state.phase == "pass" then
 		for _, seat in aliveSeats(state) do
 			if not state.passed[seat] then
 				local hand = state.hands[seat]
@@ -380,7 +557,8 @@ function Spoons.onTimeout(state)
 		end
 		finishPass(state)
 	elseif state.phase == "scramble" then
-		-- Out of time: the spoons left go to random players who hadn't grabbed one.
+		-- Out of time: the spoons left go to the players who were moving most recently, so
+		-- whoever looked away is the one left out.
 		local waiting = {}
 		for _, seat in aliveSeats(state) do
 			if not state.spoons[seat] then
@@ -388,6 +566,9 @@ function Spoons.onTimeout(state)
 			end
 		end
 		shuffle(waiting, state.rng)
+		table.sort(waiting, function(a, b)
+			return (state.acted[a] or 0) > (state.acted[b] or 0)
+		end)
 		for i = 1, math.max(0, state.spoonsLeft) do
 			local seat = waiting[i]
 			if seat then
@@ -399,11 +580,15 @@ function Spoons.onTimeout(state)
 	elseif state.phase == "reveal" then
 		state.dealer = nextAlive(state, state.dealer)
 		state.firstGrab = nil
+		state.lastFalseGrab = nil
 		deal(state)
 	end
 end
 
 function Spoons.getResult(state): GameModule.Result?
+	if state.winners and #state.winners > 1 then
+		return { winners = table.clone(state.winners), isDraw = false, reason = "The last two holding spoons" }
+	end
 	if state.winner then
 		return { winners = { state.winner }, isDraw = false, reason = "Last one holding a spoon" }
 	end
@@ -421,12 +606,28 @@ function Spoons.getView(state, seat: number?)
 	end
 	local hand = if seat and state.hands[seat] and not state.out[seat] then PlayingCards.sortHand(state.hands[seat]) else nil
 	local revealHand = nil
-	if state.phase ~= "pass" and state.firstGrab then
+	if state.phase ~= "pass" and state.firstGrab and state.hands[state.firstGrab.seat] then
 		-- Everyone gets to see the winning set once the spoons are flying.
 		revealHand = PlayingCards.sortHand(state.hands[state.firstGrab.seat])
 	end
+	local handCounts, queueCounts = {}, {}
+	for s = 1, state.seatCount do
+		handCounts[s] = if state.hands[s] and not state.out[s] then #state.hands[s] else 0
+		queueCounts[s] = if state.queue and state.queue[s] then #state.queue[s] else 0
+	end
+	-- A quiet grab shows only as a missing spoon (and the spoon in their hand on the table).
+	local firstGrab = if state.quiet and not (seat and state.firstGrab and state.firstGrab.seat == seat) then nil else GameModule.copy(state.firstGrab)
 	return {
 		phase = state.phase,
+		quiet = state.quiet,
+		free = state.free,
+		handCounts = handCounts,
+		queueCounts = queueCounts,
+		canPass = seat ~= nil and state.hands[seat] ~= nil and not state.out[seat] and canPass(state, seat),
+		spoonGone = grabCount(state) > 0,
+		falseGrabRule = state.falseGrabRule,
+		lastFalseGrab = state.lastFalseGrab,
+		twoWinners = state.twoWinners,
 		round = state.round,
 		passNumber = state.passNumber,
 		hand = hand,
@@ -445,7 +646,7 @@ function Spoons.getView(state, seat: number?)
 		out = outSeats,
 		youAreOut = seat ~= nil and state.out[seat] ~= nil,
 		dealer = state.dealer,
-		firstGrab = GameModule.copy(state.firstGrab),
+		firstGrab = firstGrab,
 		revealHand = revealHand,
 		lastOut = state.lastOut,
 		word = state.word,
@@ -464,14 +665,15 @@ end
 function Spoons.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, state.seatCount do
+		local letters = if state.word and state.letters and (state.letters[seat] or 0) > 0 then string.sub(state.word, 1, state.letters[seat]) .. " · " else ""
 		if state.out[seat] then
 			info[seat] = "Out"
 		elseif state.spoons[seat] then
-			info[seat] = "Got a spoon!"
-		elseif state.phase == "pass" and state.passed[seat] then
-			info[seat] = "Passed"
+			info[seat] = letters .. "Got a spoon!"
+		elseif state.phase == "pass" and not state.free and state.passed[seat] then
+			info[seat] = letters .. "Passed"
 		else
-			info[seat] = if seat == state.dealer then "Dealer" else "In"
+			info[seat] = letters .. (if seat == state.dealer then "Dealer" else "In")
 		end
 	end
 	return info
@@ -499,6 +701,10 @@ function Spoons.getBotDelay(state, seat: number, rng: Random): number
 	if state.hands[seat] and hasFour(state.hands[seat]) then
 		return 0.3 + rng:NextNumber() * g[1]
 	end
+	if grabCount(state) > 0 then
+		-- A quiet grab: it takes a moment to notice the missing spoon.
+		return 0.6 + rng:NextNumber() * g[1] * 1.4
+	end
 	return 0.7 + rng:NextNumber() * 1.3 -- passing
 end
 
@@ -510,10 +716,13 @@ function Spoons.chooseBotMove(state, seat: number, rng: Random): any?
 	if not hand then
 		return nil
 	end
-	if hasFour(hand) then
+	if state.spoons[seat] then
+		return nil
+	end
+	if hasFour(hand) or grabCount(state) > 0 then
 		return { kind = "grab" }
 	end
-	if state.passed[seat] then
+	if not canPass(state, seat) then
 		return nil
 	end
 	if state.botLevel == "easy" and rng:NextNumber() < 0.35 then

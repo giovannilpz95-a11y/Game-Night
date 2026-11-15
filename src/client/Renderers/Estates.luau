@@ -384,7 +384,7 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 
 	-- Tokens ride on their own layer so they can walk from space to space.
 	local tokenLayer = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 6, Parent = board })
-	type Token = { frame: Frame, lock: TextLabel, pos: number, jail: boolean, walk: thread? }
+	type Token = { frame: Frame, lock: TextLabel, pos: number, jail: boolean, walk: thread?, landedN: number? }
 	local tokens: { [number]: Token } = {}
 
 	local function tokenSpot(seat: number, pos: number, jail: boolean): UDim2
@@ -426,7 +426,7 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 				Kit.new("UIStroke", { Thickness = 2, Color = Color3.fromRGB(30, 30, 40) }),
 			})
 			local lock = Kit.label("🔒", { TextScaled = true, TextColor3 = Color3.new(0, 0, 0), TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), ZIndex = 8, Visible = jail, Parent = frame })
-			tokens[seat] = { frame = frame, lock = lock, pos = p.pos, jail = jail }
+			tokens[seat] = { frame = frame, lock = lock, pos = p.pos, jail = jail, landedN = if p.landed then p.landed.n else nil }
 			return 0
 		end
 		if snapshot and seat == snapshot.yourSeat then
@@ -441,25 +441,42 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 		end
 		local from, to = t.pos, p.pos
 		t.pos, t.jail = to, jail
+		-- A card or Go to Jail moved it after the dice: hop to where the dice landed, stop
+		-- there a moment, then glide on (the apps show the card space first).
+		local landed = p.landed
+		local stopAt: number? = nil
+		if landed and landed.n ~= t.landedN and landed.pos ~= to then
+			local diceSteps = (landed.pos - from) % #spaces
+			if diceSteps >= 2 and diceSteps <= 12 then
+				stopAt = landed.pos
+			end
+		end
+		t.landedN = if landed then landed.n else t.landedN
 		local steps = (to - from) % #spaces
-		local walking = not jail and steps >= 1 and steps <= 12
-		local duration = if walking then steps * HOP else 0.6
+		local walking = not jail and steps >= 1 and steps <= 12 and stopAt == nil
+		local duration = if walking then steps * HOP elseif stopAt then ((stopAt - from) % #spaces) * HOP + 0.5 + 0.6 else 0.6
 		t.walk = task.spawn(function()
 			local wait = startAt - os.clock()
 			if wait > 0 then
 				task.wait(wait)
 			end
 			t.frame.ZIndex = 9
-			if walking then
+			if walking or stopAt then
 				-- A dice move: hop along every space on the way.
 				local scale = Juice.scale(t.frame, "Hop")
-				for k = 1, steps do
+				local hops = if stopAt then (stopAt - from) % #spaces else steps
+				for k = 1, hops do
 					local nextPos = (from + k - 1) % #spaces + 1
 					TweenService:Create(t.frame, TweenInfo.new(HOP * 0.9, Enum.EasingStyle.Quad), { Position = tokenSpot(seat, nextPos, false) }):Play()
 					scale.Scale = 1.35
 					TweenService:Create(scale, TweenInfo.new(HOP * 0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 1 }):Play()
 					play("piece", { volume = 0.35, pitch = (k % 2) * 2 })
 					task.wait(HOP)
+				end
+				if stopAt then
+					task.wait(0.5)
+					TweenService:Create(t.frame, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { Position = tokenSpot(seat, to, jail) }):Play()
+					task.wait(0.6)
 				end
 			else
 				-- A card or Jail: one long glide over the board.
@@ -1003,7 +1020,27 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 			end
 			step(-100, 1)
 			step(-10, 2)
-			Kit.label(money(draft[cashKey]), z({ TextSize = 15, Font = Theme.FontBold, TextColor3 = Color3.fromRGB(140, 230, 150), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, Size = UDim2.fromOffset(56, 30), LayoutOrder = 3, Parent = cashRow }))
+			-- The amount is a box: tap it to type any sum.
+			local cashBox = Kit.new("TextBox", z({
+				Text = money(draft[cashKey]),
+				ClearTextOnFocus = true,
+				TextSize = 15,
+				Font = Theme.FontBold,
+				TextColor3 = Color3.fromRGB(140, 230, 150),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				TextWrapped = false,
+				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(56, 30),
+				LayoutOrder = 3,
+				Parent = cashRow,
+			}))
+			cashBox.FocusLost:Connect(function()
+				local amount = tonumber((string.gsub(cashBox.Text, "[^%d]", "")))
+				if amount then
+					draft[cashKey] = math.clamp(math.floor(amount), 0, have)
+				end
+				rerender()
+			end)
 			step(10, 4)
 			step(100, 5)
 			step(500, 6)
@@ -1334,6 +1371,31 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 				userPopup = { kind = "manage" }
 				rerender()
 			end, table.find(view.owner, me) ~= nil, 5)
+			-- Or type any bid (like Rich Up's custom bid): Enter sends it.
+			local box = Kit.new("TextBox", z({
+				Text = "",
+				PlaceholderText = "Type a bid",
+				ClearTextOnFocus = true,
+				Font = Theme.FontBold,
+				TextSize = 15,
+				TextColor3 = Theme.Text,
+				PlaceholderColor3 = Theme.SubText,
+				BackgroundColor3 = Theme.Panel,
+				LayoutOrder = 6,
+				Parent = bar,
+			}), { Kit.corner(10) })
+			box.FocusLost:Connect(function(enter: boolean)
+				local amount = tonumber((string.gsub(box.Text, "[^%d]", "")))
+				if enter and amount then
+					if amount > a.high and amount <= cash then
+						sendMove({ kind = "bid", amount = math.floor(amount) })
+					else
+						box.Text = ""
+						box.PlaceholderText = if amount <= a.high then `More than {money(a.high)}` else `You have {money(cash)}`
+						Juice.nope(box)
+					end
+				end
+			end)
 		end)
 	end
 
@@ -1892,10 +1954,14 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 		local now = os.clock()
 		local start = math.max(now, busyUntil)
 		local rolled = false
+		local moments = {}
 		for _, entry in view.log do
-			if entry.n > lastLogN then
-				if not firstRender and string.find(entry.text, "^rolled ") then
+			if entry.n > lastLogN and not firstRender then
+				local text = entry.text
+				if string.find(text, "^rolled ") then
 					rolled = true
+				elseif text == "went bankrupt!" or string.find(text, "^built a hotel on ") or string.find(text, "^hit the Rest Stop jackpot") or string.find(text, "^passed Start and collected ") or string.find(text, "^landed right on Start") then
+					table.insert(moments, entry)
 				end
 			end
 		end
@@ -1947,6 +2013,44 @@ function Estates.create(container: Frame, sendMove: (any) -> (), sendRequest: ((
 		end
 		if not quiet and (rolled or walk > 0) then
 			busyUntil = math.max(busyUntil, settled)
+		end
+		-- Big moments, once the token has arrived: a bankruptcy, a new hotel, the jackpot,
+		-- and the Start salary floating up off the token.
+		if not quiet then
+			for _, entry in moments do
+				local seat, text = entry.seat, entry.text
+				local who = nameOf(seat)
+				if text == "went bankrupt!" then
+					at(settled, function()
+						HudKit.callout(root, `💥 {who} {if who == "You" then "are" else "is"} BANKRUPT!`, Theme.Bad)
+						play("caught")
+						local row = seat and rows[seat]
+						if row then
+							Juice.wiggle(row.frame)
+						end
+					end)
+				elseif string.find(text, "^built a hotel on ") then
+					at(settled, function()
+						HudKit.callout(root, `🏨 {who} built a hotel on {string.sub(text, #"built a hotel on " + 1)}!`, Color3.fromRGB(235, 87, 87))
+						play("clap", { volume = 0.5 })
+					end)
+				elseif string.find(text, "^hit the Rest Stop jackpot") then
+					at(settled, function()
+						HudKit.callout(root, `🎉 JACKPOT! {who} {string.match(text, "(%$[%d,]+)") or ""}`, Color3.fromRGB(255, 204, 64))
+						HudKit.confetti(root, 50)
+						play("win", { volume = 0.6 })
+					end)
+				else
+					local amount = string.match(text, "(%$[%d,]+)") or money(Rules.PASS_START)
+					at(walkAt + 0.3, function()
+						local t = seat and tokens[seat]
+						if t and t.frame.Parent then
+							local pos = t.frame.AbsolutePosition + Vector2.new(t.frame.AbsoluteSize.X / 2, 0)
+							Flair.floatText(t.frame, `+{amount} Start`, pos, Color3.fromRGB(140, 240, 150))
+						end
+					end)
+				end
+			end
 		end
 
 		-- News feed: the last 8 lines on the board (the Log button has them all).
