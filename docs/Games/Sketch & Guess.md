@@ -9,7 +9,7 @@ One player draws a secret word and everyone else races to guess it. 3-8 seats.
 **Stamps only by default (2026-11-15).** `Config.SketchFreeDraw = false` makes every table stamps only (see Stamps below): the server sets `rules.tools = "stamps"` in `MatchService`, whatever the house rules say, and `GameCatalog` drops the "Drawing tools" rule (`freeDrawOnly`). This is the form meant to launch in the main experience, once Roblox confirms in writing that it isn't free-form user creation. `true` brings back the pen and shapes, for a separate 16+ place only.
 
 ## Code
-- Rules: `src/shared/Games/SketchGuess.luau`. Words: `src/shared/Games/Data/SketchWords.luau` (our own kid-safe list, about 180 easy, 230 medium, 150 hard; `a|b` lists other accepted spellings). Bot doodles: `src/shared/Games/Data/SketchDoodles.luau`.
+- Rules: `src/shared/Games/SketchGuess.luau`. Words: `src/server/Data/SketchWords.luau` (server-only, passed in `options.wordBank`) (our own kid-safe list, about 180 easy, 230 medium, 150 hard; `a|b` lists other accepted spellings). Bot doodles: `src/server/Data/SketchDoodles.luau` (server-only, `options.doodles`). Guesses: 5 per hint and 1 a second per seat (server clock). Players who know the word chat in their own group.
 - Drawing (shared by both canvases): `src/shared/SketchCanvas.luau` turns strokes into Frames. Fill bucket: `src/shared/SketchFill.luau` (pure flood fill).
 - Player's screen: `src/client/Renderers/SketchGuess.luau`. Screen over the table: `src/server/Tables/Boards/SketchGuess.luau`.
 - Tests: `tests/SketchGuess.spec.luau`, `tests/SketchGuessExtras.spec.luau` (fill, likes, chat, gallery, newer house rules), house rules and host words in `tests/GameHouseRules.spec.luau`.

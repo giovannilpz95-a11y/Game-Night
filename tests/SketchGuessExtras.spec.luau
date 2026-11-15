@@ -5,6 +5,19 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local SketchGuess = require(ReplicatedStorage.Shared.Games.SketchGuess)
 local SketchFill = require(ReplicatedStorage.Shared.SketchFill)
 local Match = require(ServerScriptService.Server.Core.Match)
+local Words = require(ServerScriptService.Server.Data.SketchWords)
+local Doodles = require(ServerScriptService.Server.Data.SketchDoodles)
+
+-- The server passes its word list and doodles in (they never ship to clients).
+local function withData(opts: any?): any
+	local o = table.clone(opts or {})
+	o.wordBank = o.wordBank or Words
+	o.doodles = o.doodles or Doodles
+	return o
+end
+local function newGame(seats: number, opts: any?, rng: any)
+	return SketchGuess.new(seats, withData(opts), rng)
+end
 
 return function(T)
 	local function apply(s, seat, move)
@@ -15,7 +28,7 @@ return function(T)
 
 	local function drawing(word, options)
 		local opts = options or { bots = { 3, 4 } }
-		local s = SketchGuess.new(4, opts, T.Random.new(4))
+		local s = newGame(4, opts, T.Random.new(4))
 		s.choices = { word, "cat", "dog" }
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		return s
@@ -131,7 +144,7 @@ return function(T)
 	end)
 
 	T.test("after guessing, chat only reaches the drawer and others who got it", function()
-		local s = SketchGuess.new(5, { bots = { 5 } }, T.Random.new(3))
+		local s = newGame(5, { bots = { 5 } }, T.Random.new(3))
 		s.choices = { "pizza", "cat", "dog" }
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		local g = guessers(s)
@@ -172,7 +185,7 @@ return function(T)
 	-- Gallery ---------------------------------------------------------------------------
 
 	T.test("the gallery shows finished drawings, most liked first, and never reported ones", function()
-		local s = SketchGuess.new(4, { bots = {}, rules = { rounds = 1 } }, T.Random.new(5))
+		local s = newGame(4, { bots = {}, rules = { rounds = 1 } }, T.Random.new(5))
 		local turns = 0
 		while s.phase ~= "gallery" and s.phase ~= "done" and turns < 50 do
 			turns += 1
@@ -209,7 +222,7 @@ return function(T)
 	end)
 
 	T.test("no gallery when nothing was drawn", function()
-		local s = SketchGuess.new(3, { bots = {}, rules = { rounds = 1 } }, T.Random.new(6))
+		local s = newGame(3, { bots = {}, rules = { rounds = 1 } }, T.Random.new(6))
 		local steps = 0
 		while s.phase ~= "done" and steps < 100 do
 			steps += 1
@@ -223,7 +236,7 @@ return function(T)
 
 	T.test("word choices: 1, 3 or 5 words with their difficulty", function()
 		for _, count in { 1, 3, 5 } do
-			local s = SketchGuess.new(4, { bots = {}, rules = { wordChoices = count } }, T.Random.new(count))
+			local s = newGame(4, { bots = {}, rules = { wordChoices = count } }, T.Random.new(count))
 			T.eq(#s.choices, count)
 			local view = SketchGuess.getView(s, s.drawer)
 			T.eq(#view.choiceLevels, count)
@@ -235,7 +248,7 @@ return function(T)
 			end
 			T.eq((SketchGuess.validateMove(s, s.drawer, { kind = "choose", index = count + 1 })), false)
 		end
-		local odd = SketchGuess.new(4, { bots = {}, rules = { wordChoices = 7 } }, T.Random.new(1))
+		local odd = newGame(4, { bots = {}, rules = { wordChoices = 7 } }, T.Random.new(1))
 		T.eq(#odd.choices, 3, "unknown counts fall back to 3")
 	end)
 
@@ -262,7 +275,7 @@ return function(T)
 			{ kind = "bot", name = "Bot Ava" },
 			{ kind = "bot", name = "Bot Milo" },
 		}
-		local m = Match.new("m", SketchGuess, seats, { botLevel = "hard", bots = { 2, 3 } }, T.Random.new(21))
+		local m = Match.new("m", SketchGuess, seats, withData({ botLevel = "hard", bots = { 2, 3 } }), T.Random.new(21))
 		local steps, sawGallery = 0, false
 		while not m:isOver() and steps < 5000 do
 			steps += 1

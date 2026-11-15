@@ -1,7 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local TriviaNight = require(ReplicatedStorage.Shared.Games.TriviaNight)
-local Questions = require(ReplicatedStorage.Shared.Games.Data.TriviaQuestions)
+local Questions = require(ServerScriptService.Server.Data.TriviaQuestions)
 local Match = require(ServerScriptService.Server.Core.Match)
 
 return function(T)
@@ -13,7 +13,7 @@ return function(T)
 
 	-- Most tests look at questions: the category vote is off for them.
 	local function newGame(seats: number, rng: any)
-		return TriviaNight.new(seats, { rules = { categoryVote = false } }, rng)
+		return TriviaNight.new(seats, { questionBank = Questions, rules = { categoryVote = false } }, rng)
 	end
 
 	local function wrongChoice(s): number
@@ -32,15 +32,90 @@ return function(T)
 		T.eq(TriviaNight.getView(s, 2).correct, s.correct)
 	end)
 
-	T.test("faster correct answers score more; wrong scores nothing", function()
+	T.test("faster correct answers score more (Kahoot formula); wrong scores nothing", function()
 		local s = newGame(3, T.Random.new(2))
-		apply(s, 2, { kind = "answer", choice = s.correct })
-		apply(s, 3, { kind = "answer", choice = s.correct })
-		apply(s, 1, { kind = "answer", choice = wrongChoice(s) })
-		T.eq(s.scores[2], 1000)
-		T.eq(s.scores[3], 900)
+		apply(s, 2, { kind = "answer", choice = s.correct, elapsed = 3 })
+		apply(s, 3, { kind = "answer", choice = s.correct, elapsed = 12 })
+		apply(s, 1, { kind = "answer", choice = wrongChoice(s), elapsed = 1 })
+		T.eq(s.scores[2], 900, "3 s of 15 = 900")
+		T.eq(s.scores[3], 600, "12 s of 15 = 600")
 		T.eq(s.scores[1], 0)
 		T.eq(s.phase, "reveal", "everyone answered, so reveal early")
+		T.eq(TriviaNight.speedPoints(0.3, 15), 1000, "under half a second is the full 1000")
+		T.eq(TriviaNight.speedPoints(15, 15), 500)
+		T.eq(TriviaNight.speedPoints(99, 15), 500, "never under 500")
+		T.eq(TriviaNight.speedPoints(nil, 15), 1000)
+	end)
+
+	T.test("solo: a slow right answer scores less than a quick one", function()
+		local s = newGame(1, T.Random.new(2))
+		apply(s, 1, { kind = "answer", choice = s.correct, elapsed = 13.5 })
+		T.eq(s.scores[1], 550)
+	end)
+
+	T.test("Match stamps the server's answer time over the client's", function()
+		local seats = { { kind = "player", userId = 1, name = "Gio" }, { kind = "player", userId = 2, name = "Ava" } }
+		local m = Match.new("t", TriviaNight, seats, { questionBank = Questions, rules = { categoryVote = false } }, T.Random.new(3))
+		local fake = 0
+		m.phaseElapsed = function()
+			return fake
+		end
+		fake = 7.5
+		local move = { kind = "answer", choice = m.state.correct, elapsed = 0 } -- a cheater claims instant
+		T.ok(m:submitMove(1, move))
+		T.eq(move.elapsed, 7.5)
+		T.eq(m.state.scores[1], 750)
+		-- No clock known: the client's value is dropped, never trusted.
+		m.phaseElapsed = nil
+		local move2 = { kind = "answer", choice = m.state.correct, elapsed = 14 }
+		T.ok(m:submitMove(2, move2))
+		T.eq(move2.elapsed, nil)
+	end)
+
+	T.test("everyone below zero still gives a winner", function()
+		local s = TriviaNight.new(2, { questionBank = Questions, rules = { wrongPenalty = true, categoryVote = false, questions = 3 } }, T.Random.new(4))
+		for _ = 1, 3 do
+			apply(s, 1, { kind = "answer", choice = wrongChoice(s) })
+			if s.phase == "question" then
+				TriviaNight.onTimeout(s) -- seat 2 doesn't answer: 0 for that question
+			end
+			TriviaNight.onTimeout(s) -- reveal -> next
+		end
+		T.eq(s.scores[1], -750)
+		T.eq(s.scores[2], 0)
+		local result = TriviaNight.getResult(s)
+		T.eq(result.winners[1], 2)
+		local both = TriviaNight.new(2, { questionBank = Questions, rules = { wrongPenalty = true, categoryVote = false, questions = 2 } }, T.Random.new(5))
+		for _ = 1, 2 do
+			apply(both, 1, { kind = "answer", choice = wrongChoice(both) })
+			apply(both, 2, { kind = "answer", choice = wrongChoice(both) })
+			TriviaNight.onTimeout(both)
+		end
+		local r = TriviaNight.getResult(both)
+		T.eq(#r.winners, 2, "both on -500 share the win")
+		T.eq(r.reason, "Top score: -500 points")
+	end)
+
+	T.test("place and gap: you're 2nd, 100 behind", function()
+		local s = newGame(3, T.Random.new(6))
+		apply(s, 1, { kind = "answer", choice = s.correct, elapsed = 0 })
+		apply(s, 2, { kind = "answer", choice = s.correct, elapsed = 3 })
+		apply(s, 3, { kind = "answer", choice = wrongChoice(s) })
+		local v2 = TriviaNight.getView(s, 2)
+		T.eq(v2.place, 2)
+		T.eq(v2.ahead, 1)
+		T.eq(v2.gap, 100)
+		T.eq(TriviaNight.getView(s, 1).ahead, nil)
+		T.eq(TriviaNight.getSeatInfo(s)[3], "3rd · 0 pts  +0")
+		T.eq(TriviaNight.ordinal(11), "11th")
+		T.eq(TriviaNight.ordinal(22), "22nd")
+	end)
+
+	T.test("the answers never ship to clients", function()
+		local Shared = ReplicatedStorage.Shared
+		T.eq(Shared.Games:FindFirstChild("Data") and Shared.Games.Data:FindFirstChild("TriviaQuestions"), nil, "no bank in ReplicatedStorage")
+		local preview = TriviaNight.new(2, { rules = { categoryVote = false } }, T.Random.new(1))
+		T.eq(preview.bank, TriviaNight.SAMPLE, "without the server's bank only the sample plays")
 	end)
 
 	T.test("streaks add a bonus", function()
@@ -67,7 +142,7 @@ return function(T)
 			{ kind = "bot", name = "Bot Ava" },
 			{ kind = "bot", name = "Bot Milo" },
 		}
-		local m = Match.new("t", TriviaNight, seats, { botLevel = "medium", bots = { 2, 3 } }, T.Random.new(5))
+		local m = Match.new("t", TriviaNight, seats, { questionBank = Questions, botLevel = "medium", bots = { 2, 3 } }, T.Random.new(5))
 		local seen = {}
 		local steps = 0
 		while not m:isOver() and steps < 500 do
@@ -99,7 +174,7 @@ return function(T)
 	end)
 
 	T.test("category vote: everyone picks, the winner sets the next 3 questions", function()
-		local s = TriviaNight.new(3, nil, T.Random.new(9))
+		local s = TriviaNight.new(3, { questionBank = Questions }, T.Random.new(9))
 		T.eq(s.phase, "pick")
 		T.eq(#s.offer, 4)
 		local view = TriviaNight.getView(s, 1)

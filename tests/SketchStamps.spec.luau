@@ -3,7 +3,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local SketchGuess = require(ReplicatedStorage.Shared.Games.SketchGuess)
-local Doodles = require(ReplicatedStorage.Shared.Games.Data.SketchDoodles)
+local Doodles = require(ServerScriptService.Server.Data.SketchDoodles)
+local Words = require(ServerScriptService.Server.Data.SketchWords)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local Config = require(ReplicatedStorage.Shared.Config)
 local Match = require(ServerScriptService.Server.Core.Match)
@@ -15,8 +16,9 @@ return function(T)
 		SketchGuess.applyMove(s, seat, move)
 	end
 
+	-- The server passes its word list and doodles in (they never ship to clients).
 	local function stampsDrawing(word: string?)
-		local s = SketchGuess.new(4, { bots = { 3, 4 }, rules = { tools = "stamps" } }, T.Random.new(4))
+		local s = SketchGuess.new(4, { bots = { 3, 4 }, rules = { tools = "stamps" }, wordBank = Words, doodles = Doodles }, T.Random.new(4))
 		s.choices = { word or "sun", "cat", "dog" }
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		return s
@@ -39,7 +41,7 @@ return function(T)
 			T.ok(string.find(err or "", "Stamps only") ~= nil, err)
 		end
 		-- And stamps don't work at a pen table.
-		local pen = SketchGuess.new(4, { bots = { 3, 4 } }, T.Random.new(4))
+		local pen = SketchGuess.new(4, { bots = { 3, 4 }, wordBank = Words, doodles = Doodles }, T.Random.new(4))
 		pen.choices = { "sun", "cat", "dog" }
 		apply(pen, pen.drawer, { kind = "choose", index = 1 })
 		T.eq((SketchGuess.validateMove(pen, pen.drawer, stamp())), false)
@@ -162,7 +164,7 @@ return function(T)
 	T.test("every bot doodle draws as legal stamps at a stamps table", function()
 		for word in Doodles do
 			local s = stampsDrawing(word)
-			local moves = SketchGuess.doodleMoves(word, true) :: any
+			local moves = SketchGuess.doodleMoves(word, Doodles, true) :: any
 			T.ok(#moves <= SketchGuess.maxStamps, `{word}: {#moves} stamps`)
 			for _, move in moves do
 				T.eq(move.kind, "stamp", word)
@@ -180,13 +182,13 @@ return function(T)
 	end)
 
 	T.test("a bot drawer at a stamps table draws its doodle in stamps", function()
-		local s = SketchGuess.new(3, { bots = { 2, 3 }, rules = { tools = "stamps" } }, T.Random.new(1))
+		local s = SketchGuess.new(3, { bots = { 2, 3 }, rules = { tools = "stamps" }, wordBank = Words, doodles = Doodles }, T.Random.new(1))
 		apply(s, s.drawer, { kind = "giveUp" })
 		SketchGuess.onTimeout(s)
 		T.eq(s.drawer, 2)
 		local rng = T.Random.new(1)
 		apply(s, 2, SketchGuess.chooseBotMove(s, 2, rng))
-		local planned = #(SketchGuess.doodleMoves(s.word, true) :: any)
+		local planned = #(SketchGuess.doodleMoves(s.word, Doodles, true) :: any)
 		for _ = 1, planned do
 			local move = SketchGuess.chooseBotMove(s, 2, rng)
 			T.eq(move.kind, "stamp")
@@ -202,7 +204,7 @@ return function(T)
 			{ kind = "bot", name = "B" },
 			{ kind = "bot", name = "C" },
 		}
-		local m = Match.new("stamps", SketchGuess, seats, { bots = { 2, 3 }, rules = { tools = "stamps", rounds = 1 } }, T.Random.new(9))
+		local m = Match.new("stamps", SketchGuess, seats, { bots = { 2, 3 }, rules = { tools = "stamps", rounds = 1 }, wordBank = Words, doodles = Doodles }, T.Random.new(9))
 		local guard = 0
 		while not m:isOver() and guard < 5000 do
 			guard += 1
