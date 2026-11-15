@@ -235,8 +235,9 @@ local function ensureGui()
 	d.Parent = screen
 	local h = Instance.new("TextLabel")
 	h.Name = "Hint"
+	-- Under the header, clear of the how-to-play card in the middle and the held hand.
 	h.AnchorPoint = Vector2.new(0.5, 0)
-	h.Position = UDim2.fromScale(0.5, 0.62)
+	h.Position = UDim2.new(0.5, 0, 0, 104)
 	h.Size = UDim2.fromOffset(640, 52)
 	h.BackgroundColor3 = Color3.fromRGB(24, 20, 40)
 	h.BackgroundTransparency = 0.3
