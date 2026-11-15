@@ -90,6 +90,8 @@ Rules text lives in `shared/GameRules.luau`, one entry per catalog id (see [[Add
 ## Rematch
 The end screen's Rematch sends `{ action = "rematch" }`. `MatchService` remembers the last start of each party (game, table size, bot level, house rule picks and custom deck slot, all already checked) for 30 minutes. The leader's Rematch starts it again through `startMatch`, which checks everything again. Anyone else's Rematch sends the leader a toast asking for one.
 
+A rematch with the same people keeps a series score (`server/Core/Series.luau`) and moves everyone round one seat, so in two-player games colours and who starts alternate. The snapshot carries `series = { wins = { [seat] = n }, draws, games }` and the end card shows "Series: You 2 - 1 Bob" from the second game on. Alone against a bot in a two-seat game, the picker's "Random start / Go first / Go second" button sends `playAs` ("first" = seat 1).
+
 ## Renderer tips for phones
 - Keep tap targets at least 44 px.
 - Main action buttons belong near the bottom of the board area.

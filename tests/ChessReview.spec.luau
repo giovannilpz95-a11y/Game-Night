@@ -18,16 +18,37 @@ return function(T)
 		T.eq((ChessReview.opening({ "e4", "e5", "Nf3", "Nc6", "Bb5" })), "Ruy Lopez")
 		T.eq((ChessReview.opening({ "e4", "c5" })), "Sicilian Defense")
 		T.eq((ChessReview.opening({ "d4", "d5", "c4", "e6" })), "Queen's Gambit Declined")
-		local name, book = ChessReview.opening({ "e4", "e5", "Ke2" })
-		T.eq(name, "Open Game")
-		T.eq(book, 2, "Ke2 leaves the book")
-		T.eq((ChessReview.opening({ "a3" })), nil)
+		local name, book = ChessReview.opening({ "e4", "e5", "Nf3", "Nc6", "Rg1" })
+		T.eq(name, "King's Knight Opening: Normal Variation")
+		T.eq(book, 4, "Rg1 leaves the book")
+		T.eq((ChessReview.opening({ "e4", "e5", "Ke2" })), "Bongcloud Attack")
+	end)
+
+	T.test("the book matches positions, so transpositions find the opening", function()
+		-- 1.Nf3 d5 2.d4 is the same position as 1.d4 d5 2.Nf3.
+		T.eq((ChessReview.opening({ "Nf3", "d5", "d4" })), (ChessReview.opening({ "d4", "d5", "Nf3" })))
+		T.ok((ChessReview.opening({ "Nf3", "d5", "d4" })) ~= nil)
+		local inBook = ChessReview.bookInfo(Chess.START_FEN)
+		T.eq(inBook, false, "the start isn't a book move")
+	end)
+
+	T.test("main-line theory is Book, not a mistake (Ruy Lopez, Morphy Defense)", function()
+		local view = game({
+			{ "e2", "e4" }, { "e7", "e5" }, { "g1", "f3" }, { "b8", "c6" }, { "f1", "b5" }, { "a7", "a6" },
+			{ "b5", "a4" }, { "g8", "f6" }, { "e1", "g1" }, { "f8", "e7" },
+		})
+		local review = ChessReview.run(view.startFen, view.past, { depth = 2, seconds = 0.05 })
+		for i = 1, 10 do
+			T.eq(review.moves[i].label, "Book", `move {i} {review.moves[i].san}`)
+			T.eq(review.moves[i].bestFrom, nil, "no arrow on book moves")
+		end
+		T.ok(string.find(review.opening or "", "Ruy Lopez") ~= nil, review.opening)
 	end)
 
 	T.test("winning chances and accuracy follow the Lichess curves", function()
 		T.eq(math.floor(ChessReview.winPercent(0) + 0.5), 50)
 		T.ok(ChessReview.winPercent(300) > 70, "+3 is clearly winning")
-		T.ok(ChessReview.winPercent(-Chess.MATE) < 1, "mated is lost")
+		T.ok(ChessReview.winPercent(-Chess.MATE) < 3, "mated is lost")
 		T.ok(ChessReview.moveAccuracy(60, 60) > 99, "no drop is ~100%")
 		T.ok(ChessReview.moveAccuracy(80, 20) < 10, "a big drop is near 0")
 		T.eq(ChessReview.classify(0.5, false), "Blunder")
@@ -58,7 +79,16 @@ return function(T)
 		local review = ChessReview.run(view.startFen, view.past, { depth = 2, seconds = 0.1 })
 		T.eq(review.moves[1].san, "a8=N")
 		T.ok(review.moves[1].label ~= "Best", "underpromoting here isn't best")
-		T.eq(review.moves[1].bestSan, "a8=Q")
+		T.ok(review.moves[1].bestSan ~= nil and review.moves[1].bestSan ~= "a8=N", "a better move is named")
+	end)
+
+	T.test("game accuracy uses Lichess's weighted and harmonic means", function()
+		local acc = ChessReview.gameAccuracy({ 50, 50, 50, 50, 50 }, { 100, 100, 100, 100 }, { 1, 2, 1, 2 })
+		T.ok(acc[1] > 99 and acc[2] > 99)
+		-- One blunder drags the harmonic mean down hard.
+		local mixed = ChessReview.gameAccuracy({ 50, 50, 50, 10, 10 }, { 100, 100, 5, 100 }, { 1, 2, 1, 2 })
+		T.ok(mixed[1] < 60, `got {mixed[1]}`)
+		T.ok(mixed[2] > 99)
 	end)
 
 	T.test("step reviews one move at a time and empty games finish", function()

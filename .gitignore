@@ -13,3 +13,4 @@ node_modules/
 # Obsidian per-device settings
 docs/.obsidian/workspace*.json
 .DS_Store
+__pycache__/

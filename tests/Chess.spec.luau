@@ -152,4 +152,76 @@ return function(T)
 		T.eq(Chess.getView(s, 2).legalMoves, nil)
 		T.eq(Chess.getView(s, 1).board[1], Chess.Pieces.ROOK, "a1 is a white rook")
 	end)
+
+	local function playOut(fen: string, level: string, maxPlies: number, seed: number)
+		local rng = T.Random.new(seed)
+		local s = Chess.new(2, { fen = fen, botLevel = level })
+		local plies = 0
+		while not Chess.getResult(s) and plies < maxPlies do
+			local seat = Chess.getActiveSeats(s)[1]
+			local move = GameModule.chooseBotMove(Chess, s, seat, rng)
+			T.ok(Chess.validateMove(s, seat, move), "bot made an illegal move")
+			Chess.applyMove(s, seat, move)
+			plies += 1
+		end
+		return Chess.getResult(s), plies
+	end
+
+	T.test("hard and medium bots mate with king and queen against a king", function()
+		for _, case in { { "hard", "8/8/8/4k3/8/8/8/4K2Q w - - 0 1" }, { "medium", "8/8/3k4/8/8/8/8/Q3K3 w - - 0 1" } } do
+			local result = playOut(case[2], case[1], 100, 3)
+			T.ok(result ~= nil and result.reason == "Checkmate" and result.winners[1] == 1, `{case[1]}: {result and result.reason}`)
+		end
+	end)
+
+	T.test("the hard bot mates with king and rook against a king", function()
+		local result = playOut("8/8/8/3k4/8/8/8/R3K3 w - - 0 1", "hard", 100, 5)
+		T.ok(result ~= nil and result.reason == "Checkmate" and result.winners[1] == 1, result and result.reason)
+	end)
+
+	T.test("castling can be premoved with pawns in front of the king", function()
+		local fen = "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 4 4"
+		local found = false
+		for _, m in Chess.premoves(fen, 1) do
+			if m.from == "e1" and m.to == "g1" then
+				found = true
+			end
+		end
+		T.ok(found, "e1-g1 is offered")
+		-- Premoves ignore blockers like Lichess: the a1 rook can queue a1-a8.
+		local through = false
+		for _, m in Chess.premoves(Chess.START_FEN, 1) do
+			if m.from == "a1" and m.to == "a5" then
+				through = true
+			end
+		end
+		T.ok(through, "sliders premove through pieces")
+	end)
+
+	T.test("promotion must be q, r, b, n or missing", function()
+		local s = Chess.new(2, { fen = "8/4P2k/8/8/8/8/8/K7 w - - 0 1" })
+		T.eq((Chess.validateMove(s, 1, { from = "e7", to = "e8", promotion = "x" })), false)
+		T.eq((Chess.validateMove(s, 1, { from = "e7", to = "e8", promotion = { 1 } })), false)
+		T.eq((Chess.validateMove(s, 1, { from = "e7", to = "e8", promotion = "k" })), false)
+		T.eq((Chess.validateMove(s, 1, { from = "e7", to = "e8", promotion = "Q" })), false)
+		T.eq((Chess.validateMove(s, 1, { from = "e7", to = "e8", promotion = "n" })), true)
+		T.eq((Chess.validateMove(s, 1, { from = "e7", to = "e8" })), true)
+	end)
+
+	T.test("the material lead counts promotions", function()
+		local s = Chess.new(2, { fen = "8/4P2k/8/8/8/8/8/K7 w - - 0 1" })
+		Chess.applyMove(s, 1, { from = "e7", to = "e8" })
+		local view = Chess.getView(s, 1)
+		T.eq(view.lead[1], 9, "a new queen against a bare king")
+		T.eq(view.lead[2], 0)
+	end)
+
+	T.test("PGN export numbers the moves and adds the result", function()
+		local text = Chess.pgn({ "f3", "e5", "g4", "Qh4#" }, nil, "0-1", "Ann", "Bob")
+		T.ok(string.find(text, '[White "Ann"]', 1, true) ~= nil)
+		T.ok(string.find(text, "1. f3 e5 2. g4 Qh4# 0-1", 1, true) ~= nil, text)
+		local fromFen = Chess.pgn({ "Kb7" }, "8/8/8/8/8/8/8/K6k b - - 0 12", "*")
+		T.ok(string.find(fromFen, "12... Kb7 *", 1, true) ~= nil, fromFen)
+		T.ok(string.find(fromFen, '[SetUp "1"]', 1, true) ~= nil)
+	end)
 end

@@ -7,6 +7,7 @@ local TableLayout = require(ReplicatedStorage.Shared.TableLayout)
 local Pieces = require(script.Parent.Parent.Pieces)
 local Square = require(script.Parent.Square)
 local Scene = require(script.Parent.Parent.Scene)
+local CheckersStyle = require(ReplicatedStorage.Shared.CheckersStyle)
 
 local Checkers = {}
 
@@ -40,6 +41,111 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 	local factor = Pieces.setScale("Checkers", NAMES, board.cellSize * 0.8)
 	local shown: { [number]: Instance } = {}
 	local shownValue: { [number]: number } = {}
+	local cosmetics: any = nil -- the view's shop items per seat (shared/CheckersStyle)
+
+	-- Shop skins: the Picnic Board recolours the squares and frame; piece skins recolour a
+	-- seat's pieces (every part of the model, or the fallback disc).
+	local styledBoard: any = nil
+	local function styleBoard()
+		local look = CheckersStyle.board(cosmetics)
+		if look == styledBoard then
+			return
+		end
+		styledBoard = look
+		for r = 1, 8 do
+			for c = 1, 8 do
+				local cell = board.cell(r, c)
+				local color = if (r + c) % 2 == 1 then look.dark else look.light
+				cell:SetAttribute("BaseColor", color)
+				cell.Color = color
+			end
+		end
+		local frame = board.model:FindFirstChild("Frame")
+		if frame and frame:IsA("BasePart") then
+			frame.Color = look.frame
+		end
+	end
+	local function stylePiece(piece: Instance, v: number)
+		local color, material = CheckersStyle.piece(cosmetics, v)
+		if not color then
+			return
+		end
+		local parts = piece:GetDescendants()
+		table.insert(parts, piece)
+		for _, d in parts do
+			if d:IsA("BasePart") then
+				d.Color = color
+				if material then
+					d.Material = material
+				end
+				if d:IsA("MeshPart") then
+					d.TextureID = "" -- a texture would hide the new colour
+				end
+			end
+		end
+	end
+
+	-- Jump Trail: a glowing line along a jump made by a seat that has it.
+	local trailFolder = Instance.new("Folder")
+	trailFolder.Name = "JumpTrail"
+	trailFolder.Parent = board.model
+	local trailKey = ""
+	local function drawTrail(lastMove: any, grid: any)
+		local key = ""
+		if lastMove then
+			key = `{lastMove.from[1]},{lastMove.from[2]}`
+			for _, sq in lastMove.path do
+				key ..= `>{sq[1]},{sq[2]}`
+			end
+		end
+		if key == trailKey then
+			return
+		end
+		trailKey = key
+		trailFolder:ClearAllChildren()
+		if not lastMove or #lastMove.path == 0 then
+			return
+		end
+		local landed = lastMove.path[#lastMove.path]
+		local v = grid[landed[1]][landed[2]]
+		local first = lastMove.path[1]
+		local jumped = #lastMove.path > 1 or math.abs(first[1] - lastMove.from[1]) > 1
+		if v == 0 or not jumped or not CheckersStyle.hasTrail(cosmetics, (v - 1) % 2 + 1) then
+			return
+		end
+		local from = lastMove.from
+		for _, sq in lastMove.path do
+			local a = board.surface(from[1], from[2]).Position + Vector3.new(0, 0.12, 0)
+			local b = board.surface(sq[1], sq[2]).Position + Vector3.new(0, 0.12, 0)
+			local length = (b - a).Magnitude
+			local segment = Pieces.part({
+				Name = "Trail",
+				Size = Vector3.new(0.12, 0.04, length),
+				CFrame = CFrame.lookAt((a + b) / 2, b),
+				Color = CheckersStyle.TrailColor,
+				Material = Enum.Material.Neon,
+				Transparency = 0.25,
+				CanQuery = false,
+				Parent = trailFolder,
+			})
+			local sparkles = Instance.new("ParticleEmitter")
+			sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			sparkles.Color = ColorSequence.new(CheckersStyle.TrailColor)
+			sparkles.LightEmission = 1
+			sparkles.Size = NumberSequence.new(0.18, 0)
+			sparkles.Lifetime = NumberRange.new(0.4, 0.8)
+			sparkles.Speed = NumberRange.new(0.3, 1)
+			sparkles.Rate = 25
+			sparkles.Parent = segment
+			from = sq
+		end
+		local folder = trailFolder
+		task.delay(2, function()
+			if trailKey == key then
+				folder:ClearAllChildren()
+			end
+		end)
+	end
 
 	-- Jumped pieces sit in rows beside the board on the jumper's right, so you can see the
 	-- score at a glance (12 each to start).
@@ -98,7 +204,10 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 			return
 		end
 		local spot = board.surface(landed[1], landed[2]) * CFrame.new(0, board.cellSize * 1.1, 0)
-		local label = Scene.floatText(crownFolder, spot, 4, 1.2, "👑 Crowned!", { TextColor3 = Color3.fromRGB(255, 215, 90), TextStrokeColor3 = Color3.fromRGB(60, 40, 10), TextStrokeTransparency = 0.2 })
+		-- King Fanfare (shop): a bigger crowning with confetti for the seat that owns it.
+		local crownedSeat = if lastMove.from[1] > landed[1] then 1 else 2 -- Dark moves up the board
+		local fanfare = CheckersStyle.hasFanfare(cosmetics, crownedSeat)
+		local label = Scene.floatText(crownFolder, spot, if fanfare then 6 else 4, if fanfare then 1.8 else 1.2, if fanfare then "👑 KING ME!" else "👑 Crowned!", { TextColor3 = Color3.fromRGB(255, 215, 90), TextStrokeColor3 = Color3.fromRGB(60, 40, 10), TextStrokeTransparency = 0.2 })
 		local holder = label:FindFirstAncestorWhichIsA("BasePart")
 		if holder then
 			local sparkles = Instance.new("ParticleEmitter")
@@ -109,8 +218,28 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 			sparkles.Lifetime = NumberRange.new(0.6, 1.1)
 			sparkles.Speed = NumberRange.new(1, 2.5)
 			sparkles.SpreadAngle = Vector2.new(180, 180)
-			sparkles.Rate = 30
+			sparkles.Rate = if fanfare then 80 else 30
 			sparkles.Parent = holder
+			if fanfare then
+				local confetti = Instance.new("ParticleEmitter")
+				confetti.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+				confetti.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 120)),
+					ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 220, 90)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(110, 200, 255)),
+				})
+				confetti.LightEmission = 0.6
+				confetti.Size = NumberSequence.new(0.3, 0.1)
+				confetti.Lifetime = NumberRange.new(1, 1.6)
+				confetti.Speed = NumberRange.new(4, 7)
+				confetti.Acceleration = Vector3.new(0, -8, 0)
+				confetti.SpreadAngle = Vector2.new(45, 45)
+				confetti.Rate = 60
+				confetti.Parent = holder
+				task.delay(1.5, function()
+					confetti.Enabled = false
+				end)
+			end
 			-- A short burst, then just the crown.
 			task.delay(1.5, function()
 				sparkles.Enabled = false
@@ -121,6 +250,11 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 	return {
 		model = board.model,
 		update = function(view: any)
+			if view.cosmetics ~= nil and cosmetics == nil then
+				cosmetics = view.cosmetics
+				table.clear(shownValue) -- redraw every piece in its skin
+			end
+			styleBoard()
 			for r = 1, 8 do
 				for c = 1, 8 do
 					local key = r * 100 + c
@@ -136,6 +270,7 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 							local piece = if template
 								then Pieces.stand(template, factor, board.surface(r, c))
 								else fallbackPiece(v, board.surface(r, c), board.cellSize)
+							stylePiece(piece, v)
 							-- The client finds a piece by square to slide it along a multi-jump.
 							piece:SetAttribute("Row", r)
 							piece:SetAttribute("Col", c)
@@ -155,6 +290,7 @@ function Checkers.create(boardCF: CFrame, parent: Instance)
 			Square.tint(board, 8, tints)
 			drawTaken(view.board)
 			drawCrown(view.lastMove)
+			drawTrail(view.lastMove, view.board)
 		end,
 		destroy = function()
 			board.model:Destroy()
