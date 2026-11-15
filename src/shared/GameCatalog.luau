@@ -390,6 +390,7 @@ local entries: { Entry } = {
 			{ key = "openShow", name = "Show cards to all", hint = "A card shown to answer a suggestion is shown to everyone. Easier, faster games.", choices = Toggle, default = 1 },
 			{ key = "leftover", name = "Leftover cards face up", hint = "With 4 or 5 players, the cards that don't deal evenly lie face up for everyone instead of making some hands bigger.", choices = Toggle, default = 2 },
 			{ key = "stay", name = "Stay and suggest", hint = "Stay in your room and suggest again instead of leaving (2023 rules).", choices = Toggle, default = 1 },
+			{ key = "clueCards", name = "Clue cards", hint = "About one turn in four starts with a Clue card: a peek at a neighbour's hand, a round-up of one kind of card, or a shortcut to any room (2023 edition).", choices = Toggle, default = 1 },
 		},
 	},
 	{

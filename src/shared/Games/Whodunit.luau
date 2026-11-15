@@ -33,14 +33,20 @@
 -- everyone: an easier, faster family game), leftover (on by default: with 4 or 5 seats
 -- the cards that don't deal evenly lie face up for everyone, like the official rules and
 -- Clue by Marmalade, instead of some hands getting one more), stay (stay in your room and
--- suggest again, like the 2023 rules).
+-- suggest again, like the 2023 rules), clueCards (the 2023 edition's Clue cards, adapted
+-- for no dice: each turn starts with a CLUE_CHANCE draw from a small deck. Peek: the
+-- player on your left shows you a random card. Round-up: the players either side each
+-- show you a random card of one kind, or say they have none (public). Shortcut: walk to
+-- any room this turn. Cards shown this way are secret, like a suggestion's).
 --
--- The first seat is random (2023 rules).
+-- The first seat is random (2023 rules), and the items start in six different random
+-- rooms (2023: "separate random rooms").
 
 local GameModule = require(script.Parent.Parent.GameModule)
 
 local solvedCounts: (any) -> { number }
 local deducedFor: (any, number) -> { any }
+local drawClue: (any) -> ()
 
 local Whodunit = {}
 
@@ -50,6 +56,15 @@ Whodunit.maxSeats = 6
 
 local TURN_LIMIT = 300
 local LOG_IN_VIEW = 120
+Whodunit.CLUE_CHANCE = 0.25 -- a Clue card at the start of about one turn in four
+-- The Clue card deck (house rule clueCards), reshuffled when it runs out.
+local CLUE_DECK = {
+	{ kind = "peek" }, { kind = "peek" }, { kind = "peek" },
+	{ kind = "shortcut" }, { kind = "shortcut" }, { kind = "shortcut" },
+	{ kind = "roundup", category = "suspect" }, { kind = "roundup", category = "item" },
+	{ kind = "roundup", category = "room" }, { kind = "roundup", category = "room" },
+}
+Whodunit.clueDeck = CLUE_DECK
 
 -- Theme data. Swap this table to ship a themed mansion (names only; art is client side).
 Whodunit.theme = {
@@ -124,9 +139,8 @@ for room = 1, ROOMS do
 end
 Whodunit.neighbours = neighbours
 
--- Where each pawn and item starts.
+-- Where each pawn starts (the items go in six different random rooms).
 local SUSPECT_START = { 1, 3, 7, 9, 2, 8 }
-local ITEM_START = { 4, 6, 5, 2, 8, 5 }
 
 local function isInt(value: any, lo: number, hi: number): boolean
 	return type(value) == "number" and value == value and value % 1 == 0 and value >= lo and value <= hi
@@ -190,7 +204,10 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 		eliminated[seat] = false
 	end
 
-	return {
+	local itemRooms = { 1, 2, 3, 4, 5, 6, 7, 8, 9 }
+	shuffle(itemRooms, random)
+
+	local state = {
 		seatCount = seatCount,
 		rng = random,
 		botLevel = (options and options.botLevel) or "medium",
@@ -198,7 +215,7 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 		hands = hands,
 		leftover = leftover, -- face-up cards everyone can see (never in the case file)
 		suspectRoom = table.clone(SUSPECT_START),
-		itemRoom = table.clone(ITEM_START),
+		itemRoom = { table.unpack(itemRooms, 1, ITEMS) },
 		canStay = canStay,
 		eliminated = eliminated,
 		turn = first,
@@ -214,7 +231,13 @@ function Whodunit.new(seatCount: number, options: any?, rng: Random?)
 		anyRoom = options ~= nil and type(options.rules) == "table" and options.rules.anyRoom == true,
 		openShow = options ~= nil and type(options.rules) == "table" and options.rules.openShow == true,
 		stay = options ~= nil and type(options.rules) == "table" and options.rules.stay == true,
+		clueCards = rules.clueCards == true,
+		clueDeck = {}, -- what's left of the Clue card deck
+		clues = {}, -- every Clue card drawn: { seat, kind, category?, at, shown = { { from, card } }, none = { seat } }
+		shortcut = nil, -- the seat whose Clue card lets it walk anywhere this turn
 	}
+	drawClue(state)
+	return state
 end
 
 -- Helpers ----------------------------------------------------------------------
@@ -241,7 +264,7 @@ end
 local function legalRooms(state, seat: number): { number }
 	local here = roomOf(state, seat)
 	local out = table.clone(neighbours[here])
-	if state.anyRoom then
+	if state.anyRoom or state.shortcut == seat then
 		out = {}
 		for room = 1, ROOMS do
 			if room ~= here then
@@ -261,6 +284,7 @@ end
 
 local function nextTurn(state)
 	state.suggestion = nil
+	state.shortcut = nil
 	state.turns += 1
 	if state.turns >= TURN_LIMIT then
 		state.over = true
@@ -273,6 +297,7 @@ local function nextTurn(state)
 		if not state.eliminated[seat] then
 			state.turn = seat
 			state.phase = "move"
+			drawClue(state)
 			return
 		end
 	end
@@ -288,6 +313,60 @@ end
 
 local function canAccuseNow(state, seat: number): boolean
 	return not isOver(state) and seat == state.turn and state.phase ~= "show" and not state.eliminated[seat]
+end
+
+-- Clue cards (house rule clueCards) --------------------------------------------
+-- Drawn at the start of a turn and played at once: nobody has a choice to make, so the
+-- turn flow stays the same (move, suggest, ...).
+
+local function nextSeatWithCards(state, seat: number, step: number): number?
+	local other = seat
+	for _ = 1, state.seatCount - 1 do
+		other = (other - 1 + step) % state.seatCount + 1
+		if #state.hands[other] > 0 then
+			return other
+		end
+	end
+	return nil
+end
+
+function drawClue(state)
+	if not state.clueCards or state.over or state.rng:NextNumber() >= Whodunit.CLUE_CHANCE then
+		return
+	end
+	if #state.clueDeck == 0 then
+		state.clueDeck = GameModule.copy(CLUE_DECK)
+		shuffle(state.clueDeck, state.rng)
+	end
+	local card = table.remove(state.clueDeck)
+	local seat = state.turn
+	local entry = { seat = seat, kind = card.kind, category = card.category, at = #state.log, shown = {}, none = {} }
+	if card.kind == "shortcut" then
+		state.shortcut = seat
+	elseif card.kind == "peek" then
+		local left = nextSeatWithCards(state, seat, 1)
+		if left then
+			local hand = state.hands[left]
+			table.insert(entry.shown, { from = left, card = hand[state.rng:NextInteger(1, #hand)] })
+		end
+	elseif card.kind == "roundup" then
+		local left = (seat % state.seatCount) + 1
+		local right = (seat - 2) % state.seatCount + 1
+		for _, other in { left, right } do
+			local kinds = {}
+			for _, id in state.hands[other] do
+				if cards[id].category == card.category then
+					table.insert(kinds, id)
+				end
+			end
+			if #kinds > 0 then
+				table.insert(entry.shown, { from = other, card = kinds[state.rng:NextInteger(1, #kinds)] })
+			else
+				table.insert(entry.none, other)
+			end
+		end
+	end
+	table.insert(state.clues, entry)
 end
 
 -- The contract ------------------------------------------------------------------
@@ -557,6 +636,24 @@ function Whodunit.getView(state, seat: number?)
 				table.insert(notes, { card = entry.card, by = entry.shower })
 			end
 		end
+		for _, clue in state.clues or {} do
+			if clue.seat == mySeat or state.openShow then
+				for _, shown in clue.shown do
+					table.insert(notes, { card = shown.card, by = shown.from })
+				end
+			end
+		end
+	end
+	-- Clue cards: everyone sees who drew what and who showed a card; the cards themselves
+	-- only the drawer (and everyone at the end, or with "Show cards to all").
+	local clues = {}
+	for _, clue in state.clues or {} do
+		local privy = over or state.openShow or clue.seat == mySeat
+		local shown = {}
+		for _, s in clue.shown do
+			table.insert(shown, { from = s.from, card = if privy or s.from == mySeat then s.card else nil })
+		end
+		table.insert(clues, { seat = clue.seat, kind = clue.kind, category = clue.category, at = clue.at, shown = shown, none = table.clone(clue.none) })
 	end
 	-- Public: every seat that couldn't disprove a suggestion holds none of its three cards
 	-- (the notes grid marks these ✗ for you). Deduped { seat, card } pairs.
@@ -613,6 +710,9 @@ function Whodunit.getView(state, seat: number?)
 		winner = state.winner,
 		canSkip = myTurn and state.phase == "suggest",
 		openShow = state.openShow,
+		clueCards = state.clueCards == true,
+		clues = clues,
+		shortcut = state.shortcut,
 		-- Smart notes (an optional switch on the client): every card whose holder you can
 		-- work out from what you've been allowed to see. holder = seatCount + 1 is the case file.
 		deduced = if mySeat and not over then deducedFor(state, mySeat) else nil,
@@ -697,6 +797,13 @@ function Whodunit.deduce(state, seat: number, level: string?)
 			assign(entry.card, entry.shower)
 		end
 	end
+	for _, clue in state.clues or {} do
+		if clue.seat == seat or state.openShow then
+			for _, shown in clue.shown do
+				assign(shown.card, shown.from)
+			end
+		end
+	end
 	-- Face-up leftover cards: nobody holds them and they aren't in the case file.
 	for _, id in state.leftover or {} do
 		for h = 1, caseFile do
@@ -713,6 +820,24 @@ function Whodunit.deduce(state, seat: number, level: string?)
 			end
 			if level == "hard" and entry.shower and entry.shower ~= seat and not (entry.seat == seat and entry.card) then
 				table.insert(clauses, { holder = entry.shower, cards = suggestionCards(entry) })
+			end
+		end
+		-- Round-up Clue cards: "no <kind> cards" is said out loud; a card shown to someone
+		-- else says the shower holds at least one of that kind.
+		for _, clue in state.clues or {} do
+			if clue.kind == "roundup" then
+				for _, p in clue.none do
+					for _, id in CATEGORY_CARDS[clue.category] do
+						possible[id][p] = false
+					end
+				end
+				if level == "hard" and not (clue.seat == seat or state.openShow) then
+					for _, shown in clue.shown do
+						if shown.from ~= seat then
+							table.insert(clauses, { holder = shown.from, cards = CATEGORY_CARDS[clue.category] })
+						end
+					end
+				end
 			end
 		end
 	end

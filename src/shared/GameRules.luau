@@ -262,6 +262,7 @@ rules.Whodunit = {
 		{ title = "The mystery", lines = { "One suspect, one item and one room are hidden in the case file. All the other cards are dealt to players.", "With 4 or 5 players the cards that don't deal evenly lie face up beside the board for everyone.", "Any card you see can't be in the case file." } },
 		{ title = "Your turn", lines = { "Move to a room next to yours, or take a secret passage between opposite corners.", "You have to leave your room each turn, unless someone's suggestion pulled your pawn in (or it's your first turn).", "Suggest a suspect and an item. Their pawn and the item move into your room. Suggesting is optional: you can skip it.", "Going round the table, the first player with any of those cards shows you one in secret." } },
 		{ title = "Accusing", lines = { "Any time on your turn you can accuse: name a suspect, item and room.", "Right: you win. Wrong: you're out, but you still show cards to others.", "After a wrong accusation you don't get to see the case file." } },
+		{ title = "Clue cards (house rule)", lines = { "About one turn in four starts with a Clue card, played at once.", "Peek: the player on your left shows you a random card. Round-up: the players either side each show you a card of one kind, or say they have none.", "Shortcut: walk to any room this turn. Cards shown by a Clue card are secret, like a suggestion's." } },
 		{ title = "Tip", lines = { "Open Detective notes to track what you've seen." } },
 	},
 }

@@ -325,4 +325,113 @@ return function(T)
 			end
 		end
 	end)
+
+	-- A clue rng: the chance roll always hits; integer picks take the lowest choice.
+	local function clueRng()
+		return {
+			NextNumber = function()
+				return 0
+			end,
+			NextInteger = function(_, lo, _hi)
+				return lo
+			end,
+		}
+	end
+
+	T.test("items start in six different rooms", function()
+		for seed = 1, 20 do
+			local s = Whodunit.new(4, nil, T.Random.new(seed))
+			local used = {}
+			for _, room in s.itemRoom do
+				T.ok(room >= 1 and room <= 9 and not used[room], "two items share a room")
+				used[room] = true
+			end
+		end
+	end)
+
+	T.test("house rule clue cards: peek shows the drawer a card, secretly", function()
+		local s = setup()
+		s.clueCards = true
+		s.rng = clueRng()
+		s.clueDeck = { { kind = "peek" } }
+		play(s, 1, { kind = "move", room = 2 })
+		play(s, 1, { kind = "end" })
+		-- Seat 2's turn starts with the peek: seat 3 (on the left) shows its lowest-index card.
+		T.eq(#s.clues, 1)
+		local clue = s.clues[1]
+		T.eq(clue.seat, 2)
+		T.eq(clue.shown[1].from, 3)
+		T.eq(clue.shown[1].card, s.hands[3][1])
+		local mine = Whodunit.getView(s, 2)
+		T.eq(mine.clues[1].shown[1].card, s.hands[3][1])
+		local noted = false
+		for _, note in mine.notes do
+			if note.card == s.hands[3][1] and note.by == 3 then
+				noted = true
+			end
+		end
+		T.ok(noted, "the peeked card goes in the drawer's notes")
+		T.eq(Whodunit.deduce(s, 2, "easy").holderOf(s.hands[3][1]), 3)
+		T.eq(Whodunit.getView(s, 1).clues[1].shown[1].card, nil)
+		T.eq(Whodunit.getView(s, 3).clues[1].shown[1].card, s.hands[3][1])
+		T.eq(Whodunit.getView(s, nil).clues[1].shown[1].card, nil)
+	end)
+
+	T.test("house rule clue cards: a shortcut walks to any room this turn", function()
+		local s = setup()
+		s.clueCards = true
+		s.rng = clueRng()
+		s.clueDeck = { { kind = "shortcut" } }
+		play(s, 1, { kind = "move", room = 2 })
+		play(s, 1, { kind = "end" })
+		T.eq(s.shortcut, 2)
+		local view = Whodunit.getView(s, 2)
+		T.eq(view.shortcut, 2)
+		local count = #view.legalRooms - (if view.canStay then 1 else 0)
+		T.eq(count, 8)
+		play(s, 2, { kind = "move", room = 1 }) -- the Kitchen isn't next to the Observatory
+		play(s, 2, { kind = "end" })
+		T.ok(s.shortcut ~= 2, "the shortcut lasts one turn")
+	end)
+
+	T.test("round-up: a player with none of that kind says so for everyone", function()
+		local s = setup()
+		s.clueCards = true
+		s.rng = clueRng()
+		s.hands[3] = { I(6), R(6), R(7), R(8), R(9) }
+		s.hands[1] = { S(2), S(3), S(6), I(2), I(3), R(2), R(3) }
+		s.clueDeck = { { kind = "roundup", category = "suspect" } }
+		s.turn = 1
+		play(s, 1, { kind = "move", room = 2 })
+		play(s, 1, { kind = "end" }) -- seat 2 draws: left is 3 (none), right is 1
+		local clue = s.clues[1]
+		T.eq(clue.none[1], 3)
+		T.eq(clue.shown[1].from, 1)
+		-- Seat 1 (not the drawer) now knows seat 3 holds no suspect cards.
+		local know = Whodunit.deduce(s, 1, "medium")
+		for _, id in Whodunit.categoryCards.suspect do
+			T.eq(know.possible[id][3], false)
+		end
+	end)
+
+	T.test("bots finish games with clue cards on", function()
+		for seats = 3, 6 do
+			local rng = T.Random.new(seats * 13)
+			local s = Whodunit.new(seats, { botLevel = "medium", rules = { clueCards = true } }, rng)
+			local plies = 0
+			while not Whodunit.getResult(s) and plies < 5000 do
+				local seat = Whodunit.getActiveSeats(s)[1]
+				local move = GameModule.chooseBotMove(Whodunit, s, seat, rng)
+				T.ok(Whodunit.validateMove(s, seat, move), "bot made an illegal move")
+				Whodunit.applyMove(s, seat, move)
+				Whodunit.getView(s, seat)
+				plies += 1
+			end
+			T.ok(Whodunit.getResult(s) ~= nil)
+			T.ok(#s.clues > 0, "some clue cards were drawn")
+			for _, a in s.accusations do
+				T.ok(a.correct, "a bot accused without being sure")
+			end
+		end
+	end)
 end
