@@ -67,8 +67,9 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 	takenFolder.Name = "Taken"
 	takenFolder.Parent = board.model
 	local takenKey = ""
-	local function drawTaken(captured: any)
+	local function drawTaken(captured: any, leads: { number }?)
 		local key = table.concat((captured and captured[1]) or {}, ",") .. "/" .. table.concat((captured and captured[2]) or {}, ",")
+			.. "/" .. (if leads then `{leads[1]},{leads[2]}` else "")
 		if key == takenKey then
 			return
 		end
@@ -96,7 +97,8 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 			end
 		end
 		for seat = 1, 2 do
-			local lead = worth[seat] - worth[3 - seat]
+			-- The lead comes from the board when the view has it, so promotions count.
+			local lead = if leads then leads[seat] else worth[seat] - worth[3 - seat]
 			if lead > 0 then
 				local side = if seat == 1 then 1 else -1
 				local holder = Pieces.part({
@@ -167,7 +169,7 @@ function Chess.create(boardCF: CFrame, parent: Instance)
 				tints[r * 100 + c] = CHECK
 			end
 			Square.tint(board, 8, tints)
-			drawTaken(view.captured)
+			drawTaken(view.captured, view.lead)
 		end,
 		destroy = function()
 			board.model:Destroy()

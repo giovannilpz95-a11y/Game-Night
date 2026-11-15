@@ -10,7 +10,7 @@
 -- Rules: captures are forced (any capture, not the longest); a piece must keep jumping
 -- while it can; a man that reaches the far row is crowned and its turn ends there.
 -- A player with no legal moves loses. 40 moves each with no capture and no man moving
--- is a draw.
+-- is a draw, and so is the same position (and side to move) coming up three times.
 -- House rule "forcedCaptures" = false: jumping is allowed but not required (a jump that
 -- is started still has to be finished).
 -- House rule "flyingKings": kings slide any distance along a diagonal and can jump a
@@ -55,6 +55,42 @@ local function crownRow(seat: number): number
 	return if seat == 1 then 1 else SIZE
 end
 
+-- Zobrist keys (two 32-bit keys) for the transposition table and repetitions.
+local zSeed = 0x1F2E3D4C
+local function rand32(): number
+	zSeed = bit32.bxor(zSeed, bit32.lshift(zSeed, 13))
+	zSeed = bit32.bxor(zSeed, bit32.rshift(zSeed, 17))
+	zSeed = bit32.bxor(zSeed, bit32.lshift(zSeed, 5))
+	return zSeed
+end
+local Z1, Z2 = {}, {}
+for v = 1, 4 do
+	Z1[v], Z2[v] = {}, {}
+	for sq = 1, SIZE * SIZE do
+		Z1[v][sq], Z2[v][sq] = rand32(), rand32()
+	end
+end
+local ZTURN1, ZTURN2 = rand32(), rand32()
+
+local function hashBoard(board, seat: number): (number, number)
+	local h1, h2 = 0, 0
+	for r = 1, SIZE do
+		local row = board[r]
+		for c = 1, SIZE do
+			local v = row[c]
+			if v > 0 then
+				local sq = (r - 1) * SIZE + c
+				h1 = bit32.bxor(h1, Z1[v][sq])
+				h2 = bit32.bxor(h2, Z2[v][sq])
+			end
+		end
+	end
+	if seat == 2 then
+		h1, h2 = bit32.bxor(h1, ZTURN1), bit32.bxor(h2, ZTURN2)
+	end
+	return h1, h2
+end
+
 function Checkers.new(seatCount: number, options: any?, _rng: Random?)
 	assert(seatCount == 2, "Checkers needs exactly 2 seats")
 	local board = {}
@@ -83,6 +119,8 @@ function Checkers.new(seatCount: number, options: any?, _rng: Random?)
 		flyingKings = options ~= nil and options.rules ~= nil and options.rules.flyingKings == true,
 		backCaptures = options ~= nil and options.rules ~= nil and options.rules.backCaptures == true,
 	}
+	-- How often each position (board + side to move) has come up: three times is a draw.
+	state.history = { [(hashBoard(board, 1))] = 1 }
 	Offers.init(state)
 	return state
 end
@@ -271,6 +309,16 @@ function Checkers.getActiveSeats(state): { number }
 	return if isOver(state) then {} else { Offers.answerer(state) or state.turn }
 end
 
+-- Right after your move you may offer a draw or ask to undo it (Offers).
+function Checkers.getInterruptSeats(state): { number }
+	return Offers.interruptSeats(state, if isOver(state) then nil else state.turn)
+end
+
+-- One turn per move: draw offers and their answers don't restart the turn clock.
+function Checkers.getTurnKey(state): any
+	return #state.undo
+end
+
 local function cloneBoard(board)
 	local out = {}
 	for r, row in board do
@@ -283,6 +331,15 @@ end
 local function undoOne(state)
 	local entry = table.remove(state.undo)
 	if entry then
+		local key = hashBoard(state.board, state.turn)
+		if state.history[key] then
+			state.history[key] = math.max(0, state.history[key] - 1)
+		end
+		if entry.crowned and state.matchStats and state.matchStats[entry.crowned] then
+			-- The crowning is taken back too.
+			local row = state.matchStats[entry.crowned]
+			row.kings = math.max(0, (row.kings or 1) - 1)
+		end
 		state.board = entry.board
 		state.turn = entry.turn
 		state.quietPlies = entry.quietPlies
@@ -326,6 +383,9 @@ function Checkers.validateMove(state, seat: number, move: any): (boolean, string
 	if Offers.isMove(move) then
 		return Offers.validate(state, seat, move, state.turn)
 	end
+	if type(move) ~= "table" then
+		return false, "That move isn't allowed"
+	end
 	if state.offer then
 		return false, "Waiting for an answer"
 	end
@@ -343,9 +403,13 @@ end
 
 function Checkers.applyMove(state, seat: number, move: any)
 	if Offers.isMove(move) then
-		if Offers.apply(state, seat, move, undoOne) == "draw" then
+		local accepted = Offers.apply(state, seat, move, undoOne, state.turn)
+		if accepted == "draw" then
 			state.isDraw = true
 			state.reason = "Draw agreed"
+		elseif accepted == "abort" then
+			state.isDraw = true
+			state.reason = "Game aborted"
 		end
 		return
 	end
@@ -367,6 +431,7 @@ function Checkers.applyMove(state, seat: number, move: any)
 	if landed and not isKing(piece) and isKing(state.board[landed[1]][landed[2]]) then
 		clean.crowned = true -- the crowning moment (the table sparkles)
 		GameModule.addStat(state, seat, "kings")
+		state.undo[#state.undo].crowned = seat
 	end
 	if capture or not isKing(piece) then
 		state.quietPlies = 0
@@ -376,12 +441,25 @@ function Checkers.applyMove(state, seat: number, move: any)
 
 	local nextSeat = 3 - seat
 	local replies = generate(state.board, nextSeat, optsOf(state))
+	local key = hashBoard(state.board, nextSeat)
+	state.history[key] = (state.history[key] or 0) + 1
 	if #replies == 0 then
 		state.winner = seat
-		state.reason = "No moves left"
+		local left = 0
+		for r = 1, SIZE do
+			for c = 1, SIZE do
+				if owner(state.board[r][c]) == nextSeat then
+					left += 1
+				end
+			end
+		end
+		state.reason = if left == 0 then "All pieces captured" else "No moves left"
 	elseif state.quietPlies >= NO_PROGRESS_LIMIT then
 		state.isDraw = true
 		state.reason = "40 moves without progress"
+	elseif state.history[key] >= 3 then
+		state.isDraw = true
+		state.reason = "Threefold repetition"
 	else
 		state.turn = nextSeat
 	end
@@ -397,12 +475,14 @@ function Checkers.getResult(state): GameModule.Result?
 end
 
 function Checkers.getView(state, seat: number?): any
-	local undo, asked = state.undo, state.asked
-	state.undo, state.asked = nil, nil
+	local undo, asked, history = state.undo, state.asked, state.history
+	state.undo, state.asked, state.history = nil, nil, nil
 	local view = GameModule.copy(state)
-	state.undo, state.asked = undo, asked
+	state.undo, state.asked, state.history = undo, asked, history
 	view.offer = nil
 	view.takebacks = nil
+	view.drawBlocked = nil
+	view.matchStats = nil
 	view.moveCount = #undo
 	if seat and not isOver(state) and not state.offer and seat == state.turn then
 		local moves, mustJump = generate(state.board, seat, optsOf(state))
@@ -416,14 +496,24 @@ function Checkers.getView(state, seat: number?): any
 end
 
 -- Bot ---------------------------------------------------------------------
+-- Negamax with alpha-beta at every level (the root too), captures and the previous best
+-- move searched first, killer moves, a transposition table, iterative deepening under a
+-- time budget, and the 40-move rule and repetitions seen inside the search. In the
+-- endgame a side that is ahead hunts the other side's pieces with its kings and pulls a
+-- lone king out of the double corner, so 2 kings v 1 gets won.
+
+local DOUBLE_CORNER = { [1 * 10 + 2] = true, [2 * 10 + 1] = true, [7 * 10 + 8] = true, [8 * 10 + 7] = true }
 
 local function evaluate(board, me: number): number
 	local score = 0
+	local count = { 0, 0 }
+	local material = { 0, 0 }
 	for r = 1, SIZE do
 		for c = 1, SIZE do
 			local v = board[r][c]
-			if v ~= 0 then
+			if v > 0 then
 				local seat = owner(v)
+				count[seat] += 1
 				local value
 				if isKing(v) then
 					value = 160
@@ -434,12 +524,43 @@ local function evaluate(board, me: number): number
 						value += 8 -- back row guard
 					end
 				end
+				material[seat] += if isKing(v) then 160 else 100
 				if c >= 3 and c <= 6 and r >= 3 and r <= 6 then
 					value += 4
 				end
 				score += if seat == me then value else -value
 			end
 		end
+	end
+	-- Endgame: the side ahead closes in with its kings; the side behind wants the double
+	-- corner (where a lone king can't be trapped by two kings without help).
+	if count[1] + count[2] <= 8 and material[1] ~= material[2] then
+		local winner = if material[1] > material[2] then 1 else 2
+		local bonus = 0
+		for r = 1, SIZE do
+			for c = 1, SIZE do
+				local v = board[r][c]
+				if v > 0 and owner(v) ~= winner then
+					if DOUBLE_CORNER[r * 10 + c] then
+						bonus -= 12
+					end
+					-- Edges are where pieces get trapped.
+					if r == 1 or r == SIZE or c == 1 or c == SIZE then
+						bonus += 4
+					end
+					for r2 = 1, SIZE do
+						for c2 = 1, SIZE do
+							local w = board[r2][c2]
+							if w > 0 and owner(w) == winner and isKing(w) then
+								local distance = math.max(math.abs(r - r2), math.abs(c - c2))
+								bonus += (8 - distance) * 3
+							end
+						end
+					end
+				end
+			end
+		end
+		score += if winner == me then bonus else -bonus
 	end
 	return score
 end
@@ -454,15 +575,79 @@ end
 
 local WIN = 100000
 
-type Search = { nodes: number, deadline: number, outOfTime: boolean, opts: Opts }
+local function moveKey(m: Move): string
+	local parts = { `{m.from[1]},{m.from[2]}` }
+	for _, sq in m.path do
+		table.insert(parts, `{sq[1]},{sq[2]}`)
+	end
+	return table.concat(parts, ">")
+end
 
-local function negamax(s: Search, board, seat: number, depth: number, alpha: number, beta: number, ply: number): number
+local TT_EXACT, TT_LOWER, TT_UPPER = 0, 1, 2
+local ttCheck: { [number]: number } = {}
+local ttDepth: { [number]: number } = {}
+local ttScore: { [number]: number } = {}
+local ttFlag: { [number]: number } = {}
+local ttMove: { [number]: string } = {}
+local ttCount = 0
+local TT_MAX = 150000
+
+type Search = {
+	nodes: number,
+	deadline: number,
+	outOfTime: boolean,
+	opts: Opts,
+	seen: { [number]: number },
+	killers: { [number]: string },
+}
+
+local function orderMoves(moves: { Move }, first: string?, killer: string?)
+	local keys = {}
+	for _, m in moves do
+		local key = moveKey(m)
+		local k = 0
+		if key == first then
+			k = 100000
+		elseif key == killer then
+			k = 50
+		end
+		k += #m.path * 10 -- longer jumps first
+		keys[m] = k
+	end
+	table.sort(moves, function(a, b)
+		return keys[a] > keys[b]
+	end)
+end
+
+local function negamax(s: Search, board, seat: number, depth: number, alpha: number, beta: number, ply: number, quiet: number): number
 	s.nodes += 1
-	if s.nodes % 256 == 0 and os.clock() > s.deadline then
+	if s.nodes % 64 == 0 and os.clock() > s.deadline then
 		s.outOfTime = true
 	end
 	if s.outOfTime then
 		return 0
+	end
+	if quiet >= NO_PROGRESS_LIMIT then
+		return 0 -- the 40-move rule
+	end
+	local h1, h2 = hashBoard(board, seat)
+	if ply > 0 and (s.seen[h1] or 0) > 0 then
+		return 0 -- heading for a repetition
+	end
+	local first = nil
+	if ttCheck[h1] == h2 then
+		first = ttMove[h1]
+		if ttDepth[h1] >= depth and ply > 0 then
+			local score, flag = ttScore[h1], ttFlag[h1]
+			if score > WIN - 1000 then
+				score -= ply
+			elseif score < -WIN + 1000 then
+				score += ply
+			end
+			if flag == TT_EXACT or (flag == TT_LOWER and score >= beta) or (flag == TT_UPPER and score <= alpha) then
+				return score
+			end
+		end
 	end
 	local moves, mustJump = generate(board, seat, s.opts)
 	if #moves == 0 then
@@ -472,37 +657,131 @@ local function negamax(s: Search, board, seat: number, depth: number, alpha: num
 	if depth <= 0 and not mustJump then
 		return evaluate(board, seat)
 	end
-	local best = -math.huge
+	orderMoves(moves, first, s.killers[ply])
+	local alphaStart = alpha
+	local best, bestMove = -math.huge, nil
+	s.seen[h1] = (s.seen[h1] or 0) + 1
 	for _, move in moves do
+		local piece = board[move.from[1]][move.from[2]]
 		local child = copyBoard(board)
-		apply(child, move)
-		local score = -negamax(s, child, 3 - seat, depth - 1, -beta, -alpha, ply + 1)
+		local captured = apply(child, move)
+		local nextQuiet = if captured or not isKing(piece) then 0 else quiet + 1
+		local score = -negamax(s, child, 3 - seat, depth - 1, -beta, -alpha, ply + 1, nextQuiet)
+		if s.outOfTime then
+			break
+		end
 		if score > best then
-			best = score
+			best, bestMove = score, move
 		end
 		if best > alpha then
 			alpha = best
 		end
 		if alpha >= beta then
+			if not captured then
+				s.killers[ply] = moveKey(move)
+			end
 			break
 		end
 	end
+	s.seen[h1] -= 1
+	if s.outOfTime then
+		return 0
+	end
+	local flag = if best <= alphaStart then TT_UPPER elseif best >= beta then TT_LOWER else TT_EXACT
+	if ttCheck[h1] == nil then
+		ttCount += 1
+		if ttCount > TT_MAX then
+			ttCheck, ttDepth, ttScore, ttFlag, ttMove = {}, {}, {}, {}, {}
+			ttCount = 1
+		end
+	end
+	local stored = best
+	if stored > WIN - 1000 then
+		stored += ply
+	elseif stored < -WIN + 1000 then
+		stored -= ply
+	end
+	ttCheck[h1], ttDepth[h1], ttScore[h1], ttFlag[h1], ttMove[h1] = h2, depth, stored, flag, if bestMove then moveKey(bestMove) else ""
 	return best
 end
 
 local LEVELS = {
 	easy = { depth = 2, seconds = 0.05, slack = 60 },
 	medium = { depth = 5, seconds = 0.25, slack = 0 },
-	hard = { depth = 9, seconds = 0.45, slack = 0 }, -- the search blocks the server: keep it short
+	hard = { depth = 14, seconds = 0.45, slack = 0 }, -- the search blocks the server: keep it short
 }
+Checkers.LEVELS = LEVELS
+
+-- Scores every move for `seat` (best first); with exact = false only the best is exact.
+function Checkers.rankMoves(state, seat: number, maxDepth: number, seconds: number, exact: boolean): { { move: Move, score: number } }
+	local opts = optsOf(state)
+	local moves = generate(state.board, seat, opts)
+	local s: Search = { nodes = 0, deadline = os.clock() + seconds, outOfTime = false, opts = opts, seen = {}, killers = {} }
+	-- Positions already seen in this game count as repetitions inside the search.
+	for key, n in state.history or {} do
+		if n > 0 and type(key) == "number" then
+			s.seen[key] = n
+		end
+	end
+	local rootH1 = hashBoard(state.board, seat)
+	s.seen[rootH1] = (s.seen[rootH1] or 0) + 1
+	local ranked = {}
+	for _, m in moves do
+		table.insert(ranked, { move = m, score = 0 })
+	end
+	local bestFirst: string? = nil
+	for depth = 1, maxDepth do
+		orderMoves(moves, bestFirst, nil)
+		local current = {}
+		local alpha = -math.huge
+		for _, move in moves do
+			local piece = state.board[move.from[1]][move.from[2]]
+			local child = copyBoard(state.board)
+			local captured = apply(child, move)
+			local quiet = if captured or not isKing(piece) then 0 else state.quietPlies + 1
+			local score = -negamax(s, child, 3 - seat, depth - 1, -math.huge, if exact then math.huge else -alpha, 1, quiet)
+			if s.outOfTime then
+				break
+			end
+			if not exact then
+				if score > alpha then
+					alpha = score
+				elseif #current > 0 then
+					score = alpha - 1
+				end
+			end
+			table.insert(current, { move = move, score = score })
+		end
+		if #current == #moves then
+			table.sort(current, function(a, b)
+				return a.score > b.score
+			end)
+			ranked = current
+			bestFirst = moveKey(current[1].move)
+			if current[1].score >= WIN - 100 then
+				break
+			end
+		end
+		if s.outOfTime then
+			break
+		end
+	end
+	return ranked
+end
 
 function Checkers.chooseBotMove(state, seat: number, rng: Random): any?
 	if state.offer and not isOver(state) then
 		if seat ~= Offers.answerer(state) then
 			return nil
 		end
-		-- Takebacks are fine; a draw only when the bot isn't clearly ahead.
-		return { type = "answer", accept = state.offer.kind == "takeback" or evaluate(state.board, seat) < 60 }
+		-- Takebacks are fine. A draw only once the game has gone a while (no early draws)
+		-- and the bot isn't clearly ahead, or straight away when it is clearly behind.
+		local score = evaluate(state.board, seat)
+		local accept = state.offer.kind == "takeback" or (#state.undo >= 30 and score < 60) or score < -150
+		return { type = "answer", accept = accept }
+	end
+	if isOver(state) or seat ~= state.turn then
+		return nil
 	end
 	local level = LEVELS[state.botLevel] or LEVELS.medium
 	local moves = generate(state.board, seat, optsOf(state))
@@ -512,32 +791,16 @@ function Checkers.chooseBotMove(state, seat: number, rng: Random): any?
 	if #moves == 1 then
 		return moves[1]
 	end
-	local s: Search = { nodes = 0, deadline = os.clock() + level.seconds, outOfTime = false, opts = optsOf(state) }
-	local scores: { number }? = nil
-	for depth = 1, level.depth do
-		local current = {}
-		for i, move in moves do
-			local child = copyBoard(state.board)
-			apply(child, move)
-			current[i] = -negamax(s, child, 3 - seat, depth - 1, -math.huge, math.huge, 1)
-		end
-		if s.outOfTime then
-			break
-		end
-		scores = current
-	end
-	if not scores then
+	local ranked = Checkers.rankMoves(state, seat, level.depth, level.seconds, level.slack > 0)
+	if #ranked == 0 then
 		return moves[rng:NextInteger(1, #moves)]
 	end
-	local bestScore = -math.huge
-	for _, score in scores do
-		bestScore = math.max(bestScore, score)
-	end
+	local bestScore = ranked[1].score
 	-- Easy bots pick among moves that are "close enough", so they make mistakes.
 	local pool = {}
-	for i, score in scores do
-		if score >= bestScore - level.slack then
-			table.insert(pool, moves[i])
+	for _, entry in ranked do
+		if entry.score >= bestScore - level.slack then
+			table.insert(pool, entry.move)
 		end
 	end
 	return pool[rng:NextInteger(1, #pool)]

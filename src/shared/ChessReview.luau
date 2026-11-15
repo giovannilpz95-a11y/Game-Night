@@ -5,7 +5,7 @@
 	For every move it finds the engine's best move in the position before it, scores the
 	position after it, and labels the move by how much winning chance it gave away:
 
-	  Book        an opening move from the book below
+	  Book        a move that stays on a named opening line (Lichess's opening list)
 	  Forced      the only legal move
 	  Best        the engine's top move (or as good as it)
 	  Excellent   lost almost nothing (under 2% winning chance)
@@ -17,11 +17,14 @@
 	Winning chance and accuracy use the published Lichess formulas:
 	  win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * cp)) - 1)
 	  move accuracy = 103.1668 * exp(-0.04354 * (win% before - win% after)) - 3.1669
-	A side's accuracy is the average over its moves.
+	A side's game accuracy is Lichess's: the average of a volatility-weighted mean and the
+	harmonic mean of its move accuracies (evals capped at +-10 pawns).
 
 	Usage:
 	  local review = ChessReview.new(startFen, plies, { seconds = 0.25, depth = 5 })
 	  while not review:step() do task.wait() end   -- one move per call
+	  -- or { depth = 6, nodes = 12000, tick = function() coroutine.yield() end } inside a
+	  -- coroutine, resumed once a frame, for a deeper review that never hitches
 	  review.moves[i]  -> { san, label, symbol, bestSan, bestFrom, bestTo, evalAfter, side }
 	  review.accuracy  -> { [1] = white%, [2] = black% }
 	  review.counts    -> { [1] = { Best = 3, ... }, [2] = { ... } }
@@ -65,128 +68,118 @@ local THRESHOLDS = {
 	{ "Mistake", 0.20 },
 }
 
-local CP_CAP = 1500 -- mates count as +-15 pawns for winning chances
+local CP_CAP = 1000 -- evals are capped at +-10 pawns (mates too), as Lichess does
 
--- Opening book: moves in standard notation without + or #. The longest match names the
--- opening; a move is "Book" while the game is still on one of these lines.
-ChessReview.OPENINGS = {
-	{ "e4", "King's Pawn Opening" },
-	{ "d4", "Queen's Pawn Opening" },
-	{ "c4", "English Opening" },
-	{ "Nf3", "Zukertort Opening" },
-	{ "g3", "Hungarian Opening" },
-	{ "b3", "Nimzo-Larsen Attack" },
-	{ "f4", "Bird's Opening" },
-	{ "e4 e5", "Open Game" },
-	{ "e4 e5 Nf3", "King's Knight Opening" },
-	{ "e4 e5 Nf3 Nc6", "King's Knight Opening" },
-	{ "e4 e5 Nf3 Nc6 Bb5", "Ruy Lopez" },
-	{ "e4 e5 Nf3 Nc6 Bb5 a6", "Ruy Lopez: Morphy Defense" },
-	{ "e4 e5 Nf3 Nc6 Bb5 Nf6", "Ruy Lopez: Berlin Defense" },
-	{ "e4 e5 Nf3 Nc6 Bc4", "Italian Game" },
-	{ "e4 e5 Nf3 Nc6 Bc4 Bc5", "Italian Game: Giuoco Piano" },
-	{ "e4 e5 Nf3 Nc6 Bc4 Nf6", "Italian Game: Two Knights Defense" },
-	{ "e4 e5 Nf3 Nc6 Bc4 Bc5 b4", "Evans Gambit" },
-	{ "e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5", "Two Knights: Fried Liver line" },
-	{ "e4 e5 Nf3 Nc6 d4", "Scotch Game" },
-	{ "e4 e5 Nf3 Nc6 Nc3", "Three Knights Game" },
-	{ "e4 e5 Nf3 Nc6 Nc3 Nf6", "Four Knights Game" },
-	{ "e4 e5 Nf3 Nf6", "Petrov's Defense" },
-	{ "e4 e5 Nf3 d6", "Philidor Defense" },
-	{ "e4 e5 Nf3 f5", "Latvian Gambit" },
-	{ "e4 e5 f4", "King's Gambit" },
-	{ "e4 e5 f4 exf4", "King's Gambit Accepted" },
-	{ "e4 e5 Nc3", "Vienna Game" },
-	{ "e4 e5 Bc4", "Bishop's Opening" },
-	{ "e4 e5 Qh5", "Wayward Queen Attack" },
-	{ "e4 e5 d4 exd4 c3", "Danish Gambit" },
-	{ "e4 c5", "Sicilian Defense" },
-	{ "e4 c5 Nf3 d6", "Sicilian Defense" },
-	{ "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6", "Sicilian: Najdorf Variation" },
-	{ "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6", "Sicilian: Dragon Variation" },
-	{ "e4 c5 Nf3 Nc6", "Sicilian Defense: Old Sicilian" },
-	{ "e4 c5 Nf3 e6", "Sicilian Defense: French Variation" },
-	{ "e4 c5 Nc3", "Sicilian: Closed" },
-	{ "e4 c5 c3", "Sicilian: Alapin Variation" },
-	{ "e4 c5 d4 cxd4 c3", "Smith-Morra Gambit" },
-	{ "e4 e6", "French Defense" },
-	{ "e4 e6 d4 d5", "French Defense" },
-	{ "e4 e6 d4 d5 e5", "French Defense: Advance Variation" },
-	{ "e4 e6 d4 d5 exd5", "French Defense: Exchange Variation" },
-	{ "e4 e6 d4 d5 Nc3", "French Defense: Paulsen Variation" },
-	{ "e4 c6", "Caro-Kann Defense" },
-	{ "e4 c6 d4 d5", "Caro-Kann Defense" },
-	{ "e4 c6 d4 d5 e5", "Caro-Kann: Advance Variation" },
-	{ "e4 d5", "Scandinavian Defense" },
-	{ "e4 d5 exd5 Qxd5", "Scandinavian: Main Line" },
-	{ "e4 d6", "Pirc Defense" },
-	{ "e4 g6", "Modern Defense" },
-	{ "e4 Nf6", "Alekhine's Defense" },
-	{ "e4 Nc6", "Nimzowitsch Defense" },
-	{ "d4 d5", "Closed Game" },
-	{ "d4 d5 c4", "Queen's Gambit" },
-	{ "d4 d5 c4 dxc4", "Queen's Gambit Accepted" },
-	{ "d4 d5 c4 e6", "Queen's Gambit Declined" },
-	{ "d4 d5 c4 c6", "Slav Defense" },
-	{ "d4 d5 c4 e5", "Albin Countergambit" },
-	{ "d4 d5 Bf4", "London System" },
-	{ "d4 d5 Nf3 Nf6 Bf4", "London System" },
-	{ "d4 Nf6 Bf4", "London System" },
-	{ "d4 d5 e3", "Colle System" },
-	{ "d4 Nf6", "Indian Defense" },
-	{ "d4 Nf6 c4 g6", "King's Indian Defense" },
-	{ "d4 Nf6 c4 g6 Nc3 d5", "Grünfeld Defense" },
-	{ "d4 Nf6 c4 e6", "Indian Defense: East Indian" },
-	{ "d4 Nf6 c4 e6 Nc3 Bb4", "Nimzo-Indian Defense" },
-	{ "d4 Nf6 c4 e6 Nf3 b6", "Queen's Indian Defense" },
-	{ "d4 Nf6 c4 c5", "Benoni Defense" },
-	{ "d4 Nf6 c4 c5 d5 b5", "Benko Gambit" },
-	{ "d4 Nf6 Bg5", "Trompowsky Attack" },
-	{ "d4 f5", "Dutch Defense" },
-	{ "d4 e5", "Englund Gambit" },
-	{ "c4 e5", "English Opening: Reversed Sicilian" },
-	{ "c4 c5", "English Opening: Symmetrical" },
-	{ "c4 Nf6", "English Opening: Anglo-Indian" },
-	{ "Nf3 d5 g3", "King's Indian Attack" },
-	{ "Nf3 d5 c4", "Réti Opening" },
-}
+-- Opening book: every position on the 3,800+ named lines of lichess-org/chess-openings
+-- (CC0), built by tools/build-chess-openings.py. Positions are matched by piece placement
+-- and side to move, so transpositions (1.Nf3 d5 2.d4) find the same opening as the main
+-- move order. A move is "Book" while every position so far is on a book line.
+local NAMES = require(ReplicatedStorage.Shared.Games.Data.ChessOpeningNames)
+local BOOK_DATA = require(ReplicatedStorage.Shared.Games.Data.ChessOpeningBook)
 
-local BOOK: { [string]: string } = {}
-for _, entry in ChessReview.OPENINGS do
-	BOOK[entry[1]] = entry[2]
+local DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+local DIGIT_VALUE = {}
+for i = 1, #DIGITS do
+	DIGIT_VALUE[string.byte(DIGITS, i)] = i - 1
+end
+
+local function fnv1a(text: string, reverse: boolean): number
+	local h = 2166136261
+	local n = #text
+	for i = 1, n do
+		local byte = string.byte(text, if reverse then n - i + 1 else i)
+		h = bit32.bxor(h, byte)
+		-- h * 16777619 mod 2^32, split so the product stays exact in a double.
+		h = (bit32.lshift(h, 24) + h * 403) % 4294967296
+	end
+	return h
+end
+
+local function b64(value: number, width: number): string
+	local out = table.create(width, "")
+	for i = width, 1, -1 do
+		local d = value % 64
+		out[i] = string.sub(DIGITS, d + 1, d + 1)
+		value = value // 64
+	end
+	return table.concat(out)
+end
+
+local book: { [string]: number }? = nil -- key -> name index (0 = on a line, no name)
+
+local function loadBook(): { [string]: number }
+	if book then
+		return book
+	end
+	local out = {}
+	for i = 1, #BOOK_DATA, 14 do
+		local a, b = string.byte(BOOK_DATA, i + 12, i + 13)
+		out[string.sub(BOOK_DATA, i, i + 11)] = DIGIT_VALUE[a] * 64 + DIGIT_VALUE[b]
+	end
+	book = out
+	return out
+end
+
+-- The book key of a position: placement + side to move ("w"/"b"), hashed.
+function ChessReview.bookKey(fen: string): string
+	local placement, side = string.match(fen, "^(%S+)%s+(%S)")
+	local text = `{placement or fen} {side or "w"}`
+	return b64(fnv1a(text, false), 6) .. b64(fnv1a(text, true), 6)
+end
+
+-- Is this position on a book line, and the opening's name if a line ends here.
+function ChessReview.bookInfo(fen: string): (boolean, string?)
+	local index = loadBook()[ChessReview.bookKey(fen)]
+	if index == nil then
+		return false, nil
+	end
+	return true, if index > 0 then NAMES[index] else nil
+end
+
+-- The opening name for a list of positions (FEN after each move), plus how many of the
+-- moves are still on a book line. The name is the last named book position reached.
+function ChessReview.openingFromFens(fens: { string }): (string?, number)
+	local name, bookPlies = nil, 0
+	for i, fen in fens do
+		local inBook, here = ChessReview.bookInfo(fen)
+		if not inBook then
+			break
+		end
+		bookPlies = i
+		if here then
+			name = here
+		end
+	end
+	return name, bookPlies
 end
 
 local function strip(san: string): string
 	return (string.gsub(san, "[+#]", ""))
 end
 
--- The opening name for a list of moves (standard notation), or nil, plus how many of the
--- moves are still on a book line.
-function ChessReview.opening(sans: { string }): (string?, number)
-	local name, bookPlies = nil, 0
-	local line = ""
-	for i, san in sans do
-		line = if i == 1 then strip(san) else line .. " " .. strip(san)
-		local hit = BOOK[line]
-		local onLine = hit ~= nil
-		if not onLine then
-			-- Still a prefix of some longer book line?
-			for key in BOOK do
-				if string.sub(key, 1, #line + 1) == line .. " " then
-					onLine = true
-					break
-				end
+-- The same from moves in standard notation, played from the normal start (or startFen).
+function ChessReview.opening(sans: { string }, startFen: string?): (string?, number)
+	local pos = Chess.fromFen(startFen or Chess.START_FEN)
+	local fens = {}
+	for _, san in sans do
+		local found = nil
+		local wanted = strip(san)
+		for _, m in Chess.legalMoves(pos) do
+			if strip(Chess.san(pos, m)) == wanted then
+				found = m
+				break
 			end
 		end
-		if not onLine then
+		if not found then
 			break
 		end
-		bookPlies = i
-		if hit then
-			name = hit
+		Chess.makeMove(pos, found)
+		table.insert(fens, Chess.toFen(pos))
+		if #fens >= 40 then
+			break -- no book line is longer than this
 		end
 	end
-	return name, bookPlies
+	return ChessReview.openingFromFens(fens)
 end
 
 -- Centipawns for the side to move -> that side's winning chance, 0..100.
@@ -232,12 +225,12 @@ end
 
 -- Best score (centipawns, side to move) and best move in pos. Ended positions score
 -- as mate or 0.
-local function bestIn(pos, depth: number, seconds: number): (number, any?)
+local function bestIn(pos, depth: number, seconds: number, opts: any?): (number, any?)
 	local moves = Chess.legalMoves(pos)
 	if #moves == 0 then
 		return (if Chess.inCheck(pos) then -Chess.MATE else 0), nil
 	end
-	local ranked = Chess.rankMoves(pos, depth, seconds, false)
+	local ranked = Chess.rankMoves(pos, depth, seconds, false, opts)
 	if not ranked[1] then
 		return 0, moves[1]
 	end
@@ -250,6 +243,10 @@ function ChessReview.new(startFen: string, plies: { any }, opts: any?)
 		plies = plies,
 		depth = (opts and opts.depth) or 5,
 		seconds = (opts and opts.seconds) or 0.25,
+		-- Optional: a node budget per position instead of seconds, and a tick the search
+		-- calls every few hundred nodes (run step() in a coroutine and yield there to
+		-- spread a deep review over many frames).
+		searchOpts = if opts and (opts.nodes or opts.tick) then { nodes = opts.nodes, tick = opts.tick } else nil,
 		moves = {},
 		done = false,
 		progress = 0, -- moves reviewed
@@ -271,7 +268,11 @@ function ChessReview.new(startFen: string, plies: { any }, opts: any?)
 		sans[i] = if m then Chess.san(pos, m) else `{p.from}-{p.to}`
 	end
 	self.sans = sans
-	self.opening, self.bookPlies = ChessReview.opening(sans)
+	local fens = {}
+	for _, p in plies do
+		table.insert(fens, p.fen)
+	end
+	self.opening, self.bookPlies = ChessReview.openingFromFens(fens)
 	-- Score of the position before move i (side to move there); filled one ahead.
 	self.scores = {}
 	self.best = {}
@@ -291,7 +292,7 @@ function ChessReview.step(self): boolean
 	local function scoreAt(k: number)
 		if self.scores[k] == nil then
 			local pos = Chess.fromFen(self.before[k])
-			local score, move = bestIn(pos, self.depth, self.seconds)
+			local score, move = bestIn(pos, self.depth, self.seconds, self.searchOpts)
 			self.scores[k] = score
 			self.best[k] = if move then { move = move, san = Chess.san(pos, move) } else false
 		end
@@ -321,17 +322,24 @@ function ChessReview.step(self): boolean
 	end
 	local accuracy = if label == "Book" or label == "Forced" then 100 else ChessReview.moveAccuracy(winBefore, winAfter)
 	local whiteEval = if side == 1 then after else -after
+	-- Book and forced moves don't get a "better was..." arrow: there's nothing to improve.
+	local suggest = best and not isBest and label ~= "Book" and label ~= "Forced"
 	self.moves[i] = {
 		san = self.sans[i],
 		label = label,
 		symbol = ChessReview.SYMBOLS[label],
 		side = side,
 		accuracy = accuracy,
-		bestSan = if best and not isBest then best.san else nil,
-		bestFrom = if best and not isBest then Chess.squareName(best.move.from) else nil,
-		bestTo = if best and not isBest then Chess.squareName(best.move.to) else nil,
+		bestSan = if suggest then best.san else nil,
+		bestFrom = if suggest then Chess.squareName(best.move.from) else nil,
+		bestTo = if suggest then Chess.squareName(best.move.to) else nil,
 		evalAfter = math.clamp(whiteEval, -CP_CAP, CP_CAP), -- centipawns for White
 		mateAfter = math.abs(after) >= Chess.MATE - 500,
+		-- Moves to mate (positive = White mates), for an "M3" on the eval bar.
+		mateIn = if math.abs(after) >= Chess.MATE - 500
+			then (if whiteEval > 0 then 1 else -1) * math.max(1, math.ceil((Chess.MATE - math.abs(after)) / 2))
+			else nil,
+		winWhite = ChessReview.winPercent(whiteEval), -- White's winning chance after the move
 	}
 	self.progress = i
 	if i == #self.plies then
@@ -341,17 +349,71 @@ function ChessReview.step(self): boolean
 	return false
 end
 
-function ChessReview.finish(self)
-	local sums, n = { 0, 0 }, { 0, 0 }
-	self.counts = { {}, {} }
-	for _, mv in self.moves do
-		sums[mv.side] += mv.accuracy
-		n[mv.side] += 1
-		self.counts[mv.side][mv.label] = (self.counts[mv.side][mv.label] or 0) + 1
+local function stdDev(xs: { number }): number
+	local mean = 0
+	for _, x in xs do
+		mean += x
+	end
+	mean /= #xs
+	local var = 0
+	for _, x in xs do
+		var += (x - mean) ^ 2
+	end
+	return math.sqrt(var / #xs)
+end
+
+-- Lichess's game accuracy: each move is weighted by how volatile the game was around it
+-- (the standard deviation of White's winning chances over a sliding window, 0.5..12),
+-- and the side's score is the average of that weighted mean and the harmonic mean.
+-- winsWhite[1] is the start, winsWhite[i + 1] after move i.
+function ChessReview.gameAccuracy(winsWhite: { number }, accuracies: { number }, sides: { number }): { number }
+	local count = #accuracies
+	local out = { 100, 100 }
+	if count == 0 then
+		return out
+	end
+	local windowSize = math.clamp(count // 10, 2, 8)
+	local windows = {}
+	local firstWindow = table.move(winsWhite, 1, math.min(windowSize, #winsWhite), 1, {})
+	for _ = 1, math.min(windowSize, #winsWhite) - 2 do
+		table.insert(windows, firstWindow)
+	end
+	for start = 1, #winsWhite - windowSize + 1 do
+		table.insert(windows, table.move(winsWhite, start, start + windowSize - 1, 1, {}))
 	end
 	for s = 1, 2 do
-		self.accuracy[s] = if n[s] > 0 then math.floor(sums[s] / n[s] * 10 + 0.5) / 10 else 100
+		local weighted, weights, harmonic, n = 0, 0, 0, 0
+		for i = 1, count do
+			if sides[i] == s then
+				local window = windows[i]
+				local weight = if window then math.clamp(stdDev(window), 0.5, 12) else 0.5
+				weighted += accuracies[i] * weight
+				weights += weight
+				harmonic += 1 / math.max(1, accuracies[i])
+				n += 1
+			end
+		end
+		if n > 0 then
+			local value = (weighted / weights + n / harmonic) / 2
+			out[s] = math.floor(value * 10 + 0.5) / 10
+		end
 	end
+	return out
+end
+
+function ChessReview.finish(self)
+	self.counts = { {}, {} }
+	local startScore = self.scores[1] or 0
+	local startWhite = if Chess.fromFen(self.startFen).side == 1 then startScore else -startScore
+	local winsWhite = { ChessReview.winPercent(startWhite) }
+	local accuracies, sides = {}, {}
+	for i, mv in self.moves do
+		self.counts[mv.side][mv.label] = (self.counts[mv.side][mv.label] or 0) + 1
+		winsWhite[i + 1] = mv.winWhite
+		accuracies[i] = mv.accuracy
+		sides[i] = mv.side
+	end
+	self.accuracy = ChessReview.gameAccuracy(winsWhite, accuracies, sides)
 	self.done = true
 end
 
