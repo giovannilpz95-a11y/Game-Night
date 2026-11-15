@@ -27,6 +27,7 @@ local Shop = require(script.Parent.Parent.Core.Shop)
 local Looks = require(script.Parent.Parent.Core.Looks)
 local Tips = require(script.Parent.Parent.Core.Tips)
 local AudioSettings = require(script.Parent.Parent.Core.AudioSettings)
+local ClientSettings = require(script.Parent.Parent.Core.ClientSettings)
 local DataService = require(script.Parent.DataService)
 local AnalyticsService = require(script.Parent.AnalyticsService)
 
@@ -100,6 +101,7 @@ function EconomyService.push(player: Player)
 		saving = DataService.isPersistent(player),
 		tips = data.tips,
 		audio = data.audio,
+		settings = data.settings,
 		studio = RunService:IsStudio(),
 	})
 end
@@ -442,6 +444,18 @@ function handlers.audio(player: Player, request: any)
 	local data = DataService.get(player)
 	if data then
 		AudioSettings.apply(data.audio, request)
+	end
+end
+
+-- The Settings window's graphics and camera choices (Core/ClientSettings). Like audio,
+-- the client already uses them; this only saves them.
+function handlers.settings(player: Player, request: any)
+	local data = DataService.get(player)
+	if data then
+		if type(data.settings) ~= "table" then
+			data.settings = ClientSettings.new()
+		end
+		ClientSettings.apply(data.settings, request)
 	end
 end
 

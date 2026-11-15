@@ -195,6 +195,12 @@ function SoundPanel.create(screen: Instance, send: (any) -> ())
 		open = window.open,
 		close = window.close,
 		fit = window.fit,
+		-- Show the levels as they are now (the Settings window changed them).
+		refresh = function()
+			local now = Audio.levels()
+			music.set(now.music)
+			effects.set(now.effects)
+		end,
 		-- The saved levels from the profile. Only the first time: after that the window is
 		-- the one changing them.
 		load = function(saved: any)

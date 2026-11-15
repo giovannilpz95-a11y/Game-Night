@@ -211,6 +211,9 @@ function HostPanel.create(parent: Instance, sendHost: (any) -> (), hooks: any)
 			load()
 			render()
 		end,
+		close = function()
+			overlay.Visible = false
+		end,
 		setHost = function(value: boolean)
 			isHost = value
 			render()
