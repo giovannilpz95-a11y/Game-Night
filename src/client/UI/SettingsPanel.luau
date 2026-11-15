@@ -332,7 +332,7 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 		saved.colorMarks = value == "on"
 		saveSettings()
 	end)
-	note(access, 3, "Marks put a shape on colors that matter: ▲ ● ■ ◆ on Color Clash cards, your seat's shape on Four in a Row discs.")
+	note(access, 3, "Puts a shape on colors that matter: on Color Clash cards and the color picker, and your seat's shape on Four in a Row discs.")
 
 	local camera = card(right, 1, "Table camera", "camera")
 	local showMotion = segmented(camera, 1, "Camera motion", {

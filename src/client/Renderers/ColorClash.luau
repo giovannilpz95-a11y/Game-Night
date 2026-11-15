@@ -110,11 +110,16 @@ local function cardVisual(id: number?): Frame
 		Parent = face,
 	})
 	if card.color ~= 0 then
-		for _, at in { { 0.84, 0.12 }, { 0.16, 0.88 } } do
+		-- Under each corner number, so it shows on a fanned hand too.
+		-- Dark ink with a white rim reads on the color and on the white oval alike.
+		for _, at in { { 0.2, 0.31, 0 }, { 0.8, 0.69, 180 } } do
 			Access.mark(face, MARKS[card.color], {
 				Position = UDim2.fromScale(at[1], at[2]),
-				Size = UDim2.fromScale(0.22, 0.15),
-				TextColor3 = Color3.new(1, 1, 1),
+				Size = UDim2.fromScale(0.32, 0.19),
+				Rotation = at[3],
+				TextColor3 = Color3.fromRGB(20, 16, 40),
+				TextStrokeColor3 = Color3.new(1, 1, 1),
+				TextStrokeTransparency = 0,
 			})
 		end
 	end
