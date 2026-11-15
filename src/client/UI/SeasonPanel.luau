@@ -446,7 +446,7 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 	local function questRow(parentFrame: Instance, order: number, quest: any, canReroll: boolean)
 		local row = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = order, Parent = parentFrame })
 		local done = quest.done
-		local rightWidth = if canReroll and not done then 150 else 110
+		local rightWidth = if canReroll and not done then 190 else 150
 		Kit.label(`{if done then "✅" elseif quest.bonus then "⭐" else "🎯"} {quest.text}{if quest.bonus then "  (pass bonus)" else ""}`, {
 			TextSize = 14,
 			TextColor3 = if done then Theme.Good else Theme.Text,
@@ -459,7 +459,10 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 		if quest.gems and quest.gems > 0 then
 			reward = `+{quest.gems} 💎  {reward}`
 		end
-		Kit.label(reward, { Font = Theme.FontBold, TextSize = 13, TextColor3 = STAR, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, if canReroll and not done then -40 else 0, 0, 0), Size = UDim2.fromOffset(110, 20), Parent = row })
+		if quest.xp and quest.xp > 0 then
+			reward ..= `  +{quest.xp} XP`
+		end
+		Kit.label(reward, { Font = Theme.FontBold, TextSize = 13, TextColor3 = STAR, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, if canReroll and not done then -40 else 0, 0, 0), Size = UDim2.fromOffset(150, 20), Parent = row })
 		if canReroll and not done then
 			Kit.button("🔄", function()
 				sendEconomy({ action = "questReroll", questId = quest.id })
@@ -480,6 +483,15 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 		for i, quest in wallet.challenges or {} do
 			questRow(daily, i, quest, canReroll)
 		end
+		local sweep = Season.DailySweep
+		local streak = view.questStreak or 0
+		local streakText = if streak > 0 then ` · 🔥 {streak}-day quest streak` else ""
+		Kit.label(
+			if view.dailySwept
+				then `🧹 Daily sweep done!{streakText}`
+				else `🧹 Finish them all: +{sweep.gems} 💎  +{sweep.stars + (math.min(streak + 1, Season.DailySweepStreakMax) - 1) * Season.DailySweepStreakStars} ⭐  +{sweep.xp} XP{streakText}`,
+			{ Font = Theme.FontBold, TextSize = 13, TextColor3 = if view.dailySwept then Theme.Good else Theme.Accent, Size = UDim2.new(1, 0, 0, 18), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 49, Parent = daily }
+		)
 		Kit.label(if canReroll then "🔄 Swap one quest you don't like, once a day." else "🔄 Swap used today.", { TextSize = 12, TextColor3 = Theme.SubText, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 50, Parent = daily })
 		if not view.premium then
 			Kit.label("⭐ The premium pass adds a bonus daily quest.", { TextSize = 12, TextColor3 = PREMIUM, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 51, Parent = daily })
@@ -493,6 +505,12 @@ function SeasonPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurc
 		end
 		if #(view.weekly or {}) == 0 then
 			Kit.label("Play a game to get this week's quests.", { TextSize = 13, TextColor3 = Theme.SubText, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = 1, Parent = weekly })
+		else
+			local sweep = Season.WeeklySweep
+			Kit.label(
+				if view.weeklySwept then "🧹 Weekly sweep done!" else `🧹 Finish all five: +{sweep.gems} 💎  +{commas(sweep.stars)} ⭐  +{sweep.xp} XP`,
+				{ Font = Theme.FontBold, TextSize = 13, TextColor3 = if view.weeklySwept then Theme.Good else Theme.Accent, Size = UDim2.new(1, 0, 0, 18), TextWrapped = false, LayoutOrder = 49, Parent = weekly }
+			)
 		end
 		Kit.label(`Stars also come from every rewarded game: {Season.StarsPerMinute} a minute, +{Season.WinStars} for a win (half with only bots).`, { TextSize = 12, TextColor3 = Theme.SubText, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = content })
 	end

@@ -229,7 +229,9 @@ function War.create(container: Frame, sendMove: (any) -> ())
 		autoOn = view.auto == true
 		autoButton.Visible = playing
 		autoButton.Text = if autoOn then "Auto-flip: On" else "Auto-flip: Off"
-		autoButton.BackgroundColor3 = if autoOn then Theme.Good else Theme.Panel
+		-- Off is a light, readable button (never a dark grayed-out look).
+		autoButton.BackgroundColor3 = if autoOn then Theme.Good else Theme.PanelLight
+		autoButton.TextColor3 = if autoOn then Color3.new(1, 1, 1) else Theme.Text
 	end
 
 	return {

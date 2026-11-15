@@ -36,6 +36,8 @@ export type Item = {
 	notForSale: boolean?,
 	free: boolean?,
 	season: number?, -- Game Night Pass reward from this season (shared/Season), never sold
+	level: number?, -- reward for reaching this account level (Economy.LevelMilestones), never sold
+	achievement: string?, -- reward for an achievement's top tier or a game's mastery (shared/Achievements), never sold
 }
 
 local items: { Item } = {
@@ -254,6 +256,49 @@ local items: { Item } = {
 	{ id = "cards_speed_demon_title", name = "Title: Speed Demon", shop = "cards", slot = "title", tier = "Rare", coins = 1800, earnedOnly = true },
 	{ id = "reactions_cards", name = "Card Sharp", shop = "cards", slot = "reactions", tier = "Rare", coins = 1500, universal = 1500 },
 }
+
+-- Titles earned, never sold: account level milestones (Economy.LevelMilestones), the top
+-- tier of some general achievements, and mastering a game (every one of its achievements at
+-- Gold, see shared/Achievements). They show above your head in the lobby when equipped.
+local earnedTitles = {
+	{ id = "level_title_5", name = "Title: Rookie", tier = "Common", level = 5 },
+	{ id = "level_title_10", name = "Title: Regular", tier = "Common", level = 10 },
+	{ id = "level_title_20", name = "Title: Veteran", tier = "Rare", level = 20 },
+	{ id = "level_title_30", name = "Title: Tabletop Hero", tier = "Rare", level = 30 },
+	{ id = "level_title_50", name = "Title: Grand Host", tier = "Epic", level = 50 },
+	{ id = "level_title_75", name = "Title: Living Legend", tier = "Legendary", level = 75 },
+	{ id = "level_title_100", name = "Title: Game Night Icon", tier = "Legendary", level = 100 },
+	{ id = "ach_title_lifer", name = "Title: Lifer", tier = "Legendary", achievement = "matches" },
+	{ id = "ach_title_explorer", name = "Title: Try Everything", tier = "Legendary", achievement = "tried" },
+	{ id = "ach_title_legend", name = "Title: Legend", tier = "Legendary", achievement = "wins" },
+	{ id = "ach_title_unstoppable", name = "Title: Unstoppable", tier = "Legendary", achievement = "streak" },
+	{ id = "ach_title_tableboss", name = "Title: Table Boss", tier = "Legendary", achievement = "human_wins" },
+	{ id = "ach_title_cardshark", name = "Title: Card Shark", tier = "Legendary", achievement = "card_wins" },
+	{ id = "ach_title_social", name = "Title: Social Butterfly", tier = "Legendary", achievement = "invites" },
+	{ id = "ach_title_questmaster", name = "Title: Quest Master", tier = "Legendary", achievement = "quests" },
+}
+for _, title in earnedTitles do
+	local item: any = title
+	item.shop = "hub"
+	item.slot = "title"
+	item.notForSale = true
+	table.insert(items, item)
+end
+-- "Title: Chess Master" for every game (named from GameCatalog, so renames follow).
+do
+	local GameCatalog = require(script.Parent.GameCatalog)
+	for _, entry in GameCatalog.entries do
+		table.insert(items, {
+			id = `mastery_title_{entry.id}`,
+			name = `Title: {entry.name} Master`,
+			shop = "hub",
+			slot = "title",
+			tier = "Epic",
+			notForSale = true,
+			achievement = `mastery:{entry.id}`,
+		})
+	end
+end
 
 local byId: { [string]: Item } = {}
 for _, item in items do

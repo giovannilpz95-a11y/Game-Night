@@ -29,6 +29,17 @@ Season.WeeklyQuests = 5
 Season.FinalWeekMultiplier = 2 -- double Stars in the last week, to help everyone finish
 Season.VipStarBonus = 0.25 -- VIP's +25% on play applies to match Stars (not quests)
 Season.RerollsPerDay = 1 -- swap one daily quest you don't like for another
+-- Every quest also pays account XP (Giovanni, 2026-11-15: "quest give both").
+Season.DailyQuestXp = 50
+Season.BonusQuestXp = 50
+Season.WeeklyQuestXp = 250
+-- Sweeps: finishing every daily quest (the premium bonus quest doesn't count) or all five
+-- weekly quests pays a bonus on top. Days in a row with a daily sweep are your quest streak;
+-- the streak adds Stars to the daily sweep (DailySweepStreakStars per day, up to the max).
+Season.DailySweep = { gems = 10, stars = 150, xp = 100 }
+Season.DailySweepStreakStars = 25
+Season.DailySweepStreakMax = 7
+Season.WeeklySweep = { gems = 30, stars = 750, xp = 500 }
 
 -- Premium. A developer product (not a game pass), because a game pass can only be owned
 -- once forever and the premium pass is bought again each season. It can also be bought
@@ -52,7 +63,7 @@ export type Reward = { gems: number?, universal: number?, item: string? }
 export type QuestSpec = {
 	theme: number,
 	id: string,
-	kind: string, -- "play" | "win" | "minutes" | "variety" | "react"
+	kind: string, -- "play" | "win" | "minutes" | "variety" | "react" | "streak" (see Core/Quests)
 	target: number,
 	text: string,
 	category: string?, -- skipped in weeks when no ready game has this category

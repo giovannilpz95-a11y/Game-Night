@@ -27,6 +27,8 @@ export type Challenge = {
 	gems: number?, -- Gems it pays
 	bonus: boolean?, -- the premium pass's extra daily quest
 	seen: { [string]: boolean }?, -- "variety": games already counted
+	xp: number?, -- account XP it pays
+	stat: string?, -- "stat": the game's own stat it counts (StatsCatalog key)
 }
 
 -- The Game Night Pass (shared/Season, Core/SeasonPass).
@@ -36,7 +38,7 @@ export type SeasonData = {
 	premium: boolean,
 	free: { [string]: boolean }, -- claimed free tiers, keyed by tostring(tier)
 	paid: { [string]: boolean }, -- claimed premium tiers
-	weekly: { week: number, quests: { Challenge } },
+	weekly: { week: number, quests: { Challenge }, swept: boolean? }, -- swept: the all-weekly-quests bonus was paid
 	rerollDay: number, -- day the free daily reroll was used
 }
 
@@ -46,6 +48,7 @@ export type Daily = {
 	botMatches: number,
 	winsVs: { [string]: number }, -- wins against each human today (anti win-trading)
 	challenges: { Challenge },
+	swept: boolean, -- every daily quest done and the sweep bonus paid
 }
 
 export type Data = {
@@ -81,8 +84,13 @@ export type Data = {
 			coinsSpent: { [string]: number },
 		},
 		social: { invitesSent: number, friendsJoined: number, partiesJoined: number },
+		quests: { daily: number, weekly: number, dailySweeps: number, weeklySweeps: number },
 	},
-	badges: { [string]: number }, -- badge id -> os.time() it was earned (shared/Badges)
+	badges: { [string]: number }, -- old one-tier badges (before 2026-11-15), id -> os.time(); see Achievements.Legacy
+	-- Achievement tiers earned: id -> { t = tier, at = os.time() of the latest tier } (shared/Achievements)
+	achievements: { [string]: { t: number, at: number } },
+	-- Days in a row with every daily quest done (the sweep).
+	questStreak: { last: number, count: number, best: number },
 	weekly: { week: number, points: { [string]: number } }, -- this week's leaderboard points (Core/Weekly)
 	login: { lastDay: number, streak: number, best: number },
 	-- Friend invites (see Core/Referrals): who brought this player, and who they brought.
@@ -115,7 +123,7 @@ export type Data = {
 }
 
 local function newDaily(day: number): Daily
-	return { day = day, firstWin = false, botMatches = 0, winsVs = {}, challenges = {} }
+	return { day = day, firstWin = false, botMatches = 0, winsVs = {}, challenges = {}, swept = false }
 end
 Profile.newDaily = newDaily
 
@@ -150,8 +158,11 @@ function Profile.new(now: number): Data
 			games = {},
 			currency = { gemsEarned = 0, gemsBought = 0, gemsSpent = 0, coinsEarned = {}, coinsSpent = {} },
 			social = { invitesSent = 0, friendsJoined = 0, partiesJoined = 0 },
+			quests = { daily = 0, weekly = 0, dailySweeps = 0, weeklySweeps = 0 },
 		},
 		badges = {},
+		achievements = {},
+		questStreak = { last = 0, count = 0, best = 0 },
 		weekly = { week = 0, points = {} },
 		login = { lastDay = 0, streak = 0, best = 0 },
 		friends = { invitedBy = 0, welcomed = false, invited = {}, payDay = 0, paidToday = 0 },

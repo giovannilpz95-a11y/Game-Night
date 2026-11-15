@@ -8,7 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local StatsCatalog = require(ReplicatedStorage.Shared.StatsCatalog)
-local Badges = require(ReplicatedStorage.Shared.Badges)
+local Achievements = require(ReplicatedStorage.Shared.Achievements)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local GameArt = require(ReplicatedStorage.Shared.GameArt)
 local Kit = require(script.Parent.Kit)
@@ -23,7 +23,7 @@ local OVERALL = "_all"
 local TABS = {
 	{ key = "overview", name = "Overview" },
 	{ key = "games", name = "Games" },
-	{ key = "badges", name = "Badges" },
+	{ key = "badges", name = "Trophies" },
 	{ key = "weekly", name = "Weekly" },
 }
 
@@ -64,7 +64,8 @@ local function gameName(gameId: string): string
 	return if entry then entry.name else gameId
 end
 
-function StatsPanel.create(parent: Instance, send: (any) -> ())
+-- `openAchievements` opens the 🏆 Achievements window (the Trophies tab's button).
+function StatsPanel.create(parent: Instance, send: (any) -> (), openAchievements: (() -> ())?)
 	local window = Kit.modal(parent, { name = "StatsWindow", maxSize = Vector2.new(860, 640) })
 	local body = window.body
 
@@ -207,10 +208,7 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 
 		local columns = if compact then 3 else 4
 		local tiles = grid(58, columns)
-		local owned = 0
-		for _ in p.badges do
-			owned += 1
-		end
+		local _, owned, totalBadges = Achievements.score(p.achievements or {})
 		local cells = {
 			{ commas(t.matches), "Games played" },
 			{ commas(t.wins), "Wins" },
@@ -218,8 +216,8 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 			{ `{t.bestStreak}`, "Best win streak" },
 			{ `{t.streak}`, "Current streak" },
 			{ duration(t.minutes), "Time played" },
-			{ `{t.gamesTried}/{Badges.AllGames}`, "Games tried" },
-			{ `{owned}/{#Badges.list}`, "Badges" },
+			{ `{t.gamesTried}/{Achievements.AllGames}`, "Games tried" },
+			{ `{owned}/{totalBadges}`, "Badges" },
 			{ commas(t.humanMatches), "Games with people" },
 			{ commas(t.humanWins), "Wins vs people" },
 			{ `{t.daysPlayed}`, "Days played" },
@@ -328,89 +326,58 @@ function StatsPanel.create(parent: Instance, send: (any) -> ())
 		end
 	end
 
+	-- Trophies: the trophy score, badges per tier and the best tiers; the full list is in
+	-- the 🏆 Achievements window.
 	local function renderBadges(p: any)
-		local owned = 0
-		for _ in p.badges do
-			owned += 1
-		end
-		note(`{owned} of {#Badges.list} earned. Badges pay {Economy.BadgeGems[1]} / {Economy.BadgeGems[2]} / {Economy.BadgeGems[3]} Gems (bronze / silver / gold), once.`)
-		local columns = if compact then 2 else 3
-		local container = grid(92, columns)
-		-- Earned first (newest first), then closest to done.
-		local list = table.clone(Badges.list)
-		local function progress(badge: any): number
-			local current, goal = Badges.progress(p, badge)
-			return current / goal
-		end
-		table.sort(list, function(a, b)
-			local ea, eb = p.badges[a.id], p.badges[b.id]
-			if (ea ~= nil) ~= (eb ~= nil) then
-				return ea ~= nil
+		local earned = p.achievements or {}
+		local points, badges, total = Achievements.score(earned)
+		local head = card(64)
+		Kit.label(`🏆 {commas(points)}`, { Font = Theme.FontTitle, TextSize = 24, Position = UDim2.new(0, 12, 0, 6), Size = UDim2.new(0.5, 0, 0, 28), Parent = head })
+		Kit.label(`{badges} of {total} badges · {p.totals and p.totals.mastered or 0} games mastered`, {
+			TextColor3 = Theme.SubText,
+			TextSize = 14,
+			Position = UDim2.new(0, 12, 0, 36),
+			Size = UDim2.new(1, -24, 0, 20),
+			Parent = head,
+		})
+		local counts = { 0, 0, 0, 0, 0 }
+		for _, a in Achievements.list do
+			for t = 1, Achievements.earnedTier(earned, a.id) do
+				counts[t] += 1
 			end
-			if ea and eb then
-				return ea > eb
+		end
+		local tiles = grid(58, if compact then 3 else 5)
+		for t = 1, Achievements.MaxTier do
+			tile(tiles, tostring(counts[t]), Achievements.TierNames[t], t)
+		end
+		-- The highest tiers earned.
+		local best = {}
+		for _, a in Achievements.list do
+			local tier = Achievements.earnedTier(earned, a.id)
+			if tier > 0 then
+				table.insert(best, { a = a, tier = tier })
 			end
-			return progress(a) > progress(b)
+		end
+		table.sort(best, function(x, y)
+			return x.tier > y.tier
 		end)
-		for i, badge in list do
-			local earned = p.badges[badge.id] ~= nil
-			local color = Badges.TierColors[badge.tier] or Theme.SubText
-			local frame = Kit.new("Frame", {
-				BackgroundColor3 = Theme.PanelLight,
-				BackgroundTransparency = if earned then 0 else 0.35,
-				BorderSizePixel = 0,
-				LayoutOrder = i,
-				Parent = container,
-			}, {
-				Kit.corner(10),
-				Kit.new("UIStroke", { Color = color, Thickness = if earned then 2 else 1, Transparency = if earned then 0 else 0.6 }),
-			})
-			Kit.label(badge.icon, {
-				TextSize = 30,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				TextTransparency = if earned then 0 else 0.5,
-				Position = UDim2.new(0, 6, 0, 8),
-				Size = UDim2.new(0, 44, 0, 44),
-				Parent = frame,
-			})
-			Kit.label(badge.name, {
-				Font = Theme.FontBold,
-				TextSize = 15,
-				TextColor3 = if earned then color else Theme.Text,
-				TextTruncate = Enum.TextTruncate.AtEnd,
-				TextWrapped = false,
-				Position = UDim2.new(0, 56, 0, 8),
-				Size = UDim2.new(1, -62, 0, 20),
-				Parent = frame,
-			})
-			Kit.label(badge.desc, {
-				TextSize = 12,
-				TextColor3 = Theme.SubText,
-				TextYAlignment = Enum.TextYAlignment.Top,
-				Position = UDim2.new(0, 56, 0, 28),
-				Size = UDim2.new(1, -62, 0, 32),
-				Parent = frame,
-			})
-			local current, goal = Badges.progress(p, badge)
-			if earned then
-				Kit.label(`✓ {Badges.TierNames[badge.tier]} · {date(p.badges[badge.id], "ll")}`, {
-					TextSize = 12,
-					TextColor3 = color,
-					Position = UDim2.new(0, 10, 1, -24),
-					Size = UDim2.new(1, -20, 0, 18),
-					Parent = frame,
+		if #best > 0 then
+			section("Best badges")
+			local container = grid(56, if compact then 2 else 3)
+			for i = 1, math.min(6, #best) do
+				local a, tier = best[i].a, best[i].tier
+				local color = Achievements.TierColors[tier]
+				local frame = Kit.new("Frame", { BackgroundColor3 = Theme.PanelLight, BorderSizePixel = 0, LayoutOrder = i, Parent = container }, {
+					Kit.corner(10),
+					Kit.new("UIStroke", { Color = color, Thickness = 1.5 }),
 				})
-			else
-				bar(frame, current / goal, color, UDim2.new(0, 10, 1, -18), UDim2.new(1, -80, 0, 8))
-				Kit.label(`{commas(current)}/{commas(goal)}`, {
-					TextSize = 12,
-					TextColor3 = Theme.SubText,
-					TextXAlignment = Enum.TextXAlignment.Right,
-					Position = UDim2.new(1, -68, 1, -24),
-					Size = UDim2.new(0, 60, 0, 18),
-					Parent = frame,
-				})
+				Kit.label(a.icon, { TextSize = 26, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 6, 0, 6), Size = UDim2.new(0, 40, 0, 44), Parent = frame })
+				Kit.label(Achievements.fullName(a), { Font = Theme.FontBold, TextSize = 14, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Position = UDim2.new(0, 50, 0, 8), Size = UDim2.new(1, -56, 0, 20), Parent = frame })
+				Kit.label(Achievements.TierNames[tier], { TextSize = 12, TextColor3 = Theme.SubText, Position = UDim2.new(0, 50, 0, 28), Size = UDim2.new(1, -56, 0, 18), Parent = frame })
 			end
+		end
+		if openAchievements and p.userId == localPlayer.UserId then
+			Kit.button("🏆 See every achievement", openAchievements, { Size = UDim2.new(0, 260, 0, 40), TextSize = 16, LayoutOrder = nextOrder(), Parent = content })
 		end
 	end
 

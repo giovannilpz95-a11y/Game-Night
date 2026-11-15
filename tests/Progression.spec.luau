@@ -2,7 +2,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
 local StatsCatalog = require(ReplicatedStorage.Shared.StatsCatalog)
-local Badges = require(ReplicatedStorage.Shared.Badges)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local Chess = require(ReplicatedStorage.Shared.Games.Chess)
 local Checkers = require(ReplicatedStorage.Shared.Games.Checkers)
@@ -233,50 +232,6 @@ return function(T)
 				T.ok(stat.kind == "sum" or stat.kind == "max", `{gameId}.{stat.key} kind`)
 			end
 		end
-	end)
-
-	T.test("every badge reads a stat that exists", function()
-		local data = fresh()
-		local view = Stats.view(data, false)
-		local ids = {}
-		for _, badge in Badges.list do
-			T.ok(not ids[badge.id], `duplicate badge {badge.id}`)
-			ids[badge.id] = true
-			T.ok(badge.tier >= 1 and badge.tier <= 3 and Economy.BadgeGems[badge.tier] ~= nil, `{badge.id} tier`)
-			T.ok(badge.goal >= 1, `{badge.id} goal`)
-			local parts = string.split(badge.stat, ".")
-			if parts[1] == "games" then
-				T.ok(GameCatalog.get(parts[2]) ~= nil, `{badge.id}: unknown game {parts[2]}`)
-				if parts[3] == "extra" then
-					T.ok(StatsCatalog.def(parts[2], parts[4]) ~= nil, `{badge.id}: {parts[2]} has no stat {parts[4]}`)
-				else
-					T.ok(Stats.gameRow(fresh(), parts[2])[parts[3]] ~= nil, `{badge.id}: no game stat {parts[3]}`)
-				end
-			elseif #parts == 1 then
-				T.ok(type(view[parts[1]]) == "number", `{badge.id}: no stat {badge.stat}`)
-			else
-				T.ok(type(view[parts[1]]) == "table" and type(view[parts[1]][parts[2]]) == "number", `{badge.id}: no stat {badge.stat}`)
-			end
-		end
-	end)
-
-	T.test("badges are earned once their goal is reached", function()
-		local data = fresh()
-		T.eq(#Badges.newlyEarned(Stats.view(data, false), data.badges), 0)
-		Stats.recordMatch(data, info({ won = true }))
-		local earned = Badges.newlyEarned(Stats.view(data, false), data.badges)
-		local names = {}
-		for _, badge in earned do
-			names[badge.id] = true
-			data.badges[badge.id] = NOW
-		end
-		T.ok(names.first_game and names.first_win)
-		T.eq(#Badges.newlyEarned(Stats.view(data, false), data.badges), 0, "never twice")
-		T.eq(Badges.value(Stats.view(data, false), "games.Chess.wins"), 1)
-		T.eq(Badges.value(Stats.view(data, false), "games.Nope.wins"), 0)
-		local current, goal = Badges.progress(Stats.view(data, false), Badges.get("wins_10") :: any)
-		T.eq(current, 1)
-		T.eq(goal, 10)
 	end)
 
 	-- Games report their stats ----------------------------------------------------------

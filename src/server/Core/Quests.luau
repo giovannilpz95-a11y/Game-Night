@@ -8,6 +8,8 @@
 --   minutes  play N minutes (rewarded minutes, like XP)
 --   variety  play N different games
 --   react    send N reactions at a table
+--   stat     add up one of a game's own stats (StatsCatalog), e.g. "Capture 6 pieces in Chess"
+--   streak   win N games in a row (a loss starts it again, a draw keeps it)
 --
 -- Only matches that pay rewards count (not resigned, not too short), so quests can't be
 -- farmed with instant resigns.
@@ -27,6 +29,95 @@ export type Event = {
 	won: boolean?,
 	minutes: number?,
 	vsHumans: boolean?,
+	isDraw: boolean?,
+	extra: { [string]: any }?, -- the game's own stats for this seat (StatsCatalog keys)
+}
+
+-- Each game's own quests: one for a daily slot and one for a weekly slot. `stat` quests
+-- count a StatsCatalog "sum" stat the game reports; games without one use wins or games.
+-- "{game}" becomes the game's name. Games not listed get Quests.DefaultGoals.
+export type GoalSpec = { kind: string, target: number, text: string, stat: string? }
+Quests.DefaultGoals = {
+	daily = { kind = "win", target = 1, text = "Win a game of {game}" },
+	weekly = { kind = "win", target = 4, text = "Win 4 games of {game}" },
+}
+Quests.GameGoals = {
+	Chess = {
+		daily = { kind = "stat", stat = "captures", target = 6, text = "Capture 6 pieces in {game}" },
+		weekly = { kind = "stat", stat = "checkmates", target = 2, text = "Checkmate twice in {game}" },
+	},
+	Checkers = {
+		daily = { kind = "stat", stat = "captures", target = 6, text = "Capture 6 pieces in {game}" },
+		weekly = { kind = "stat", stat = "kings", target = 4, text = "Crown 4 kings in {game}" },
+	},
+	ColorClash = {
+		daily = { kind = "stat", stat = "wilds", target = 3, text = "Play 3 wilds in {game}" },
+		weekly = { kind = "stat", stat = "cards", target = 60, text = "Play 60 cards in {game}" },
+	},
+	TriviaNight = {
+		daily = { kind = "stat", stat = "correct", target = 8, text = "Get 8 answers right in {game}" },
+		weekly = { kind = "stat", stat = "correct", target = 40, text = "Get 40 answers right in {game}" },
+	},
+	Werewolf = {
+		daily = { kind = "play", target = 2, text = "Play 2 games of {game}" },
+		weekly = { kind = "stat", stat = "survived", target = 3, text = "Survive to the end of 3 games of {game}" },
+	},
+	FiveDice = {
+		daily = { kind = "stat", stat = "bigFives", target = 1, text = "Roll a Big Five in {game}" },
+		weekly = { kind = "stat", stat = "upperBonus", target = 2, text = "Earn 2 upper bonuses in {game}" },
+	},
+	SeaStrike = {
+		daily = { kind = "stat", stat = "sunk", target = 5, text = "Sink 5 ships in {game}" },
+		weekly = { kind = "stat", stat = "hits", target = 60, text = "Land 60 hits in {game}" },
+	},
+	Whodunit = {
+		daily = { kind = "play", target = 1, text = "Play a game of {game}" },
+		weekly = { kind = "stat", stat = "solved", target = 2, text = "Solve 2 cases in {game}" },
+	},
+	WordTiles = {
+		daily = { kind = "stat", stat = "words", target = 8, text = "Play 8 words in {game}" },
+		weekly = { kind = "stat", stat = "words", target = 40, text = "Play 40 words in {game}" },
+	},
+	Conquest = {
+		daily = { kind = "play", target = 1, text = "Play a game of {game}" },
+		weekly = { kind = "stat", stat = "knockouts", target = 3, text = "Knock out 3 players in {game}" },
+	},
+	Hexlands = {
+		daily = { kind = "stat", stat = "roads", target = 6, text = "Build 6 roads in {game}" },
+		weekly = { kind = "stat", stat = "towns", target = 6, text = "Build 6 towns in {game}" },
+	},
+	Speed = {
+		daily = { kind = "stat", stat = "cards", target = 40, text = "Play 40 cards in {game}" },
+		weekly = { kind = "stat", stat = "cards", target = 200, text = "Play 200 cards in {game}" },
+	},
+	GoFish = {
+		daily = { kind = "stat", stat = "books", target = 5, text = "Collect 5 books in {game}" },
+		weekly = { kind = "stat", stat = "books", target = 25, text = "Collect 25 books in {game}" },
+	},
+	OldMaid = {
+		daily = { kind = "stat", stat = "pairs", target = 10, text = "Make 10 pairs in {game}" },
+		weekly = { kind = "stat", stat = "pairs", target = 50, text = "Make 50 pairs in {game}" },
+	},
+	Snap = {
+		daily = { kind = "stat", stat = "snaps", target = 8, text = "Make 8 good snaps in {game}" },
+		weekly = { kind = "stat", stat = "snaps", target = 40, text = "Make 40 good snaps in {game}" },
+	},
+	GinRummy = {
+		daily = { kind = "play", target = 2, text = "Play 2 games of {game}" },
+		weekly = { kind = "stat", stat = "gins", target = 2, text = "Go gin twice in {game}" },
+	},
+	OhHell = {
+		daily = { kind = "stat", stat = "exact", target = 5, text = "Make your bid exactly 5 times in {game}" },
+		weekly = { kind = "stat", stat = "exact", target = 25, text = "Make your bid exactly 25 times in {game}" },
+	},
+	TicTacToe = {
+		daily = { kind = "streak", target = 2, text = "Win 2 games of {game} in a row" },
+		weekly = { kind = "win", target = 6, text = "Win 6 games of {game}" },
+	},
+	FourInARow = {
+		daily = { kind = "streak", target = 2, text = "Win 2 games of {game} in a row" },
+		weekly = { kind = "win", target = 5, text = "Win 5 games of {game}" },
+	},
 }
 
 -- How a category reads in a quest ("Finish 3 card games").
@@ -63,7 +154,18 @@ function Quests.progress(list: { Profile.Challenge }, event: Event): { Profile.C
 		if event.kind == "react" then
 			add = if quest.kind == "react" then 1 else 0
 		elseif event.kind == "match" and matches(quest, event) then
-			if quest.kind == "play" then
+			if quest.kind == "streak" then
+				if event.won then
+					add = 1
+				elseif not event.isDraw then
+					quest.progress = 0
+				end
+			elseif quest.kind == "stat" then
+				local value = if type(event.extra) == "table" and quest.stat then event.extra[quest.stat] else nil
+				if type(value) == "number" and value == value and value > 0 and value < math.huge then
+					add = math.floor(value)
+				end
+			elseif quest.kind == "play" then
 				add = 1
 			elseif quest.kind == "win" then
 				add = if event.won then 1 else 0
@@ -118,6 +220,14 @@ local function pick<T>(list: { T }, rng: Random): T
 	return list[rng:NextInteger(1, #list)]
 end
 
+-- A game's own quest for a daily or weekly slot ("daily" | "weekly"). `prefix` keeps ids
+-- apart: "goal_" daily, "wgoal_" weekly.
+function Quests.gameGoal(info: GameInfo, slot: string, prefix: string): Profile.Challenge
+	local goals = Quests.GameGoals[info.id] or Quests.DefaultGoals
+	local spec: GoalSpec = goals[slot] or Quests.DefaultGoals[slot]
+	return make(`{prefix}{info.id}`, spec.kind, spec.target, (spec.text:gsub("{game}", info.name)), { gameId = info.id, stat = spec.stat })
+end
+
 -- Small daily quests: the pass's bonus quest and what a reroll swaps in.
 function Quests.smallPool(games: { GameInfo }, rng: Random): { Profile.Challenge }
 	local pool = {
@@ -126,6 +236,7 @@ function Quests.smallPool(games: { GameInfo }, rng: Random): { Profile.Challenge
 		make("d_win2", "win", 2, "Win 2 games"),
 		make("d_react5", "react", 5, "Send 5 reactions at a table"),
 		make("d_variety2", "variety", 2, "Play 2 different games"),
+		make("d_streak2", "streak", 2, "Win 2 games in a row"),
 	}
 	local cats = categories(games)
 	if #cats > 0 then
@@ -160,6 +271,7 @@ function Quests.makeWeekly(games: { GameInfo }, rng: Random, seasonal: { Season.
 		{
 			make("w_win5", "win", 5, "Win 5 games"),
 			make("w_winpeople3", "win", 3, "Win 3 games with other people", { humans = true }),
+			make("w_streak3", "streak", 3, "Win 3 games in a row"),
 		},
 		{
 			make("w_people5", "play", 5, "Finish 5 games with other people", { humans = true }),
@@ -172,6 +284,9 @@ function Quests.makeWeekly(games: { GameInfo }, rng: Random, seasonal: { Season.
 	if #cats > 0 then
 		local category = pick(cats, rng)
 		table.insert(themes[4], make(`w_cat_{category}`, "play", 5, `Finish 5 {Quests.CategoryWords[category]}`, { category = category }))
+	end
+	if #games > 0 then
+		table.insert(themes[4], Quests.gameGoal(pick(games, rng), "weekly", "wgoal_"))
 	end
 	local themed: { [number]: { Profile.Challenge } } = {}
 	local themedSlots = {}
@@ -199,6 +314,7 @@ function Quests.makeWeekly(games: { GameInfo }, rng: Random, seasonal: { Season.
 		end
 		local quest = pick(options, rng)
 		quest.stars = Season.WeeklyQuestStars
+		quest.xp = Season.WeeklyQuestXp
 		table.insert(out, quest)
 		if #out >= Season.WeeklyQuests then
 			break

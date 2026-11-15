@@ -43,6 +43,7 @@ export type Actions = {
 	party: () -> (),
 	tables: () -> (),
 	stats: () -> (),
+	achievements: (() -> ())?,
 	shop: () -> (),
 	pass: () -> (),
 	avatar: () -> (),
@@ -317,10 +318,13 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 		moreRows[key] = row
 	end
 	moreRow("Stats", 1, "📊", "Your stats", actions.stats)
-	moreRow("Tables", 2, "🎲", "Tables in this server", actions.tables)
-	moreRow("Host", 3, "👑", "Host tools", actions.host)
-	moreRow("Voice", 4, "🎙", "Voice chat", actions.voice)
-	moreRow("Help", 5, "❔", "Help and rules", actions.help)
+	if actions.achievements then
+		moreRow("Achievements", 2, "🏆", "Achievements", actions.achievements)
+	end
+	moreRow("Tables", 3, "🎲", "Tables in this server", actions.tables)
+	moreRow("Host", 4, "👑", "Host tools", actions.host)
+	moreRow("Voice", 5, "🎙", "Voice chat", actions.voice)
+	moreRow("Help", 6, "❔", "Help and rules", actions.help)
 	moreRows.Voice.Visible = false
 
 	local more: TextButton
@@ -1019,7 +1023,7 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 		target = function(key: string): GuiObject?
 			if key == "Play" then
 				return play
-			elseif key == "Stats" or key == "Help" or key == "Tables" or key == "Host" or key == "Voice" then
+			elseif key == "Stats" or key == "Achievements" or key == "Help" or key == "Tables" or key == "Host" or key == "Voice" then
 				return more
 			elseif key == "Sound" or key == "Settings" then
 				return gear
