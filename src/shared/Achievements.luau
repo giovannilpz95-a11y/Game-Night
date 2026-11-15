@@ -70,21 +70,21 @@ Achievements.AllGames = #readyGames
 
 local list: { Achievement } = {
 	-- Playing
-	{ id = "matches", group = "play", name = "Regular", desc = "Finish {n} games", icon = "🎲", stat = "totals.matches", goals = { 1, 25, 100, 500, 2000 }, title = "ach_title_lifer" },
+	{ id = "matches", group = "play", name = "Regular", desc = "Finish {n} games", icon = "🎲", stat = "totals.matches", goals = { 1, 25, 100, 500, 2000 }, title = "ach_title_lifer", roblox = { [1] = 1303096898047298 } },
 	{ id = "minutes", group = "play", name = "Time Flies", desc = "Play for {n} minutes", icon = "⏰", stat = "totals.minutes", goals = { 60, 300, 1440, 6000, 18000 } },
-	{ id = "tried", group = "play", name = "Explorer", desc = "Play {n} different games", icon = "🧭", stat = "totals.gamesTried", goals = { 3, 6, 12, 20, #readyGames }, title = "ach_title_explorer" },
+	{ id = "tried", group = "play", name = "Explorer", desc = "Play {n} different games", icon = "🧭", stat = "totals.gamesTried", goals = { 3, 6, 12, 20, #readyGames }, title = "ach_title_explorer", roblox = { [3] = 2287151418963986 } },
 	{ id = "level", group = "play", name = "Level Up", desc = "Reach level {n}", icon = "⭐", stat = "level", goals = { 5, 10, 25, 50, 100 } },
 	{ id = "mastered", group = "play", name = "Master of Games", desc = "Master {n} games (every achievement of a game at Gold)", icon = "🎓", stat = "totals.mastered", goals = { 1, 3, 6, 12, 20 } },
 	-- Winning
-	{ id = "wins", group = "win", name = "Winner", desc = "Win {n} games", icon = "🏆", stat = "totals.wins", goals = { 1, 10, 50, 250, 1000 }, title = "ach_title_legend" },
-	{ id = "streak", group = "win", name = "Hot Streak", desc = "Win {n} games in a row", icon = "🔥", stat = "totals.bestStreak", goals = { 3, 5, 7, 10, 15 }, title = "ach_title_unstoppable" },
+	{ id = "wins", group = "win", name = "Winner", desc = "Win {n} games", icon = "🏆", stat = "totals.wins", goals = { 1, 10, 50, 250, 1000 }, title = "ach_title_legend", roblox = { [1] = 2143331339747605 } },
+	{ id = "streak", group = "win", name = "Hot Streak", desc = "Win {n} games in a row", icon = "🔥", stat = "totals.bestStreak", goals = { 3, 5, 7, 10, 15 }, title = "ach_title_unstoppable", roblox = { [3] = 219064400879098 } },
 	{ id = "human_wins", group = "win", name = "Table Boss", desc = "Win {n} games against other people", icon = "👑", stat = "totals.humanWins", goals = { 1, 10, 25, 100, 500 }, title = "ach_title_tableboss" },
 	{ id = "card_wins", group = "win", name = "Card Shark", desc = "Win {n} card games", icon = "🦈", stat = "totals.winsBy.Cards", goals = { 5, 25, 100, 500, 2000 }, title = "ach_title_cardshark" },
 	{ id = "strategy_wins", group = "win", name = "Strategist", desc = "Win {n} strategy games", icon = "🧠", stat = "totals.winsBy.Strategy", goals = { 3, 15, 50, 200, 750 } },
 	{ id = "party_plays", group = "win", name = "Life of the Party", desc = "Finish {n} party games", icon = "🥳", stat = "totals.playsBy.Party", goals = { 3, 15, 50, 200, 750 } },
 	-- Friends
 	{ id = "human_matches", group = "social", name = "Friendly", desc = "Play {n} games with other people", icon = "🤝", stat = "totals.humanMatches", goals = { 1, 10, 50, 250, 1000 } },
-	{ id = "invites", group = "social", name = "Party Starter", desc = "{n} people join your party from your invites", icon = "🎉", stat = "social.friendsJoined", goals = { 1, 3, 10, 25, 50 }, title = "ach_title_social" },
+	{ id = "invites", group = "social", name = "Party Starter", desc = "{n} people join your party from your invites", icon = "🎉", stat = "social.friendsJoined", goals = { 1, 3, 10, 25, 50 }, title = "ach_title_social", roblox = { [1] = 200366341236609 } },
 	-- Every day
 	{ id = "quests", group = "habit", name = "Quest Hunter", desc = "Finish {n} quests", icon = "📜", stat = "totals.questsDone", goals = { 5, 25, 100, 500, 1500 }, title = "ach_title_questmaster" },
 	{ id = "sweeps", group = "habit", name = "Clean Sweep", desc = "Finish every daily quest on {n} days", icon = "🧹", stat = "totals.dailySweeps", goals = { 1, 7, 30, 100, 300 } },
@@ -365,6 +365,23 @@ function Achievements.tierFor(a: Achievement, value: number): number
 		end
 	end
 	return tier
+end
+
+-- Roblox badge ids for every tier already earned (to award ones added after the tier was
+-- reached, or ones a failed award missed).
+function Achievements.robloxEarned(earned: { [string]: any }?): { number }
+	local out = {}
+	for _, a in list do
+		if a.roblox then
+			local tier = Achievements.earnedTier(earned, a.id)
+			for t, badgeId in a.roblox do
+				if t <= tier and badgeId ~= 0 then
+					table.insert(out, badgeId)
+				end
+			end
+		end
+	end
+	return out
 end
 
 -- The tier saved in `earned` (data.achievements or the view's copy).

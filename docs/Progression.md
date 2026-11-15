@@ -63,7 +63,7 @@ Your level and equipped title float over your head in the lobby (`NameTagService
 - **Unlock moments:** the server sends `Reward` with `achievements = { { id, tier, name, icon, desc, reward, title?, mastery? } }`; the client plays the full-screen moment in the lobby or a banner at a table (client/UI/Unlock), the two best tiers each, the rest summed up.
 - **Adding a game:** it gets Regular, Winner and Hot Hand automatically. Add signature ones in `Achievements.Signature` (one per StatsCatalog stat worth chasing) and a daily and weekly quest in `Quests.GameGoals`.
 
-**Roblox badges:** `roblox = { [tier] = badgeId }` on an achievement. Every tier is an in-game badge either way; Giovanni chose (2026-11-15) to make about 10 highlights Roblox Badges, created 5 a day so they stay inside Roblox's free quota (5 free per experience per UTC day, then 100 Robux each). Creating them through Open Cloud needs the API key to have the `legacy-universe.badge:manage-and-spend-robux` scope.
+**Roblox badges:** `roblox = { [tier] = badgeId }` on an achievement. Every tier is an in-game badge either way; Giovanni chose (2026-11-15) to make about 10 highlights Roblox Badges, created 5 a day so they stay inside Roblox's free quota (5 free per experience per UTC day, then 100 Robux each). Creating them through Open Cloud needs the API key to have the `legacy-universe.badge:manage-and-spend-robux` scope. Players who reached a badge's tier before it existed get it when they next join (`Achievements.robloxEarned`, checked with `UserHasBadgeAsync`). Icons are in project files `store-assets/badges/`.
 
 ## Weekly leaderboards
 One board per game plus "All games" (`_all`). Weeks run Monday 00:00 to Monday 00:00 UTC.

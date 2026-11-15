@@ -211,6 +211,21 @@ return function(T)
 		end
 	end)
 
+	T.test("Roblox badges sit on real tiers and are listed once their tier is earned", function()
+		local count = 0
+		for _, a in Achievements.list do
+			for tier, badgeId in a.roblox or {} do
+				T.ok(tier >= 1 and tier <= #a.goals, `{a.id}: Roblox badge on tier {tier}`)
+				T.ok(badgeId > 0 and badgeId == math.floor(badgeId), `{a.id}: badge id`)
+				count += 1
+			end
+		end
+		T.ok(count >= 5 and count <= 10, `{count} Roblox badges`)
+		T.eq(#Achievements.robloxEarned({}), 0)
+		local ids = Achievements.robloxEarned({ wins = { t = 1, at = 0 }, tried = { t = 2, at = 0 }, streak = { t = 3, at = 0 } })
+		T.eq(#ids, 2) -- Winner I and Hot Streak III; Explorer needs tier 3
+	end)
+
 	T.test("quests rolled before quest XP get it filled in", function()
 		local data = fresh()
 		for _, quest in data.daily.challenges do

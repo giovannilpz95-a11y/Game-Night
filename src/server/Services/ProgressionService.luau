@@ -96,6 +96,25 @@ local function awardRobloxBadge(player: Player, badgeId: number)
 	end)
 end
 
+-- Roblox badges for tiers earned before the badge existed (or a failed award).
+local function catchUpRobloxBadges(player: Player, data: Profile.Data)
+	local ids = Achievements.robloxEarned(data.achievements)
+	if #ids == 0 then
+		return
+	end
+	task.spawn(function()
+		for _, badgeId in ids do
+			if not player.Parent then
+				return
+			end
+			local ok, has = pcall(BadgeService.UserHasBadgeAsync, BadgeService, player.UserId, badgeId)
+			if ok and not has then
+				awardRobloxBadge(player, badgeId)
+			end
+		end
+	end)
+end
+
 local function checkAchievements(player: Player)
 	local data = DataService.get(player)
 	if not data then
@@ -366,6 +385,7 @@ function ProgressionService.init(economy: any)
 		local data = DataService.get(player)
 		if data then
 			AchievementRewards.migrate(data) -- old one-tier badges count, without paying twice
+			catchUpRobloxBadges(player, data)
 		end
 		catchUpLevels(player)
 		queueCheck(player) -- tiers for things done before achievements existed
