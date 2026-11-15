@@ -1,7 +1,8 @@
 -- Thirty-One table: players along the top with their lives as hearts, the stock and the
 -- discard pile on the felt, your 3 cards (and their value) at the bottom. Your turn: tap
 -- the stock or the discard pile (or Knock), then tap a card to throw away. The showdown
--- shows every hand.
+-- shows every hand. In Table view (no felt) a small card on the left keeps the lives,
+-- who knocked and the turns left, and the showdown comes up as a panel over the hand.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -28,8 +29,19 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 		return CardTable.nameOf(snapshot, seat)
 	end
 
-	local function hearts(n: number): string
-		return if n <= 0 then "Out" else string.rep("♥", n)
+	local function hearts(view: any, seat: number): string
+		local n = view.lives[seat]
+		if view.out and view.out[seat] then
+			return "Out"
+		end
+		return if n <= 0 then "County" else string.rep("♥", n)
+	end
+
+	local function isOut(view: any, seat: number): boolean
+		if view.out then
+			return view.out[seat] == true
+		end
+		return view.lives[seat] <= 0
 	end
 
 	local function render()
@@ -50,7 +62,10 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 				elseif view.knocker == seat then
 					line2 = "knocked!"
 				end
-				table.insert(chips, { seat = seat, bigLine = { text = hearts(view.lives[seat]), color = Color3.fromRGB(240, 80, 100) }, lines = { line2 }, turn = view.turn == seat and not showdown, dim = view.lives[seat] <= 0 })
+				if line2 == "" and not isOut(view, seat) and view.lives[seat] <= 0 then
+					line2 = "on the county"
+				end
+				table.insert(chips, { seat = seat, bigLine = { text = hearts(view, seat), color = Color3.fromRGB(240, 80, 100) }, lines = { line2 }, turn = view.turn == seat and not showdown, dim = isOut(view, seat) })
 			end
 		end
 		CardTable.seatChips(ui.seats, snapshot, chips)
@@ -64,7 +79,7 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 			CardFx.pop("31!", Color3.fromRGB(120, 220, 150), ui.root)
 		end
 		if showdown then
-			local title = if showdown.blitz then `{nameOf(showdown.blitz)} hit 31! Blitz!` else "Showdown"
+			local title = if showdown.replay then "Everyone would go out: replay the hand" elseif showdown.blitz then `{nameOf(showdown.blitz)} hit 31! Blitz!` else "Showdown"
 			CardTable.feltText(ui.content, title, 0.03, 18).TextColor3 = Theme.Accent
 			local lines = {}
 			for seat = 1, #snapshot.seats do
@@ -134,8 +149,10 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = "Watching"
 		elseif snapshot.result then
 			ui.prompt.Text = ""
-		elseif view.lives[me] <= 0 then
-			ui.prompt.Text = "You're out of lives"
+		elseif isOut(view, me) then
+			ui.prompt.Text = "You're out"
+		elseif drawing and view.knocker then
+			ui.prompt.Text = `Last turn! {nameOf(view.knocker)} knocked{valueText}`
 		elseif drawing then
 			ui.prompt.Text = `Take from the stock or the discard pile{if view.canKnock then ", or knock" else ""}{valueText}`
 		elseif discarding then
@@ -144,6 +161,61 @@ function ThirtyOne.create(container: Frame, sendMove: (any) -> ())
 			ui.prompt.Text = "Next deal soon..."
 		else
 			ui.prompt.Text = `{nameOf(view.turn)}'s turn{valueText}`
+		end
+
+		-- Table view: the running lines on the left, the showdown over the hand.
+		local info = {}
+		if me then
+			table.insert(info, `You: {hearts(view, me)}` .. (if not isOut(view, me) and view.lives[me] <= 0 then " (on the county)" else ""))
+		end
+		if view.knocker and not showdown then
+			table.insert(info, `{nameOf(view.knocker)} knocked · {view.lastTurns or 0} turn{if view.lastTurns == 1 then "" else "s"} left`)
+		elseif not showdown then
+			table.insert(info, if view.canKnock then "You can knock" else "Knocking opens after one lap")
+		end
+		local others = {}
+		for seat = 1, #snapshot.seats do
+			if seat ~= me and not isOut(view, seat) then
+				table.insert(others, `{nameOf(seat)} {hearts(view, seat)}`)
+			end
+		end
+		if #others > 0 and #others <= 4 then
+			for _, line in others do
+				table.insert(info, line)
+			end
+		end
+		CardTable.info(ui, info)
+		if showdown then
+			local lines = {}
+			local order = {}
+			for seat = 1, #snapshot.seats do
+				if showdown.values[tostring(seat)] then
+					table.insert(order, seat)
+				end
+			end
+			table.sort(order, function(a, b)
+				return showdown.values[tostring(a)] > showdown.values[tostring(b)]
+			end)
+			for _, seat in order do
+				local lost = showdown.lost[tostring(seat)]
+				local tag = ""
+				if seat == showdown.knocker then
+					tag ..= " (knocked)"
+				end
+				if lost and not showdown.replay then
+					tag ..= `  -{lost} ♥`
+					if table.find(showdown.out or {}, seat) then
+						tag ..= ", out"
+					elseif view.lives[seat] <= 0 then
+						tag ..= ", on the county"
+					end
+				end
+				table.insert(lines, `{nameOf(seat)}: {showdown.values[tostring(seat)]}{tag}`)
+			end
+			local title = if showdown.replay then "Everyone would go out: replay!" elseif showdown.blitz then `{nameOf(showdown.blitz)} hit 31! Blitz!` else "Showdown"
+			CardTable.notice(ui, title, lines, if showdown.blitz then Theme.Good else nil)
+		else
+			CardTable.notice(ui, nil)
 		end
 
 		local cards = {}

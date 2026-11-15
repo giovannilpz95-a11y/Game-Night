@@ -5,20 +5,26 @@
 -- cards, then says ready.
 -- On your turn play one or more cards of the same rank that are equal to or higher than
 -- the top of the pile (3 low ... King, Ace high). Then draw back up to 3 while the draw
--- pile lasts. Can't play? Pick up the whole pile.
+-- pile lasts. Can't play (or would rather not)? Pick up the whole pile.
 -- Special cards: a 2 can go on anything and resets the pile (anything may follow it).
 -- A 10 can go on anything and burns the pile (it's cleared away) and you go again.
 -- Four of the same rank in a row on top also burns the pile, and you go again.
 -- With your hand empty and the draw pile gone, play your face-up cards; after those,
 -- flip a face-down card blind: if it can't be played, you pick up the pile with it.
+-- The lowest ordinary card in anyone's hand or face-up cards decides who starts; if it's
+-- in their hand, their first play must include it.
 -- First player out of cards wins. After TURN_LIMIT turns, fewest cards left wins.
 --
--- House rules (options.rules): sevenLower (after a 7 the next card must be 7 or lower),
--- burnFour (default on: four of a kind in a row burns the pile).
+-- House rules (options.rules): lower (5, 7 or 9: after that card the next must be equal
+-- or lower; sevenLower = true means 7), burnFour (default on: four of a kind in a row
+-- burns the pile), eightSkips (each 8 played skips the next player), invisibleThree (a 3
+-- is see-through: the card under it counts), gamble (stuck with cards in hand? Flip the
+-- top of the draw pile instead: it's played if it fits, else you pick up with it).
 --
 -- Moves: { kind = "swap", hand = id, up = id }  |  { kind = "ready" }   (setup, everyone)
 --        { kind = "play", cards = { id, ... } }  (from your hand, or face-up when it's empty)
---        { kind = "pickup" }  (only when you can't play)
+--        { kind = "pickup" }  (any time the pile has cards, instead of playing)
+--        { kind = "gamble" }  (house rule: nothing plays from hand, draw pile not empty)
 --        { kind = "blind", index = 1..3 }  (hand and face-up empty)
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -71,19 +77,35 @@ function Palace.new(seatCount: number, options: any?, rng: Random?)
 		end
 		ready[seat] = false
 	end
+	local lowerRank = nil
+	if rules.lower == 5 or rules.lower == 7 or rules.lower == 9 then
+		lowerRank = rules.lower
+	elseif rules.sevenLower == true then
+		lowerRank = 7
+	end
+	local upSlots = {}
+	for seat = 1, seatCount do
+		upSlots[seat] = table.clone(up[seat])
+	end
 	return {
 		seatCount = seatCount,
 		rng = random,
 		hands = hands,
 		up = up, -- face-up table cards (public)
+		upSlots = upSlots, -- up[] by table slot (false once played), so cards stay put on the table
 		down = down, -- face-down table cards (nobody sees them); false marks a used slot
 		draw = deck,
 		pile = {},
 		burned = 0,
 		ready = ready,
 		phase = "setup", -- "setup" | "play"
-		sevenLower = rules.sevenLower == true,
+		lowerRank = lowerRank,
+		sevenLower = lowerRank == 7,
 		burnFour = rules.burnFour ~= false,
+		eightSkips = rules.eightSkips == true,
+		invisibleThree = rules.invisibleThree == true,
+		gamble = rules.gamble == true,
+		mustPlay = nil, -- the starter's lowest card, which their first play must include
 		turn = 1,
 		turns = 0,
 		lastAction = nil,
@@ -93,8 +115,21 @@ function Palace.new(seatCount: number, options: any?, rng: Random?)
 	}
 end
 
+-- The card that counts on top of the pile (an invisible 3 shows the card under it).
 local function top(state): number?
-	return state.pile[#state.pile]
+	local pile = state.pile or {}
+	for i = #pile, 1, -1 do
+		if not (state.invisibleThree and rank(pile[i]) == 3) then
+			return pile[i]
+		end
+	end
+	return nil
+end
+Palace.top = top
+
+-- The "lower" card in play (house rule), or nil.
+local function lowerRankOf(state): number?
+	return state.lowerRank or (if state.sevenLower then 7 else nil)
 end
 
 -- Can a card of this rank go on the pile right now?
@@ -102,12 +137,16 @@ function Palace.canPlay(state, id: number): boolean
 	if isSpecial(id) then
 		return true
 	end
+	if state.invisibleThree and rank(id) == 3 then
+		return true -- see-through: it goes on anything
+	end
 	local t = top(state)
 	if t == nil or rank(t) == 2 then
 		return true
 	end
-	if state.sevenLower and rank(t) == 7 then
-		return power(id) <= 7
+	local lower = lowerRankOf(state)
+	if lower and rank(t) == lower then
+		return power(id) <= lower
 	end
 	return power(id) >= power(t)
 end
@@ -138,16 +177,20 @@ end
 
 local function startPlay(state)
 	state.phase = "play"
-	-- The lowest ordinary card in hand starts.
-	local best, low = 1, math.huge
+	-- The lowest ordinary card in anyone's hand or face-up cards starts (ties: lower seat).
+	local best, low, card, inHand = 1, math.huge, nil, false
 	for seat = 1, state.seatCount do
-		for _, id in state.hands[seat] do
-			if not isSpecial(id) and power(id) < low then
-				best, low = seat, power(id)
+		for _, list in { state.hands[seat], state.up[seat] } do
+			for _, id in list do
+				if not isSpecial(id) and power(id) < low then
+					best, low, card, inHand = seat, power(id), id, list == state.hands[seat]
+				end
 			end
 		end
 	end
 	state.turn = best
+	-- In hand, it has to be in the first play (BGA). Face up, it can't be played yet.
+	state.mustPlay = if inHand then card else nil
 end
 
 local function refill(state, seat: number)
@@ -197,7 +240,9 @@ local function nextTurn(state, seat: number)
 		state.reason = "Fewest cards after a long game"
 		return
 	end
-	state.turn = seat % state.seatCount + 1
+	local step = 1 + (state.skipNext or 0)
+	state.skipNext = 0
+	state.turn = (seat - 1 + step) % state.seatCount + 1
 end
 
 -- Put cards on the pile; burn if needed. Returns true if the player goes again.
@@ -227,6 +272,16 @@ local function canPlayFrom(state, cards: { number }): boolean
 		end
 	end
 	return false
+end
+
+-- House rule gamble: nothing plays from your hand and the draw pile has cards.
+function Palace.canGamble(state, seat: number): boolean
+	return state.gamble == true
+		and state.phase == "play"
+		and seat == state.turn
+		and #state.draw > 0
+		and Palace.source(state, seat) == "hand"
+		and not canPlayFrom(state, state.hands[seat])
 end
 
 function Palace.getActiveSeats(state): { number }
@@ -277,14 +332,22 @@ function Palace.getLegalMoves(state, seat: number): { any }
 			table.insert(byRank[r], id)
 		end
 	end
+	local must = state.mustPlay
 	for _, ids in byRank do
+		if must and not table.find(ids, must) then
+			continue
+		end
 		table.insert(moves, { kind = "play", cards = ids })
 		if #ids > 1 then
-			table.insert(moves, { kind = "play", cards = { ids[1] } })
+			table.insert(moves, { kind = "play", cards = { if must then must else ids[1] } })
 		end
 	end
-	if #moves == 0 then
+	-- You may always pick up instead of playing (a real tactic: keep low cards for later).
+	if #state.pile > 0 then
 		table.insert(moves, { kind = "pickup" })
+	end
+	if Palace.canGamble(state, seat) then
+		table.insert(moves, { kind = "gamble" })
 	end
 	return moves
 end
@@ -332,7 +395,15 @@ function Palace.validateMove(state, seat: number, move: any): (boolean, string?)
 			return false, "Cards must all be the same rank"
 		end
 		if not Palace.canPlay(state, move.cards[1]) then
+			local lower = lowerRankOf(state)
+			local t = top(state)
+			if lower and t and rank(t) == lower then
+				return false, `Play a {lower} or lower, a 2, a 10, or pick up`
+			end
 			return false, "Too low: play higher, a 2, a 10, or pick up"
+		end
+		if state.mustPlay and rank(move.cards[1]) ~= rank(state.mustPlay) then
+			return false, `Start with your {PlayingCards.name(state.mustPlay)}`
 		end
 		return true
 	elseif move.kind == "pickup" then
@@ -342,9 +413,13 @@ function Palace.validateMove(state, seat: number, move: any): (boolean, string?)
 		if #state.pile == 0 then
 			return false, "There's nothing to pick up"
 		end
-		local from = if source == "hand" then state.hands[seat] else state.up[seat]
-		if canPlayFrom(state, from) then
-			return false, "You can play, so you can't pick up"
+		return true
+	elseif move.kind == "gamble" then
+		if not state.gamble then
+			return false, "Gambling on the deck is off"
+		end
+		if not Palace.canGamble(state, seat) then
+			return false, if #state.draw == 0 then "The draw pile is empty" else "You can play a card"
 		end
 		return true
 	elseif move.kind == "blind" then
@@ -374,6 +449,29 @@ function Palace.applyMove(state, seat: number, move: any)
 		local hand, up = state.hands[seat], state.up[seat]
 		local hi, ui = table.find(hand, move.hand) :: number, table.find(up, move.up) :: number
 		hand[hi], up[ui] = move.up, move.hand
+		local slots = state.upSlots and state.upSlots[seat]
+		local slot = slots and table.find(slots, move.up)
+		if slot then
+			slots[slot] = move.hand
+		end
+		return
+	elseif move.kind == "gamble" then
+		-- Flip the top of the draw pile: played if it fits, else picked up with the pile.
+		local id = table.remove(state.draw) :: number
+		if Palace.canPlay(state, id) then
+			local again = putDown(state, seat, { id })
+			state.lastAction = { kind = "gamble", seat = seat, card = id, ok = true, burned = again }
+			if again then
+				state.turns += 1
+				return
+			end
+		else
+			table.insert(state.pile, id)
+			local n = #state.pile
+			pickUp(state, seat)
+			state.lastAction = { kind = "gamble", seat = seat, card = id, ok = false, count = n }
+		end
+		nextTurn(state, seat)
 		return
 	elseif move.kind == "pickup" then
 		local n = #state.pile
@@ -402,9 +500,22 @@ function Palace.applyMove(state, seat: number, move: any)
 	-- Play.
 	local source = Palace.source(state, seat)
 	PlayingCards.removeCards(if source == "hand" then state.hands[seat] else state.up[seat], move.cards)
+	if source == "up" and state.upSlots then
+		for _, id in move.cards do
+			local slot = table.find(state.upSlots[seat], id)
+			if slot then
+				state.upSlots[seat][slot] = false
+			end
+		end
+	end
+	state.mustPlay = nil
 	local again = putDown(state, seat, move.cards)
+	-- House rule: each 8 skips the next player (not when the 8s burned the pile).
+	if state.eightSkips and not again and rank(move.cards[1]) == 8 then
+		state.skipNext = #move.cards
+	end
 	refill(state, seat)
-	state.lastAction = { kind = "play", seat = seat, cards = table.clone(move.cards), burned = again, from = source }
+	state.lastAction = { kind = "play", seat = seat, cards = table.clone(move.cards), burned = again, from = source, skips = if state.skipNext and state.skipNext > 0 then state.skipNext else nil }
 	if again and cardsLeft(state, seat) > 0 then
 		state.turns += 1
 		return
@@ -420,10 +531,11 @@ function Palace.getResult(state): GameModule.Result?
 end
 
 function Palace.getView(state, seat: number?)
-	local counts, ups, downs, ready = {}, {}, {}, {}
+	local counts, ups, downs, ready, upSlots = {}, {}, {}, {}, {}
 	for s = 1, state.seatCount do
 		counts[s] = #state.hands[s]
 		ups[s] = sorted(state.up[s])
+		upSlots[s] = if state.upSlots then table.clone(state.upSlots[s]) else nil
 		local slots = {}
 		for i = 1, 3 do
 			slots[i] = state.down[s][i] ~= false
@@ -440,7 +552,7 @@ function Palace.getView(state, seat: number?)
 		local source = Palace.source(state, seat)
 		if source ~= "down" then
 			for _, id in (if source == "hand" then state.hands[seat] else state.up[seat]) do
-				if Palace.canPlay(state, id) then
+				if Palace.canPlay(state, id) and (state.mustPlay == nil or rank(id) == rank(state.mustPlay)) then
 					playable[tostring(id)] = true
 				end
 			end
@@ -450,6 +562,7 @@ function Palace.getView(state, seat: number?)
 		hand = if seat and state.hands[seat] then sorted(state.hands[seat]) else nil,
 		handCounts = counts,
 		up = ups,
+		upSlots = upSlots, -- upSlots[seat][i] = the face-up card on table slot i, or false
 		down = downs, -- down[seat][i] = true while that face-down card is still there
 		ready = ready,
 		drawCount = #state.draw,
@@ -459,6 +572,12 @@ function Palace.getView(state, seat: number?)
 		source = if seat then Palace.source(state, seat) else nil,
 		playable = playable,
 		sevenLower = state.sevenLower,
+		lowerRank = lowerRankOf(state),
+		invisibleThree = state.invisibleThree,
+		eightSkips = state.eightSkips,
+		canGamble = seat ~= nil and Palace.canGamble(state, seat),
+		mustPlay = if seat == state.turn then state.mustPlay else nil,
+		effectiveTop = top(state),
 		turn = state.turn,
 		phase = state.phase,
 		lastAction = GameModule.copy(state.lastAction),
@@ -529,33 +648,75 @@ function Palace.chooseBotMove(state, seat: number, rng: Random): any?
 	if #moves == 0 then
 		return nil
 	end
-	if moves[1].kind ~= "play" then
-		return moves[rng:NextInteger(1, #moves)]
+	local plays = {}
+	for _, move in moves do
+		if move.kind == "play" then
+			table.insert(plays, move)
+		end
+	end
+	if #plays == 0 then
+		if moves[1].kind == "blind" then
+			return moves[rng:NextInteger(1, #moves)]
+		end
+		-- Stuck: gamble on the deck when allowed (it might fit), else pick up.
+		for _, move in moves do
+			if move.kind == "gamble" and state.botLevel ~= "easy" then
+				return move
+			end
+		end
+		return { kind = "pickup" }
 	end
 	-- Easy bots often play a random card, and judge the rest roughly. (Fully random
 	-- play wasted their 2s and 10s and made 2-player games drag on for 10 minutes.)
 	local easy = state.botLevel == "easy"
+	local hard = state.botLevel == "hard"
 	if easy and rng:NextNumber() < 0.3 then
-		return moves[rng:NextInteger(1, #moves)]
+		return plays[rng:NextInteger(1, #plays)]
 	end
 	local best, bestScore = nil, math.huge
-	for _, move in moves do
-		if move.kind == "play" then
-			local id = move.cards[1]
-			local score = power(id)
-			if isSpecial(id) then
-				-- Save 2s and 10s; a 10 is worth it on a big pile.
-				score = if rank(id) == 10 then (if #state.pile >= 6 then 0 else 30) else 25
+	for _, move in plays do
+		local id = move.cards[1]
+		local score = power(id)
+		if isSpecial(id) then
+			-- Save 2s and 10s; a 10 is worth it on a big pile.
+			local bigPile = if hard then 5 else 6
+			score = if rank(id) == 10 then (if #state.pile >= bigPile then 0 else 30) else (if hard and #state.draw == 0 then 13 else 25)
+		end
+		-- Hard: completing four of a kind burns the pile and plays again.
+		if hard and state.burnFour and not isSpecial(id) then
+			local run = 0
+			for i = #state.pile, 1, -1 do
+				if rank(state.pile[i]) ~= rank(id) then
+					break
+				end
+				run += 1
 			end
-			-- Play every copy of a rank at once.
-			score -= #move.cards * 0.5
-			score += rng:NextNumber() * (if easy then 4 else 0.3)
-			if score < bestScore then
-				best, bestScore = move, score
+			if run > 0 and run + #move.cards >= 4 then
+				score = -2
 			end
+		end
+		-- Play every copy of a rank at once.
+		score -= #move.cards * 0.5
+		score += rng:NextNumber() * (if easy then 4 else 0.3)
+		if score < bestScore then
+			best, bestScore = move, score
 		end
 	end
 	return best
+end
+
+-- A person who times out: in setup they're simply ready (the setup waits for no one);
+-- in play the bot's move is fine.
+function Palace.chooseAfkMove(state, seat: number, _rng: Random): any?
+	if state.phase == "setup" then
+		return if state.ready[seat] then nil else { kind = "ready" }
+	end
+	return nil
+end
+
+-- One AFK clock for the whole setup (others' swaps don't restart it), then one per turn.
+function Palace.getTurnKey(state): any
+	return if state.phase == "setup" then "setup" else `play{state.turns}:{state.turn}`
 end
 
 -- A natural pause before a bot moves: quick when forced, longer for a real choice.

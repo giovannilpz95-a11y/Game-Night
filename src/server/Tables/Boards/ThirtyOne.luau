@@ -19,12 +19,32 @@ function ThirtyOne.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 				for i, id in shown do
 					Scene.card(folder, Scene.seatSpot(boardCF, layout, seat, 1.2, (i - 2) * 0.7) * CFrame.new(0, (i - 1) * Scene.STACK, 0), Scene.playingFront(PlayingCards, id))
 				end
+				-- "27  -1 ♥" over each hand, so Table view shows why hearts were lost.
+				local key = tostring(seat)
+				local lost = showdown.lost and showdown.lost[key]
+				local label = tostring(showdown.values and showdown.values[key] or "")
+				if lost and not showdown.replay then
+					label ..= `  -{lost} ♥`
+				end
+				Scene.floatText(folder, Scene.seatSpot(boardCF, layout, seat, 1.2, 0) * CFrame.new(0, 0.8, 0), 2.4, 0.5, label, {
+					TextColor3 = if lost and not showdown.replay then Color3.fromRGB(255, 120, 130) else Color3.new(1, 1, 1),
+					TextStrokeColor3 = Color3.fromRGB(20, 18, 30),
+					TextStrokeTransparency = 0.2,
+				})
 			else
 				Scene.hand(folder, boardCF, layout, seat, count)
 			end
 		end
 		if view.lastAction and view.lastAction.kind == "knock" then
 			Cards.speech(folder, boardCF, layout, view.lastAction.seat, "Knock knock!", Color3.fromRGB(255, 226, 160))
+		end
+		-- The knocker keeps a marker until the showdown: everyone else is on a last turn.
+		if view.knocker and not showdown then
+			Scene.floatText(folder, Scene.seatSpot(boardCF, layout, view.knocker, 0.4, 0) * CFrame.new(0, 1.6, 0), 2.2, 0.45, "KNOCKED", {
+				TextColor3 = Color3.fromRGB(255, 226, 160),
+				TextStrokeColor3 = Color3.fromRGB(20, 18, 30),
+				TextStrokeTransparency = 0.2,
+			})
 		end
 		Scene.pile(folder, Cards.center(boardCF, -0.5), view.stockCount or 0, false, true)
 		-- The discard pile: messy, each card turned toward whoever threw it away.
