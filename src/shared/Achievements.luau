@@ -291,9 +291,41 @@ end
 Achievements.commas = commas
 
 -- "Win 50 games of Chess" for a tier (the top tier when tier is past the end).
+-- Plurals that don't just drop a trailing "s".
+local SINGULAR = { wolves = "wolf", bonuses = "bonus", Fives = "Five" }
+
+-- The description for a goal of 1: "Checkmate once", "Win 1 game", "Find 1 wolf".
+local function singular(desc: string): string
+	if desc:find("{n} times", 1, true) then
+		return (desc:gsub("{n} times", "once"))
+	end
+	desc = desc:gsub("{n} people join", "1 person joins")
+	local s, e = desc:find("{n}", 1, true)
+	if not s then
+		return desc
+	end
+	local after = desc:sub(e + 1)
+	-- Make the first plural noun in the next two words singular ("1 upper bonus").
+	local pos = 1
+	for _ = 1, 2 do
+		local space, word = after:match("^(%s+)(%a+)", pos)
+		if not word then
+			break
+		end
+		local single = SINGULAR[word] or (if #word > 3 and word:sub(-1) == "s" then word:sub(1, -2) else nil)
+		local wordStart = pos + #space
+		if single then
+			after = after:sub(1, wordStart - 1) .. single .. after:sub(wordStart + #word)
+			break
+		end
+		pos = wordStart + #word
+	end
+	return desc:sub(1, s - 1) .. "1" .. after
+end
+
 function Achievements.describe(a: Achievement, tier: number): string
 	local goal = a.goals[math.clamp(tier, 1, #a.goals)]
-	local text = a.desc:gsub("{n}", commas(goal))
+	local text = if goal == 1 then singular(a.desc) else a.desc:gsub("{n}", commas(goal))
 	if a.gameId then
 		local entry = GameCatalog.get(a.gameId)
 		text ..= ` in {if entry then entry.name else a.gameId}`

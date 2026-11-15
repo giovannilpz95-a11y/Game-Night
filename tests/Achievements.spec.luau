@@ -190,6 +190,44 @@ return function(T)
 		T.eq(none, nil)
 	end)
 
+	T.test("a goal of 1 reads in the singular", function()
+		local function d(id: string): string
+			return Achievements.describe(Achievements.get(id) :: any, 1)
+		end
+		T.eq(d("Chess.wins"), "Win 1 game in Chess")
+		T.eq(d("Chess.checkmates"), "Checkmate once in Chess")
+		T.eq(d("mastered"), "Master 1 game (every achievement of a game at Gold)")
+		T.eq(d("human_wins"), "Win 1 game against other people")
+		T.eq(d("invites"), "1 person joins your party from your invites")
+		T.eq(d("sweeps"), "Finish every daily quest on 1 day")
+		T.eq(d("Werewolf.found"), "Find 1 wolf as the Seer in Werewolf")
+		T.eq(d("FiveDice.upperBonus"), "Earn 1 upper bonus in Five Dice")
+		T.eq(d("FiveDice.bigFives"), "Roll 1 Big Five in Five Dice")
+		-- Every description of every tier has its number filled in.
+		for _, a in Achievements.list do
+			for tier = 1, #a.goals do
+				T.ok(not Achievements.describe(a, tier):find("{n}", 1, true), a.id)
+			end
+		end
+	end)
+
+	T.test("quests rolled before quest XP get it filled in", function()
+		local data = fresh()
+		for _, quest in data.daily.challenges do
+			quest.xp = nil
+		end
+		for _, quest in data.season.weekly.quests do
+			quest.xp = nil
+		end
+		SeasonPass.roll(data, NOW, games(), T.Random.new(2))
+		for _, quest in data.daily.challenges do
+			T.eq(quest.xp, if quest.bonus then Season.BonusQuestXp else Season.DailyQuestXp)
+		end
+		for _, quest in data.season.weekly.quests do
+			T.eq(quest.xp, Season.WeeklyQuestXp)
+		end
+	end)
+
 	T.test("the top tier pays its title; mastering a game pays its title once", function()
 		local data = fresh()
 		data.stats.wins = 1000

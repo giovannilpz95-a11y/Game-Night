@@ -179,6 +179,17 @@ function SeasonPass.roll(data: Profile.Data, now: number, games: { Quests.GameIn
 		data.season.weekly = { week = week, quests = Quests.makeWeekly(games, rng, (Season.track(n)).weekly) }
 	end
 	SeasonPass.addBonusQuest(data, games, rng)
+	-- Quests rolled before quests paid XP have no xp field: give them the usual amount.
+	for _, quest in data.daily.challenges do
+		if quest.xp == nil then
+			quest.xp = if quest.bonus then Season.BonusQuestXp else Season.DailyQuestXp
+		end
+	end
+	for _, quest in data.season.weekly.quests do
+		if quest.xp == nil then
+			quest.xp = Season.WeeklyQuestXp
+		end
+	end
 	return lines
 end
 
