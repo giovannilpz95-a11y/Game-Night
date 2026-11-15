@@ -11,6 +11,23 @@ return function(T)
 		T.eq(state.invertY, false)
 		T.eq(state.reduceMotion, false)
 		T.eq(state.lookSpeed, 1)
+		T.eq(state.textSize, "normal")
+		T.eq(state.colorMarks, false)
+	end)
+
+	T.test("text size and color-blind marks", function()
+		local state = ClientSettings.new()
+		T.eq(ClientSettings.apply(state, { textSize = "larger", colorMarks = true }), true)
+		T.eq(state.textSize, "larger")
+		T.eq(state.colorMarks, true)
+		for _, junk in { "huge", 2, true, {} } do
+			T.eq(ClientSettings.apply(state, { textSize = junk }), false)
+		end
+		for _, junk in { "on", 1, {} } do
+			T.eq(ClientSettings.apply(state, { colorMarks = junk }), false)
+		end
+		T.eq(ClientSettings.clean({ textSize = "large" }).textSize, "large")
+		T.eq(ClientSettings.clean({ textSize = "giant" }).textSize, "normal")
 	end)
 
 	T.test("apply takes valid fields and ignores junk", function()

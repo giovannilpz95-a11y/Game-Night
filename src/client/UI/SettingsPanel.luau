@@ -1,5 +1,5 @@
 -- The Settings window (lobby gear and More > Settings): sound, graphics detail, the table
--- camera and help, on paper cards (mockup: project files ui-mockups/a-cafe-settings.jpg).
+-- camera, accessibility (text size, color-blind marks) and help, on paper cards (mockup: project files ui-mockups/a-cafe-settings.jpg).
 -- Everything applies at once. Sound saves through the "audio" request (Core/AudioSettings);
 -- graphics and camera through "settings" (Core/ClientSettings), and come back with the
 -- wallet next time (load). A match's own ⋯ menu can change the camera too: sync() saves
@@ -11,6 +11,8 @@ local Audio = require(script.Parent.Parent.Audio)
 local Controller = require(script.Parent.Parent.Table3D.Controller)
 local FreeLook = require(script.Parent.Parent.Table3D.FreeLook)
 local Kit = require(script.Parent.Kit)
+local Icons = require(game:GetService("ReplicatedStorage").Shared.Icons)
+local Access = require(script.Parent.Access)
 local Perf = require(script.Parent.Parent.Perf)
 local Theme = Kit.Theme
 
@@ -71,11 +73,13 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 	end
 	scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitColumns)
 
-	local function card(parent: Instance, order: number, title: string): Frame
+	-- `icon` is a shared/Icons name: drawn beside the title, or its emoji in front of it.
+	local function card(parent: Instance, order: number, title: string, icon: string): Frame
 		local frame = Kit.paper({ Name = title, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order, ZIndex = z, Parent = parent })
 		Kit.new("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 12), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), Parent = frame })
 		Kit.list(8).Parent = frame
-		local heading = Kit.label(title, { Font = Theme.FontTitle, TextSize = 18, TextColor3 = Theme.Ink, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 0, ZIndex = z, Parent = frame })
+		local drawn = Icons.drawn()
+		local heading = Kit.label(if drawn then title else `{Icons.emoji(icon)}  {title}`, { Font = Theme.FontTitle, TextSize = 18, TextColor3 = Theme.Ink, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 0, ZIndex = z, Parent = frame })
 		if LOUNGE then
 			-- Lounge: glass cards with a hairline edge and condensed capital headings.
 			frame.BackgroundTransparency = 0.1
@@ -87,6 +91,16 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 			Kit.headline(heading)
 			heading.TextSize = 22
 			heading.Size = UDim2.new(1, 0, 0, 28)
+		end
+		if drawn then
+			Kit.new("UIPadding", { PaddingLeft = UDim.new(0, 28), Parent = heading })
+			Kit.icon(icon, if LOUNGE then Theme.Accent else Theme.Ink, {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, -28, 0.5, 0),
+				Size = UDim2.fromOffset(20, 20),
+				ZIndex = z,
+				Parent = heading,
+			})
 		end
 		return frame
 	end
@@ -211,7 +225,7 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 	--------------------------------------------------------------------------------
 	-- Saving
 	--------------------------------------------------------------------------------
-	local saved = { graphics = "auto", camera = "full", view = "eye", invertY = false, reduceMotion = false, lookSpeed = 1 }
+	local saved = { graphics = "auto", camera = "full", view = "eye", invertY = false, reduceMotion = false, lookSpeed = 1, textSize = "normal", colorMarks = false }
 	local audioToken, settingsToken = 0, 0
 	local function saveAudio()
 		audioToken += 1
@@ -236,6 +250,8 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 					invertY = saved.invertY,
 					reduceMotion = saved.reduceMotion,
 					lookSpeed = saved.lookSpeed,
+					textSize = saved.textSize,
+					colorMarks = saved.colorMarks,
 				})
 			end
 		end)
@@ -256,7 +272,7 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 	local percent = function(share: number): string
 		return `{math.floor(share * 20 + 0.5) * 5}%`
 	end
-	local sound = card(left, 1, "🔊  Sound")
+	local sound = card(left, 1, "Sound", "sound")
 	local showMusic = slider(sound, 1, "🎵  Music", percent, function(share, done)
 		Audio.setLevels(math.floor(share * 20 + 0.5) / 20, nil)
 		if done then
@@ -277,7 +293,7 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 		end
 	end)
 
-	local graphics = card(left, 2, "🖥️  Graphics")
+	local graphics = card(left, 2, "Graphics", "graphics")
 	local showGraphics = segmented(graphics, 1, "Detail", {
 		{ value = "auto", label = "Auto" },
 		{ value = "low", label = "Low" },
@@ -298,7 +314,27 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 	end)
 	note(graphics, 4, "On stops spinning borders, glints and bouncing badges in the menus.")
 
-	local camera = card(right, 1, "🎥  Table camera")
+	local access = card(left, 3, "Accessibility", "eye")
+	local showTextSize = segmented(access, 1, "Text size", {
+		{ value = "normal", label = "Normal" },
+		{ value = "large", label = "Large" },
+		{ value = "larger", label = "Larger" },
+	}, function(value)
+		Access.setTextSize(value)
+		saved.textSize = value
+		saveSettings()
+	end)
+	local showMarks = segmented(access, 2, "Color-blind marks", {
+		{ value = "off", label = "Off" },
+		{ value = "on", label = "On" },
+	}, function(value)
+		Access.setColorMarks(value == "on")
+		saved.colorMarks = value == "on"
+		saveSettings()
+	end)
+	note(access, 3, "Puts a shape on colors that matter: on Color Clash cards and the color picker, and your seat's shape on Four in a Row discs.")
+
+	local camera = card(right, 1, "Table camera", "camera")
 	local showMotion = segmented(camera, 1, "Camera motion", {
 		{ value = "full", label = "Full" },
 		{ value = "calm", label = "Calm" },
@@ -343,7 +379,7 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 	end)
 	note(camera, 5, "Calm turns off the lean, push-ins and drift. Raised puts the camera up over your seat, looking down at the table.")
 
-	local help = card(right, 2, "❔  Help")
+	local help = card(right, 2, "Help", "help")
 	action(help, 1, "Replay the lobby tour", function()
 		window.close()
 		hooks.replayTour()
@@ -366,6 +402,8 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 		showView(if Controller.isEyeLevel() then "eye" else "raised")
 		showInvert(if FreeLook.isInvertY() then "on" else "off")
 		showSpeed(shareFrom(FreeLook.getSensitivity()))
+		showTextSize(Access.textSize())
+		showMarks(if Access.colorMarks() then "on" else "off")
 	end
 
 	local loaded = false
@@ -407,6 +445,14 @@ function SettingsPanel.create(screen: Instance, hooks: Hooks)
 			if type(record.invertY) == "boolean" then
 				saved.invertY = record.invertY
 				FreeLook.setInvertY(record.invertY)
+			end
+			if type(record.textSize) == "string" and Access.SCALES[record.textSize] then
+				saved.textSize = record.textSize
+				Access.setTextSize(record.textSize)
+			end
+			if type(record.colorMarks) == "boolean" then
+				saved.colorMarks = record.colorMarks
+				Access.setColorMarks(record.colorMarks)
 			end
 			if type(record.lookSpeed) == "number" and record.lookSpeed == record.lookSpeed then
 				saved.lookSpeed = record.lookSpeed

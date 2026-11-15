@@ -1,6 +1,7 @@
 -- The Settings window's choices that live on the player's device but are saved in the
 -- profile (data.settings), so they come back next time: graphics detail, the table
--- camera's motion and height, invert look, look speed and Reduce motion. Sound has its own record
+-- camera's motion and height, invert look, look speed, Reduce motion, text size and
+-- color-blind marks. Sound has its own record
 -- (Core/AudioSettings). Pure, so it is unit tested; EconomyService passes it the client's
 -- { action = "settings", ... } requests and sends the record back with the wallet.
 
@@ -13,6 +14,8 @@ export type State = {
 	invertY: boolean,
 	reduceMotion: boolean, -- menus: no spinning, glinting or nudging
 	lookSpeed: number, -- multiple of the normal mouse/touch look speed
+	textSize: string, -- "normal", "large" or "larger" (menus' text, client/UI/Access)
+	colorMarks: boolean, -- shapes beside colors that matter (Color Clash cards, discs)
 }
 
 -- Allowed values for each choice field; the first is the default.
@@ -20,6 +23,7 @@ ClientSettings.Choices = {
 	graphics = { "auto", "low", "high" },
 	camera = { "full", "calm" },
 	view = { "eye", "raised" },
+	textSize = { "normal", "large", "larger" },
 }
 
 ClientSettings.LookSpeedMin = 0.25
@@ -27,7 +31,7 @@ ClientSettings.LookSpeedMax = 3
 ClientSettings.LookSpeedStep = 0.05
 
 function ClientSettings.new(): State
-	return { graphics = "auto", camera = "full", view = "eye", invertY = false, reduceMotion = false, lookSpeed = 1 }
+	return { graphics = "auto", camera = "full", view = "eye", invertY = false, reduceMotion = false, lookSpeed = 1, textSize = "normal", colorMarks = false }
 end
 
 -- A look speed from a client: a real number, clamped and rounded to 0.05. nil if invalid.
@@ -53,7 +57,7 @@ function ClientSettings.apply(state: State, request: any): boolean
 			changed = true
 		end
 	end
-	for _, key in { "invertY", "reduceMotion" } do
+	for _, key in { "invertY", "reduceMotion", "colorMarks" } do
 		local value = request[key]
 		if type(value) == "boolean" and (state :: any)[key] ~= value then
 			(state :: any)[key] = value

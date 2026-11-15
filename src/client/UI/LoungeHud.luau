@@ -21,6 +21,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local GameArt = require(ReplicatedStorage.Shared.GameArt)
+local Icons = require(ReplicatedStorage.Shared.Icons)
 local Season = require(ReplicatedStorage.Shared.Season)
 local Flair = require(script.Parent.Flair)
 local GamePreview = require(script.Parent.GamePreview)
@@ -239,10 +240,11 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 	local cornerList = Kit.list(8, true)
 	cornerList.HorizontalAlignment = Enum.HorizontalAlignment.Right
 	cornerList.Parent = corner
-	local function squareButton(name: string, text: string, order: number, onClick: () -> ()): TextButton
+	local function squareButton(name: string, icon: string, order: number, onClick: () -> ()): TextButton
+		local drawn = Icons.drawn()
 		local button = Kit.new("TextButton", {
 			Name = name,
-			Text = text,
+			Text = if drawn then "" else Icons.emoji(icon),
 			Font = Theme.FontBold,
 			TextSize = 18,
 			TextColor3 = Theme.Text,
@@ -255,6 +257,15 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 			ZIndex = 6,
 			Parent = corner,
 		}, { Kit.corner(10), Kit.frameStroke() })
+		if drawn then
+			Kit.icon(icon, Theme.Text, {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(22, 22),
+				ZIndex = 7,
+				Parent = button,
+			})
+		end
 		Kit.onPress(button, onClick)
 		Kit.pressable(button)
 		buttons[name] = button
@@ -308,7 +319,7 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 		row.MouseLeave:Connect(function()
 			row.BackgroundTransparency = 1
 		end)
-		Kit.label(icon, { Name = "Icon", TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(4, 0), Size = UDim2.new(0, 34, 1, 0), ZIndex = 17, Parent = row })
+		Kit.icon(icon, Theme.Text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 21, 0.5, 0), Size = UDim2.fromOffset(20, 20), ZIndex = 17, Parent = row })
 		Kit.label(label, { Name = "Text", Font = Theme.FontBold, TextSize = 15, Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -46, 1, 0), TextWrapped = false, ZIndex = 17, Parent = row })
 		Kit.onPress(row, function()
 			closeMore()
@@ -317,18 +328,18 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 		Kit.pressable(row)
 		moreRows[key] = row
 	end
-	moreRow("Stats", 1, "📊", "Your stats", actions.stats)
+	moreRow("Stats", 1, "stats", "Your stats", actions.stats)
 	if actions.achievements then
-		moreRow("Achievements", 2, "🏆", "Achievements", actions.achievements)
+		moreRow("Achievements", 2, "trophy", "Achievements", actions.achievements)
 	end
-	moreRow("Tables", 3, "🎲", "Tables in this server", actions.tables)
-	moreRow("Host", 4, "👑", "Host tools", actions.host)
-	moreRow("Voice", 5, "🎙", "Voice chat", actions.voice)
-	moreRow("Help", 6, "❔", "Help and rules", actions.help)
+	moreRow("Tables", 3, "table", "Tables in this server", actions.tables)
+	moreRow("Host", 4, "crown", "Host tools", actions.host)
+	moreRow("Voice", 5, "mic", "Voice chat", actions.voice)
+	moreRow("Help", 6, "help", "Help and rules", actions.help)
 	moreRows.Voice.Visible = false
 
 	local more: TextButton
-	more = squareButton("More", "•••", 1, function()
+	more = squareButton("More", "more", 1, function()
 		local show = not pop.Visible
 		catcher.Visible = show
 		pop.Visible = show
@@ -340,7 +351,7 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 		end
 	end)
 	badge(more, "More")
-	local gear = squareButton("SettingsButton", "⚙️", 2, actions.settings or actions.sound)
+	local gear = squareButton("SettingsButton", "settings", 2, actions.settings or actions.sound)
 
 	----------------------------------------------------------------------------------
 	-- Quests: today's three on dark glass.

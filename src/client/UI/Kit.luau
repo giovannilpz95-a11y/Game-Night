@@ -8,6 +8,7 @@ local Audio = require(script.Parent.Parent.Audio)
 local Flair = require(script.Parent.Flair)
 local Juice = require(script.Parent.Juice)
 local Press = require(script.Parent.Press)
+local Access = require(script.Parent.Access)
 
 local Kit = {}
 
@@ -32,6 +33,7 @@ end
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIStyle = require(ReplicatedStorage.Shared.UIStyle)
 local Config = require(ReplicatedStorage.Shared.Config)
+local Icons = require(ReplicatedStorage.Shared.Icons)
 
 Kit.Style = UIStyle.pick(workspace:GetAttribute("UIStyle") or Config.UIStyle)
 local style = UIStyle.Styles[Kit.Style]
@@ -291,6 +293,37 @@ function Kit.label(text: string, props: { [string]: any }?): TextLabel
 	return label
 end
 
+-- One of the menus' icons (shared/Icons), tinted `color`: the drawn line icon once its
+-- sheet is uploaded, its emoji until then. Same props as a label (Size, Position, ...).
+function Kit.icon(name: string, color: Color3?, props: { [string]: any }?): GuiObject
+	local icon: GuiObject
+	if Icons.drawn() then
+		local x, y = Icons.offset(name)
+		icon = Kit.new("ImageLabel", {
+			Name = "Icon",
+			BackgroundTransparency = 1,
+			Image = Icons.sheet,
+			ImageRectOffset = Vector2.new(x or 0, y or 0),
+			ImageRectSize = Vector2.new(Icons.CELL, Icons.CELL),
+			ImageColor3 = color or Kit.Theme.Text,
+			ScaleType = Enum.ScaleType.Fit,
+			Size = UDim2.fromOffset(22, 22),
+		})
+	else
+		icon = Kit.label(Icons.emoji(name), {
+			Name = "Icon",
+			TextScaled = true,
+			TextColor3 = color or Kit.Theme.Text,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Size = UDim2.fromOffset(22, 22),
+		})
+	end
+	for key, value in props or {} do
+		(icon :: any)[key] = value
+	end
+	return icon
+end
+
 function Kit.button(text: string, onClick: () -> (), props: { [string]: any }?): TextButton
 	local button = Kit.new("TextButton", {
 		Text = text,
@@ -308,6 +341,7 @@ function Kit.button(text: string, onClick: () -> (), props: { [string]: any }?):
 	Press.connect(button, onClick)
 	Kit.pressable(button)
 	Kit.edge(button)
+	Access.hitSlop(button) -- touch: short buttons get a 40 px tall tap area
 	return button
 end
 
