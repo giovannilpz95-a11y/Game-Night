@@ -238,15 +238,15 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 		refreshTools()
 	end)
-	toolButton("Undo", 30, function()
+	toolButton("Undo", 80, function()
 		selected = nil
 		sendMove({ kind = "undo" })
 	end)
-	toolButton("Clear", 31, function()
+	toolButton("Clear", 81, function()
 		selected = nil
 		sendMove({ kind = "clear" })
 	end)
-	toolButton("Skip", 32, function()
+	toolButton("Skip", 82, function()
 		sendMove({ kind = "giveUp" })
 	end, Theme.Bad)
 	-- Stamps tables: the stamp picker and the buttons that change the selected stamp.
