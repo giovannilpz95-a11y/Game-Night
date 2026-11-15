@@ -11,64 +11,53 @@ local Daily = {}
 
 export type GameInfo = Quests.GameInfo
 
--- Picks the day's quests: one "play any", one "win" in a game you play, and one that
--- points you at the game you've played least ("Try Checkers today"). Each pays
--- Economy.ChallengeGems and Season.DailyQuestStars. (The pass's bonus quest is added by
--- Core/SeasonPass.)
+-- Picks the day's quests:
+--   1. something for any game: finish 3 games, play 20 minutes, win 2, or 2 different games
+--   2. the game you play most: its own quest ("Capture 6 pieces in Chess") or a win in it
+--   3. the game you've played least: "Try Checkers today"
+-- Each pays Economy.ChallengeGems, Season.DailyQuestStars and Season.DailyQuestXp. (The
+-- pass's bonus quest is added by Core/SeasonPass.)
 function Daily.makeChallenges(data: Profile.Data, games: { GameInfo }, rng: Random): { Profile.Challenge }
 	local challenges: { Profile.Challenge } = {}
-	table.insert(challenges, {
-		id = "play3",
-		kind = "play",
-		gameId = nil,
-		target = 3,
-		progress = 0,
-		done = false,
-		text = "Finish 3 games",
-	})
-	if #games == 0 then
-		return challenges
-	end
+	local general = {
+		Quests.make("play3", "play", 3, "Finish 3 games"),
+		Quests.make("d_minutes20", "minutes", 20, "Play for 20 minutes"),
+		Quests.make("play3", "play", 3, "Finish 3 games"),
+		Quests.make("d_win2any", "win", 2, "Win 2 games"),
+		Quests.make("d_variety2any", "variety", 2, "Play 2 different games"),
+	}
+	table.insert(challenges, general[rng:NextInteger(1, #general)])
 
-	local function played(info: GameInfo): number
-		local s = data.stats.games[info.id]
-		return if s then s.played else 0
-	end
+	if #games > 0 then
+		local function played(info: GameInfo): number
+			local s = data.stats.games[info.id]
+			return if s then s.played else 0
+		end
 
-	-- Least played game (ties broken at random) gets the "try" challenge.
-	local order = table.clone(games)
-	for i = #order, 2, -1 do
-		local j = rng:NextInteger(1, i)
-		order[i], order[j] = order[j], order[i]
-	end
-	table.sort(order, function(a, b)
-		return played(a) < played(b)
-	end)
-	local tryGame = order[1]
-	local winGame = order[#order]
-	if #order > 1 and winGame.id == tryGame.id then
-		winGame = order[2]
-	end
+		-- Least played game (ties broken at random) gets the "try" quest, the most played
+		-- one its own quest.
+		local order = table.clone(games)
+		for i = #order, 2, -1 do
+			local j = rng:NextInteger(1, i)
+			order[i], order[j] = order[j], order[i]
+		end
+		table.sort(order, function(a, b)
+			return played(a) < played(b)
+		end)
+		local tryGame = order[1]
+		local mainGame = order[#order]
+		if #order > 1 and mainGame.id == tryGame.id then
+			mainGame = order[2]
+		end
 
-	table.insert(challenges, {
-		id = `win_{winGame.id}`,
-		kind = "win",
-		gameId = winGame.id,
-		target = 1,
-		progress = 0,
-		done = false,
-		text = `Win a game of {winGame.name}`,
-	})
-	if tryGame.id ~= winGame.id then
-		table.insert(challenges, {
-			id = `try_{tryGame.id}`,
-			kind = "play",
-			gameId = tryGame.id,
-			target = 1,
-			progress = 0,
-			done = false,
-			text = `Try {tryGame.name} today: finish a game`,
-		})
+		if Quests.GameGoals[mainGame.id] and rng:NextNumber() < 0.65 then
+			table.insert(challenges, Quests.gameGoal(mainGame, "daily", "goal_"))
+		else
+			table.insert(challenges, Quests.make(`win_{mainGame.id}`, "win", 1, `Win a game of {mainGame.name}`, { gameId = mainGame.id }))
+		end
+		if tryGame.id ~= mainGame.id then
+			table.insert(challenges, Quests.make(`try_{tryGame.id}`, "play", 1, `Try {tryGame.name} today: finish a game`, { gameId = tryGame.id }))
+		end
 	end
 	while #challenges > Economy.ChallengesPerDay do
 		table.remove(challenges)
@@ -76,6 +65,7 @@ function Daily.makeChallenges(data: Profile.Data, games: { GameInfo }, rng: Rand
 	for _, challenge in challenges do
 		challenge.gems = Economy.ChallengeGems
 		challenge.stars = Season.DailyQuestStars
+		challenge.xp = Season.DailyQuestXp
 	end
 	return challenges
 end

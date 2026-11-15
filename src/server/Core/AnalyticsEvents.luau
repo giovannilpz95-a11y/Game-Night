@@ -229,6 +229,16 @@ function AnalyticsEvents.payoutEntries(data: any, payout: any): { EconomyEntry }
 			sku = "FirstWinOrChallenge",
 		})
 	end
+	if (payout.universal or 0) > 0 then
+		table.insert(entries, {
+			flow = "Source",
+			currency = Economy.UniversalCoin.key,
+			amount = payout.universal,
+			balance = data.coins[Economy.UniversalCoin.key] or 0,
+			transaction = tx,
+			sku = "LevelMilestone",
+		})
+	end
 	if levelGems > 0 then
 		table.insert(entries, {
 			flow = "Source",

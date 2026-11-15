@@ -17,6 +17,8 @@ local Profile = require(script.Parent.Profile)
 local Quests = require(script.Parent.Quests)
 local Weekly = require(script.Parent.Weekly)
 local Shop = require(script.Parent.Shop)
+local Levels = require(script.Parent.Levels)
+local Stats = require(script.Parent.Stats)
 
 local SeasonPass = {}
 
@@ -142,6 +144,7 @@ function SeasonPass.addBonusQuest(data: Profile.Data, games: { Quests.GameInfo }
 	end
 	quest.bonus = true
 	quest.stars = Season.BonusQuestStars
+	quest.xp = Season.BonusQuestXp
 	table.insert(data.daily.challenges, quest)
 	return true
 end
@@ -217,25 +220,94 @@ end
 
 export type QuestResult = {
 	completed: { string }, -- quest texts
-	gems: number,
+	gems: number, -- quest and sweep Gems (level-up Gems are in levels.gems)
 	stars: number,
 	tiers: { number },
+	xp: number, -- account XP from the quests and sweeps
+	levels: Levels.Result, -- levels that XP reached
+	sweeps: { string }, -- "daily" and/or "weekly" when this finished the set
+	streak: number, -- quest streak after a daily sweep (0 when there was none)
 }
 
--- Pays the quests an event completed: their Gems and Stars.
+local function allDone(list: { Profile.Challenge }, skipBonus: boolean): boolean
+	local any = false
+	for _, quest in list do
+		if not (skipBonus and quest.bonus) then
+			any = true
+			if not quest.done then
+				return false
+			end
+		end
+	end
+	return any
+end
+
+-- Pays the quests an event completed: their Gems, Stars and XP, plus the daily and weekly
+-- sweep bonuses when the last quest of a set is done.
 function SeasonPass.payQuests(data: Profile.Data, now: number, quests: { Profile.Challenge }, gemMultiplier: number?): QuestResult
-	local result = { completed = {}, gems = 0, stars = 0, tiers = {} }
+	local result: QuestResult = { completed = {}, gems = 0, stars = 0, tiers = {}, xp = 0, levels = Levels.addXp(data, 0), sweeps = {}, streak = 0 }
+	local multiplier = gemMultiplier or 1
 	local stars = 0
+	local daily = false
 	for _, quest in quests do
 		table.insert(result.completed, quest.text)
 		-- Daily quests saved before the pass have neither field: they paid the old Gems.
 		local questGems = quest.gems or (if quest.stars == nil then Economy.ChallengeGems else 0)
-		result.gems += math.floor(questGems * (gemMultiplier or 1) + 0.5)
+		result.gems += math.floor(questGems * multiplier + 0.5)
 		stars += quest.stars or 0
+		result.xp += quest.xp or 0
+		if table.find(data.daily.challenges, quest) then
+			daily = true
+			Stats.addQuests(data, "daily")
+		else
+			Stats.addQuests(data, "weekly")
+		end
+	end
+	if #quests > 0 then
+		-- Daily sweep (once a day): every daily quest but the premium bonus one.
+		if daily and not data.daily.swept and allDone(data.daily.challenges, true) then
+			data.daily.swept = true
+			local streak = data.questStreak
+			streak.count = if streak.last == data.daily.day - 1 then streak.count + 1 else 1
+			streak.last = data.daily.day
+			streak.best = math.max(streak.best, streak.count)
+			result.streak = streak.count
+			Stats.addQuests(data, "dailySweeps")
+			local sweep = Season.DailySweep
+			result.gems += math.floor(sweep.gems * multiplier + 0.5)
+			stars += sweep.stars + (math.min(streak.count, Season.DailySweepStreakMax) - 1) * Season.DailySweepStreakStars
+			result.xp += sweep.xp
+			table.insert(result.sweeps, "daily")
+		end
+		-- Weekly sweep (once a week): all five weekly quests.
+		local weekly = data.season.weekly
+		if current(data, now) and weekly.week == Weekly.week(now) and not weekly.swept and allDone(weekly.quests, false) then
+			weekly.swept = true
+			Stats.addQuests(data, "weeklySweeps")
+			local sweep = Season.WeeklySweep
+			result.gems += math.floor(sweep.gems * multiplier + 0.5)
+			stars += sweep.stars
+			result.xp += sweep.xp
+			table.insert(result.sweeps, "weekly")
+		end
 	end
 	Profile.addGems(data, result.gems)
 	result.stars, result.tiers = SeasonPass.addStars(data, now, stars)
+	result.levels = Levels.addXp(data, result.xp)
 	return result
+end
+
+-- Toast lines for what payQuests paid (quest texts are listed by the caller).
+function SeasonPass.questLines(result: QuestResult): { string }
+	local lines = {}
+	for _, kind in result.sweeps do
+		if kind == "daily" then
+			table.insert(lines, if result.streak > 1 then `Daily sweep! {result.streak}-day quest streak 🔥` else "Daily sweep! Every daily quest done")
+		else
+			table.insert(lines, "Weekly sweep! All five weekly quests done")
+		end
+	end
+	return lines
 end
 
 -- A reaction sent at a table: counts toward "react" quests (daily and weekly).
@@ -339,6 +411,7 @@ function SeasonPass.reroll(data: Profile.Data, day: number, questId: any, games:
 	end
 	quest.gems = old.gems
 	quest.stars = old.stars
+	quest.xp = old.xp
 	quest.bonus = old.bonus
 	data.daily.challenges[index] = quest
 	data.season.rerollDay = day
@@ -357,6 +430,10 @@ function SeasonPass.view(data: Profile.Data, now: number): any
 		free = if here then s.free else {},
 		paid = if here then s.paid else {},
 		weekly = if here and s.weekly.week == Weekly.week(now) then s.weekly.quests else {},
+		weeklySwept = here and s.weekly.week == Weekly.week(now) and s.weekly.swept == true,
+		dailySwept = data.daily.day == Profile.today(now) and data.daily.swept == true,
+		questStreak = if data.questStreak.last >= Profile.today(now) - 1 then data.questStreak.count else 0,
+		questStreakBest = data.questStreak.best,
 		weekEndsAt = Weekly.endsAt(Weekly.week(now)),
 		rerollUsed = s.rerollDay == Profile.today(now),
 		unclaimed = if here then #SeasonPass.unclaimed(data) else 0,

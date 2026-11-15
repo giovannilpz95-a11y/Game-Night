@@ -1,8 +1,10 @@
--- Badges, weekly leaderboards and the stats profile window.
+-- Achievements, weekly leaderboards and the stats profile window.
 -- Levels and XP are paid in Core/Rewards; stats are recorded by Core/Stats (through Rewards
 -- and AnalyticsService). This service adds what needs Roblox services on top:
---   * badges: checked after every match and stats change, paid once (Economy.BadgeGems),
---     and also awarded as Roblox badges when Badges.list has an id for them,
+--   * achievements: tiered milestones (shared/Achievements), checked after every match and
+--     stats change, paid once per tier (Core/AchievementRewards), shown as unlock moments on
+--     the client, and awarded as Roblox badges for the tiers that have one,
+--   * level milestones a profile passed before they existed (Core/Levels.catchUp),
 --   * weekly boards: each player's points are written to an OrderedDataStore per game and
 --     week (Core/Weekly), batched once a minute, and the top 10 is read on request,
 --   * the stats window: the player's own profile, or another player's in this server.
@@ -15,13 +17,15 @@ local BadgeService = game:GetService("BadgeService")
 local RunService = game:GetService("RunService")
 
 local Net = require(ReplicatedStorage.Shared.Net)
-local Badges = require(ReplicatedStorage.Shared.Badges)
 local StatsCatalog = require(ReplicatedStorage.Shared.StatsCatalog)
 local GameCatalog = require(ReplicatedStorage.Shared.GameCatalog)
+local Achievements = require(ReplicatedStorage.Shared.Achievements)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local Profile = require(script.Parent.Parent.Core.Profile)
 local Stats = require(script.Parent.Parent.Core.Stats)
 local Weekly = require(script.Parent.Parent.Core.Weekly)
+local AchievementRewards = require(script.Parent.Parent.Core.AchievementRewards)
+local Levels = require(script.Parent.Parent.Core.Levels)
 local DataService = require(script.Parent.DataService)
 local AnalyticsService = require(script.Parent.AnalyticsService)
 
@@ -81,7 +85,7 @@ local function sendProfile(to: Player, of: Player)
 	statsRemote:FireClient(to, { kind = "profile", profile = profileView(of, data, to == of) })
 end
 
--- Badges -------------------------------------------------------------------------------
+-- Achievements ------------------------------------------------------------------------
 
 local function awardRobloxBadge(player: Player, badgeId: number)
 	task.spawn(function()
@@ -92,37 +96,77 @@ local function awardRobloxBadge(player: Player, badgeId: number)
 	end)
 end
 
-local function checkBadges(player: Player)
+local function checkAchievements(player: Player)
 	local data = DataService.get(player)
 	if not data then
 		return
 	end
-	local earned = Badges.newlyEarned(Stats.view(data, false), data.badges)
-	if #earned == 0 then
-		return
-	end
 	local before = AnalyticsService.snapshot(data)
+	local now = os.time()
+	local unlocks = {}
 	local lines = {}
-	local gems = 0
-	for _, badge in earned do
-		data.badges[badge.id] = os.time()
-		gems += Economy.BadgeGems[badge.tier] or 0
-		table.insert(lines, `{badge.icon} {badge.name}: {badge.desc}`)
-		if badge.roblox and badge.roblox ~= 0 then
-			awardRobloxBadge(player, badge.roblox)
+	local gems, xp = 0, 0
+	local levelLines = {}
+	-- Achievement XP can level you up, and a level can reach a "Level Up" tier: go round
+	-- until nothing new (a few times at most).
+	for _ = 1, 4 do
+		local result = AchievementRewards.award(data, Stats.view(data, false), now)
+		if #result.unlocks == 0 then
+			break
+		end
+		for _, unlock in result.unlocks do
+			table.insert(unlocks, unlock)
+			if unlock.roblox and unlock.roblox ~= 0 then
+				awardRobloxBadge(player, unlock.roblox)
+			end
+		end
+		gems += result.gems + result.levels.gems
+		xp += result.xp
+		for _, line in result.levels.lines do
+			table.insert(levelLines, line)
+		end
+		if #result.levels.reached > 0 then
+			AnalyticsService.levelUps(player, result.levels.reached)
 		end
 	end
-	if gems > 0 then
-		Profile.addGems(data, gems)
-		table.insert(lines, `+{gems} {Economy.GemsName}`)
+	if #unlocks == 0 then
+		return
 	end
-	rewardRemote:FireClient(player, { title = if #earned == 1 then "Badge unlocked" else "Badges unlocked", lines = lines })
-	AnalyticsService.logChange(player, data, before, "Gameplay", "Badge")
+	for _, unlock in unlocks do
+		local tierName = if unlock.mastery then "Mastered" else Achievements.TierNames[unlock.tier]
+		table.insert(lines, `{unlock.icon} {unlock.name} ({tierName}): {unlock.reward}`)
+	end
+	for _, line in levelLines do
+		table.insert(lines, line)
+	end
+	rewardRemote:FireClient(player, {
+		title = if #unlocks == 1 then "Achievement unlocked" else "Achievements unlocked",
+		lines = lines,
+		achievements = unlocks,
+	})
+	AnalyticsService.logChange(player, data, before, "Gameplay", "Achievement")
 	if economyService then
 		economyService.push(player)
 	end
 	if watching[player.UserId] then
 		sendProfile(player, player)
+	end
+end
+
+-- Level milestones (titles, Universal Coins) for levels reached before they existed.
+local function catchUpLevels(player: Player)
+	local data = DataService.get(player)
+	if not data then
+		return
+	end
+	local before = AnalyticsService.snapshot(data)
+	local result = Levels.catchUp(data)
+	if #result.lines > 0 then
+		rewardRemote:FireClient(player, { title = "Level rewards", lines = result.lines })
+		AnalyticsService.logChange(player, data, before, "Gameplay", "LevelMilestone")
+		if economyService then
+			economyService.push(player)
+		end
 	end
 end
 
@@ -135,7 +179,7 @@ local function queueCheck(player: Player)
 	task.defer(function()
 		checkQueued[player.UserId] = nil
 		if player.Parent then
-			checkBadges(player)
+			checkAchievements(player)
 		end
 	end)
 end
@@ -319,7 +363,12 @@ function ProgressionService.init(economy: any)
 	end)
 	AnalyticsService.onStatsChanged(queueCheck)
 	DataService.onLoaded(function(player)
-		queueCheck(player) -- badges for things done before badges existed
+		local data = DataService.get(player)
+		if data then
+			AchievementRewards.migrate(data) -- old one-tier badges count, without paying twice
+		end
+		catchUpLevels(player)
+		queueCheck(player) -- tiers for things done before achievements existed
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
