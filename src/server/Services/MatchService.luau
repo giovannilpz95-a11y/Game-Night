@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local TextService = game:GetService("TextService")
+local TextChatService = game:GetService("TextChatService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
@@ -16,6 +17,8 @@ local TableService = require(script.Parent.TableService)
 local HostService = require(script.Parent.HostService)
 local TableActionService = require(script.Parent.TableActionService)
 local ShowtimeService = require(script.Parent.ShowtimeService)
+
+local ServerData = script.Parent.Parent.Data
 
 local MatchService = {}
 
@@ -36,6 +39,12 @@ type Entry = {
 	intro: boolean, -- the Showtime intro is on: no turns yet (startPlay ends it)
 	introSkips: { [number]: boolean }, -- userIds who skipped the intro
 	ownMoves: { [number]: number }, -- moves each seat's player made themselves (not bots or the turn timer)
+	textFrom: { [number]: number }, -- seats whose typed text came from a player: [seat] = their userId
+	chatPairs: { [string]: boolean }, -- "<from>:<to>" userIds -> may they chat (TextChatService)
+	strikes: { [number]: number }, -- timeouts in a row per seat (Config.AwayAfterTimeouts marks them away)
+	clockId: number, -- bumped whenever the turn clock restarts (stale clocks do nothing)
+	drafted: any?, -- the turn key that already got the drafting extension
+	timerOwn: { [number]: number }?, -- turnClock games: ownMoves when the current phase clock started
 }
 
 local partyService: any = nil
@@ -63,14 +72,82 @@ local function loadRules(entry: GameCatalog.Entry): any?
 	return if moduleScript then require(moduleScript) :: any else nil
 end
 
+-- Typed text (Werewolf last words, Sketch & Guess guesses) is user-to-user chat, so it
+-- follows Roblox's chat rules: a viewer only sees text from players TextChatService says
+-- they may chat with. Results are cached per match; a failed check counts as "no".
+local function canChat(entry: Entry, fromId: number, toId: number): boolean
+	if fromId == toId then
+		return true
+	end
+	local key = `{fromId}:{toId}`
+	local known = entry.chatPairs[key]
+	if known == nil then
+		local ok, allowed = pcall(function()
+			return TextChatService:CanUsersChatAsync(fromId, toId)
+		end)
+		known = ok and allowed == true
+		entry.chatPairs[key] = known
+	end
+	return known
+end
+
+-- Checks every pair of players at the table ahead of time, so typed text shows without
+-- waiting on the checks. Only for games with typed text.
+local function warmChatPairs(entry: Entry)
+	local ids = {}
+	for _, seat in entry.match.seats do
+		if seat.kind == "player" and seat.userId then
+			table.insert(ids, seat.userId)
+		end
+	end
+	for _, fromId in ids do
+		for _, toId in ids do
+			if fromId ~= toId and entry.chatPairs[`{fromId}:{toId}`] == nil then
+				canChat(entry, fromId, toId)
+			end
+		end
+	end
+end
+
+-- Blanks typed text the viewer may not see (viewerId nil = the table, which anyone in
+-- the server can walk up to: it never shows players' typed text).
+local function hideTextFor(entry: Entry, view: any, viewerId: number?)
+	local rules = entry.match.rules
+	if not rules.hideText or type(view) ~= "table" or next(entry.textFrom) == nil then
+		return
+	end
+	local hidden = {}
+	local any = false
+	for seat, fromId in entry.textFrom do
+		local allowed = false
+		if viewerId then
+			-- Only cached answers here (no yielding mid-broadcast); unknown = hidden.
+			allowed = fromId == viewerId or entry.chatPairs[`{fromId}:{viewerId}`] == true
+		end
+		if not allowed then
+			hidden[seat] = true
+			any = true
+		end
+	end
+	if any then
+		rules.hideText(view, hidden)
+	end
+end
+
+local function snapshotFor(entry: Entry, seat: number?, viewerId: number?): any
+	local snapshot = entry.match:getSnapshot(seat)
+	hideTextFor(entry, snapshot.view, viewerId)
+	return snapshot
+end
+
 local function broadcast(entry: Entry)
 	-- The table shows the spectator view, so nothing hidden ends up in the world.
-	TableService.update(entry.match.id, entry.match:getSnapshot(nil))
+	TableService.update(entry.match.id, snapshotFor(entry, nil, nil))
 	for index, seat in entry.match.seats do
 		if seat.kind == "player" and seat.userId then
 			local player = Players:GetPlayerByUserId(seat.userId)
 			if player then
-				local snapshot = entry.match:getSnapshot(index)
+				local snapshot = snapshotFor(entry, index, seat.userId)
 				snapshot.turnEndsAt = entry.turnEndsAt
 				snapshot.timed = entry.timerId ~= nil
 				snapshot.table = entry.table
@@ -150,6 +227,8 @@ local function emit(name: string, event: any)
 end
 
 local scheduleTurn: (Entry) -> ()
+local strike: (Entry, number) -> ()
+local startClock: (Entry, any, number) -> ()
 
 -- The intro is over (or everyone skipped it): the first turn starts now.
 local function startPlay(entry: Entry)
@@ -186,6 +265,85 @@ local function turnKeyOf(match: any): any
 	return match.moveNumber
 end
 
+-- A player ran out of time. Twice in a row (Config.AwayAfterTimeouts) and they're marked
+-- away: their seat plays at bot speed until they move or tap "I'm back".
+function strike(entry: Entry, seat: number)
+	local match = entry.match
+	if match:isBot(seat) then
+		return
+	end
+	entry.strikes[seat] = (entry.strikes[seat] or 0) + 1
+	if entry.strikes[seat] >= Config.AwayAfterTimeouts and not match:isAway(seat) then
+		match:setAway(seat, true)
+		local s = match.seats[seat]
+		local player = s and s.userId and Players:GetPlayerByUserId(s.userId)
+		if player then
+			notify(player, "You're marked away, so safe moves are made for you. Tap I'm back to play again.")
+		end
+	end
+end
+
+-- The player is here: clear their timeouts and the away mark.
+local function present(entry: Entry, seat: number): boolean
+	entry.strikes[seat] = 0
+	if entry.match:isAway(seat) then
+		entry.match:setAway(seat, false)
+		return true
+	end
+	return false
+end
+
+-- Starts (or restarts) the AFK clock for `key`. When it runs out, every person still
+-- thinking gets the game's safe AFK move (see chooseAfkMove in GameModule): games with
+-- that hook or a turn key have the whole rest of the turn played at once.
+function startClock(entry: Entry, key: any, seconds: number)
+	local match = entry.match
+	entry.clockId += 1
+	local clockId = entry.clockId
+	entry.turnEndsAt = workspace:GetServerTimeNow() + seconds
+	task.delay(seconds, function()
+		if entry.ended or entry.clockId ~= clockId or entry.turnKey ~= key or turnKeyOf(match) ~= key then
+			return
+		end
+		local wholeTurn = match.rules.chooseAfkMove ~= nil or match.rules.getTurnKey ~= nil
+		local played = false
+		local seats = {}
+		for _, seat in match:getActiveSeats() do
+			if not match:isBot(seat) and not match:isAway(seat) then
+				table.insert(seats, seat)
+			end
+		end
+		-- Everyone who's still thinking (simultaneous discards, say) is handled at once.
+		for _, seat in seats do
+			local steps = 0
+			while steps < 40 and not entry.ended and not match:isOver() and match:isSeatActive(seat) do
+				if match.rules.getTurnKey and turnKeyOf(match) ~= key then
+					break
+				end
+				if not match:playForSeat(seat, true) then
+					break
+				end
+				steps += 1
+				afterMove(entry)
+				if not wholeTurn then
+					break
+				end
+			end
+			if steps > 0 then
+				played = true
+				strike(entry, seat)
+			end
+		end
+		if played and not entry.ended and not match:isOver() then
+			-- Whatever comes next (someone else's step, or a seat just marked away) gets a
+			-- fresh clock or a bot-speed move.
+			entry.turnKey = nil
+			scheduleTurn(entry)
+			broadcast(entry)
+		end
+	end)
+end
+
 function scheduleTurn(entry: Entry)
 	local match = entry.match
 	if match:isOver() or entry.intro then
@@ -202,7 +360,8 @@ function scheduleTurn(entry: Entry)
 		end
 	end
 	for _, seat in botSeats do
-		if match:isBot(seat) and not entry.botPending[seat] then
+		local away = match:isAway(seat)
+		if (match:isBot(seat) or away) and not entry.botPending[seat] then
 			entry.botPending[seat] = true
 			local delay = match:botDelay(seat, Config.BotMoveDelay)
 			if delay >= 1.2 and not match:getTimer() and match:isSeatActive(seat) then
@@ -213,7 +372,11 @@ function scheduleTurn(entry: Entry)
 				if entry.ended then
 					return
 				end
-				if match:playForSeat(seat) then
+				-- An away player may have come back while the bot was thinking.
+				if not match:isBot(seat) and not match:isAway(seat) then
+					return
+				end
+				if match:playForSeat(seat, away) then
 					afterMove(entry)
 				end
 			end)
@@ -227,10 +390,32 @@ function scheduleTurn(entry: Entry)
 		if entry.timerId ~= timer.id then
 			local timerId = timer.id
 			entry.timerId = timerId
+			-- Speed-scored games read the answer time off this (Match stamps it on moves).
+			local startedAt = os.clock()
+			match.phaseElapsed = function()
+				return os.clock() - startedAt
+			end
 			entry.turnEndsAt = workspace:GetServerTimeNow() + (timer.displaySeconds or timer.seconds)
+			-- Games whose phase clock is a turn clock (Conquest): note who still has to move.
+			local timed: { number } = {}
+			if match.rules.turnClock then
+				for _, seat in match:getActiveSeats() do
+					if not match:isBot(seat) and not match:isAway(seat) then
+						table.insert(timed, seat)
+					end
+				end
+				entry.timerOwn = table.clone(entry.ownMoves)
+			end
+			local ownAtStart = entry.timerOwn
 			task.delay(timer.seconds, function()
 				if entry.ended or entry.timerId ~= timerId then
 					return
+				end
+				-- Nobody touched it: that's a timeout for each of those players.
+				for _, seat in timed do
+					if ownAtStart and (entry.ownMoves[seat] or 0) == (ownAtStart[seat] or 0) then
+						strike(entry, seat)
+					end
 				end
 				if match:timeout(timerId) then
 					afterMove(entry)
@@ -249,7 +434,7 @@ function scheduleTurn(entry: Entry)
 	local hasHumanTurn = false
 	local seconds = entry.turnSeconds
 	for _, seat in match:getActiveSeats() do
-		if not match:isBot(seat) then
+		if not match:isBot(seat) and not match:isAway(seat) then
 			hasHumanTurn = true
 			-- A player's first turn is longer: the how-to-play card is up at the start.
 			if not entry.graced[seat] then
@@ -263,34 +448,7 @@ function scheduleTurn(entry: Entry)
 			return -- same turn, its clock is already running
 		end
 		entry.turnKey = key
-		entry.turnEndsAt = workspace:GetServerTimeNow() + seconds
-		task.delay(seconds, function()
-			if entry.ended or entry.turnKey ~= key or turnKeyOf(match) ~= key then
-				return
-			end
-			-- Out of time: a bot moves for whoever is still thinking, to the end of the turn.
-			for _, seat in match:getActiveSeats() do
-				if not match:isBot(seat) then
-					local steps = 0
-					while steps < 40 and not entry.ended and not match:isOver() and turnKeyOf(match) == key and match:isSeatActive(seat) do
-						if not match:playForSeat(seat) then
-							break
-						end
-						steps += 1
-						afterMove(entry)
-					end
-					if steps > 0 then
-						if not entry.ended and not match:isOver() and turnKeyOf(match) == key then
-							-- The bot couldn't finish the turn: give the player a fresh clock.
-							entry.turnKey = nil
-							scheduleTurn(entry)
-							broadcast(entry)
-						end
-						return
-					end
-				end
-			end
-		end)
+		startClock(entry, key, seconds)
 	else
 		entry.turnKey = nil
 		entry.turnEndsAt = nil
@@ -367,6 +525,15 @@ local function startMatch(leader: Player, request: any)
 
 	-- Only pass options we've checked; never forward the client's table as-is.
 	local options: any = { botLevel = Config.DefaultBotLevel, bots = {}, rules = ruleValues }
+	-- Server-only data (answers, word lists) the rules need but clients must never see.
+	if catalogEntry.serverData then
+		for key, name in catalogEntry.serverData do
+			local moduleScript = ServerData:FindFirstChild(name)
+			if moduleScript then
+				options[key] = require(moduleScript) :: any
+			end
+		end
+	end
 	if catalogEntry.custom == "words" then
 		options.customWords = customContent
 	elseif catalogEntry.custom == "quiz" then
@@ -399,7 +566,14 @@ local function startMatch(leader: Player, request: any)
 		intro = false,
 		introSkips = {},
 		ownMoves = {},
+		textFrom = {},
+		chatPairs = {},
+		strikes = {},
+		clockId = 0,
 	}
+	if rules.textField then
+		task.spawn(warmChatPairs, entry)
+	end
 	matches[matchId] = entry
 	for _, userId in party.members do
 		matchOfUser[userId] = matchId
@@ -536,15 +710,32 @@ function handlers.move(player: Player, request: any)
 			if #text > Config.MaxTypedText then
 				return notify(player, "That's too long")
 			end
-			local filtered: string? = nil
-			local okFilter = pcall(function()
-				local result = TextService:FilterStringAsync(text, player.UserId)
-				filtered = result:GetNonChatStringForBroadcastAsync()
+			-- Roblox chat settings: a player who can't chat still plays (a guess still
+			-- counts), but nobody else sees what they typed.
+			local okChat, mayChat = pcall(function()
+				return TextChatService:CanUserChatAsync(player.UserId)
 			end)
-			if not okFilter or filtered == nil then
-				return notify(player, "Couldn't send that. Try again.")
+			if okChat and mayChat == true then
+				local filtered: string? = nil
+				local okFilter = pcall(function()
+					local result = TextService:FilterStringAsync(text, player.UserId)
+					filtered = result:GetNonChatStringForBroadcastAsync()
+				end)
+				if not okFilter or filtered == nil then
+					return notify(player, "Couldn't send that. Try again.")
+				end
+				move.shown = filtered
+				-- Who may see it: check each player at the table (cached), before anyone does.
+				entry.textFrom[seat] = player.UserId
+				for _, other in entry.match.seats do
+					if other.kind == "player" and other.userId and other.userId ~= player.UserId then
+						canChat(entry, player.UserId, other.userId)
+					end
+				end
+			elseif not entry.chatPairs[`private:{player.UserId}`] then
+				entry.chatPairs[`private:{player.UserId}`] = true -- say it once, not every guess
+				notify(player, "Your chat settings keep what you type private")
 			end
-			move.shown = filtered
 			if entry.ended then
 				return
 			end
@@ -555,6 +746,7 @@ function handlers.move(player: Player, request: any)
 		return notify(player, err :: string)
 	end
 	entry.ownMoves[seat] = (entry.ownMoves[seat] or 0) + 1
+	present(entry, seat)
 	afterMove(entry)
 	emit("moved", { player = player, matchId = entry.match.id, gameId = entry.match.gameId })
 end
@@ -599,6 +791,42 @@ function handlers.resign(player: Player, _request: any)
 	afterMove(entry)
 end
 
+-- "I'm back": an away player takes their seat again (and gets a fresh clock).
+function handlers.back(player: Player, _request: any)
+	local entry = entryFor(player)
+	local seat = entry and entry.match:seatOf(player.UserId)
+	if not entry or not seat or entry.ended then
+		return
+	end
+	if present(entry, seat) then
+		entry.turnKey = nil
+		scheduleTurn(entry)
+		broadcast(entry)
+	end
+end
+
+-- The player opened a trade screen (drafting isn't a move): their clock gets
+-- Config.DraftSeconds, once per turn, so the AFK move doesn't land behind the pop-up.
+function handlers.drafting(player: Player, _request: any)
+	local entry = entryFor(player)
+	local seat = entry and entry.match:seatOf(player.UserId)
+	if not entry or not seat or entry.ended or entry.intro or entry.timerId then
+		return
+	end
+	local match = entry.match
+	local key = entry.turnKey
+	if key == nil or entry.drafted == key or not match:isSeatActive(seat) or match:isAway(seat) then
+		return
+	end
+	local left = (entry.turnEndsAt or 0) - workspace:GetServerTimeNow()
+	if left >= Config.DraftSeconds then
+		return
+	end
+	entry.drafted = key
+	startClock(entry, key, Config.DraftSeconds)
+	broadcast(entry)
+end
+
 function handlers.leave(player: Player, _request: any)
 	MatchService.leaveMatch(player)
 end
@@ -618,7 +846,7 @@ function handlers.sync(player: Player, _request: any)
 	local entry = entryFor(player)
 	if entry then
 		local seat = entry.match:seatOf(player.UserId)
-		local snapshot = entry.match:getSnapshot(seat)
+		local snapshot = snapshotFor(entry, seat, player.UserId)
 		snapshot.turnEndsAt = entry.turnEndsAt
 		snapshot.timed = entry.timerId ~= nil
 		snapshot.table = entry.table

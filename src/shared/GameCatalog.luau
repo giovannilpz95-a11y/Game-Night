@@ -26,6 +26,7 @@ export type Entry = {
 	-- Party Host (see shared/HouseRules.luau and shared/CustomContent.luau)
 	houseRules: { any }?, -- this game's own house rules; turn games also get the Turn timer
 	custom: string?, -- "words" or "quiz": the host's own word lists or quiz decks work here
+	serverData: { [string]: string }?, -- options key -> module in ServerScriptService Data (answers clients must never see)
 }
 
 local Toggle = require(script.Parent.HouseRules).Toggle
@@ -160,7 +161,7 @@ local entries: { Entry } = {
 			{
 				key = "rounds",
 				name = "Rounds",
-				hint = "How many times each player draws.",
+				hint = "How many times each player draws (big tables get fewer, so everyone draws the same).",
 				choices = { { label = "1", value = 1 }, { label = "2", value = 2 }, { label = "3", value = 3 } },
 				default = 2,
 			},
@@ -192,6 +193,7 @@ local entries: { Entry } = {
 				default = 2,
 			},
 		},
+		serverData = { wordBank = "SketchWords", doodles = "SketchDoodles" }, -- the word list stays on the server
 		custom = "words",
 	},
 	{
@@ -208,6 +210,7 @@ local entries: { Entry } = {
 		minMinutes = 1,
 		minMoves = 5,
 		minOwnMoves = 3, -- answer at least 3 questions yourself
+		serverData = { questionBank = "TriviaQuestions" }, -- answers stay on the server
 		houseRules = {
 			{
 				key = "questions",
@@ -221,7 +224,7 @@ local entries: { Entry } = {
 				choices = { { label = "10 s", value = 10 }, { label = "15 s", value = 15 }, { label = "25 s", value = 25 } },
 				default = 2,
 			},
-			{ key = "speed", name = "Speed points", hint = "Faster right answers score more. Off: every right answer is worth 1000.", choices = Toggle, default = 2 },
+			{ key = "speed", name = "Speed points", hint = "Faster right answers score more (500 to 1000). Off: every right answer is worth 1000.", choices = Toggle, default = 2 },
 			{ key = "streaks", name = "Streak bonus", hint = "Extra points for right answers in a row.", choices = Toggle, default = 2 },
 			{ key = "wrongPenalty", name = "Wrong answers cost", hint = "A wrong answer loses 250 points, so guessing is risky.", choices = Toggle, default = 1 },
 			{ key = "categoryVote", name = "Category vote", hint = "Before every 3 questions, everyone votes on the category.", choices = Toggle, default = 2 },
@@ -252,7 +255,7 @@ local entries: { Entry } = {
 			{
 				key = "wolves",
 				name = "Werewolves",
-				hint = "Auto: 1 wolf with 5-6 players, 2 with 7-8.",
+				hint = "Auto: 1 wolf with 5-6 players, 2 with 7-8. 2 wolves need at least 6 players.",
 				choices = { { label = "Auto", value = 0 }, { label = "1", value = 1 }, { label = "2", value = 2 } },
 				default = 1,
 			},
@@ -345,6 +348,7 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "anyRoom", name = "Walk anywhere", hint = "Move to any room on your turn, not just the next one.", choices = Toggle, default = 1 },
 			{ key = "openShow", name = "Show cards to all", hint = "A card shown to answer a suggestion is shown to everyone. Easier, faster games.", choices = Toggle, default = 1 },
+			{ key = "leftover", name = "Leftover cards face up", hint = "With 4 or 5 players, the cards that don't deal evenly lie face up for everyone instead of making some hands bigger.", choices = Toggle, default = 2 },
 		},
 	},
 	{
@@ -373,6 +377,7 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "jailRent", name = "Rent from Jail", hint = "Off: owners sitting in Jail can't collect rent.", choices = Toggle, default = 2 },
+			{ key = "firstLap", name = "No houses on the first lap", hint = "Nobody can build until they've gone around the board and passed Start once.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -435,6 +440,9 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "earlyLimit", name = "Slow start", hint = "Only 1-2 conquests a turn in the first rounds, so nobody runs away early.", choices = Toggle, default = 2 },
+			{ key = "fog", name = "Fog of war", hint = "You only see lands that are yours or touch yours.", choices = Toggle, default = 1 },
+			{ key = "missions", name = "Secret missions", hint = "Everyone gets a secret mission. Finish yours on your turn to win at once.", choices = Toggle, default = 1 },
+			{ key = "capitals", name = "Capitals", hint = "Your strongest starting land is your capital. Hold enough capitals to win at once.", choices = Toggle, default = 1 },
 		},
 	},
 	{

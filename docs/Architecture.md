@@ -16,7 +16,7 @@ Every player is always in a party, even if it's just themselves. The leader invi
 When the leader starts a game, `MatchService` builds the seats: party members first, then bots up to the table size the leader picked. Seat order is shuffled. Then:
 - Moves are checked by the game's rules on the server. Clients only ask.
 - A bot thinks for `Config.BotMoveDelay` seconds (or the game's `getBotDelay`, usually from `shared/BotThink.luau`), then moves. Each bot seat has at most one move pending, and other players' moves don't cancel it.
-- A player has `Config.TurnSeconds` seconds; after that a bot moves for them.
+- A player has `Config.TurnSeconds` seconds; after that a bot moves for them. Games with `chooseAfkMove` get a safe move instead (roll, pass, end the turn, turn offers down; never bid, build, accept or accuse), and the rest of that seat's turn is played at once. Two timeouts in a row (`Config.AwayAfterTimeouts`) mark the seat away (`seat.away` in the snapshot): it plays at bot speed with the same safe moves until the player moves again or sends `{ action = "back" }` (the "I'm back" prompt). Games whose `getTimer` is a turn clock set `turnClock = true` so a turn with no move counts as a timeout too (Conquest). `{ action = "drafting" }` (a trade screen opening) tops the clock up to `Config.DraftSeconds` once per turn.
 - If a player leaves, a bot takes their seat. If every player leaves, the game ends.
 - In two-player games, either player can resign.
 - The end screen's Rematch replays the party's last game with the same settings (leader only; others ask the leader). See [[UI]].
@@ -32,6 +32,9 @@ Each match is played at a table in the room when one is free: players and bots s
 Party games (Sketch & Guess, Trivia Night) let several seats move at once and run on a clock instead of turns:
 - A game with `getTimer` returns `{ id, seconds }` for the current phase. `MatchService` runs that timer (instead of the AFK turn timer) and calls `onTimeout` when it runs out. Changing `id` starts a new timer; moves that keep the id (strokes, guesses) don't reset it. Clients get `turnEndsAt` and `timed = true` to draw a countdown.
 - A game with `textField` gets typed text filtered on the server (`TextService:FilterStringAsync` + `GetNonChatStringForBroadcastAsync`). The result goes in `move.shown`, overwriting anything the client sent, and only `shown` is ever displayed to others. Correct guesses are never displayed.
+- Typed text is user-to-user chat, so it follows Roblox's chat rules: a player `TextChatService:CanUserChatAsync` says can't chat still plays, but their text is never shown; and each viewer only sees text from players `CanUsersChatAsync(from, to)` allows (cached per match, checked ahead at match start). The game's `hideText(view, hidden)` blanks the rest; the table's public screen never shows players' typed text.
+- `elapsedField`: Match stamps the seconds since the phase clock started on each move, before `validateMove`, overwriting the client's value (Trivia speed points, Sketch guess limit).
+- `serverData` in GameCatalog: answer banks and word lists live in `server/Data` and reach the rules through options, so clients never get them.
 - `options.bots` lists the seats that start as bots, so Sketch & Guess knows who can draw.
 - `getSeatInfo` adds a line under each seat in the table view (card counts, scores). `getScores` goes into the match-finished summary.
 

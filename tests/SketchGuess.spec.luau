@@ -1,9 +1,20 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local SketchGuess = require(ReplicatedStorage.Shared.Games.SketchGuess)
-local Words = require(ReplicatedStorage.Shared.Games.Data.SketchWords)
-local Doodles = require(ReplicatedStorage.Shared.Games.Data.SketchDoodles)
 local Match = require(ServerScriptService.Server.Core.Match)
+local Words = require(ServerScriptService.Server.Data.SketchWords)
+local Doodles = require(ServerScriptService.Server.Data.SketchDoodles)
+
+-- The server passes its word list and doodles in (they never ship to clients).
+local function withData(opts: any?): any
+	local o = table.clone(opts or {})
+	o.wordBank = o.wordBank or Words
+	o.doodles = o.doodles or Doodles
+	return o
+end
+local function newGame(seats: number, opts: any?, rng: any)
+	return SketchGuess.new(seats, withData(opts), rng)
+end
 
 return function(T)
 	local function apply(s, seat, move)
@@ -14,7 +25,7 @@ return function(T)
 
 	-- A 4-seat game (seats 3 and 4 are bots) with the drawer on a known word.
 	local function drawing(word)
-		local s = SketchGuess.new(4, { bots = { 3, 4 } }, T.Random.new(4))
+		local s = newGame(4, { bots = { 3, 4 } }, T.Random.new(4))
 		s.choices = { word, "cat", "dog" }
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		return s
@@ -30,7 +41,7 @@ return function(T)
 	end
 
 	T.test("with 3+ players only players draw, and the drawer picks a word", function()
-		local s = SketchGuess.new(5, { bots = { 4, 5 } }, T.Random.new(1))
+		local s = newGame(5, { bots = { 4, 5 } }, T.Random.new(1))
 		T.eq(#s.drawers, 3)
 		T.eq(s.totalTurns, 6, "three drawers draw twice each")
 		T.eq(s.phase, "choose")
@@ -44,10 +55,10 @@ return function(T)
 	end)
 
 	T.test("with fewer than 3 players bots join the drawing turns", function()
-		local s = SketchGuess.new(4, { bots = { 3, 4 } }, T.Random.new(1))
+		local s = newGame(4, { bots = { 3, 4 } }, T.Random.new(1))
 		T.eq(#s.drawers, 4)
 		T.eq(s.totalTurns, 8)
-		local solo = SketchGuess.new(3, { bots = { 2, 3 } }, T.Random.new(1))
+		local solo = newGame(3, { bots = { 2, 3 } }, T.Random.new(1))
 		T.eq(#solo.drawers, 3)
 		T.eq(solo.totalTurns, 6)
 	end)
@@ -61,7 +72,7 @@ return function(T)
 		apply(s, g, { kind = "guess", text = "  PIZZA! ", shown = "PIZZA!" })
 		T.eq(SketchGuess.getView(s, g).word, "pizza")
 		T.ok(s.scores[g] > 0)
-		T.eq(s.scores[s.drawer], 50)
+		T.eq(s.scores[s.drawer], s.scores[g] // 2, "the drawer gets half of the guesser's points")
 		-- The correct guess itself never shows up in the feed.
 		for _, entry in SketchGuess.getView(s, 3).feed do
 			T.ok(not string.find(string.lower(entry.text), "pizza"), "leaked the word")
@@ -112,7 +123,13 @@ return function(T)
 			end
 		end
 		T.eq(s.phase, "reveal")
-		T.eq(s.scores[s.drawer], 150)
+		local half = 0
+		for seat = 1, 4 do
+			if seat ~= s.drawer then
+				half += s.scores[seat] // 2
+			end
+		end
+		T.eq(s.scores[s.drawer], half)
 		T.ok(s.guessed[s.drawer] == nil)
 	end)
 
@@ -169,7 +186,7 @@ return function(T)
 	end)
 
 	T.test("a majority of players can vote to skip a drawing", function()
-		local s = SketchGuess.new(5, { bots = { 5 } }, T.Random.new(2))
+		local s = newGame(5, { bots = { 5 } }, T.Random.new(2))
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		local voters = {}
 		for seat = 1, 4 do
@@ -186,7 +203,7 @@ return function(T)
 	end)
 
 	T.test("a bot drawer picks a doodle word and draws it shape by shape", function()
-		local s = SketchGuess.new(3, { bots = { 2, 3 } }, T.Random.new(1))
+		local s = newGame(3, { bots = { 2, 3 } }, T.Random.new(1))
 		-- Seat 1 (the player) draws first; skip to the bot's turn.
 		apply(s, s.drawer, { kind = "giveUp" })
 		SketchGuess.onTimeout(s)
@@ -197,7 +214,7 @@ return function(T)
 		local rng = T.Random.new(1)
 		apply(s, 2, SketchGuess.chooseBotMove(s, 2, rng))
 		T.eq(s.phase, "draw")
-		local planned = #SketchGuess.doodleMoves(s.word)
+		local planned = #(SketchGuess.doodleMoves(s.word, Doodles) :: any)
 		T.ok(planned >= 2)
 		for _ = 1, planned do
 			local move = SketchGuess.chooseBotMove(s, 2, rng)
@@ -214,7 +231,7 @@ return function(T)
 	end)
 
 	T.test("a player's seat a bot took over gives up when it has no doodle", function()
-		local s = SketchGuess.new(4, { bots = {} }, T.Random.new(5))
+		local s = newGame(4, { bots = {} }, T.Random.new(5))
 		s.choices = { "dragon", "castle", "pirate" }
 		local move = SketchGuess.chooseBotMove(s, s.drawer, T.Random.new(1))
 		T.eq(move.kind, "giveUp")
@@ -234,14 +251,15 @@ return function(T)
 			count += 1
 			T.ok(easy[word], `doodle "{word}" isn't in the easy list`)
 			local s = drawing(word)
-			for _, move in SketchGuess.doodleMoves(word) :: any do
+			for _, move in SketchGuess.doodleMoves(word, Doodles) :: any do
 				local ok, err = SketchGuess.validateMove(s, s.drawer, move)
 				T.ok(ok, `{word}: {err}`)
 				SketchGuess.applyMove(s, s.drawer, move)
 			end
 		end
 		T.ok(count >= 30, "enough doodles to keep solo games fresh")
-		T.eq(SketchGuess.doodleMoves("dragon"), nil)
+		T.eq(SketchGuess.doodleMoves("dragon", Doodles), nil)
+		T.eq(SketchGuess.doodleMoves("sun"), nil, "no doodles without the server's list")
 	end)
 
 	T.test("shapes: lines, boxes and ovals; undo removes one shape", function()
@@ -270,17 +288,17 @@ return function(T)
 	end)
 
 	T.test("shapes-only tables reject the pen", function()
-		local s = SketchGuess.new(4, { bots = {}, rules = { tools = "shapes" } }, T.Random.new(4))
+		local s = newGame(4, { bots = {}, rules = { tools = "shapes" } }, T.Random.new(4))
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		T.eq(SketchGuess.getView(s, 1).tools, "shapes")
 		local pts = SketchGuess.encodePoints({ 0, 0, 100, 100 })
 		T.eq((SketchGuess.validateMove(s, s.drawer, { kind = "stroke", color = 1, size = 1, points = pts })), false)
 		apply(s, s.drawer, { kind = "shape", shape = "line", color = 1, size = 1, points = pts })
-		T.eq(SketchGuess.new(4, { bots = {}, rules = { tools = "bogus" } }, T.Random.new(4)).tools, "all")
+		T.eq(newGame(4, { bots = {}, rules = { tools = "bogus" } }, T.Random.new(4)).tools, "all")
 	end)
 
 	T.test("a report counts as a skip vote and only the reporter is told", function()
-		local s = SketchGuess.new(5, { bots = {} }, T.Random.new(2))
+		local s = newGame(5, { bots = {} }, T.Random.new(2))
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		local others = {}
 		for seat = 1, 5 do
@@ -312,7 +330,7 @@ return function(T)
 	end)
 
 	T.test("a player skipped twice doesn't draw again", function()
-		local s = SketchGuess.new(3, { bots = {}, rules = { rounds = 3 } }, T.Random.new(3))
+		local s = newGame(3, { bots = {}, rules = { rounds = 3 } }, T.Random.new(3))
 		local target = s.drawer
 		local function skipCurrent()
 			apply(s, s.drawer, { kind = "choose", index = 1 })
@@ -347,7 +365,7 @@ return function(T)
 	end)
 
 	T.test("scoring follows the drawing time", function()
-		local s = SketchGuess.new(4, { bots = {}, rules = { drawSeconds = 120 } }, T.Random.new(4))
+		local s = newGame(4, { bots = {}, rules = { drawSeconds = 120 } }, T.Random.new(4))
 		s.choices = { "cat", "dog", "sun" }
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		local g = guesserOf(s)
@@ -368,7 +386,7 @@ return function(T)
 	end)
 
 	T.test("bots can't guess right on an empty canvas", function()
-		local s = SketchGuess.new(3, { botLevel = "hard", bots = { 2, 3 } }, T.Random.new(3))
+		local s = newGame(3, { botLevel = "hard", bots = { 2, 3 } }, T.Random.new(3))
 		apply(s, s.drawer, { kind = "choose", index = 1 })
 		s.segment = 3
 		local rng = T.Random.new(8)
@@ -404,7 +422,7 @@ return function(T)
 			{ kind = "bot", name = "Bot Ava" },
 			{ kind = "bot", name = "Bot Milo" },
 		}
-		local m = Match.new("m", SketchGuess, seats, { botLevel = "medium", bots = { 2, 3 } }, T.Random.new(11))
+		local m = Match.new("m", SketchGuess, seats, withData({ botLevel = "medium", bots = { 2, 3 } }), T.Random.new(11))
 		local steps, mostStrokes = 0, 0
 		while not m:isOver() and steps < 5000 do
 			steps += 1
@@ -436,7 +454,7 @@ return function(T)
 			{ kind = "bot", name = "Bot Milo" },
 			{ kind = "bot", name = "Bot Juno" },
 		}
-		local m = Match.new("m", SketchGuess, seats, { botLevel = "hard", bots = { 2, 3, 4 } }, T.Random.new(9))
+		local m = Match.new("m", SketchGuess, seats, withData({ botLevel = "hard", bots = { 2, 3, 4 } }), T.Random.new(9))
 		local steps = 0
 		while not m:isOver() and steps < 2000 do
 			steps += 1
@@ -478,5 +496,77 @@ return function(T)
 				seen[first] = true
 			end
 		end
+	end)
+
+	T.test("the server limits how fast one seat can guess", function()
+		local s = drawing("pizza")
+		local g = guesserOf(s)
+		apply(s, g, { kind = "guess", text = "taco", elapsed = 1 })
+		T.eq((SketchGuess.validateMove(s, g, { kind = "guess", text = "pasta", elapsed = 1.4 })), false, "one a second")
+		local t = 1
+		for i = 2, 5 do
+			t += 1.1
+			apply(s, g, { kind = "guess", text = `word{string.rep("a", i)}`, elapsed = t })
+		end
+		local ok, err = SketchGuess.validateMove(s, g, { kind = "guess", text = "pizza", elapsed = t + 3 })
+		T.eq(ok, false, "5 guesses per hint")
+		T.ok(string.find(err :: string, "next hint") ~= nil)
+		SketchGuess.onTimeout(s) -- the next hint letter
+		apply(s, g, { kind = "guess", text = "pizza", elapsed = 0.5 })
+		T.ok(s.guessed[g], "a fresh hint gives fresh guesses")
+	end)
+
+	T.test("joined and hyphenated spellings count", function()
+		T.ok(SketchGuess.matchesAnswer({ "hot dog" }, SketchGuess.normalize("hotdog")))
+		T.ok(SketchGuess.matchesAnswer({ "anthill" }, SketchGuess.normalize("Ant hill")))
+		T.ok(SketchGuess.matchesAnswer({ SketchGuess.normalize("jack-o'-lantern") }, SketchGuess.normalize("jack o lantern")))
+		T.ok(not SketchGuess.matchesAnswer({ "hot dog" }, SketchGuess.normalize("hot")))
+		local s = drawing("teddy bear")
+		local g = guesserOf(s)
+		apply(s, g, { kind = "guess", text = "teddybear" })
+		T.ok(s.guessed[g])
+	end)
+
+	T.test("everyone draws the same number of times at big tables", function()
+		for seats = 3, 8 do
+			for rounds = 1, 3 do
+				local s = newGame(seats, { bots = {}, rules = { rounds = rounds } }, T.Random.new(seats))
+				T.eq(s.totalTurns % #s.drawers, 0, `{seats} seats, {rounds} rounds`)
+				T.ok(s.totalTurns <= 16)
+			end
+		end
+		T.eq(newGame(8, { bots = {}, rules = { rounds = 3 } }, T.Random.new(1)).totalTurns, 16)
+		T.eq(newGame(6, { bots = {}, rules = { rounds = 3 } }, T.Random.new(1)).totalTurns, 12)
+	end)
+
+	T.test("players who know the word chat only among themselves", function()
+		local s = drawing("pizza")
+		local g = guesserOf(s)
+		T.eq(SketchGuess.getChatGroup(s, s.drawer), "knows")
+		T.eq(SketchGuess.getChatGroup(s, g), nil)
+		apply(s, g, { kind = "guess", text = "pizza" })
+		T.eq(SketchGuess.getChatGroup(s, g), "knows")
+		s.phase = "reveal"
+		T.eq(SketchGuess.getChatGroup(s, g), nil, "everyone knows at the reveal")
+	end)
+
+	T.test("guesses from players a viewer may not chat with are hidden", function()
+		local s = drawing("pizza")
+		local g = guesserOf(s)
+		apply(s, g, { kind = "guess", text = "taco", shown = "taco" })
+		local view = SketchGuess.getView(s, 3)
+		SketchGuess.hideText(view, { [g] = true })
+		T.eq(view.feed[#view.feed].text, "(hidden)")
+		local other = SketchGuess.getView(s, 4)
+		SketchGuess.hideText(other, { [3] = true })
+		T.eq(other.feed[#other.feed].text, "taco")
+	end)
+
+	T.test("the word list and doodles never ship to clients", function()
+		local Shared = ReplicatedStorage.Shared
+		local data = Shared.Games:FindFirstChild("Data")
+		T.eq(data and data:FindFirstChild("SketchWords"), nil)
+		T.eq(data and data:FindFirstChild("SketchDoodles"), nil)
+		T.eq(SketchGuess.new(4, { bots = {} }, T.Random.new(1)).words, SketchGuess.SAMPLE_WORDS)
 	end)
 end

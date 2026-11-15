@@ -1,7 +1,9 @@
 -- Whodunit at the table: the mansion's nine rooms as a 3x3 board with low walls and
 -- furniture, each suspect's pawn with its own hat (seat N plays suspect N, in that seat's
--- color) and the six silly items as minis. The case file sits beside the board, sealed.
--- Play stays in the 2D view.
+-- color) and the six silly items as minis. The case file sits beside the board, sealed;
+-- leftover cards (4 or 5 players) lie face up on the other side. When a pawn or item
+-- changes room (a move, or a suggestion pulling it in) it slides there in a little arc,
+-- like Clue by Marmalade, instead of jumping.
 --
 -- Rooms and items are matched by position in Rules.theme, so a re-themed mansion keeps
 -- working: the scenery just stops matching the new names until it's redrawn.
@@ -201,36 +203,96 @@ function Whodunit.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 	model.Parent = parent
 	local memo = {}
 
+	-- Pawns and item minis live outside the redraw so they can slide between rooms.
+	local moverFolder = Instance.new("Folder")
+	moverFolder.Name = "Movers"
+	moverFolder.Parent = model
+	type Mover = { model: Model, offset: CFrame, at: CFrame, walk: thread? }
+	local pawns: { [number]: Mover } = {}
+	local minis: { [number]: Mover } = {}
+	local SLIDE = 0.6 -- seconds
+
+	local function glide(m: Mover, to: CFrame, lift: number)
+		if (m.at.Position - to.Position).Magnitude < 0.001 then
+			return
+		end
+		if m.walk then
+			task.cancel(m.walk)
+			m.walk = nil
+		end
+		local from = m.at
+		m.at = to
+		m.walk = task.spawn(function()
+			local start = os.clock()
+			while m.model.Parent do
+				local a = math.min(1, (os.clock() - start) / SLIDE)
+				local eased = a * a * (3 - 2 * a)
+				m.model:PivotTo(from:Lerp(to, eased) * CFrame.new(0, math.sin(a * math.pi) * lift, 0) * m.offset)
+				if a >= 1 then
+					break
+				end
+				task.wait()
+			end
+			m.walk = nil
+		end)
+	end
+
+	local function placeMovers(view: any, snapshot: any)
+		-- Group by room so pawns stand side by side.
+		local seatCount = view.seatCount or (snapshot and #snapshot.seats) or #Rules.theme.suspects
+		local inRoom: { [number]: number } = {}
+		local height = 0.72
+		for suspect, room in view.suspectRoom or {} do
+			local k = inRoom[room] or 0
+			inRoom[room] = k + 1
+			local cf = roomCF(boardCF, room, FLOOR_Y) * CFrame.new(((k % 3) - 1) * CELL * 0.26, 0, (k // 3) * CELL * 0.2)
+			local mover = pawns[suspect]
+			if mover then
+				glide(mover, cf, 0.5)
+			else
+				local color = if suspect <= seatCount then (Scene.SEAT_COLORS[suspect] or Color3.new(1, 1, 1)) else Color3.fromRGB(150, 150, 150)
+				local pawn = Models.pawn(moverFolder, cf, color, height)
+				local hat = HATS[suspect]
+				if hat then
+					hat(pawn, cf * CFrame.new(0, height * 0.96, 0), height)
+				end
+				pawns[suspect] = { model = pawn, offset = cf:ToObjectSpace(pawn:GetPivot()), at = cf }
+			end
+		end
+		local itemsIn: { [number]: number } = {}
+		for item, room in view.itemRoom or {} do
+			local k = itemsIn[room] or 0
+			itemsIn[room] = k + 1
+			local cf = roomCF(boardCF, room, FLOOR_Y) * CFrame.new((k - 2.5) * 0.3, 0, CELL * 0.17)
+			local mover = minis[item]
+			if mover then
+				glide(mover, cf, 0.35)
+			elseif ITEMS[item] then
+				local mini = Instance.new("Model")
+				mini.Name = Rules.theme.items[item] or "Item"
+				ITEMS[item](mini, cf)
+				mini.Parent = moverFolder
+				minis[item] = { model = mini, offset = cf:ToObjectSpace(mini:GetPivot()), at = cf }
+			end
+		end
+	end
+
 	return {
 		model = model,
 		update = function(view: any, snapshot: any)
+			placeMovers(view, snapshot)
 			if not Scene.changed(memo, view) then
 				return
 			end
 			Scene.redraw(dynamic, function(dynamic)
-				-- Group by room so pawns stand side by side.
-				local seatCount = view.seatCount or (snapshot and #snapshot.seats) or #Rules.theme.suspects
-				local inRoom: { [number]: number } = {}
-				local height = 0.72
-				for suspect, room in view.suspectRoom or {} do
-					local k = inRoom[room] or 0
-					inRoom[room] = k + 1
-					local cf = roomCF(boardCF, room, FLOOR_Y) * CFrame.new(((k % 3) - 1) * CELL * 0.26, 0, (k // 3) * CELL * 0.2)
-					local color = if suspect <= seatCount then (Scene.SEAT_COLORS[suspect] or Color3.new(1, 1, 1)) else Color3.fromRGB(150, 150, 150)
-					local pawn = Models.pawn(dynamic, cf, color, height)
-					local hat = HATS[suspect]
-					if hat then
-						hat(pawn, cf * CFrame.new(0, height * 0.96, 0), height)
-					end
-				end
-				local itemsIn: { [number]: number } = {}
-				for item, room in view.itemRoom or {} do
-					local k = itemsIn[room] or 0
-					itemsIn[room] = k + 1
-					local mini = ITEMS[item]
-					local cf = roomCF(boardCF, room, FLOOR_Y) * CFrame.new((k - 2.5) * 0.3, 0, CELL * 0.17)
-					if mini then
-						mini(dynamic, cf)
+				-- Leftover cards (4 or 5 players) face up beside the board, opposite the
+				-- case file: nobody holds them and they aren't the answer.
+				local leftover = view.leftover or {}
+				for k, id in leftover do
+					local card = Rules.cards[id]
+					local spot = boardCF * CFrame.new(-(SIZE / 2 + 0.75), 0, (k - (#leftover + 1) / 2) * (Scene.CARD_W * 0.62 + 0.12)) * CFrame.Angles(0, math.rad(90), 0)
+					if card then
+						Scene.card(dynamic, spot, { text = card.name, color = Color3.fromRGB(60, 40, 30), background = Color3.fromRGB(250, 240, 220) }, 0.62)
 					end
 				end
 				-- The sealed case file (opens at the end).

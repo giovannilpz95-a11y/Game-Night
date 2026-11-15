@@ -486,6 +486,69 @@ do
 	}
 end
 
+-- Game Night Pass, Season 4 "Frost Fair": Ice Sculptor (free track) and Ring Toss (premium).
+do
+	local lean = { W = { -14, 0, 0 }, N = { -18, 0, 0 } }
+	local chisel = { LS = { 70, 0, -5 }, LE = { 45, 0, 0 } }
+	local hammerUp = { RS = { 115, 0, 15 }, RE = { 85, 0, 0 } }
+	local hammerHit = { RS = { 72, 0, 5 }, RE = { 50, 0, 0 } }
+	local frame = { RS = { 95, 0, -12 }, LS = { 95, 0, 12 }, RE = { 55, 0, 0 }, LE = { 55, 0, 0 }, N = { 6, 0, 0 } }
+	local back = root(0, 0, 0, 0, 0, 0.25)
+	poses.pose_icesculptor = {
+		length = 2.1,
+		loop = { 1.05, 2.1 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.2, "out", crouch(10), lean, chisel, hammerUp),
+			K(0.32, "in", crouch(10), lean, chisel, hammerHit),
+			K(0.44, "out", crouch(10), lean, chisel, hammerUp),
+			K(0.56, "in", crouch(10), lean, chisel, hammerHit),
+			K(0.68, "out", crouch(10), lean, chisel, hammerUp),
+			K(0.8, "in", crouch(10), lean, chisel, hammerHit),
+			K(1.05, "back", frame, back),
+			K(1.4, "io", frame, { N = { 6, 0, 12 } }, back),
+			K(1.8, "io", frame, { N = { 6, 0, -12 } }, back),
+			K(2.1, "io", frame, back),
+		},
+		cues = {
+			{ t = 0.32, sound = "tick" },
+			{ t = 0.56, sound = "tick" },
+			{ t = 0.8, sound = "tick", burst = 8 },
+			{ t = 1.05, sound = "pop", burst = 16 },
+		},
+	}
+end
+
+do
+	local aim = { RS = { 60, 0, 5 }, RE = { 90, 0, 0 }, LS = { 20, 0, -15 }, N = { 4, 0, 0 } }
+	local toss = { RS = { 105, 0, 0 }, RE = { 5, 0, 0 }, RW = { -20, 0, 0 }, LS = { 10, 0, -20 }, W = { -6, 0, 0 }, N = { 8, 0, 0 } }
+	local pumpUp = { RS = { 150, 0, 30 }, RE = { 40, 0, 0 }, N = { 15, 0, 0 } }
+	local pumpDown = { RS = { 60, 0, 20 }, RE = { 120, 0, 0 }, N = { 8, 0, 0 } }
+	poses.pose_ringtoss = {
+		length = 2.05,
+		loop = { 1.55, 2.05 },
+		keys = {
+			K(0, nil, STAND),
+			K(0.2, "out", crouch(8), aim),
+			K(0.38, "back", toss),
+			K(0.55, "io", crouch(8), aim),
+			K(0.73, "back", toss),
+			K(0.9, "io", crouch(12), aim),
+			K(1.08, "back", toss, root(0, 0, 0, 0, 0.05)),
+			K(1.3, "out", pumpUp, HIPS_L, root(0, 0, 0, 0, 0.25)),
+			K(1.55, "io", HIPS_L, crouch(10), pumpDown),
+			K(1.8, "io", pumpUp, HIPS_L),
+			K(2.05, "io", HIPS_L, crouch(10), pumpDown),
+		},
+		cues = {
+			{ t = 0.38, sound = "tick" },
+			{ t = 0.73, sound = "tick" },
+			{ t = 1.08, sound = "pop", burst = 20 },
+			{ t = 1.3, sound = "callout" },
+		},
+	}
+end
+
 ---------------------------------------------------------------- celebrations
 
 local dances: { [string]: Move } = {}
@@ -947,6 +1010,43 @@ do
 			{ t = 0.75, sound = "callout", burst = 24 },
 			{ t = 1.5, sound = "clap", burst = 16 },
 			{ t = 2.0, sound = "clap", burst = 16 },
+			{ t = 3.6, sound = "pop", burst = 20 },
+		},
+	}
+end
+
+-- Toboggan Run (Game Night Pass, Season 4 premium tier 30): tucked in on the sled holding
+-- the rope, leaning through three turns, a bump, a jump off with arms up, a wave and a spin.
+do
+	local rope = { RS = { 60, 0, -10 }, LS = { 60, 0, 10 }, RE = { 60, 0, 0 }, LE = { 60, 0, 0 }, W = { -15, 0, 0 }, N = { 12, 0, 0 } }
+	local up = { RS = { 10, 0, 165 }, LS = { 10, 0, -165 }, RE = { 10, 0, 0 }, LE = { 10, 0, 0 }, N = { 20, 0, 0 } }
+	local waveR = { RS = { 10, 0, 150 }, LS = { 10, 0, -150 }, RE = { 20, 0, 0 }, LE = { 20, 0, 0 }, W = { 0, 0, 10 }, N = { 18, 0, -8 } }
+	local waveL = { RS = { 10, 0, 150 }, LS = { 10, 0, -150 }, RE = { 20, 0, 0 }, LE = { 20, 0, 0 }, W = { 0, 0, -10 }, N = { 18, 0, 8 } }
+	-- Like Grand Finale, the spin ends a full turn round (yaw 360), the loop's start heading.
+	dances.win_toboggan = {
+		length = 4.0,
+		loop = { 0, 4.0 },
+		keys = {
+			K(0, "io", rope, crouch(45)),
+			K(0.5, "io", rope, crouch(45, { 0, 0, 12, 0.2, 0, 0 }), { N = { 10, 0, -12 } }),
+			K(1.0, "io", rope, crouch(45, { 0, 0, -12, -0.2, 0, 0 }), { N = { 10, 0, 12 } }),
+			K(1.5, "io", rope, crouch(45, { 0, 0, 12, 0.2, 0, 0 }), { N = { 10, 0, -12 } }),
+			K(1.75, "in", rope, crouch(55)),
+			K(2.0, "out", up, WIDE, root(0, 0, 0, 0, 0.8)),
+			K(2.25, "in", up, WIDE),
+			K(2.5, "io", waveR, WIDE),
+			K(3.0, "io", waveL, WIDE),
+			K(3.25, "in", crouch(5), up),
+			K(3.6, "out", up, root(0, 270, 0, 0, 0.3)),
+			K(4.0, "io", rope, crouch(45, { 0, 360, 0 })),
+		},
+		cues = {
+			{ t = 0.5, sound = "tick", burst = 4 },
+			{ t = 1.0, sound = "tick", burst = 4 },
+			{ t = 1.5, sound = "tick", burst = 4 },
+			{ t = 2.0, sound = "callout", burst = 24 },
+			{ t = 2.5, sound = "clap", burst = 12 },
+			{ t = 3.0, sound = "clap", burst = 12 },
 			{ t = 3.6, sound = "pop", burst = 20 },
 		},
 	}

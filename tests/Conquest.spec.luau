@@ -387,4 +387,187 @@ return function(T)
 			end
 		end
 	end)
+	-- Dice for 3 attack dice against 1 defender: 6 6 6 vs 1, every throw.
+	local function attackerWins()
+		local i = 0
+		return {
+			NextInteger = function(_, lo, hi)
+				i += 1
+				return math.clamp(if i % 4 == 0 then 1 else 6, lo, hi)
+			end,
+			NextNumber = function()
+				return 0.5
+			end,
+		}
+	end
+
+	T.test("fog of war: you see your lands and their neighbours, spectators see nothing", function()
+		local s = Conquest.new(3, { rules = { fog = true } }, T.Random.new(4))
+		local view = Conquest.getView(s, 1)
+		T.eq(view.fog, true)
+		local seen = Conquest.visibleTo(s.owner, 1)
+		local hidden = 0
+		for t = 1, N do
+			if seen[t] then
+				T.eq(view.owner[t], s.owner[t])
+				T.eq(view.armies[t], s.armies[t])
+			else
+				hidden += 1
+				T.eq(view.owner[t], 0, "fogged owner")
+				T.eq(view.armies[t], -1, "fogged armies")
+			end
+			if s.owner[t] == 1 then
+				T.ok(seen[t], "your own land is visible")
+				for _, n in Conquest.neighbors[t] do
+					T.ok(seen[n], "neighbours are visible")
+				end
+			end
+		end
+		T.ok(hidden > 0, "something is hidden")
+		local spectator = Conquest.getView(s, nil)
+		for t = 1, N do
+			T.eq(spectator.owner[t], 0, "the shared table board shows no owners")
+		end
+		T.ok(not string.find(Conquest.getSeatInfo(s)[2], "armies"), "army totals stay hidden")
+		-- News from the fog is dropped; news about you is kept.
+		local far
+		for t = 1, N do
+			if not seen[t] then
+				far = t
+			end
+		end
+		s.log = { { text = "took X from {target}", seat = 2, target = 3, t = far }, { text = "took Y from {target}", seat = 2, target = 1, t = far } }
+		local news = Conquest.getView(s, 1).log
+		T.eq(#news, 1)
+		T.eq(news[1].target, 1)
+		s.result = { winners = { 1 }, isDraw = false }
+		T.eq(Conquest.getView(s, nil).owner[far], s.owner[far], "the map clears when the game ends")
+	end)
+
+	T.test("secret missions: everyone gets one, only you see yours, finishing it wins", function()
+		local s = Conquest.new(4, { rules = { missions = true } }, T.Random.new(9))
+		for seat = 1, 4 do
+			local mission = s.missions[seat]
+			T.ok(mission ~= nil, "dealt a mission")
+			T.ok(not (mission.kind == "knockout" and mission.target == seat), "never knock yourself out")
+			T.ok(Conquest.missionText(mission) ~= "")
+		end
+		local view = Conquest.getView(s, 2)
+		T.eq(view.mission.kind, s.missions[2].kind)
+		T.eq(view.missions, nil, "others' missions stay secret")
+		T.eq(Conquest.getView(s, nil).mission, nil)
+		-- Give seat 1 "hold 14" with 13 lands, then let it place: no win yet; take a 14th.
+		s.missions[1] = { kind = "lands", count = 14 }
+		for t = 1, N do
+			s.owner[t] = if t <= 13 then 1 else 2
+			s.armies[t] = 3
+		end
+		s.turn, s.phase, s.reinforcements = 1, "attack", 0
+		s.conquestsThisTurn = 0
+		s.earlyLimit = false
+		s.rng = attackerWins()
+		local from
+		for _, n in Conquest.neighbors[14] do
+			if s.owner[n] == 1 then
+				from = n
+			end
+		end
+		s.armies[14] = 1
+		s.armies[from] = 6
+		play(s, 1, { kind = "attack", from = from, to = 14, blitz = true })
+		if s.phase == "occupy" then
+			play(s, 1, { kind = "occupy", count = s.occupy.min })
+		end
+		local result = Conquest.getResult(s)
+		T.ok(result ~= nil, "mission complete ends the game")
+		T.eq(result.winners[1], 1)
+		T.ok(string.find(result.reason, "mission") ~= nil)
+		T.ok(Conquest.getView(s, 3).missions ~= nil, "missions are revealed at the end")
+	end)
+
+	T.test("a knockout mission on someone another player knocks out turns into holding lands", function()
+		local s = Conquest.new(3, { rules = { missions = true } }, T.Random.new(5))
+		s.missions[1] = { kind = "knockout", target = 3 }
+		for t = 1, N do
+			s.owner[t] = if t == 24 then 3 elseif t <= 6 then 1 else 2
+			s.armies[t] = 2
+		end
+		s.turn, s.phase, s.earlyLimit, s.conquestsThisTurn = 2, "attack", false, 0
+		s.rng = attackerWins()
+		local from
+		for _, n in Conquest.neighbors[24] do
+			if s.owner[n] == 2 then
+				from = n
+			end
+		end
+		s.armies[from] = 8
+		s.armies[24] = 1
+		play(s, 2, { kind = "attack", from = from, to = 24, blitz = true })
+		T.ok(s.eliminated[3])
+		T.eq(s.missions[1].kind, "lands")
+	end)
+
+	T.test("capitals: the strongest starting land, hold enough to win", function()
+		T.eq(Conquest.capitalsToWin(2), 2)
+		T.eq(Conquest.capitalsToWin(3), 3)
+		T.eq(Conquest.capitalsToWin(4), 3)
+		T.eq(Conquest.capitalsToWin(6), 4)
+		local s = Conquest.new(2, { rules = { capitals = true } }, T.Random.new(3))
+		for seat = 1, 2 do
+			local capital = s.capitals[seat]
+			T.eq(s.owner[capital], seat)
+			for t = 1, N do
+				if s.owner[t] == seat then
+					T.ok(s.armies[t] <= s.armies[capital], "capital is the biggest stack")
+				end
+			end
+		end
+		T.eq(Conquest.getView(s, nil).capitals[1], s.capitals[1], "capitals are public")
+		-- Seat 1 takes seat 2's capital while holding its own.
+		local theirs = s.capitals[2]
+		for t = 1, N do
+			s.owner[t] = 1
+			s.armies[t] = 2
+		end
+		s.owner[theirs] = 2
+		local from = Conquest.neighbors[theirs][1]
+		s.armies[from] = 9
+		s.armies[theirs] = 1
+		local mine = if theirs == 1 or from == 1 then (if theirs == 2 or from == 2 then 3 else 2) else 1
+		s.capitals[1] = mine
+		for t = 1, N do
+			if t ~= theirs and t ~= from and t ~= mine then
+				s.owner[t] = 2 -- seat 2 keeps another land, so it isn't knocked out
+				break
+			end
+		end
+		s.turn, s.phase, s.earlyLimit, s.conquestsThisTurn = 1, "attack", false, 0
+		s.rng = attackerWins()
+		play(s, 1, { kind = "attack", from = from, to = theirs, blitz = true })
+		local result = Conquest.getResult(s)
+		T.ok(result ~= nil and result.winners[1] == 1 and result.reason == "Held the capitals", `capital win: {result and result.reason} phase {s.phase} theirs {theirs} from {from}`)
+	end)
+
+	T.test("bot games finish with fog, missions and capitals on", function()
+		for seed = 1, 6 do
+			local seats = 2 + (seed - 1) % 5
+			local level = ({ "easy", "medium", "hard" })[(seed - 1) % 3 + 1]
+			local rng = T.Random.new(seed * 31)
+			local s = Conquest.new(seats, { botLevel = level, rules = { fog = true, missions = true, capitals = true } }, rng)
+			local moves = 0
+			while not Conquest.getResult(s) do
+				local seat = Conquest.getActiveSeats(s)[1]
+				local move = GameModule.chooseBotMove(Conquest, s, seat, rng)
+				assert(move, `bot had no move in phase {s.phase}`)
+				local ok, err = Conquest.validateMove(s, seat, move)
+				assert(ok, `{level} bot made a bad {move.kind}: {err}`)
+				Conquest.applyMove(s, seat, move)
+				Conquest.getView(s, seat)
+				Conquest.getView(s, nil)
+				moves += 1
+				assert(moves < 20000, "game never ended")
+			end
+			T.ok(#Conquest.getResult(s).winners >= 1)
+		end
+	end)
 end
