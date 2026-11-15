@@ -180,7 +180,7 @@ function LoungeHud.create(parent: Instance, actions: Actions)
 			ZIndex = 7,
 			Parent = button,
 		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Color = Theme.Accent, Transparency = 0.6, Thickness = 2 }) })
-		badge(button, key, Vector2.new(-2, 2))
+		badge(button, key, Vector2.new(8, -6))
 		Kit.onPress(button, function()
 			activeTab = key
 			paintTab(key)
