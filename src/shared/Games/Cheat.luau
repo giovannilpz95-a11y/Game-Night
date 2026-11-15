@@ -9,6 +9,9 @@
 -- The first player to empty their hand (and survive any doubt) wins. A very long game
 -- ends after PLAY_LIMIT plays: fewest cards left wins.
 --
+-- House rule "twoDecksAt": with that many seats or more (6 by default) two decks are
+-- shuffled together, as the official rules suggest for big tables.
+--
 -- House rule "upDown" (up, down or same): instead of the next rank in order, each play
 -- may claim the same rank as the last claim, or one above or below it.
 --
@@ -31,13 +34,17 @@ Cheat.DOUBT_SECONDS = 5 -- house rule "doubtSeconds" can change it
 Cheat.REVEAL_SECONDS = 2.5
 Cheat.PLAY_LIMIT = 300
 Cheat.MAX_CARDS = 4
+Cheat.TWO_DECKS_AT = 6 -- seats; house rule "twoDecksAt" (0 = never)
 
 local rank = PlayingCards.rank
 
 function Cheat.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 3 and seatCount <= 8, "I Doubt It needs 3-8 seats")
 	local random = rng or Random.new()
-	local deck = PlayingCards.newDeck(random)
+	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	local at = if type(rules.twoDecksAt) == "number" then rules.twoDecksAt else Cheat.TWO_DECKS_AT
+	local decks = if at > 0 and seatCount >= at then 2 else 1
+	local deck = PlayingCards.newDeck(random, nil, decks)
 	local hands = {}
 	for seat = 1, seatCount do
 		hands[seat] = {}
@@ -45,9 +52,9 @@ function Cheat.new(seatCount: number, options: any?, rng: Random?)
 	for i, id in deck do
 		table.insert(hands[(i - 1) % seatCount + 1], id)
 	end
-	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local state = {
 		seatCount = seatCount,
+		decks = decks,
 		rng = random,
 		hands = hands,
 		pile = {}, -- face down, newest last
@@ -188,6 +195,9 @@ function Cheat.getLegalMoves(state, seat: number): { any }
 					table.insert(honest, id)
 				end
 			end
+			while #honest > Cheat.MAX_CARDS do
+				table.remove(honest)
+			end
 			if #honest > 1 then
 				table.insert(moves, { kind = "play", cards = honest, claim = claim })
 			end
@@ -210,7 +220,7 @@ function Cheat.validateMove(state, seat: number, move: any): (boolean, string?)
 		if state.phase ~= "play" or seat ~= state.turn then
 			return false, "It's not your turn"
 		end
-		if not PlayingCards.isCardList(move.cards, Cheat.MAX_CARDS) then
+		if not PlayingCards.isCardList(move.cards, Cheat.MAX_CARDS, state.decks) then
 			return false, "Play 1 to 4 cards"
 		end
 		if not PlayingCards.holdsAll(state.hands[seat], move.cards) then
@@ -303,6 +313,7 @@ function Cheat.getView(state, seat: number?)
 		reveal = GameModule.copy(state.reveal),
 		passed = passed,
 		doubtSeconds = state.doubtSeconds,
+		decks = state.decks,
 	}
 end
 
@@ -402,11 +413,12 @@ function Cheat.honestChance(state, seat: number): number
 		end
 	end
 	local count = claim.count
-	if known + count > 4 then
+	local perRank = 4 * (state.decks or 1)
+	if known + count > perRank then
 		return 0
 	end
-	local left = 4 - known -- of that rank, somewhere we can't see
-	local unseen = math.max(1, 52 - seen)
+	local left = perRank - known -- of that rank, somewhere we can't see
+	local unseen = math.max(1, 52 * (state.decks or 1) - seen)
 	local had = math.min(unseen, #state.hands[claim.seat] + count) -- their hand before the play
 	local total = choose(unseen, had)
 	if total <= 0 then
@@ -492,6 +504,9 @@ function Cheat.chooseBotMove(state, seat: number, rng: Random): any?
 		local smallPile = #state.pile <= (if state.seatCount <= 4 then 2 else 0)
 		if #honest > 0 then
 			local cards = table.clone(honest)
+			while #cards > Cheat.MAX_CARDS do -- two decks can hold up to 8 of a rank
+				table.remove(cards)
+			end
 			-- Sometimes slip in one extra card with the honest ones.
 			local sneak = if level == "hard" then 0.3 elseif level == "medium" then 0.15 else 0
 			if #cards < Cheat.MAX_CARDS and #others > 0 and smallPile and rng:NextNumber() < sneak then

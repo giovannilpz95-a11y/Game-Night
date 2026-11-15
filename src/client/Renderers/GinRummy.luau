@@ -218,7 +218,7 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 		-- Gin, Undercut and Knock each get their big moment (Table view hides the felt).
 		if show and show.kind ~= "wash" and calledRound ~= view.round then
 			calledRound = view.round
-			local text = if show.kind == "gin" then "GIN!" elseif show.kind == "undercut" then "UNDERCUT!" else "KNOCK!"
+			local text = if show.kind == "bigGin" then "BIG GIN!" elseif show.kind == "gin" then "GIN!" elseif show.kind == "undercut" then "UNDERCUT!" else "KNOCK!"
 			HudKit.callout(ui.root, `{text}  {nameOf(show.winner)} +{show.points}` .. (if show.doubled then " (doubled)" else ""), if show.kind == "knock" then nil else Color3.fromRGB(120, 220, 150))
 			-- And off the table in Table view.
 			CardFx.pop(text, if show.kind == "knock" then Theme.Accent else Color3.fromRGB(120, 220, 150))
@@ -230,7 +230,9 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 				title = "Stock ran out: no score this hand"
 			else
 				local who = nameOf(show.winner)
-				if show.kind == "gin" then
+				if show.kind == "bigGin" then
+					title = `{nameOf(show.knocker)} went Big Gin with all 11 cards! {who} +{show.points}`
+				elseif show.kind == "gin" then
 					title = `{nameOf(show.knocker)} went Gin! {who} +{show.points}`
 				elseif show.kind == "undercut" then
 					title = `Undercut! {who} +{show.points}`
@@ -321,6 +323,13 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 				end })
 			end
 		end
+		if discarding and view.canBigGin then
+			-- All 11 cards are in melds: go out without throwing a card away.
+			table.insert(buttons, { text = "Big Gin!", color = Theme.Good, onClick = function()
+				knocking = false
+				sendMove({ kind = "bigGin" })
+			end })
+		end
 		if discarding and next(knockable) ~= nil then
 			table.insert(buttons, {
 				text = if knocking then "Cancel knock" elseif view.deadwood and view.deadwood == 0 then "Gin!" else "Knock",
@@ -350,7 +359,7 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 		elseif discarding and knocking then
 			ui.prompt.Text = "Tap the card to knock with"
 		elseif discarding then
-			ui.prompt.Text = `Tap a card to throw away{dw}` .. (if next(knockable) ~= nil then " · you can knock!" else "")
+			ui.prompt.Text = `Tap a card to throw away{dw}` .. (if view.canBigGin then " · all 11 melded: Big Gin!" elseif next(knockable) ~= nil then " · you can knock!" else "")
 		elseif view.phase == "reveal" then
 			ui.prompt.Text = "Next hand soon..."
 		elseif view.phase == "upcard" then
@@ -396,7 +405,7 @@ function GinRummy.create(container: Frame, sendMove: (any) -> ())
 				end
 			end
 			table.insert(lines, `{nameOf(show.winner)} +{show.points}` .. (if show.doubled then " (spade upcard: doubled)" else ""))
-			local title = if show.kind == "gin" then `{nameOf(show.knocker)} went Gin!` elseif show.kind == "undercut" then `Undercut! {nameOf(show.winner)} wins the hand` else `{nameOf(show.knocker)} knocked`
+			local title = if show.kind == "bigGin" then `{nameOf(show.knocker)} went Big Gin!` elseif show.kind == "gin" then `{nameOf(show.knocker)} went Gin!` elseif show.kind == "undercut" then `Undercut! {nameOf(show.winner)} wins the hand` else `{nameOf(show.knocker)} knocked`
 			CardTable.notice(ui, title, lines, if show.kind == "knock" then nil else Theme.Good)
 		else
 			CardTable.notice(ui, nil)

@@ -286,13 +286,22 @@ function Whodunit.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 			end
 			Scene.redraw(dynamic, function(dynamic)
 				-- Leftover cards (4 or 5 players) face up beside the board, opposite the
-				-- case file: nobody holds them and they aren't the answer.
+				-- case file: nobody holds them and they aren't the answer. They lean on a
+				-- little wooden rack, tilted up toward the board, so the seated avatars'
+				-- arms at that side don't hide them.
 				local leftover = view.leftover or {}
-				for k, id in leftover do
-					local card = Rules.cards[id]
-					local spot = boardCF * CFrame.new(-(SIZE / 2 + 0.75), 0, (k - (#leftover + 1) / 2) * (Scene.CARD_W * 0.62 + 0.12)) * CFrame.Angles(0, math.rad(90), 0)
-					if card then
-						Scene.card(dynamic, spot, { text = card.name, color = Color3.fromRGB(60, 40, 30), background = Color3.fromRGB(250, 240, 220) }, 0.62)
+				if #leftover > 0 then
+					local step = Scene.CARD_W * 0.62 + 0.12
+					local rack = boardCF * CFrame.new(-(SIZE / 2 + 0.5), 0, 0)
+					Models.block(dynamic, "LeftoverRack", Vector3.new(0.16, 0.54, step * #leftover + 0.1), rack * CFrame.new(-0.27, 0.27, 0), Models.WALNUT, Enum.Material.Wood)
+					for k, id in leftover do
+						local card = Rules.cards[id]
+						-- Long side pointing at the board, outer end raised onto the rack, so
+						-- the face looks up and toward the middle of the table.
+						local spot = rack * CFrame.new(0, 0.32, (k - (#leftover + 1) / 2) * step) * CFrame.Angles(0, math.rad(90), 0) * CFrame.Angles(math.rad(50), 0, 0)
+						if card then
+							Scene.card(dynamic, spot, { text = card.name, color = Color3.fromRGB(60, 40, 30), background = Color3.fromRGB(250, 240, 220) }, 0.62)
+						end
 					end
 				end
 				-- The sealed case file (opens at the end).

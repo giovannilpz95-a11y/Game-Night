@@ -117,6 +117,10 @@ function DailyRewardCard.create(parent: Instance)
 	return {
 		show = show,
 		close = close,
+		-- The first-join tour waits for this card, so they never cover each other.
+		isOpen = function(): boolean
+			return overlay.Visible
+		end,
 	}
 end
 

@@ -24,6 +24,8 @@ local StatsPanel = require(script.Parent.UI.StatsPanel)
 local SeasonPanel = require(script.Parent.UI.SeasonPanel)
 local Layout = require(script.Parent.UI.Layout)
 local LobbyHud = require(script.Parent.UI.LobbyHud)
+local CafeHud = require(script.Parent.UI.CafeHud)
+local SettingsPanel = require(script.Parent.UI.SettingsPanel)
 local RulesPanel = require(script.Parent.UI.RulesPanel)
 local LobbyTour = require(script.Parent.UI.LobbyTour)
 local PartyChat = require(script.Parent.UI.PartyChat)
@@ -135,7 +137,8 @@ local statsPanel = StatsPanel.create(lobby, function(request)
 end)
 
 local partyWindow = Kit.modal(lobby, { name = "PartyWindow", maxSize = Vector2.new(420, 600) })
-local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = Vector2.new(1000, 680) })
+-- The Café picker has a game panel on the right, so its window is wider.
+local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = if Kit.cafe then Vector2.new(1240, 780) else Vector2.new(1000, 680) })
 local partyPanel = PartyPanel.create(partyWindow.body, sendParty, hostHooks)
 local gamePicker = GamePicker.create(pickerWindow.body, sendMatch, hostHooks)
 Layout.onChange(function(info)
@@ -168,6 +171,8 @@ openStats = function(userId: number?)
 	partyWindow.close()
 	statsPanel.open(userId)
 end
+-- The Settings window (made below, once the sound window exists).
+local settingsPanel: any = nil
 -- One big window at a time.
 local function closeWindows()
 	partyWindow.close()
@@ -177,6 +182,12 @@ local function closeWindows()
 	seasonPanel.close()
 	dressingRoom.close()
 	shopPanel.root.Visible = false
+	-- These two sit on the screen, not the lobby, so they'd stay up over a match.
+	friendsPanel.close()
+	hostPanel.close()
+	if settingsPanel then
+		settingsPanel.close()
+	end
 end
 local walletBar = WalletBar.create(screen)
 local soundPanel = SoundPanel.create(screen, function(request)
@@ -195,7 +206,25 @@ local voicePanel = VoicePanel.create(lobby, screen, function(request)
 	voiceRequest:FireServer(request)
 end)
 
-local hud = LobbyHud.create(lobby, {
+settingsPanel = SettingsPanel.create(screen, {
+	send = function(request)
+		economyRequest:FireServer(request)
+	end,
+	replayTour = function()
+		startTour()
+	end,
+	rules = function()
+		rulesPanel.openHelp()
+	end,
+	sound = soundPanel,
+})
+Layout.onChange(function(info)
+	settingsPanel.fit(info.top, info.bottom)
+end)
+
+-- The Game Café look has its own lobby HUD (client/UI/CafeHud); Classic keeps LobbyHud.
+local hudModule: any = if Kit.cafe then CafeHud else LobbyHud
+local hud = hudModule.create(lobby, {
 	play = function()
 		closeWindows()
 		pickerWindow.open()
@@ -240,6 +269,19 @@ local hud = LobbyHud.create(lobby, {
 		closeWindows()
 		soundPanel.open()
 	end,
+	settings = function()
+		closeWindows()
+		settingsPanel.open()
+	end,
+	quests = function()
+		closeWindows()
+		seasonPanel.open("quests")
+	end,
+	playGame = function(gameId: string)
+		closeWindows()
+		pickerWindow.open()
+		gamePicker.select(gameId)
+	end,
 })
 Audio.start()
 
@@ -281,6 +323,7 @@ function startTour()
 end
 voicePanel.onChange(hud.setVoice)
 
+local showUpNext: () -> ()
 -- The Play button says who decides, and the rail shows how many are in your party.
 local function renderHud()
 	local party = currentParty
@@ -289,7 +332,11 @@ local function renderHud()
 		hud.setBadge("Party", nil)
 		return
 	end
-	hud.setBadge("Party", if #party.members > 1 then tostring(#party.members) else nil)
+	if hud.setParty then
+		hud.setParty(party) -- the Café's party strip shows every face instead of a count
+	else
+		hud.setBadge("Party", if #party.members > 1 then tostring(#party.members) else nil)
+	end
 	if party.leaderId == localPlayer.UserId then
 		hud.setPlay("▶  Play", if #party.members > 1 then `You pick the game for your party of {#party.members}` else nil)
 	else
@@ -320,6 +367,31 @@ game:GetService("ProximityPromptService").PromptTriggered:Connect(function(promp
 	end
 end)
 
+-- The Café's "Up next" card: the game you just played, or today's pick (a different ready
+-- game each day, the same for everyone).
+local lastGameId: string? = nil
+showUpNext = function()
+	if not hud.setUpNext then
+		return
+	end
+	local entry = lastGameId and GameCatalog.get(lastGameId)
+	if entry and entry.status == "ready" then
+		hud.setUpNext(entry, "PLAY AGAIN")
+		return
+	end
+	local ready = {}
+	for _, candidate in GameCatalog.entries do
+		if candidate.status == "ready" and candidate.category ~= "Party" then
+			table.insert(ready, candidate)
+		end
+	end
+	if #ready > 0 then
+		local day = math.floor(os.time() / 86400)
+		hud.setUpNext(ready[day % #ready + 1], "TODAY'S PICK")
+	end
+end
+showUpNext()
+
 -- At a table the wallet shows that game's Coins too.
 local shownGameId: string? = nil
 Frame.every("LobbyState", 0, function()
@@ -335,8 +407,11 @@ Frame.every("LobbyState", 0, function()
 		if gameId then
 			closeWindows() -- a game started: get out of the way
 			tour.stop()
+			lastGameId = gameId
 		else
 			rulesPanel.close()
+			settingsPanel.sync() -- keep camera changes made in the match's menu
+			showUpNext()
 		end
 	end
 end)
@@ -409,11 +484,21 @@ end
 Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
 	tips = state.tips
 	soundPanel.load(state.audio)
+	settingsPanel.load(state.settings)
+	if hud.setProfile then
+		hud.setProfile(state)
+		hud.setQuests(state.challenges)
+	end
 	-- First visit: show the lobby tour once the room is on screen.
 	if not tourChecked and type(tips) == "table" then
 		tourChecked = true
 		if not tips.lobbyTour then
 			task.delay(2, function()
+				-- One moment at a time: the Day 1 reward card first, then the tour.
+				while dailyCard.isOpen() do
+					task.wait(0.25)
+				end
+				task.wait(0.4)
 				if not matchView.isOpen() and not tour.isRunning() then
 					startTour()
 				end

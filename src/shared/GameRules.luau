@@ -69,6 +69,7 @@ rules.Chess = {
 		} },
 		{ title = "Special moves", lines = {
 			"Castling: king moves two toward a rook, the rook hops over. Neither may have moved, and the king can't pass through check.",
+			"Shuffle start (house rule): castle by moving the king onto its rook. The king ends on g or c, the rook next to it on f or d, as in Chess960.",
 			"En passant: a pawn that just moved two can be captured as if it moved one.",
 			"Promotion: a pawn reaching the far row becomes a queen, rook, bishop or knight.",
 		} },
@@ -97,7 +98,7 @@ rules.Checkers = {
 }
 
 rules.Conquest = {
-	goal = "Hold the most territories when the last round ends, or take them all.",
+	goal = "Hold the most territories when the cease-fire comes, or take them all.",
 	card = {
 		"Each turn: place new armies, attack neighbours, then move armies once.",
 		"Attack from a territory with 2+ armies. Dice decide it; ties go to the defender.",
@@ -105,10 +106,26 @@ rules.Conquest = {
 		"Your whole turn is on one clock.",
 	},
 	sections = {
-		{ title = "1. Reinforce", lines = { "You get armies: your territories divided by 3 (at least 3), plus each region you hold whole.", "Trade 3 cards for extra armies. With 5 cards you must trade.", "Tap your territories to place them." } },
-		{ title = "2. Attack", lines = { "Pick one of your territories with 2+ armies, then a neighbour.", "You roll up to 3 dice, the defender up to 2. Highest dice are compared in pairs; ties go to the defender.", "Blitz keeps rolling until it falls or you're down to 1 army.", "Take it and move armies in. In the first rounds you can only take a few territories per turn." } },
-		{ title = "3. Fortify", lines = { "Move armies once between two of your territories joined by your land, or just end the turn.", "Conquer at least one territory to earn a card." } },
-		{ title = "Winning", lines = { "Take every territory, or have the most when the round limit is reached.", "Knock a player out and you get their cards." } },
+		{ title = "1. Reinforce", lines = {
+			"You get armies: your territories divided by 3 (at least 3), plus each region you hold whole.",
+			"Fewer territories than the average player (by a whole one)? +2 rally armies.",
+			"Trade 3 cards for extra armies: three of a kind (3, 4 or 5) or one of each (6), or rising values with that house rule. With 5 cards you must trade.",
+			"A traded card showing a territory you hold puts 2 more armies there (one +2 per trade).",
+			"Tap your territories to place them. Still holding a set after placing? Trade it or start attacking.",
+		} },
+		{ title = "2. Attack", lines = {
+			"Pick one of your territories with 2+ armies, then a neighbour.",
+			"Roll up to 3 dice (one fewer than your armies, and you can choose fewer), the defender up to 2. Highest dice are compared in pairs; ties go to the defender.",
+			"Blitz keeps rolling until it falls, you're down to 1 army, or the number you chose to stop at.",
+			"Take it and move armies in (at least as many as the dice you rolled).",
+			"Slow start (house rule, on by default): with 3+ players round 1 is for placing only, then 1 conquest a turn in round 2 and 2 in rounds 3-5.",
+		} },
+		{ title = "3. Fortify", lines = { "Move armies once between two of your territories joined by your own land, which ends your turn. Or just end the turn.", "Conquer at least one territory to earn a card." } },
+		{ title = "Winning", lines = {
+			"Take every territory, or have the most when the game stops. Tied on territories? Most armies wins; still tied is a draw.",
+			"Cease-fire: from a round before the limit, the game can stop after any turn (about once every two rounds), and always by the end of the round after the limit.",
+			"Knock a player out and you get their cards. With 6 or more you trade at once, until you're down to 4.",
+		} },
 		{ title = "Modes (house rules)", lines = {
 			"Fog of war: you only see who holds a land, and its armies, when it's yours or touches yours.",
 			"Secret missions: finish your mission on your turn (hold two regions, hold lots of lands, knock someone out) and you win at once. Nobody else sees it until the end.",
@@ -254,9 +271,29 @@ rules.TriviaNight = {
 		"Keep a streak of right answers going for bonus points.",
 	},
 	sections = {
-		{ title = "Each question", lines = { "Pick one of four answers before the clock runs out.", "Then the right answer and the points are shown." } },
-		{ title = "Scoring", lines = { "A right answer scores 500 to 1000: the faster you answer, the more you get.", "Streaks of right answers add a bonus.", "After each question you see your place on the scoreboard." } },
-		{ title = "Winning", lines = { "Highest score after the last question wins. Ties share the win." } },
+		{
+			title = "Each question",
+			lines = {
+				"Pick an answer before the clock runs out: four choices, or True / False.",
+				"In Table view, tap one of your colored answer pads on the table or a button at the bottom.",
+				"Then the right answer, how many picked each one and the points are shown.",
+				"Questions start easy and get harder as the game goes on.",
+			},
+		},
+		{
+			title = "Categories",
+			lines = { "Every 3 questions everyone votes for the next category. Votes are public; a tie is settled at random." },
+		},
+		{
+			title = "Scoring",
+			lines = {
+				"A right answer scores 500 to 1000: the faster you answer, the more you get.",
+				"A streak of right answers adds +100 for 2 in a row, +200 for 3, up to +300.",
+				"With the \"Wrong answers cost\" house rule, a wrong answer loses 250 points (no answer loses nothing).",
+				"Points show at the reveal, then your place on the scoreboard.",
+			},
+		},
+		{ title = "Winning", lines = { "Highest score after the last question wins. A tie goes to whoever was faster over their right answers." } },
 	},
 }
 
@@ -276,7 +313,7 @@ rules.Werewolf = {
 				"🔮 Seer: each night, learn whether one player is a werewolf.",
 				"🛡️ Guardian: each night, shield one player (you can shield yourself, but not the same player two nights running).",
 				"🏹 Hunter (6+ players): when you go out, take one player down with you.",
-				"🧪 Witch (7+ players): two potions, once each. Once the wolves have picked, see who they went for and save them; or poison anyone.",
+				"🧪 Witch (7+ players): two potions, once each. After the night picks, see who the wolves went for and save them, and/or poison another player (not yourself).",
 				"🧑‍🌾 Villager: no power at night, just a hunch. Your vote is your power.",
 			},
 		},
@@ -292,7 +329,8 @@ rules.Werewolf = {
 			title = "Day",
 			lines = {
 				"See who was caught, then talk. Make one statement: suspect someone, claim the Seer saw something, or pass.",
-				"The day ends early once everyone has spoken.",
+				"The day ends once everyone has spoken, but with two or more players it lasts at least 20 seconds so the talk isn't cut short.",
+				"Tap \"Log\" any time for the village log: who went out, when and how, and every day's statements and votes.",
 			},
 		},
 		{
@@ -300,7 +338,7 @@ rules.Werewolf = {
 			lines = {
 				"Vote a player out or skip. Votes are public.",
 				"The player with the most votes is out, unless there's a tie or more skips than votes for them.",
-				"Whoever is voted out gets a few seconds for last words.",
+				"Whoever is voted out gets 20 seconds for last words.",
 				"Players who are out can only chat with each other until the game ends.",
 			},
 		},
@@ -438,6 +476,7 @@ rules.Cheat = {
 		{ title = "Your turn", lines = { "The called rank goes Aces, 2s, 3s ... Kings, then Aces again.", "Put 1-4 cards face down. You must play, even if you have none of that rank." } },
 		{ title = "Doubting", lines = { "After each play everyone else gets a few seconds to doubt it.", "The cards are turned over. If any isn't the called rank, the player who bluffed takes the whole pile.", "If they were honest, the doubter takes it. Nobody doubts: play goes on." } },
 		{ title = "Winning", lines = { "First to empty their hand (and survive any doubt) wins.", "A very long game ends early: fewest cards left wins." } },
+		{ title = "Big tables", lines = { "With 6 or more players two decks are shuffled together (a host can change this), so up to 8 of a rank are out there." } },
 	},
 }
 
@@ -530,7 +569,7 @@ rules.Palace = {
 		{ title = "Special cards", lines = { "2: goes on anything and resets the pile.", "10: goes on anything and burns the pile. You go again.", "Four of the same rank in a row also burns the pile." } },
 		{ title = "Table cards", lines = { "With your hand empty and the draw pile gone, play your face-up cards.", "Then flip face-down cards blind. If one can't be played, you pick up the pile." } },
 		{ title = "House rules", lines = { "Lower card (5, 7 or 9): after it, the next card must be equal or lower.", "8 skips: each 8 skips the next player.", "Invisible 3: a 3 goes on anything and the card under it still counts.", "Gamble on the deck: stuck with cards in hand, flip the top of the draw pile instead." } },
-		{ title = "Winning", lines = { "First player out of cards wins." } },
+		{ title = "Winning", lines = { "First player out of cards wins.", "House rule Find the loser: play on after someone goes out. Everyone who sheds their cards escapes; the last one holding cards loses." } },
 	},
 }
 
@@ -574,7 +613,7 @@ rules.GinRummy = {
 		{ title = "Melds", lines = { "Set: 3 or 4 cards of the same rank.", "Run: 3 or more cards in a row in one suit. Ace is low (A-2-3, not Q-K-A).", "Your hand is sorted into its best melds for you, and melds and lay offs at a knock are arranged automatically." } },
 		{ title = "Deadwood", lines = { "Cards not in a meld. Ace 1, number cards their number, faces 10." } },
 		{ title = "Your turn", lines = { "Take the top of the stock or the discard pile.", "Discard one card (not the one you just took from the discard pile).", "Or press Knock and pick the card to discard, if your deadwood is low enough." } },
-		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Stock down to 2 cards with no knock: nobody scores and the same dealer deals again." } },
+		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Big Gin: all 11 cards in melds right after drawing. Go out without discarding for 31 + the other player's deadwood.", "Stock down to 2 cards with no knock: nobody scores and the same dealer deals again." } },
 		{ title = "Winning", lines = { "First to the target wins (50, 100 or 150).", "A game stops after 15 hands at 50, 25 at 100 and 35 at 150; then the higher score wins.", "House rule Classic bonuses: at the end the winner adds 100, each player adds 25 per hand won, and a shutout doubles the winner's points." } },
 		{ title = "Oklahoma (house rule)", lines = { "The first upcard sets the knock limit: its value, and an Ace means Gin only.", "A spade upcard doubles that hand's points." } },
 	},

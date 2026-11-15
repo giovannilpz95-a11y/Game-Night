@@ -5,6 +5,7 @@
 -- booleans and tables, and dictionaries keyed by strings (user ids become strings).
 
 local AudioSettings = require(script.Parent.AudioSettings)
+local ClientSettings = require(script.Parent.ClientSettings)
 
 local Profile = {}
 
@@ -109,6 +110,7 @@ export type Data = {
 	-- Help already seen: the lobby tour, and how-to-play cards turned off (see Core/Tips).
 	tips: { lobbyTour: boolean, hideCard: { [string]: boolean } },
 	audio: { music: number, effects: number }, -- the Sound window's sliders (Core/AudioSettings)
+	settings: ClientSettings.State, -- the Settings window: graphics, table camera (Core/ClientSettings)
 	season: SeasonData,
 }
 
@@ -163,6 +165,7 @@ function Profile.new(now: number): Data
 		custom = { words = {}, decks = {} },
 		tips = { lobbyTour = false, hideCard = {} },
 		audio = AudioSettings.new(),
+		settings = ClientSettings.new(),
 		season = Profile.newSeason(0),
 	}
 end
