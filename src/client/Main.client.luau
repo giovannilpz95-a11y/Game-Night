@@ -181,6 +181,9 @@ local function closeWindows()
 	seasonPanel.close()
 	dressingRoom.close()
 	shopPanel.root.Visible = false
+	-- These two sit on the screen, not the lobby, so they'd stay up over a match.
+	friendsPanel.close()
+	hostPanel.close()
 	if settingsPanel then
 		settingsPanel.close()
 	end
@@ -490,6 +493,11 @@ Net.event(Net.Names.WalletState).OnClientEvent:Connect(function(state)
 		tourChecked = true
 		if not tips.lobbyTour then
 			task.delay(2, function()
+				-- One moment at a time: the Day 1 reward card first, then the tour.
+				while dailyCard.isOpen() do
+					task.wait(0.25)
+				end
+				task.wait(0.4)
 				if not matchView.isOpen() and not tour.isRunning() then
 					startTour()
 				end
