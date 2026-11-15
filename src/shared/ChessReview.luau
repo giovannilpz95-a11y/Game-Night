@@ -74,8 +74,8 @@ local CP_CAP = 1000 -- evals are capped at +-10 pawns (mates too), as Lichess do
 -- (CC0), built by tools/build-chess-openings.py. Positions are matched by piece placement
 -- and side to move, so transpositions (1.Nf3 d5 2.d4) find the same opening as the main
 -- move order. A move is "Book" while every position so far is on a book line.
-local NAMES = require(ReplicatedStorage.Shared.Games.Data.ChessOpeningNames)
-local BOOK_DATA = require(ReplicatedStorage.Shared.Games.Data.ChessOpeningBook)
+local NAMES = require(ReplicatedStorage.Shared.ChessData.ChessOpeningNames)
+local BOOK_DATA = require(ReplicatedStorage.Shared.ChessData.ChessOpeningBook)
 
 local DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 local DIGIT_VALUE = {}
