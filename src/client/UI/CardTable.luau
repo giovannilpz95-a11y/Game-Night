@@ -28,6 +28,8 @@ export type Layout = {
 	-- Set by the game: redraws the screen (called when the hand changes size or shape).
 	refresh: (() -> ())?,
 	bigButtons: { TextButton },
+	docked: boolean, -- Table view: the seats and felt are hidden (see CardTable.info)
+	extras: { [string]: any }, -- the Table-view pop-ups (info card, notice, trick panel)
 }
 
 function CardTable.layout(container: Instance): Layout
@@ -105,6 +107,12 @@ function CardTable.layout(container: Instance): Layout
 	-- the screen, the prompt just above it and the buttons in the bottom-right corner (or
 	-- in a row over the hand when there are many, like bids).
 	local function setDocked(docked: boolean)
+		ui.docked = docked
+		for _, extra in ui.extras do
+			if typeof(extra) == "Instance" and extra:IsA("GuiObject") and not docked then
+				extra.Visible = false
+			end
+		end
 		seats.Visible = not docked
 		felt.Visible = not docked
 		PlayingCard.setHeld(hand, docked)
@@ -137,6 +145,8 @@ function CardTable.layout(container: Instance): Layout
 		setDocked = setDocked,
 		refresh = nil,
 		bigButtons = {},
+		docked = false,
+		extras = {},
 	}
 	layoutOf[buttons] = ui
 	return ui
@@ -340,6 +350,259 @@ function CardTable.bigButton(ui: Layout, text: string, onClick: () -> ()): TextB
 	Kit.new("UIStroke", { Color = Color3.fromRGB(255, 230, 230), Thickness = 3, Transparency = 0.2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = button })
 	table.insert(ui.bigButtons, button)
 	return button
+end
+
+--------------------------------------------------------------------------- Table view
+-- Table view hides the felt, so whatever a game shows there (scores, the target, the hand
+-- summary, the last trick) needs a home on screen. These draw it in the strip Table view
+-- keeps, only while docked; in the 2D view the felt shows it and they stay hidden.
+
+local function textPanel(ui: Layout, key: string, props: { [string]: any }): Frame
+	local panel = ui.extras[key]
+	if panel and panel.Parent then
+		return panel
+	end
+	panel = Kit.new("Frame", {
+		Name = key,
+		BorderSizePixel = 0,
+		Visible = false,
+		ZIndex = 8,
+		Parent = ui.root,
+	}, { Kit.corner(12), Kit.padding(8) })
+	for k, v in props do
+		(panel :: any)[k] = v
+	end
+	HudKit.glass(panel, 0.12)
+	ui.extras[key] = panel
+	return panel
+end
+
+-- A small card at the left end of the strip with the game's running lines ("Your team
+-- 230 · 4 bags", "Playing to 500", "♥ not broken"). nil or {} hides it.
+function CardTable.info(ui: Layout, lines: { string }?)
+	local panel = textPanel(ui, "TableInfo", {
+		AnchorPoint = Vector2.new(0, 0),
+		Position = UDim2.new(0, 12, 0.565, 0),
+		Size = UDim2.new(0.13, 0, 0, 40),
+	})
+	if not panel:FindFirstChildOfClass("UISizeConstraint") then
+		Kit.new("UISizeConstraint", { MinSize = Vector2.new(170, 0), Parent = panel })
+	end
+	local show = ui.docked and lines ~= nil and #lines > 0
+	local key = if lines then table.concat(lines, "|") else nil
+	if panel:GetAttribute("Key") == key and panel.Visible == show then
+		return
+	end
+	panel:SetAttribute("Key", key)
+	for _, child in panel:GetChildren() do
+		if child:IsA("TextLabel") or child:IsA("UIListLayout") then
+			child:Destroy()
+		end
+	end
+	panel.Visible = show
+	if not show then
+		return
+	end
+	local list = Kit.list(2)
+	list.Parent = panel
+	for i, line in lines :: { string } do
+		Kit.label(line, {
+			TextSize = if i == 1 then 15 else 13,
+			Font = if i == 1 then Theme.FontBold else Theme.Font,
+			TextColor3 = if i == 1 then Theme.Text else Theme.SubText,
+			TextWrapped = true,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = UDim2.new(1, 0, 0, 16),
+			LayoutOrder = i,
+			ZIndex = 9,
+			Parent = panel,
+		})
+	end
+	panel.Size = UDim2.new(0.13, 0, 0, 16 + #(lines :: { string }) * 18)
+	task.defer(function()
+		if panel.Parent then
+			panel.Size = UDim2.new(0.13, 0, 0, list.AbsoluteContentSize.Y + 16)
+		end
+	end)
+end
+
+-- A panel over the hand in Table view for a moment that the felt would show (the hand
+-- summary, who is out): a title and a few lines. nil title hides it.
+function CardTable.notice(ui: Layout, title: string?, lines: { string }?, color: Color3?)
+	local panel = textPanel(ui, "TableNotice", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.6, 0),
+		Size = UDim2.new(0.46, 0, 0, 60),
+		ZIndex = 12,
+	})
+	local show = ui.docked and title ~= nil
+	local key = if title then title .. "|" .. table.concat(lines or {}, "|") else nil
+	if panel:GetAttribute("Key") == key and panel.Visible == show then
+		return
+	end
+	panel:SetAttribute("Key", key)
+	for _, child in panel:GetChildren() do
+		if child:IsA("TextLabel") or child:IsA("UIListLayout") then
+			child:Destroy()
+		end
+	end
+	panel.Visible = show
+	if not show then
+		return
+	end
+	local list = Kit.list(4)
+	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	list.Parent = panel
+	Kit.label(title :: string, {
+		TextSize = 20,
+		Font = Theme.FontTitle,
+		TextColor3 = color or Theme.Accent,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.new(1, 0, 0, 24),
+		ZIndex = 13,
+		Parent = panel,
+	})
+	for i, line in lines or {} do
+		Kit.label(line, {
+			TextSize = 15,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextWrapped = true,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = UDim2.new(1, 0, 0, 18),
+			LayoutOrder = i,
+			ZIndex = 13,
+			Parent = panel,
+		})
+	end
+	panel.Size = UDim2.new(0.46, 0, 0, 40 + #(lines or {}) * 22)
+	task.defer(function()
+		if panel.Parent then
+			panel.Size = UDim2.new(0.46, 0, 0, list.AbsoluteContentSize.Y + 16)
+		end
+	end)
+	Kit.popIn(panel)
+end
+
+-- The last trick (or any set of plays) in a panel over the hand in Table view: each card
+-- with its player's name under it, the winner's outlined. nil plays hides it.
+function CardTable.trickPanel(ui: Layout, snapshot: any, plays: { any }?, winner: number?, caption: string?)
+	local old = ui.extras.TrickPanel
+	if old then
+		old:Destroy()
+		ui.extras.TrickPanel = nil
+	end
+	if not ui.docked or plays == nil or #plays == 0 then
+		return
+	end
+	local panel = textPanel(ui, "TrickPanel", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.58, 0),
+		Size = UDim2.new(0.12 * #(plays :: { any }) + 0.04, 0, 0.3, 0),
+		ZIndex = 12,
+	})
+	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(140 * #(plays :: { any }) + 40, 300), Parent = panel })
+	panel.Visible = true
+	Kit.label(caption or "Last trick", {
+		TextSize = 15,
+		Font = Theme.FontBold,
+		TextColor3 = Theme.Accent,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.new(1, 0, 0, 18),
+		ZIndex = 13,
+		Parent = panel,
+	})
+	local row = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 1, -22), ZIndex = 13, Parent = panel })
+	local list = Kit.list(8, true)
+	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	list.Parent = row
+	for i, play in plays :: { any } do
+		local cell = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.62 * PlayingCard.RATIO, 0, 1, 0), SizeConstraint = Enum.SizeConstraint.RelativeYY, LayoutOrder = i, ZIndex = 13, Parent = row })
+		local slot = PlayingCard.slot({ Size = UDim2.new(1, 0, 0.8, 0), Parent = cell })
+		local face = PlayingCard.show(slot, play.card)
+		if play.seat == winner then
+			Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 3, Parent = face })
+		end
+		Kit.label(CardTable.nameOf(snapshot, play.seat), {
+			TextSize = 12,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			TextWrapped = false,
+			TextColor3 = if play.seat == winner then Theme.Accent else Theme.Text,
+			Position = UDim2.new(0, -10, 0.82, 0),
+			Size = UDim2.new(1, 20, 0.18, 0),
+			ZIndex = 14,
+			Parent = cell,
+		})
+	end
+	Kit.popIn(panel)
+end
+
+-- A score sheet window: one row per hand. columns: header texts (the first is the hand
+-- column); rows: { { string } }; totals: an optional last row in bold. Works in both
+-- views (it opens over the whole screen, not inside the hidden felt).
+function CardTable.scoreSheet(ui: Layout, title: string, columns: { string }, rows: { { string } }, totals: { string }?)
+	local old = ui.extras.ScoreSheet
+	if old then
+		old.overlay:Destroy()
+	end
+	local gui = ui.root:FindFirstAncestorWhichIsA("ScreenGui") or ui.root
+	local modal = Kit.modal(gui, { name = "ScoreSheet", maxSize = Vector2.new(520, 460), zIndex = 60 })
+	ui.extras.ScoreSheet = modal
+	ui.root.Destroying:Once(function()
+		modal.overlay:Destroy()
+	end)
+	local body = modal.body
+	Kit.title(title, { Size = UDim2.new(1, -40, 0, 28), ZIndex = 61, Parent = body })
+	local scroll = Kit.new("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, 36),
+		Size = UDim2.new(1, 0, 1, -36),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ZIndex = 61,
+		Parent = body,
+	})
+	local list = Kit.list(2)
+	list.Parent = scroll
+	local n = #columns
+	local function row(cells: { string }, order: number, bold: boolean, tint: boolean)
+		local frame = Kit.new("Frame", {
+			BackgroundColor3 = Theme.PanelLight,
+			BackgroundTransparency = if tint then 0.4 else 1,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, -8, 0, 24),
+			LayoutOrder = order,
+			ZIndex = 61,
+			Parent = scroll,
+		}, { Kit.corner(6) })
+		for i = 1, n do
+			Kit.label(cells[i] or "", {
+				TextSize = 14,
+				Font = if bold then Theme.FontBold else Theme.Font,
+				TextColor3 = if bold then Theme.Accent else Theme.Text,
+				TextXAlignment = if i == 1 then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center,
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Position = UDim2.new((i - 1) / n, 4, 0, 0),
+				Size = UDim2.new(1 / n, -8, 1, 0),
+				ZIndex = 62,
+				Parent = frame,
+			})
+		end
+	end
+	row(columns, 0, true, true)
+	for i, cells in rows do
+		row(cells, i, false, i % 2 == 0)
+	end
+	if #rows == 0 then
+		row({ "No hands finished yet" }, 1, false, false)
+	end
+	if totals then
+		row(totals, #rows + 1, true, true)
+	end
+	modal.open()
 end
 
 -- A row of cards on the felt (no clicks). cards: { id or false (face down) }

@@ -86,6 +86,7 @@ return function(T)
 
 	T.test("reaching the target ends it, lowest wins", function()
 		local s = playing({ {}, {}, {}, {} })
+		s.target = 50
 		s.scores = { 40, 20, 10, 30 }
 		s.tricksPlayed = 13
 		s.taken = { 13, 0, 0, 13 }
@@ -93,6 +94,84 @@ return function(T)
 		Hearts.onTimeout(s)
 		local result = Hearts.getResult(s) :: any
 		T.eq(result.winners[1], 3)
+	end)
+
+	T.test("the default game ends at 100 and keeps a score sheet", function()
+		local s = playing({ {}, {}, {}, {} })
+		T.eq(s.target, 100)
+		s.tricksPlayed = 13
+		s.taken = { 13, 5, 8, 0 }
+		s.phase = "trick"
+		Hearts.onTimeout(s)
+		local view = Hearts.getView(s, 1)
+		T.eq(#view.history, 1)
+		T.eq(view.history[1].points[3], 8)
+	end)
+
+	T.test("a tie for the lowest score plays one more hand", function()
+		local s = playing({ {}, {}, {}, {} })
+		s.target = 50
+		s.scores = { 20, 20, 40, 45 }
+		s.tricksPlayed = 13
+		s.taken = { 0, 0, 13, 13 }
+		s.phase = "trick"
+		Hearts.onTimeout(s)
+		T.eq(Hearts.getResult(s), nil, "tied on 20: play on")
+		T.eq(s.phase, "round")
+		T.eq(Hearts.getView(s, 1).tied, true)
+	end)
+
+	T.test("smart moon: the shooter takes -26 when +26 for the others would lose them the game", function()
+		local s = playing({ {}, {}, {}, {} })
+		s.target = 100
+		s.scores = { 45, 30, 50, 50 }
+		s.tricksPlayed = 13
+		s.taken = { 26, 0, 0, 0 }
+		s.phase = "trick"
+		Hearts.onTimeout(s)
+		T.eq(s.scores[1], 45, "others +26 is safe here")
+		T.eq(s.scores[2], 56)
+		local lose = playing({ {}, {}, {}, {} })
+		lose.target = 100
+		lose.scores = { 80, 50, 75, 90 }
+		lose.tricksPlayed = 13
+		lose.taken = { 26, 0, 0, 0 }
+		lose.phase = "trick"
+		Hearts.onTimeout(lose)
+		T.eq(lose.scores[1], 54, "shooter takes -26 instead")
+		T.eq(lose.scores[4], 90)
+	end)
+
+	T.test("first trick with only point cards: hearts, never the Queen", function()
+		local s = playing({ { C(2, CL) }, { C(12, S), C(5, H) }, { C(5, CL) }, { C(6, CL) } })
+		s.tricksPlayed = 0
+		apply(s, 1, { kind = "play", card = C(2, CL) })
+		T.eq((Hearts.validateMove(s, 2, { kind = "play", card = C(12, S) })), false)
+		T.ok(Hearts.validateMove(s, 2, { kind = "play", card = C(5, H) }))
+		local loose = Hearts.new(4, { rules = { firstTrickPoints = true } }, T.Random.new(1))
+		loose.hands = { { C(2, CL) }, { C(12, S), C(3, D) }, { C(5, CL) }, { C(6, CL) } }
+		loose.phase, loose.passing, loose.trick, loose.tricksPlayed, loose.turn = "play", {}, {}, 0, 1
+		apply(loose, 1, { kind = "play", card = C(2, CL) })
+		T.ok(Hearts.validateMove(loose, 2, { kind = "play", card = C(12, S) }), "house rule allows it")
+	end)
+
+	T.test("pass patterns", function()
+		local nohold = Hearts.new(4, { rules = { passing = "nohold" } }, T.Random.new(1))
+		local passes = {}
+		for round = 1, 4 do
+			table.insert(passes, Hearts.getView(nohold, 1).pass)
+			nohold.round = round
+			nohold.phase = "round"
+			Hearts.onTimeout(nohold)
+		end
+		T.eq(table.concat(passes, ","), "left,right,across,left")
+		local left = Hearts.new(4, { rules = { passing = "left" } }, T.Random.new(1))
+		left.round = 1
+		left.phase = "round"
+		Hearts.onTimeout(left)
+		T.eq(Hearts.getView(left, 1).pass, "left")
+		local off = Hearts.new(4, { rules = { passing = false } }, T.Random.new(1))
+		T.eq(off.phase, "play")
 	end)
 
 	T.test("bot games always finish", function()

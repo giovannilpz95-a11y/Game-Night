@@ -7,12 +7,15 @@
 -- first trick (unless you have nothing else), and hearts can't be led until one has been
 -- played (unless you hold only hearts).
 -- Shooting the moon: take all 26 points in a round and everyone else gets 26 instead.
--- When someone reaches the target score (50 by default), the lowest score wins.
+-- When someone reaches the target score (100 by default), the lowest score wins. A tie
+-- for the lowest score plays one more hand (Pagat, cardgames.io).
 --
--- House rules (options.rules): passing (default on; off skips the pass every round),
--- moon ("others": everyone else takes 26, "self": you take -26 instead), jackDiamonds
--- (whoever takes the Jack of Diamonds scores -10), queenBreaks (playing the Queen of
--- Spades breaks hearts too).
+-- House rules (options.rules): passing ("classic" left/right/across/hold, "nohold"
+-- left/right/across, "left" always left, false never; true means classic), moon
+-- ("smart": others take 26 unless that would make the shooter lose, then the shooter
+-- takes -26; "others"; "self"), jackDiamonds (whoever takes the Jack of Diamonds scores
+-- -10), queenBreaks (playing the Queen of Spades breaks hearts too), firstTrickPoints
+-- (hearts and the Queen may be played on the first trick).
 --
 -- Moves: { kind = "pass", cards = { id, id, id } }  (pass phase, everyone at once)
 --        { kind = "play", card = id }               (your turn)
@@ -28,7 +31,8 @@ Hearts.id = "Hearts"
 Hearts.minSeats = 4
 Hearts.maxSeats = 4
 
-Hearts.TARGET = 50 -- house rule "target" can change it
+Hearts.TARGET = 100 -- house rule "target" can change it (50 is the quick game)
+Hearts.MAX_TIE_HANDS = 5 -- extra hands for a tied lowest score before it's a shared win
 Hearts.TRICK_SECONDS = 1.4
 Hearts.ROUND_SECONDS = 5
 
@@ -44,6 +48,13 @@ Hearts.TWO_OF_CLUBS = TWO_OF_CLUBS
 -- Pass direction for a round: seats to the left (+1), right (-1), across (+2), none (0).
 local PASS_STEPS = { 1, -1, 2, 0 }
 local PASS_NAMES = { "left", "right", "across", "none" }
+-- The pass patterns (house rule "passing"): which PASS_STEPS index each round uses.
+local PASS_PATTERNS = {
+	classic = { 1, 2, 3, 4 },
+	nohold = { 1, 2, 3 },
+	left = { 1 },
+	off = { 4 },
+}
 
 local function points(id: number): number
 	if id == QUEEN_OF_SPADES then
@@ -67,7 +78,10 @@ local function deal(state)
 		table.insert(state.hands[(i - 1) % 4 + 1], id)
 	end
 	state.round += 1
-	state.passIndex = if state.noPassing then 4 else (state.round - 1) % 4 + 1
+	local pattern = PASS_PATTERNS[state.passPattern] or PASS_PATTERNS.classic
+	state.passIndex = if state.tieHands > 0 then 4 else pattern[(state.round - 1) % #pattern + 1]
+	state.played = {}
+	state.shooting = nil
 	state.jackTaker = nil
 	state.passing = {}
 	state.trick = {}
@@ -95,6 +109,8 @@ end
 function Hearts.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount == 4, "Hearts is for 4 players")
 	local rules = if options and type(options.rules) == "table" then options.rules else {}
+	local passing = rules.passing
+	local passPattern = if passing == false then "off" elseif type(passing) == "string" and PASS_PATTERNS[passing] then passing else "classic"
 	local state = {
 		rng = rng or Random.new(),
 		hands = {},
@@ -114,8 +130,13 @@ function Hearts.new(seatCount: number, options: any?, rng: Random?)
 		phase = "pass", -- "pass" | "play" | "trick" | "round"
 		phaseId = 0,
 		over = false,
-		noPassing = rules.passing == false,
-		moonSelf = rules.moon == "self",
+		passPattern = passPattern,
+		moonRule = if rules.moon == "self" or rules.moon == "others" then rules.moon else "smart",
+		firstTrickPoints = rules.firstTrickPoints == true,
+		history = {}, -- one row per finished hand: { round, points = { [seat] = n }, moon }
+		tieHands = 0, -- extra hands played because the lowest score was tied
+		played = {}, -- [card] = true for every card played this hand (hard bots count them)
+		shooting = nil, -- a hard bot going for the moon this hand
 		jackDiamonds = rules.jackDiamonds == true,
 		queenBreaks = rules.queenBreaks == true,
 		jackTaker = nil,
@@ -156,15 +177,22 @@ function Hearts.playable(state, seat: number): { number }
 		return table.clone(hand)
 	end
 	local cards = Tricks.followable(hand, state.trick)
-	if state.tricksPlayed == 0 and suit(cards[1]) ~= suit(state.trick[1].card) and not onlyPoints(cards) then
-		-- No points on the first trick, if you can help it.
-		local safe = {}
-		for _, id in cards do
-			if points(id) == 0 then
-				table.insert(safe, id)
+	if state.tricksPlayed == 0 and not state.firstTrickPoints and suit(cards[1]) ~= suit(state.trick[1].card) then
+		if not onlyPoints(cards) then
+			-- No points on the first trick, if you can help it.
+			local safe = {}
+			for _, id in cards do
+				if points(id) == 0 then
+					table.insert(safe, id)
+				end
 			end
+			return safe
 		end
-		return safe
+		-- Only point cards left: hearts are allowed, but never the Queen (World of Card Games).
+		local hearts = Tricks.ofSuit(cards, HEARTS)
+		if #hearts > 0 then
+			return hearts
+		end
 	end
 	return cards
 end
@@ -270,9 +298,24 @@ local function endRound(state)
 			moon = seat
 		end
 	end
+	local selfMoon = moon ~= nil and state.moonRule == "self"
+	if moon and state.moonRule == "smart" then
+		-- Others take 26, unless that would end the game with the shooter not lowest.
+		local ends, shooterLowest = false, true
+		for seat = 1, 4 do
+			local after = state.scores[seat] + (if seat == moon then 0 else 26)
+			if after >= state.target then
+				ends = true
+			end
+			if seat ~= moon and after <= state.scores[moon] then
+				shooterLowest = false
+			end
+		end
+		selfMoon = ends and not shooterLowest
+	end
 	local roundPoints = {}
 	for seat = 1, 4 do
-		if moon and state.moonSelf then
+		if moon and selfMoon then
 			roundPoints[seat] = if seat == moon then -26 else 0
 		else
 			roundPoints[seat] = if moon then (if seat == moon then 0 else 26) else state.taken[seat]
@@ -284,11 +327,31 @@ local function endRound(state)
 	end
 	state.roundPoints = roundPoints
 	state.moon = moon
+	table.insert(state.history, { round = state.round, points = table.clone(roundPoints), moon = moon })
 	if moon then
 		GameModule.addStat(state, moon, "moons")
 	end
+	local reached = false
 	for seat = 1, 4 do
 		if state.scores[seat] >= state.target then
+			reached = true
+		end
+	end
+	state.tied = false
+	if reached then
+		-- A tie for the lowest score plays one more hand (Pagat, cardgames.io).
+		local low, count = math.huge, 0
+		for seat = 1, 4 do
+			if state.scores[seat] < low then
+				low, count = state.scores[seat], 1
+			elseif state.scores[seat] == low then
+				count += 1
+			end
+		end
+		if count > 1 and state.tieHands < Hearts.MAX_TIE_HANDS then
+			state.tieHands += 1
+			state.tied = true
+		else
 			state.over = true
 		end
 	end
@@ -313,6 +376,7 @@ function Hearts.applyMove(state, seat: number, move: any)
 	local hand = state.hands[seat]
 	table.remove(hand, table.find(hand, move.card) :: number)
 	table.insert(state.trick, { seat = seat, card = move.card })
+	state.played[move.card] = true
 	if suit(move.card) == HEARTS or (state.queenBreaks and move.card == QUEEN_OF_SPADES) then
 		state.heartsBroken = true
 	end
@@ -402,6 +466,9 @@ function Hearts.getView(state, seat: number?)
 		round = state.round,
 		target = state.target,
 		pass = PASS_NAMES[state.passIndex],
+		history = GameModule.copy(state.history),
+		tied = state.tied == true,
+		passPattern = state.passPattern,
 		passed = passed,
 		yourPass = if seat and state.passing[seat] then table.clone(state.passing[seat]) else nil,
 		received = if seat and state.received[seat] and state.tricksPlayed == 0 then table.clone(state.received[seat]) else nil,
@@ -414,7 +481,7 @@ end
 function Hearts.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, 4 do
-		info[seat] = `{state.scores[seat]} pts · +{state.taken[seat]} this round`
+		info[seat] = `{state.scores[seat]} pts · +{state.taken[seat]} this hand`
 	end
 	return info
 end
@@ -449,10 +516,110 @@ local function choosePass(state, seat: number, rng: Random): { number }
 		PlayingCards.shuffle(hand, rng)
 		return { hand[1], hand[2], hand[3] }
 	end
+	local original = state.hands[seat]
+	local danger = {}
+	for _, id in hand do
+		danger[id] = passDanger(original, id)
+	end
+	if state.botLevel == "hard" then
+		-- Good players also void a short side suit (clubs or diamonds) when the Queen of
+		-- Spades is safe: then they can dump points on those tricks.
+		local spades = #Tricks.ofSuit(original, SPADES)
+		local queenSafe = not table.find(original, QUEEN_OF_SPADES) or spades >= 5
+		if queenSafe then
+			local best, bestCount = nil, 4
+			for _, s in { 3, CLUBS } do
+				local n = #Tricks.ofSuit(original, s)
+				if n > 0 and n < bestCount then
+					best, bestCount = s, n
+				end
+			end
+			if best then
+				for _, id in Tricks.ofSuit(original, best) do
+					if id ~= TWO_OF_CLUBS then
+						danger[id] += 25
+					end
+				end
+			end
+		end
+	end
 	table.sort(hand, function(a, b)
-		return passDanger(state.hands[seat], a) > passDanger(state.hands[seat], b)
+		return danger[a] > danger[b]
 	end)
 	return { hand[1], hand[2], hand[3] }
+end
+
+-- Hard bots ---------------------------------------------------------------
+
+local function pointsSoFar(state): (number, number?)
+	-- Total points taken this hand, and the one seat holding all of them (if any).
+	local total, holder, holders = 0, nil, 0
+	for seat = 1, 4 do
+		if state.taken[seat] > 0 then
+			total += state.taken[seat]
+			holder = seat
+			holders += 1
+		end
+	end
+	return total, if holders == 1 then holder else nil
+end
+
+-- Is `id` the highest card of its suit still out (counting cards played and our own)?
+local function isBoss(state, seat: number, id: number): boolean
+	local s = suit(id)
+	for p = power(id) + 1, 14 do
+		local rank = if p == 14 then 1 else p
+		local other = PlayingCards.make(rank, s)
+		if not state.played[other] and not table.find(state.hands[seat], other) then
+			return false
+		end
+	end
+	return true
+end
+
+-- A hand strong enough to go for the moon: lots of high cards, most of the top hearts.
+local function moonHand(state, seat: number): boolean
+	local hand = state.hands[seat]
+	local high, topHearts = 0, 0
+	for _, id in hand do
+		if power(id) >= 11 then
+			high += 1
+		end
+		if suit(id) == HEARTS and power(id) >= 12 then
+			topHearts += 1
+		end
+	end
+	return high >= 8 and topHearts >= 2 and #Tricks.ofSuit(hand, HEARTS) >= 4
+end
+
+-- Going for the moon: win every trick, lead the bosses, dump low clubs and diamonds.
+local function playShooting(state, seat: number, cards: { number }): number
+	local trick = state.trick
+	if #trick == 0 then
+		for _, id in cards do
+			if isBoss(state, seat, id) then
+				return id
+			end
+		end
+		return Tricks.highest(cards) :: number
+	end
+	local winners = {}
+	for _, id in cards do
+		if Tricks.wouldWin(trick, id) then
+			table.insert(winners, id)
+		end
+	end
+	if #winners > 0 then
+		return (if #trick == 3 then Tricks.lowest(winners) else Tricks.highest(winners)) :: number
+	end
+	-- Can't win this one: the moon is gone. Throw a harmless low card.
+	local safe = {}
+	for _, id in cards do
+		if points(id) == 0 then
+			table.insert(safe, id)
+		end
+	end
+	return Tricks.lowest(if #safe > 0 then safe else cards) :: number
 end
 
 local function choosePlay(state, seat: number, rng: Random): number
@@ -460,14 +627,60 @@ local function choosePlay(state, seat: number, rng: Random): number
 	if state.botLevel == "easy" or #cards == 1 then
 		return cards[rng:NextInteger(1, #cards)]
 	end
+	local hard = state.botLevel == "hard"
 	local trick = state.trick
+	if hard then
+		if state.tricksPlayed == 0 and #trick == 0 and state.shooting == nil then
+			state.shooting = if moonHand(state, seat) then seat else false
+		end
+		if state.shooting == seat then
+			local total, holder = pointsSoFar(state)
+			if total == 0 or holder == seat then
+				return playShooting(state, seat, cards)
+			end
+			state.shooting = false
+		end
+	end
+	-- Hard: stop a moon. Once one other player holds every point taken so far (and a lot
+	-- of them), win a trick with points in it while it's cheap.
+	local _, holder = pointsSoFar(state)
+	local stopMoon = hard and holder ~= nil and holder ~= seat and state.taken[holder] >= 10
 	if #trick == 0 then
+		if hard and not state.played[QUEEN_OF_SPADES] and not table.find(state.hands[seat], QUEEN_OF_SPADES) then
+			-- Flush the Queen: lead a low spade while we hold neither the Ace nor the King.
+			local spades = Tricks.ofSuit(cards, SPADES)
+			local low = {}
+			for _, id in spades do
+				if power(id) < 12 then
+					table.insert(low, id)
+				end
+			end
+			local aceKing = table.find(cards, PlayingCards.make(1, SPADES)) or table.find(cards, PlayingCards.make(13, SPADES))
+			if #low > 0 and not aceKing then
+				return Tricks.lowest(low) :: number
+			end
+		end
 		-- Lead low, and avoid leading hearts or high spades.
 		local best, bestScore = cards[1], math.huge
 		for _, id in cards do
 			local score = power(id) + (if suit(id) == HEARTS then 6 else 0)
 			if suit(id) == SPADES and power(id) >= 12 then
 				score += 20
+			end
+			if hard then
+				-- Count the lower cards of that suit still out: with none, this lead can't
+				-- win the trick unless nobody else has the suit.
+				local lower = 0
+				for p = 2, power(id) - 1 do
+					local other = PlayingCards.make(if p == 14 then 1 else p, suit(id))
+					if not state.played[other] and not table.find(state.hands[seat], other) then
+						lower += 1
+					end
+				end
+				score = lower * 2 + (if suit(id) == HEARTS then 3 else 0) + (if suit(id) == SPADES and power(id) >= 12 then 20 else 0)
+			end
+			if stopMoon and suit(id) == HEARTS and isBoss(state, seat, id) then
+				score -= 30 -- a winning heart takes a point away from the shooter
 			end
 			if score < bestScore then
 				best, bestScore = id, score
@@ -477,6 +690,21 @@ local function choosePlay(state, seat: number, rng: Random): number
 	end
 	local led = suit(trick[1].card)
 	local following = suit(cards[1]) == led
+	local trickPoints = 0
+	for _, play in trick do
+		trickPoints += points(play.card)
+	end
+	if stopMoon and trickPoints > 0 and trickPoints < 13 then
+		local winners = {}
+		for _, id in cards do
+			if Tricks.wouldWin(trick, id) and id ~= QUEEN_OF_SPADES then
+				table.insert(winners, id)
+			end
+		end
+		if #winners > 0 then
+			return Tricks.lowest(winners) :: number
+		end
+	end
 	if following then
 		local winning = trick[Tricks.winningIndex(trick)].card
 		-- Dump the Queen of Spades under a higher spade.
@@ -492,12 +720,9 @@ local function choosePlay(state, seat: number, rng: Random): number
 		if #under > 0 then
 			return Tricks.highest(under) :: number
 		end
-		local trickPoints = 0
-		for _, play in trick do
-			trickPoints += points(play.card)
-		end
 		-- We win it anyway: last to play with no points, win big; otherwise as low as we can.
-		if #trick == 3 and trickPoints == 0 then
+		-- (Hard: last to play we take this trick whatever we play, so shed the highest.)
+		if #trick == 3 and (trickPoints == 0 or hard) then
 			local high = Tricks.highest(cards) :: number
 			if high ~= QUEEN_OF_SPADES then
 				return high
@@ -509,23 +734,51 @@ local function choosePlay(state, seat: number, rng: Random): number
 				table.insert(safe, id)
 			end
 		end
+		if hard and led == SPADES and not state.played[QUEEN_OF_SPADES] and #trick < 3 then
+			-- The Queen may still come: don't be the one on top with the Ace or King.
+			local small = {}
+			for _, id in safe do
+				if power(id) < 12 then
+					table.insert(small, id)
+				end
+			end
+			if #small > 0 then
+				return Tricks.highest(small) :: number
+			end
+		end
 		return Tricks.lowest(if #safe > 0 then safe else cards) :: number
 	end
 	-- Void in the led suit: dump trouble.
 	if table.find(cards, QUEEN_OF_SPADES) then
 		return QUEEN_OF_SPADES
 	end
+	if hard then
+		-- High spades are dangerous while the Queen is still out.
+		if not state.played[QUEEN_OF_SPADES] then
+			for _, id in cards do
+				if suit(id) == SPADES and power(id) > 12 then
+					return id
+				end
+			end
+		end
+		local hearts = Tricks.ofSuit(cards, HEARTS)
+		if stopMoon and #hearts > 0 then
+			-- Keep the best heart back to stop the moon later; dump something else.
+			local others = {}
+			for _, id in cards do
+				if suit(id) ~= HEARTS then
+					table.insert(others, id)
+				end
+			end
+			if #others > 0 then
+				return Tricks.highest(others) :: number
+			end
+			return Tricks.lowest(hearts) :: number
+		end
+	end
 	local hearts = Tricks.ofSuit(cards, HEARTS)
 	if #hearts > 0 then
 		return Tricks.highest(hearts) :: number
-	end
-	if state.botLevel == "hard" then
-		-- High spades are dangerous while the Queen is still out.
-		for _, id in cards do
-			if suit(id) == SPADES and power(id) > 12 then
-				return id
-			end
-		end
 	end
 	return Tricks.highest(cards) :: number
 end

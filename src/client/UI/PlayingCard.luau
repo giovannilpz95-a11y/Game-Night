@@ -324,7 +324,7 @@ end
 
 -- Held: overlapping cards in a fan (outer ones turned and a little lower). Hovering a
 -- card lifts it out of the hand and straightens it. Cards you can play stand up out of
--- the fan; ones you can't are blacked out, hovered or not.
+-- the fan and glow; the rest stay down in full color (nothing is grayed out).
 local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, onClick: ((number) -> ())?): { [any]: GuiObject }
 	local faces: { [any]: GuiObject } = {}
 	local count = #cards
@@ -365,16 +365,8 @@ local function renderHeld(container: Frame, list: UIListLayout, cards: { any }, 
 		local rest = UDim2.fromScale(0, drop + (if card.raised then -0.18 elseif card.glow then -0.14 else 0))
 		face.Position = rest
 		face.Rotation = offset * spread
-		if card.dim then
-			Kit.new("Frame", {
-				BackgroundColor3 = Color3.new(0, 0, 0),
-				BackgroundTransparency = 0.42,
-				BorderSizePixel = 0,
-				Size = UDim2.fromScale(1, 1),
-				ZIndex = 3,
-				Parent = face,
-			}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.1, 0) }) })
-		end
+		-- Held cards are never grayed out (Giovanni's note: the whole hand in full color,
+		-- the playable cards standing up and glowing instead), so `dim` is ignored here.
 		if card.glow then
 			Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 4, Parent = face })
 		end

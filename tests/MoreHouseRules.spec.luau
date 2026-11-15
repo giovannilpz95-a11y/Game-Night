@@ -256,7 +256,7 @@ return function(T)
 		local s = Hearts.new(4, { rules = { passing = false, jackDiamonds = true } }, T.Random.new(1))
 		T.eq(s.phase, "play", "no pass phase")
 		local self = Hearts.new(4, { rules = { moon = "self" } }, T.Random.new(1))
-		T.ok(self.moonSelf)
+		T.eq(self.moonRule, "self")
 	end)
 
 	T.test("president: four of a kind starts a revolution", function()
@@ -264,6 +264,7 @@ return function(T)
 		local s = President.new(3, { rules = { revolution = true, swaps = false } }, T.Random.new(1))
 		s.turn = 1
 		s.pile = nil
+		s.mustPlay = nil
 		s.hands[1] = { C(9, 1), C(9, 2), C(9, 3), C(9, 4), C(3, 1) }
 		apply(President, s, 1, { kind = "play", cards = { C(9, 1), C(9, 2), C(9, 3), C(9, 4) } })
 		T.ok(s.revolution, "the order flipped")
@@ -279,6 +280,7 @@ return function(T)
 		local plain = President.new(3, nil, T.Random.new(1))
 		plain.turn = 1
 		plain.pile = nil
+		plain.mustPlay = nil
 		plain.hands[1] = { C(9, 1), C(9, 2), C(9, 3), C(9, 4), C(3, 1) }
 		apply(President, plain, 1, { kind = "play", cards = { C(9, 1), C(9, 2), C(9, 3), C(9, 4) } })
 		T.eq(plain.revolution, false)
