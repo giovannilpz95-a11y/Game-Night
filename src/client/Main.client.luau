@@ -25,6 +25,7 @@ local SeasonPanel = require(script.Parent.UI.SeasonPanel)
 local Layout = require(script.Parent.UI.Layout)
 local LobbyHud = require(script.Parent.UI.LobbyHud)
 local CafeHud = require(script.Parent.UI.CafeHud)
+local LoungeHud = require(script.Parent.UI.LoungeHud)
 local SettingsPanel = require(script.Parent.UI.SettingsPanel)
 local RulesPanel = require(script.Parent.UI.RulesPanel)
 local LobbyTour = require(script.Parent.UI.LobbyTour)
@@ -138,7 +139,7 @@ end)
 
 local partyWindow = Kit.modal(lobby, { name = "PartyWindow", maxSize = Vector2.new(420, 600) })
 -- The Café picker has a game panel on the right, so its window is wider.
-local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = if Kit.cafe then Vector2.new(1240, 780) else Vector2.new(1000, 680) })
+local pickerWindow = Kit.modal(lobby, { name = "PlayWindow", maxSize = if Kit.rich then Vector2.new(1240, 780) else Vector2.new(1000, 680) })
 local partyPanel = PartyPanel.create(partyWindow.body, sendParty, hostHooks)
 local gamePicker = GamePicker.create(pickerWindow.body, sendMatch, hostHooks)
 Layout.onChange(function(info)
@@ -222,9 +223,31 @@ Layout.onChange(function(info)
 	settingsPanel.fit(info.top, info.bottom)
 end)
 
--- The Game Café look has its own lobby HUD (client/UI/CafeHud); Classic keeps LobbyHud.
-local hudModule: any = if Kit.cafe then CafeHud else LobbyHud
+-- Each look has its own lobby HUD: the Midnight Lounge (client/UI/LoungeHud), the Game
+-- Café (client/UI/CafeHud); Classic keeps LobbyHud.
+local hudModule: any = if Kit.lounge then LoungeHud elseif Kit.cafe then CafeHud else LobbyHud
 local hud = hudModule.create(lobby, {
+	home = closeWindows,
+	friends = function()
+		closeWindows()
+		friendsPanel.open()
+	end,
+	-- Which tab's window is open (the Lounge lights that tab).
+	current = function(): string?
+		if pickerWindow.isOpen() then
+			return "Games"
+		elseif shopPanel.root.Visible then
+			return "Shop"
+		elseif seasonPanel.isOpen() then
+			return "Pass"
+		elseif dressingRoom.isOpen() then
+			return "Avatar"
+		elseif friendsPanel.isOpen() then
+			return "Friends"
+		end
+		return nil
+	end,
+	walletWidth = walletBar.width,
 	play = function()
 		closeWindows()
 		pickerWindow.open()
@@ -337,7 +360,7 @@ local function renderHud()
 		return
 	end
 	if hud.setParty then
-		hud.setParty(party) -- the Café's party strip shows every face instead of a count
+		hud.setParty(party) -- the Café and Lounge show every face instead of a count
 	else
 		hud.setBadge("Party", if #party.members > 1 then tostring(#party.members) else nil)
 	end

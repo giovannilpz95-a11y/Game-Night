@@ -250,6 +250,9 @@ function FriendsPanel.create(parent: Instance, sendParty: (any) -> (), sendFrien
 	return {
 		open = open,
 		close = close,
+		isOpen = function(): boolean
+			return overlay.Visible
+		end,
 		poke = poke,
 		setHere = function(rows: any)
 			here = if type(rows) == "table" then rows else {}

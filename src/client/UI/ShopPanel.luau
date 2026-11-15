@@ -517,7 +517,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		if offer then
 			local hero = Kit.new("Frame", {
 				Name = "Offer",
-				BackgroundColor3 = if Kit.cafe then Theme.Felt else Theme.PanelLight,
+				BackgroundColor3 = if Kit.rich then Theme.Felt else Theme.PanelLight,
 				BorderSizePixel = 0,
 				Size = UDim2.new(1, -8, 0, 128),
 				LayoutOrder = order,
@@ -609,7 +609,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				Name = link.key,
 				Text = "",
 				AutoButtonColor = true,
-				BackgroundColor3 = if Kit.cafe then Theme.Paper else Theme.PanelLight,
+				BackgroundColor3 = if Kit.rich then Theme.Paper else Theme.PanelLight,
 				BorderSizePixel = 0,
 				LayoutOrder = i,
 				Parent = shortcuts,
@@ -618,7 +618,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 				Kit.new("UIStroke", { Color = if Kit.cafe then Theme.Wood else Theme.Stroke, Thickness = if Kit.cafe then 2.5 else 1, Transparency = if Kit.cafe then 0 else 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 			})
 			Kit.label(link.icon, { TextSize = 30, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 10), Size = UDim2.new(1, 0, 0, 36), Parent = b })
-			Kit.label(link.name, { Font = Theme.FontBold, TextSize = 14, TextColor3 = if Kit.cafe then Theme.Ink else Theme.Text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 4, 0, 52), Size = UDim2.new(1, -8, 0, 20), Parent = b })
+			Kit.label(link.name, { Font = Theme.FontBold, TextSize = 14, TextColor3 = if Kit.rich then Theme.Ink else Theme.Text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 4, 0, 52), Size = UDim2.new(1, -8, 0, 20), Parent = b })
 			b.Activated:Connect(function()
 				tab = link.key
 				Analytics.shop("ViewedTab", tab)
