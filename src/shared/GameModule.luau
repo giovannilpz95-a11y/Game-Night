@@ -67,6 +67,18 @@
 	      the client sent. Show other players only move.shown, never the raw text.
 	      Bot moves set `shown` themselves.
 
+	hideText(view, hidden: { [seat]: true })
+	      Typed text from players another viewer may not chat with (Roblox chat settings,
+	      checked by the server with TextChatService) must not reach that viewer. The
+	      server calls this on each viewer's view (and on the table's, with every
+	      player seat hidden) to blank text written by the `hidden` seats. Mutate the view.
+
+	elapsedField = "<field>"
+	      For games that go by time (speed points, guess limits): the server writes the
+	      seconds since the current phase clock started into move[field] before
+	      validateMove, overwriting anything the client sent. nil when no clock is known
+	      (tests), so treat nil as instant.
+
 	Stats (optional; see shared/StatsCatalog.luau for which keys each game saves):
 
 	  GameModule.addStat(state, seat, key, amount) / GameModule.maxStat(state, seat, key, value)

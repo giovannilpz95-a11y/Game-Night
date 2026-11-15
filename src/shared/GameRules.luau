@@ -223,7 +223,7 @@ rules.TriviaNight = {
 	},
 	sections = {
 		{ title = "Each question", lines = { "Pick one of four answers before the clock runs out.", "Then the right answer and the points are shown." } },
-		{ title = "Scoring", lines = { "The first right answer scores 1000, each later one 100 less (never under 500).", "Streaks of right answers add a bonus." } },
+		{ title = "Scoring", lines = { "A right answer scores 500 to 1000: the faster you answer, the more you get.", "Streaks of right answers add a bonus.", "After each question you see your place on the scoreboard." } },
 		{ title = "Winning", lines = { "Highest score after the last question wins. Ties share the win." } },
 	},
 }
@@ -253,6 +253,7 @@ rules.Werewolf = {
 			lines = {
 				"Everyone taps someone at night, so nobody can tell who has a power.",
 				"If the wolves pick the shielded player, nobody is caught.",
+				"With two wolves, their chat at night reaches only the pack.",
 			},
 		},
 		{

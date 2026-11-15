@@ -334,6 +334,8 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		end
 		if view.lastWords and view.lastWords.seat == seat and view.lastWords.text and view.lastWords.text ~= "" then
 			table.insert(lines, `🕯️ "{view.lastWords.text}"`)
+		elseif view.lastWords and view.lastWords.seat == seat and view.lastWords.hidden then
+			table.insert(lines, "🕯️ (hidden by chat settings)")
 		end
 		if view.lastShot and view.lastShot.target == seat then
 			table.insert(lines, `🏹 Taken down by {nameOf(view.lastShot.hunter)}`)
@@ -480,6 +482,13 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			text = `You are the <b>{roleText(role)}</b>. {if info.team == "wolves" then "Catch villagers without being found." else "Find the werewolves!"}`
 		elseif view.phase == "night" then
 			text = if mine then NIGHT_PROMPT[role] or "" else "Done. Waiting for the night to pass..."
+			local packAlive = false
+			for _, s in view.pack or {} do
+				packAlive = packAlive or view.alive[s] == true
+			end
+			if role == "wolf" and packAlive then
+				text ..= " Pack chat: only your pack sees your chat tonight."
+			end
 		elseif view.phase == "day" then
 			text = if mine then "Make one statement. Tap a player first to name them." else "Said! Waiting for the others to speak..."
 		elseif view.phase == "vote" then
