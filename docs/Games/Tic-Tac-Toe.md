@@ -27,3 +27,4 @@ The first game, used to prove parties, tables, turns and bots work end to end.
   takebacks and take a draw unless they can force a win.
 - Rewards: `minMoves = 5` (the fastest possible win) and `minMinutes = 0.1` still fit.
 - 2D board: a faint ghost of your mark under the mouse on your turn, new marks pop in, and a line strikes through the winning three.
+- 3D board: a gold neon bar is laid across a winning three (`WinStrike`, just above the marks).

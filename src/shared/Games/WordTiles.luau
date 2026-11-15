@@ -599,14 +599,19 @@ function WordTiles.applyMove(state, seat: number, move: any)
 		state.preAdjust = table.clone(state.scores) -- for the tie-break
 		-- Out of tiles: collect what's left on everyone else's rack.
 		local bonus = 0
+		local adjust = {}
 		for other = 1, state.seatCount do
 			if other ~= seat then
 				local left = rackValue(state.racks[other])
 				state.scores[other] -= left
+				adjust[other] = -left
 				bonus += left
 			end
 		end
 		state.scores[seat] += bonus
+		adjust[seat] = bonus
+		-- The end-of-game sums go in the log too, like the apps' final breakdown.
+		addLog(state, { kind = "end", seat = seat, reason = "out", adjust = adjust })
 		finish(state, "Out of tiles")
 		return
 	end
@@ -618,9 +623,12 @@ function WordTiles.applyMove(state, seat: number, move: any)
 	local limit = math.max(SCORELESS_LIMIT, state.seatCount * 2)
 	if state.scoreless >= (if anyScore then limit else limit * 3) or state.turns >= TURN_LIMIT then
 		state.preAdjust = table.clone(state.scores)
+		local adjust = {}
 		for other = 1, state.seatCount do
-			state.scores[other] -= rackValue(state.racks[other])
+			adjust[other] = -rackValue(state.racks[other])
+			state.scores[other] += adjust[other]
 		end
+		addLog(state, { kind = "end", reason = "stuck", adjust = adjust })
 		finish(state, "No one could score")
 		return
 	end

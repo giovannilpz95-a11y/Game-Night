@@ -278,11 +278,38 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 	rollButton.MouseLeave:Connect(stopShake)
 	Kit.onPress(rollButton, stopShake)
 	Kit.padding(6).Parent = rollButton
-	local scoreButton = Kit.button("Score", function()
-		if selected then
-			sendMove({ kind = "score", box = selected })
-			selected = nil
+	-- Scoring 0 when another box would score: the first press only warns (like
+	-- cardgames.io's "This move will give you 0 points").
+	local zeroWarned: string? = nil
+	local function wasteful(id: string): boolean
+		local v = snapshot and snapshot.view
+		if not (v and v.preview and v.preview[id] == 0) then
+			return false
 		end
+		for _, points in v.preview do
+			if points > 0 then
+				return true
+			end
+		end
+		return false
+	end
+	local function scoreSelected()
+		local box = selected
+		if not box then
+			return
+		end
+		if wasteful(box) and zeroWarned ~= box then
+			zeroWarned = box
+			Audio.play("toggle")
+			render()
+			return
+		end
+		sendMove({ kind = "score", box = box })
+		selected = nil
+		zeroWarned = nil
+	end
+	local scoreButton = Kit.button("Score", function()
+		scoreSelected()
 	end, {
 		Position = UDim2.fromScale(0.52, 0),
 		Size = UDim2.fromScale(0.48, 1),
@@ -371,6 +398,9 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 				table.insert(rows, { kind = "upperBonus" })
 			end
 		end
+		if not view.quick then
+			table.insert(rows, { kind = "lower" }) -- lower subtotal, like the paper sheet
+		end
 		if view.bigBonusRule then
 			table.insert(rows, { kind = "bigBonus" })
 		end
@@ -395,6 +425,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 				elseif row.kind == "box" then Rules.BOX[row.id].name
 				elseif row.kind == "upperBonus" then "Bonus (63+)"
 				elseif row.kind == "bigBonus" then "Big Five bonus"
+				elseif row.kind == "lower" then "Lower total"
 				else "TOTAL"
 			local nameLabel = cellLabel(frame, title, 0.03, nameW - 0.03, {
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -428,10 +459,10 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 						return
 					end
 					if selected == id then
-						sendMove({ kind = "score", box = id })
-						selected = nil
+						scoreSelected()
 					else
 						selected = id
+						zeroWarned = nil
 						Audio.play("toggle")
 					end
 					render()
@@ -494,6 +525,28 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 				end)
 			end
 		end
+	end
+
+	-- What a Big Five joker may do right now, from the boxes the server allows.
+	local function jokerLine(view: any, short: boolean): string
+		local only, count, lower = nil, 0, 0
+		for id in view.preview or {} do
+			only = id
+			count += 1
+			if not Rules.BOX[id].upper then
+				lower += 1
+			end
+		end
+		if count == 1 and only then
+			return if short then `Joker: {Rules.BOX[only].name} only` else `Big Five joker! It must go in your {Rules.BOX[only].name}`
+		end
+		if view.jokerFree then
+			return if short then "Joker! Any box" else "Big Five joker! Any open box: lower boxes score in full"
+		end
+		if lower == count then
+			return if short then "Joker! Any lower box" else "Big Five joker! Any open lower box scores in full"
+		end
+		return if short then "Joker! Pick a box" else "Big Five joker! Upper boxes score 0 now"
 	end
 
 	function render()
@@ -589,11 +642,14 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			if selected and (view.preview[selected] == nil) then
 				selected = nil
 			end
-			if selected then
+			if selected and zeroWarned == selected then
+				scoreButton.Text = `0 points in {Rules.BOX[selected].name}. Sure?`
+				scoreButton.BackgroundColor3 = Color3.fromRGB(240, 170, 80)
+			elseif selected then
 				scoreButton.Text = `Score {view.preview[selected]} in {Rules.BOX[selected].name}`
 				scoreButton.BackgroundColor3 = Theme.Good
 			else
-				scoreButton.Text = if view.joker then "Joker! Pick a box" else "Pick a box"
+				scoreButton.Text = if view.joker then jokerLine(view, true) else "Pick a box"
 				scoreButton.BackgroundColor3 = Theme.PanelLight
 			end
 		else
@@ -632,6 +688,9 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 					local t = sp.totals
 					cell.Text = if t.upperBonus > 0 then "+35" else `{t.upper}/63`
 					cell.TextColor3 = if t.upperBonus > 0 then Theme.Good else Theme.SubText
+				elseif row.kind == "lower" then
+					cell.Text = tostring(sp.totals.lower)
+					cell.TextColor3 = Theme.SubText
 				elseif row.kind == "bigBonus" then
 					cell.Text = if sp.totals.bigBonus > 0 then `+{sp.totals.bigBonus}` else ""
 					cell.TextColor3 = Theme.Accent
@@ -713,7 +772,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			else
 				local line = if left > 0 then "Tap dice to keep them, then roll again or score" else "No rolls left: pick a box to score"
 				if view.joker then
-					line = "Big Five joker! Pick any open box"
+					line = jokerLine(view, false)
 				end
 				prompt.bar("rolled", line, {
 					{ text = if left > 0 then `Roll ({left} left)` else "No rolls left", onClick = roll, enabled = left > 0 },
@@ -753,8 +812,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			snapshot = newSnapshot
 			render()
 		end,
-		-- Table view (Table3D/SceneTap): tap your dice to keep or free them, the cup or
-		-- the tray to roll.
+		-- Table view (Table3D/SceneTap): tap your dice to keep or free them, the cup to roll.
 		canTap = function(id: any): boolean
 			if type(id) ~= "string" or not snapshot then
 				return false
@@ -763,7 +821,9 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 			if seat then
 				return tonumber(seat) == snapshot.yourSeat and canHold() and tonumber(i) ~= nil
 			end
-			if id == "tray" or string.match(id, "^cup:(%d+)$") == tostring(snapshot.yourSeat) then
+			-- Only the cup rolls: the loose dice sit on the felt, so a tap that just misses
+			-- one mustn't reroll the hand.
+			if string.match(id, "^cup:(%d+)$") == tostring(snapshot.yourSeat) then
 				return rollButton.Visible and rollButton.Active
 			end
 			return false
@@ -781,7 +841,7 @@ function FiveDice.create(container: Frame, sendMove: (any) -> ())
 					sendMove({ kind = "hold", held = table.clone(localHeld) })
 					render()
 				end
-			elseif id == "tray" or string.match(id, "^cup:(%d+)$") == tostring(snapshot.yourSeat) then
+			elseif string.match(id, "^cup:(%d+)$") == tostring(snapshot.yourSeat) then
 				if rollButton.Visible and rollButton.Active then
 					roll()
 				end

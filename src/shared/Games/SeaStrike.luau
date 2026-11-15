@@ -13,16 +13,21 @@
 	House rules (options.rules):
 	  size    10 (classic: 5 ships) or 8 (quick: 4 ships, no Carrier)
 	  streak  a hit lets you fire again (off by default)
-	  salvo   each turn you fire one shot for every ship you still have afloat (one at a
-	          time, so you see each result)
+	  salvo   each turn you fire one shot for every ship you still have afloat: true = one
+	          at a time (you see each result), "all" = call every square first, then they
+	          all land at once (the paper game's way)
+	  noTouch ships may not touch, not even at a corner (the Sea Battle rule); when a ship
+	          sinks, the water around it is marked for the shooter (code WATER)
 
 	Moves
 	  setup:  { kind = "place", ship = id, row, col, dir = "h" | "v" }  move/turn one ship
 	          { kind = "shuffle" }                                     random fleet
 	          { kind = "ready" }
 	  battle: { kind = "fire", row, col }
+	          { kind = "salvo", shots = { { row, col }, ... } }  salvo "all": every shot at once
 
-	Shot codes in a grid (index (row - 1) * size + col): 0 unknown, 1 miss, 2 hit, 3 sunk.
+	Shot codes in a grid (index (row - 1) * size + col): 0 unknown, 1 miss, 2 hit, 3 sunk,
+	4 water (known empty: next to a sunk ship under noTouch; never fired at).
 ]]
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -48,8 +53,8 @@ for _, s in SeaStrike.SHIPS do
 end
 SeaStrike.SHIP = SHIP
 
-local MISS, HIT, SUNK = 1, 2, 3
-SeaStrike.MISS, SeaStrike.HIT, SeaStrike.SUNK = MISS, HIT, SUNK
+local MISS, HIT, SUNK, WATER = 1, 2, 3, 4
+SeaStrike.MISS, SeaStrike.HIT, SeaStrike.SUNK, SeaStrike.WATER = MISS, HIT, SUNK, WATER
 
 local function isInt(v: any, lo: number, hi: number): boolean
 	return type(v) == "number" and v == math.floor(v) and v >= lo and v <= hi
@@ -96,21 +101,60 @@ local function overlaps(ships: { [string]: any }, ship: any, skipId: string?): b
 	return false
 end
 
-local function randomFleet(state, rng: Random): { [string]: any }
-	local ships = {}
-	for _, def in state.shipDefs do
-		for _ = 1, 500 do
-			local dir = if rng:NextInteger(0, 1) == 0 then "h" else "v"
-			local row = rng:NextInteger(1, state.size)
-			local col = rng:NextInteger(1, state.size)
-			local ship = { id = def.id, len = def.len, row = row, col = col, dir = dir, hits = 0, sunk = false }
-			if fits(state.size, row, col, dir, def.len) and not overlaps(ships, ship) then
-				ships[def.id] = ship
-				break
+-- No touching (house rule): does `ship` share a side or a corner with another ship?
+local function touches(ships: { [string]: any }, ship: any, skipId: string?): boolean
+	local near = {}
+	for id, other in ships do
+		if id ~= skipId then
+			for _, c in cellsOf(other) do
+				for dr = -1, 1 do
+					for dc = -1, 1 do
+						near[(c[1] + dr) * 100 + c[2] + dc] = true
+					end
+				end
 			end
 		end
 	end
-	return ships
+	for _, c in cellsOf(ship) do
+		if near[c[1] * 100 + c[2]] then
+			return true
+		end
+	end
+	return false
+end
+SeaStrike.touches = touches
+
+local function randomFleet(state, rng: Random): { [string]: any }
+	-- With no touching a fleet can paint itself into a corner: start over a few times.
+	local last = {}
+	for attempt = 1, 60 do
+		local strict = state.noTouch and attempt < 60
+		local ships = {}
+		local complete = true
+		for _, def in state.shipDefs do
+			local placed = false
+			for _ = 1, 300 do
+				local dir = if rng:NextInteger(0, 1) == 0 then "h" else "v"
+				local row = rng:NextInteger(1, state.size)
+				local col = rng:NextInteger(1, state.size)
+				local ship = { id = def.id, len = def.len, row = row, col = col, dir = dir, hits = 0, sunk = false }
+				if fits(state.size, row, col, dir, def.len) and not overlaps(ships, ship) and not (strict and touches(ships, ship)) then
+					ships[def.id] = ship
+					placed = true
+					break
+				end
+			end
+			if not placed then
+				complete = false
+				break
+			end
+		end
+		last = ships
+		if complete then
+			return ships
+		end
+	end
+	return last
 end
 
 local function readRules(options: any?)
@@ -118,7 +162,8 @@ local function readRules(options: any?)
 	return {
 		size = if rules.size == 8 then 8 else 10,
 		streak = rules.streak == true,
-		salvo = rules.salvo == true,
+		salvo = if rules.salvo == "all" then "all" elseif rules.salvo == true then true else false,
+		noTouch = rules.noTouch == true,
 	}
 end
 
@@ -139,7 +184,9 @@ function SeaStrike.new(seatCount: number, options: any?, rng: Random?)
 		size = r.size,
 		streak = r.streak,
 		salvo = r.salvo,
+		noTouch = r.noTouch,
 		shotsLeft = 1, -- shots left this turn (more than 1 only with salvo)
+		lastSalvo = nil, -- salvo "all": every shot of the last volley
 		shipDefs = defs,
 		phase = "setup",
 		setupId = 1,
@@ -201,6 +248,14 @@ function SeaStrike.getLegalMoves(state, seat: number): { any }
 			end
 		end
 	end
+	if state.salvo == "all" then
+		-- One volley: the first open squares (the bots pick better ones).
+		local picked = {}
+		for k = 1, SeaStrike.volleySize(state, seat) do
+			table.insert(picked, { moves[k].row, moves[k].col })
+		end
+		return { { kind = "salvo", shots = picked } }
+	end
 	return moves
 end
 
@@ -235,12 +290,43 @@ function SeaStrike.validateMove(state, seat: number, move: any): (boolean, strin
 			if overlaps(state.fleets[seat], ship, move.ship) then
 				return false, "Ships can't overlap"
 			end
+			if state.noTouch and touches(state.fleets[seat], ship, move.ship) then
+				return false, "Ships can't touch (house rule)"
+			end
 			return true
 		end
 		return false, "Place your fleet first"
 	end
+	if move.kind == "salvo" then
+		if state.salvo ~= "all" then
+			return false, "Fire one shot at a time"
+		end
+		if type(move.shots) ~= "table" then
+			return false, "Bad salvo"
+		end
+		local want = SeaStrike.volleySize(state, seat)
+		if #move.shots ~= want then
+			return false, `Pick {want} squares`
+		end
+		local seen = {}
+		for i = 1, want do
+			local shot = move.shots[i]
+			if type(shot) ~= "table" or not isInt(shot[1], 1, state.size) or not isInt(shot[2], 1, state.size) then
+				return false, "Off the grid"
+			end
+			local k = idx(state, shot[1], shot[2])
+			if state.shots[seat][k] ~= 0 or seen[k] then
+				return false, "You already fired there"
+			end
+			seen[k] = true
+		end
+		return true
+	end
 	if move.kind ~= "fire" then
 		return false, "Pick a square to fire at"
+	end
+	if state.salvo == "all" then
+		return false, "Pick all your salvo squares, then fire"
 	end
 	if not isInt(move.row, 1, state.size) or not isInt(move.col, 1, state.size) then
 		return false, "Off the grid"
@@ -249,6 +335,17 @@ function SeaStrike.validateMove(state, seat: number, move: any): (boolean, strin
 		return false, "You already fired there"
 	end
 	return true
+end
+
+-- Salvo "all": how many squares this volley needs (shots left, or fewer squares open).
+function SeaStrike.volleySize(state, seat: number): number
+	local open = 0
+	for _, code in state.shots[seat] do
+		if code == 0 then
+			open += 1
+		end
+	end
+	return math.min(state.shotsLeft or 1, open)
 end
 
 local function fleetLeft(fleet: { [string]: any }): number
@@ -298,7 +395,42 @@ function SeaStrike.applyMove(state, seat: number, move: any)
 		end
 		return
 	end
-	-- fire
+	if move.kind == "salvo" then
+		-- Every shot lands, then the turn passes (no "hit again" with a volley).
+		local volley = {}
+		for k = 1, #move.shots do
+			local shot = move.shots[k]
+			SeaStrike._shoot(state, seat, shot[1], shot[2])
+			table.insert(volley, table.clone(state.lastShot))
+			if state.phase ~= "battle" then
+				break
+			end
+		end
+		state.lastSalvo = volley
+		if state.phase == "battle" then
+			local enemy = other(seat)
+			state.turn = enemy
+			state.shotsLeft = shotsFor(state, enemy)
+		end
+		return
+	end
+	state.lastSalvo = nil
+	local target = SeaStrike._shoot(state, seat, move.row, move.col)
+	if state.phase == "battle" then
+		if not (target and state.streak) then
+			state.shotsLeft = (state.shotsLeft or 1) - 1
+		end
+		if state.shotsLeft <= 0 then
+			local enemy = other(seat)
+			state.turn = enemy
+			state.shotsLeft = shotsFor(state, enemy)
+		end
+	end
+end
+
+-- One shot by `seat` at (row, col): marks it, sinks ships, ends the game. Returns the ship hit.
+function SeaStrike._shoot(state, seat: number, row: number, col: number): any?
+	local move = { row = row, col = col }
 	local enemy = other(seat)
 	local i = idx(state, move.row, move.col)
 	local target = shipAt(state.fleets[enemy], move.row, move.col)
@@ -316,6 +448,19 @@ function SeaStrike.applyMove(state, seat: number, move: any)
 			for _, c in cellsOf(target) do
 				state.shots[seat][idx(state, c[1], c[2])] = SUNK
 			end
+			-- No touching: nothing can be next to a sunk ship, so mark that water.
+			if state.noTouch then
+				for _, c in cellsOf(target) do
+					for dr = -1, 1 do
+						for dc = -1, 1 do
+							local r, cc = c[1] + dr, c[2] + dc
+							if r >= 1 and cc >= 1 and r <= state.size and cc <= state.size and state.shots[seat][idx(state, r, cc)] == 0 then
+								state.shots[seat][idx(state, r, cc)] = WATER
+							end
+						end
+					end
+				end
+			end
 			if fleetLeft(state.fleets[enemy]) == 0 then
 				state.phase = "over"
 				state.winner = seat
@@ -325,15 +470,7 @@ function SeaStrike.applyMove(state, seat: number, move: any)
 		state.shots[seat][i] = MISS
 	end
 	state.lastShot = shot
-	if state.phase == "battle" then
-		if not (target and state.streak) then
-			state.shotsLeft = (state.shotsLeft or 1) - 1
-		end
-		if state.shotsLeft <= 0 then
-			state.turn = enemy
-			state.shotsLeft = shotsFor(state, enemy)
-		end
-	end
+	return target
 end
 
 function SeaStrike.getTimer(state)
@@ -385,7 +522,10 @@ function SeaStrike.getView(state, seat: number?)
 		ready = table.clone(state.ready),
 		streak = state.streak,
 		salvo = state.salvo,
+		noTouch = state.noTouch,
 		shotsLeft = if state.phase == "battle" then state.shotsLeft else nil,
+		volley = if state.phase == "battle" and state.salvo == "all" then SeaStrike.volleySize(state, state.turn) else nil,
+		lastSalvo = if state.lastSalvo then GameModule.copy(state.lastSalvo) else nil,
 		shipDefs = GameModule.copy(state.shipDefs),
 		boards = boards,
 		lastShot = if state.lastShot then table.clone(state.lastShot) else nil,
@@ -421,7 +561,7 @@ function SeaStrike.getScores(state): { [number]: number }
 	for seat = 1, 2 do
 		local hits = 0
 		for _, code in state.shots[seat] do
-			if code >= HIT then
+			if code == HIT or code == SUNK then
 				hits += 1
 			end
 		end
@@ -435,10 +575,10 @@ function SeaStrike.getMatchStats(state)
 	for seat = 1, 2 do
 		local fired, hits = 0, 0
 		for _, code in state.shots[seat] do
-			if code ~= 0 then
+			if code ~= 0 and code ~= WATER then
 				fired += 1
 			end
-			if code >= HIT then
+			if code == HIT or code == SUNK then
 				hits += 1
 			end
 		end
@@ -513,7 +653,7 @@ local function density(state, seat: number): { number }
 							local r = if dir == "v" then row + k else row
 							local c = if dir == "h" then col + k else col
 							local code = shots[(r - 1) * size + c]
-							if code == MISS or code == SUNK then
+							if code == MISS or code == SUNK or code == WATER then
 								ok = false
 								break
 							elseif code == HIT then
@@ -539,11 +679,25 @@ local function density(state, seat: number): { number }
 	return score
 end
 
+-- With `parity`, only every k-th diagonal, k = the shortest enemy ship still afloat
+-- (a Destroyer fits in any two squares in a row; once it's gone, every third will do).
 local function randomUnknown(state, seat: number, rng: Random, parity: boolean): { number }?
+	local step = 2
+	if parity then
+		step = 99
+		for _, ship in state.fleets[other(seat)] do
+			if not ship.sunk then
+				step = math.min(step, ship.len)
+			end
+		end
+		if step == 99 then
+			step = 2
+		end
+	end
 	local options = {}
 	for row = 1, state.size do
 		for col = 1, state.size do
-			if unknown(state, seat, row, col) and (not parity or (row + col) % 2 == 0) then
+			if unknown(state, seat, row, col) and (not parity or (row + col) % step == 0) then
 				table.insert(options, { row, col })
 			end
 		end
@@ -557,14 +711,52 @@ local function randomUnknown(state, seat: number, rng: Random, parity: boolean):
 	return options[rng:NextInteger(1, #options)]
 end
 
-function SeaStrike.chooseBotMove(state, seat: number, rng: Random): any?
+local PENDING = 5 -- a square already picked for this volley (bots only, never stored)
+
+local chooseShot: (state: any, seat: number, rng: Random, level: string) -> { number }?
+
+local function botMove(state, seat: number, rng: Random, level: string): any?
 	if not isActive(state, seat) then
 		return nil
 	end
 	if state.phase == "setup" then
 		return { kind = "ready" }
 	end
-	local level = state.botLevel
+	if state.salvo == "all" then
+		-- Pick the whole volley, one square at a time, each pick seeing the earlier ones.
+		local shots = state.shots[seat]
+		local picked = {}
+		for _ = 1, SeaStrike.volleySize(state, seat) do
+			local pick = chooseShot(state, seat, rng, level)
+			if not pick then
+				break
+			end
+			table.insert(picked, pick)
+			shots[idx(state, pick[1], pick[2])] = PENDING
+		end
+		for _, pick in picked do
+			shots[idx(state, pick[1], pick[2])] = 0
+		end
+		return { kind = "salvo", shots = picked }
+	end
+	local pick = chooseShot(state, seat, rng, level)
+	if not pick then
+		return nil
+	end
+	return { kind = "fire", row = pick[1], col = pick[2] }
+end
+
+function SeaStrike.chooseBotMove(state, seat: number, rng: Random): any?
+	return botMove(state, seat, rng, state.botLevel)
+end
+
+-- A player who's away or out of time gets a medium-strength shot, never the table's
+-- hard bot (and in setup, their fleet as it is).
+function SeaStrike.chooseAfkMove(state, seat: number, rng: Random): any?
+	return botMove(state, seat, rng, if state.botLevel == "easy" then "easy" else "medium")
+end
+
+function chooseShot(state, seat: number, rng: Random, level: string): { number }?
 	local hits = openHits(state, seat)
 	local pick: { number }? = nil
 	if level == "hard" then
@@ -603,10 +795,7 @@ function SeaStrike.chooseBotMove(state, seat: number, rng: Random): any?
 	if not pick then
 		pick = randomUnknown(state, seat, rng, level == "medium")
 	end
-	if not pick then
-		return nil
-	end
-	return { kind = "fire", row = pick[1], col = pick[2] }
+	return pick
 end
 
 function SeaStrike.getBotDelay(state, seat: number, rng: Random): number

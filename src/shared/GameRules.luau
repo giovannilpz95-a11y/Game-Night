@@ -222,7 +222,17 @@ rules.FiveDice = {
 		{ title = "Your turn", lines = { "Roll up to three times. Between rolls, tap dice to keep (hold) them.", "You can stop early. Then tap a box on your card and Score.", "If the roll doesn't fit the box you pick, it scores 0 there." } },
 		{ title = "Upper boxes", lines = { "Ones to Sixes: add up the dice showing that number.", "Reach 63 in the upper boxes for a 35 point bonus (three of each number gets you there)." } },
 		{ title = "Lower boxes", lines = { "3 of a kind, 4 of a kind: add up all five dice.", "Full house (three + two): 25. Small straight (four in a row): 30. Large straight (five in a row): 40.", "Big Five (five the same): 50. Chance: add up anything." } },
-		{ title = "Extra Big Fives", lines = { "Roll another Big Five after scoring 50 there: +100 bonus.", "It's also a joker: it must go in its number's upper box if that's open, otherwise it scores in full in any lower box." } },
+		{ title = "Extra Big Fives", lines = {
+			"Roll another Big Five after scoring 50 there: +100 bonus.",
+			"It's also a joker: it must go in its number's upper box if that's open. Otherwise it scores in full in any open lower box (Full house 25, straights 30 and 40).",
+			"If every lower box is full too, it goes in any open upper box for 0.",
+			"If you scored 0 in Big Five, later ones are still jokers, but there's no +100.",
+		} },
+		{ title = "House rules", lines = {
+			"Big Five bonus: Official (the joker order above), Free choice (any open box, lower boxes still score in full) or Off (no +100, no joker).",
+			"Everyone rolls at once: all players take their turn together.",
+			"Quick card: only the 7 lower boxes, no upper bonus.",
+		} },
 	},
 }
 
@@ -234,8 +244,9 @@ rules.SeaStrike = {
 		"Hit every square of a ship to sink it. Sink the whole fleet to win.",
 	},
 	sections = {
-		{ title = "Your fleet", lines = { "Carrier (5), Battleship (4), Cruiser (3), Submarine (3), Destroyer (2).", "Ships go across or down, never diagonal, and can't overlap. They may touch.", "Shuffle places them at random. When the setup clock runs out, you're made ready." } },
-		{ title = "Firing", lines = { "On your turn, fire at one square of the enemy grid you haven't tried yet.", "You hear hit or miss. When a ship's last square is hit, it sinks and everyone hears which ship it was." } },
+		{ title = "Your fleet", lines = { "Carrier (5), Battleship (4), Cruiser (3), Submarine (3), Destroyer (2).", "Ships go across or down, never diagonal, and can't overlap. They may touch (unless No touching is on).", "Shuffle places them at random. When the setup clock runs out, you're made ready." } },
+		{ title = "Firing", lines = { "On your turn, fire at one square of the enemy grid you haven't tried yet. Squares are named like B7: row letter, column number.", "You hear hit or miss. When a ship's last square is hit, it sinks and everyone hears which ship it was." } },
+		{ title = "House rules", lines = { "Salvo: one shot for every ship you still have afloat. \"One at a time\" shows each result; \"Call them all\": pick every square, then they land together.", "No touching: ships can't touch, even at a corner. When a ship sinks, the water around it is marked for the shooter.", "Hit again: a hit lets you fire again." } },
 		{ title = "Tips", lines = { "After a hit, try the squares next to it. Two hits in a line show which way the ship lies.", "Ships need room: big empty areas are where the big ships hide." } },
 	},
 }
