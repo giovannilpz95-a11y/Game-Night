@@ -4,21 +4,30 @@
 -- Card order, low to high: 3 4 5 6 7 8 9 10 J Q K A 2. The whole deck is dealt out.
 -- The leader plays a single, pair, triple or four of a kind. Going around, each player
 -- must play the same number of cards of a higher rank, or pass. Once you pass you are out
--- until the pile is cleared. When everyone else has passed, the pile is cleared and the
--- last player to play leads again (if they just went out, the next player still in leads).
+-- until the pile is cleared (house rule "lockout"; off, a pass only skips that turn, as
+-- in Pagat). When everyone else has passed, the pile is cleared and the last player to
+-- play leads again (if they just went out, the next player still in leads).
 -- The first player out is President, then Vice President, Citizens, Vice Beggar, and the
 -- last one holding cards is the Beggar.
--- Between rounds the Beggar hands their 2 best cards to the President, who gives back
--- their 2 worst (with 4+ players the Vice Beggar and Vice President swap 1). The Beggar
--- leads the next round; the holder of the 3 of Clubs leads the first.
--- Points each round: (players - place). After the last round the most points wins.
+-- Between rounds the Beggar hands their 2 best cards to the President, who then picks any
+-- 2 cards to give back (with 4+ players the Vice Beggar and Vice President swap 1 the same
+-- way). The Beggar leads the next round; the holder of the 3 of Clubs leads the first and
+-- must play it (house rule "threeClubs").
+-- Points each round: (players - place). After the last round the most points wins; a tie
+-- goes to whoever placed better in the last round.
 --
 -- House rules (options.rules): swaps (default on: the card swap between rounds),
--- twoClears (playing 2s clears the pile and you lead again), revolution (Daifugō: playing
--- four of a kind flips the card order, so lower beats higher, until the round ends or
--- someone plays another four).
+-- lockout (default on), threeClubs (default on), twoClears (2s clear the pile and you lead
+-- again; a single 2 goes on anything; a led 2 is a normal lead; during a revolution the
+-- 3s do it instead), revolution (Daifugō: playing four of a kind flips the card order at
+-- once, so lower beats higher, until the round ends or someone plays another four),
+-- sameRankSkips (a set of the same rank may be played on the pile, and it skips the next
+-- player), eightClears (8s clear the pile and you lead again), downfall (Daifugō: if the
+-- President doesn't go out first, they drop straight to Beggar).
 --
 -- Moves: { kind = "play", cards = { id, ... } }  |  { kind = "pass" }
+--        { kind = "giveback", cards = { id, ... } }  (start of a round: President gives 2,
+--        Vice President 1, both at once)
 
 local GameModule = require(script.Parent.Parent.GameModule)
 local BotThink = require(script.Parent.Parent.BotThink)
@@ -69,15 +78,23 @@ local function deal(state)
 	state.lastAction = nil
 	state.exchange = {}
 	state.revolution = false
+	state.mustPlay = nil
+	state.downfallDone = false
+	state.downfallSeat = nil
 	if state.round == 1 or #state.order == 0 or state.swaps == false then
 		local three = PlayingCards.make(3, 4)
 		for seat = 1, state.seatCount do
 			if table.find(state.hands[seat], three) then
 				state.turn = seat
+				if state.round == 1 and state.threeClubs then
+					state.mustPlay = three
+				end
 			end
 		end
+		state.phase = "play"
 	else
-		-- Card swap: the Beggar's best for the President's worst.
+		-- Card swap: the Beggar's best go to the President at once; the President then
+		-- picks which cards to give back (Pagat, BGA), and the same for the Vice pair.
 		local order, n = state.order, #state.order
 		local function swap(low: number, high: number, count: number)
 			local lowHand = sorted(state.hands[low])
@@ -86,28 +103,35 @@ local function deal(state)
 				table.insert(give, lowHand[i])
 			end
 			PlayingCards.removeCards(state.hands[low], give)
-			local highHand = sorted(state.hands[high])
-			local back = {}
-			for i = 1, count do
-				table.insert(back, highHand[i])
-			end
-			PlayingCards.removeCards(state.hands[high], back)
 			for _, id in give do
 				table.insert(state.hands[high], id)
 			end
-			for _, id in back do
-				table.insert(state.hands[low], id)
-			end
-			table.insert(state.exchange, { from = low, to = high, gave = give, got = back })
+			table.insert(state.exchange, { from = low, to = high, gave = give, got = nil, count = count })
 		end
 		swap(order[n], order[1], 2)
 		if n >= 4 then
 			swap(order[n - 1], order[2], 1)
 		end
 		state.turn = order[n]
+		state.phase = "giveback"
 	end
-	state.phase = "play"
 	state.phaseId += 1
+end
+
+-- The swaps still waiting for the higher player to give cards back.
+local function pendingGiveback(state, seat: number): any?
+	for _, e in state.exchange do
+		if e.to == seat and e.got == nil then
+			return e
+		end
+	end
+	return nil
+end
+President._pendingGiveback = pendingGiveback
+
+-- The card that clears the pile under the twoClears rule: 2s, or 3s during a revolution.
+local function clearRank(state): number
+	return if state.revolution then 3 else 2
 end
 
 function President.new(seatCount: number, options: any?, rng: Random?)
@@ -136,6 +160,12 @@ function President.new(seatCount: number, options: any?, rng: Random?)
 		moves = 0,
 		over = false,
 		swaps = rules.swaps ~= false,
+		lockout = rules.lockout ~= false,
+		threeClubs = rules.threeClubs ~= false,
+		sameRankSkips = rules.sameRankSkips == true,
+		eightClears = rules.eightClears == true,
+		downfall = rules.downfall == true,
+		history = {}, -- one row per round: the finishing order
 		twoClears = rules.twoClears == true,
 		revolutions = rules.revolution == true,
 		revolution = false,
@@ -175,10 +205,14 @@ end
 
 local function endRound(state)
 	local n = state.seatCount
+	if state.downfallSeat and not table.find(state.finished, state.downfallSeat) then
+		table.insert(state.finished, state.downfallSeat) -- fell from President to Beggar
+	end
 	for place, seat in state.finished do
 		state.points[seat] += n - place
 	end
 	state.order = table.clone(state.finished)
+	table.insert(state.history, table.clone(state.finished))
 	if state.round >= state.rounds then
 		state.over = true
 		state.phase = "done"
@@ -229,10 +263,38 @@ local function advance(state, from: number)
 end
 
 function President.getActiveSeats(state): { number }
-	if state.over or state.phase ~= "play" then
+	if state.over then
+		return {}
+	end
+	if state.phase == "giveback" then
+		local out = {}
+		for _, e in state.exchange do
+			if e.got == nil then
+				table.insert(out, e.to)
+			end
+		end
+		return out
+	end
+	if state.phase ~= "play" then
 		return {}
 	end
 	return { state.turn }
+end
+
+-- Does a set of `count` cards of power `p` go on the pile?
+local function fitsPile(state, p: number, count: number): boolean
+	local pile = state.pile
+	if pile == nil then
+		return true
+	end
+	-- twoClears: a single 2 (a 3 in a revolution) goes on anything.
+	if state.twoClears and count == 1 and power(PlayingCards.make(clearRank(state), 1)) == p then
+		return true
+	end
+	if count ~= pile.count then
+		return false
+	end
+	return beats(state, p, pile.power) or (state.sameRankSkips and p == pile.power)
 end
 
 -- Groups of the hand by rank: { [power] = { ids } }
@@ -248,16 +310,36 @@ end
 
 function President.getLegalMoves(state, seat: number): { any }
 	local moves = {}
-	if state.over or state.phase ~= "play" or seat ~= state.turn then
+	if state.over then
+		return moves
+	end
+	if state.phase == "giveback" then
+		local e = pendingGiveback(state, seat)
+		if e then
+			local hand = sorted(state.hands[seat])
+			table.insert(moves, { kind = "giveback", cards = table.move(hand, 1, e.count, 1, {}) })
+		end
+		return moves
+	end
+	if state.phase ~= "play" or seat ~= state.turn then
 		return moves
 	end
 	for p, ids in groups(state.hands[seat]) do
 		if state.pile == nil then
 			for k = 1, #ids do
-				table.insert(moves, { kind = "play", cards = table.move(ids, 1, k, 1, {}) })
+				local cards = table.move(ids, 1, k, 1, {})
+				if state.mustPlay == nil or table.find(cards, state.mustPlay) then
+					table.insert(moves, { kind = "play", cards = cards })
+				end
 			end
-		elseif beats(state, p, state.pile.power) and #ids >= state.pile.count then
-			table.insert(moves, { kind = "play", cards = table.move(ids, 1, state.pile.count, 1, {}) })
+		else
+			local count = state.pile.count
+			if fitsPile(state, p, 1) and count > 1 then
+				table.insert(moves, { kind = "play", cards = { ids[1] } })
+			end
+			if #ids >= count and fitsPile(state, p, count) then
+				table.insert(moves, { kind = "play", cards = table.move(ids, 1, count, 1, {}) })
+			end
 		end
 	end
 	if state.pile ~= nil then
@@ -270,14 +352,27 @@ function President.validateMove(state, seat: number, move: any): (boolean, strin
 	if state.over then
 		return false, "The game is over"
 	end
+	if type(move) ~= "table" then
+		return false, "Bad move"
+	end
+	if move.kind == "giveback" then
+		local e = state.phase == "giveback" and pendingGiveback(state, seat)
+		if not e then
+			return false, "Nothing to give back"
+		end
+		if not PlayingCards.isCardList(move.cards, e.count) or #move.cards ~= e.count then
+			return false, `Pick {e.count} {if e.count == 1 then "card" else "cards"} to give back`
+		end
+		if not PlayingCards.holdsAll(state.hands[seat], move.cards) then
+			return false, "Those cards aren't in your hand"
+		end
+		return true
+	end
 	if state.phase ~= "play" then
-		return false, "Next round coming up"
+		return false, if state.phase == "giveback" then "Waiting for the card swap" else "Next round coming up"
 	end
 	if seat ~= state.turn then
 		return false, "It's not your turn"
-	end
-	if type(move) ~= "table" then
-		return false, "Bad move"
 	end
 	if move.kind == "pass" then
 		if state.pile == nil then
@@ -295,20 +390,51 @@ function President.validateMove(state, seat: number, move: any): (boolean, strin
 			return false, "Cards must all be the same rank"
 		end
 		if state.pile then
-			if #move.cards ~= state.pile.count then
-				return false, `Play {state.pile.count} {if state.pile.count == 1 then "card" else "cards"}`
-			end
-			if not beats(state, power(move.cards[1]), state.pile.power) then
+			if not fitsPile(state, power(move.cards[1]), #move.cards) then
+				if #move.cards ~= state.pile.count then
+					return false, `Play {state.pile.count} {if state.pile.count == 1 then "card" else "cards"}`
+				end
 				return false, if state.revolution then "Revolution! Play a lower rank, or pass" else "Play a higher rank, or pass"
 			end
+		elseif state.mustPlay and not table.find(move.cards, state.mustPlay) then
+			return false, "The first lead must include the 3 of Clubs"
 		end
 		return true
 	end
 	return false, "Bad move"
 end
 
+-- Downfall (Daifugō): someone other than the reigning President went out first, so the
+-- President drops straight to Beggar and is out of the round.
+local function checkDownfall(state)
+	if not state.downfall or state.downfallDone or #state.order == 0 or #state.finished ~= 1 then
+		return
+	end
+	local president = state.order[1]
+	if state.finished[1] == president or not hasCards(state, president) then
+		return
+	end
+	state.downfallDone = true
+	state.downfallSeat = president
+	state.hands[president] = {}
+	state.passed[president] = nil
+end
+
 function President.applyMove(state, seat: number, move: any)
 	state.moves += 1
+	if move.kind == "giveback" then
+		local e = pendingGiveback(state, seat)
+		PlayingCards.removeCards(state.hands[seat], move.cards)
+		for _, id in move.cards do
+			table.insert(state.hands[e.from], id)
+		end
+		e.got = table.clone(move.cards)
+		if #President.getActiveSeats(state) == 0 then
+			state.phase = "play"
+			state.phaseId += 1
+		end
+		return
+	end
 	if move.kind == "pass" then
 		state.passed[seat] = true
 		state.lastAction = { kind = "pass", seat = seat }
@@ -316,8 +442,16 @@ function President.applyMove(state, seat: number, move: any)
 		return
 	end
 	PlayingCards.removeCards(state.hands[seat], move.cards)
-	state.pile = { cards = table.clone(move.cards), count = #move.cards, power = power(move.cards[1]), seat = seat }
+	state.mustPlay = nil
+	local wasLead = state.pile == nil
+	local p = power(move.cards[1])
+	local same = state.pile ~= nil and p == state.pile.power and #move.cards == state.pile.count
+	state.pile = { cards = table.clone(move.cards), count = #move.cards, power = p, seat = seat }
 	state.lastAction = { kind = "play", seat = seat, cards = table.clone(move.cards) }
+	if not state.lockout then
+		-- A pass only skips that turn: everyone gets another go at the new top.
+		state.passed = {}
+	end
 	if state.revolutions and #move.cards == 4 then
 		state.revolution = not state.revolution
 		state.lastAction.revolution = state.revolution
@@ -326,10 +460,29 @@ function President.applyMove(state, seat: number, move: any)
 	if not hasCards(state, seat) then
 		table.insert(state.finished, seat)
 		state.lastAction.out = #state.finished
+		checkDownfall(state)
+		if state.downfallSeat and state.downfallDone and state.lastAction.downfall == nil then
+			state.lastAction.downfall = state.downfallSeat
+		end
 	end
-	if state.twoClears and rank(move.cards[1]) == 2 then
-		-- House rule: 2s clear the pile. The same player leads again (or the next one in,
-		-- if that was their last card).
+	if same and state.sameRankSkips then
+		-- Same rank skips the next player (BGA): they're passed over this time.
+		local skipped = nextWithCards(state, seat)
+		if skipped and skipped ~= seat then
+			state.lastAction.skipped = skipped
+			state.passed[skipped] = true
+			advance(state, seat)
+			if state.lockout == false then
+				state.passed[skipped] = nil
+			end
+			return
+		end
+	end
+	-- A led 2 is a normal lead (it would be a free extra turn); 8s clear even when led.
+	local clears = (state.twoClears and not wasLead and rank(move.cards[1]) == clearRank(state)) or (state.eightClears and rank(move.cards[1]) == 8)
+	if clears then
+		-- House rules: 2s (or 8s) clear the pile. The same player leads again (or the next
+		-- one in, if that was their last card).
 		local stillIn = 0
 		for s = 1, state.seatCount do
 			if hasCards(state, s) then
@@ -373,6 +526,14 @@ function President.getResult(state): GameModule.Result?
 			table.insert(best, seat)
 		end
 	end
+	if #best > 1 then
+		-- A tie goes to whoever placed better in the last round (the reigning President).
+		for _, seat in state.order do
+			if table.find(best, seat) then
+				return { winners = { seat }, isDraw = false, reason = `Most points ({top}), tie broken by the last round` }
+			end
+		end
+	end
 	return { winners = best, isDraw = #best > 1, reason = if #best > 1 then `Tied on {top} points` else `Most points ({top})` }
 end
 
@@ -398,8 +559,9 @@ function President.getView(state, seat: number?)
 			from = e.from,
 			to = e.to,
 			count = #e.gave,
+			pending = e.got == nil,
 			gave = if mine then table.clone(e.gave) else nil,
-			got = if mine then table.clone(e.got) else nil,
+			got = if mine and e.got then table.clone(e.got) else nil,
 		})
 	end
 	return {
@@ -418,6 +580,13 @@ function President.getView(state, seat: number?)
 		exchange = exchange,
 		lastAction = GameModule.copy(state.lastAction),
 		revolution = state.revolution == true,
+		history = GameModule.copy(state.history),
+		lockout = state.lockout,
+		mustPlay = state.mustPlay,
+		giveback = if seat and state.phase == "giveback" and pendingGiveback(state, seat) then pendingGiveback(state, seat).count else nil,
+		playable = if seat and state.phase == "play" and seat == state.turn and not state.over then President.playableIds(state, seat) else nil,
+		twoClears = state.twoClears,
+		clearRank = if state.twoClears then clearRank(state) else nil,
 	}
 end
 
@@ -425,8 +594,11 @@ function President.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, state.seatCount do
 		local place = table.find(state.finished, seat)
-		local first = if place then President.roleName(place, state.seatCount) else `{#state.hands[seat]} cards`
-		info[seat] = `{first} · {state.points[seat]} pts`
+		local first = if place then `Out: {President.roleName(place, state.seatCount)}` elseif state.passed[seat] and state.phase == "play" then `passed · {#state.hands[seat]} cards` else `{#state.hands[seat]} cards`
+		-- Last round's role stays on the seat all round (who is President now).
+		local was = table.find(state.order, seat)
+		local role = if was and not place then ` · {President.roleName(was, state.seatCount)}` else ""
+		info[seat] = `{first}{role} · {state.points[seat]} pts`
 	end
 	return info
 end
@@ -435,12 +607,47 @@ function President.getScores(state): { [number]: number }
 	return table.clone(state.points)
 end
 
+-- Cards that could be part of a legal play right now (for the glow on your hand).
+function President.playableIds(state, seat: number): { number }
+	local out, seen = {}, {}
+	for _, move in President.getLegalMoves(state, seat) do
+		if move.kind == "play" then
+			local p = power(move.cards[1])
+			for _, id in state.hands[seat] do
+				if power(id) == p and not seen[id] then
+					seen[id] = true
+					table.insert(out, id)
+				end
+			end
+		end
+	end
+	return out
+end
+
 -- Bots ------------------------------------------------------------------------
 
 function President.chooseBotMove(state, seat: number, rng: Random): any?
 	local moves = President.getLegalMoves(state, seat)
 	if #moves == 0 then
 		return nil
+	end
+	if state.phase == "giveback" then
+		-- Give back the lowest cards (hard: avoid breaking a pair if a lone low card will do).
+		local e = pendingGiveback(state, seat)
+		local hand = sorted(state.hands[seat])
+		if state.botLevel == "hard" then
+			local g = groups(hand)
+			local singles = {}
+			for _, id in hand do
+				if #g[power(id)] == 1 then
+					table.insert(singles, id)
+				end
+			end
+			if #singles >= e.count then
+				return { kind = "giveback", cards = table.move(singles, 1, e.count, 1, {}) }
+			end
+		end
+		return moves[1]
 	end
 	if state.botLevel == "easy" then
 		return moves[rng:NextInteger(1, #moves)]
@@ -469,6 +676,26 @@ function President.chooseBotMove(state, seat: number, rng: Random): any?
 				-- Hard: hold back 2s and Aces while the hand is still big.
 				if state.botLevel == "hard" and (if state.revolution then p <= 2 else p >= 12) and #hand > 5 then
 					score += 90
+				end
+			end
+			if state.botLevel == "hard" then
+				local r = rank(move.cards[1])
+				-- A clearing card on someone else's pile wins the lead: worth it while we
+				-- still have low cards to get rid of.
+				if state.pile and ((state.twoClears and r == clearRank(state)) or (state.eightClears and r == 8)) and #hand > #move.cards + 1 then
+					score -= 70
+				end
+				-- Four of a kind with a hand of mostly low cards: start a revolution.
+				if state.revolutions and #move.cards == 4 and not state.revolution then
+					local low = 0
+					for _, id in hand do
+						if power(id) <= 5 then
+							low += 1
+						end
+					end
+					if low * 2 >= #hand - 4 then
+						score -= 40
+					end
 				end
 			end
 		end

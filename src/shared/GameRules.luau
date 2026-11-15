@@ -422,10 +422,11 @@ rules.President = {
 		"When everyone passes, the pile clears and the last player to play leads.",
 	},
 	sections = {
-		{ title = "Playing", lines = { "The leader plays a single, pair, triple or four of a kind.", "Going around, each player plays the same number of cards of a higher rank, or passes.", "Once you pass you're out until the pile clears." } },
+		{ title = "Playing", lines = { "The holder of the 3 of Clubs leads the first round and must play it.", "The leader plays a single, pair, triple or four of a kind.", "Going around, each player plays the same number of cards of a higher rank, or passes.", "Once you pass you're out until the pile clears (a house rule: Pagat lets you play again next time round)." } },
 		{ title = "Ranks", lines = { "First out is President, then Vice President, Citizens, Vice Beggar, and the last is the Beggar." } },
-		{ title = "Between rounds", lines = { "The Beggar gives their 2 best cards to the President, who gives back 2 worst.", "With 4+ players, the Vice Beggar and Vice President swap 1.", "The Beggar leads the next round." } },
-		{ title = "Points", lines = { "Each round you score more the earlier you went out. Most points after the last round wins." } },
+		{ title = "Between rounds", lines = { "The Beggar gives their 2 best cards to the President, who picks any 2 cards to give back.", "With 4+ players, the Vice Beggar and Vice President swap 1 the same way.", "The Beggar leads the next round." } },
+		{ title = "Revolution (house rule)", lines = { "Four of a kind flips the order at once: the next player must play a lower four, and low beats high until the round ends." } },
+		{ title = "Points", lines = { "Each round you score more the earlier you went out. Most points after the last round wins.", "A tie goes to whoever placed better in the last round." } },
 	},
 }
 
@@ -449,12 +450,13 @@ rules.Hearts = {
 	card = {
 		"Follow the suit that was led if you can. Highest card of that suit takes the trick.",
 		"Every heart is 1 point and the Queen of Spades is 13. Avoid them!",
-		"Take all 26 points in a round to shoot the moon: everyone else gets 26.",
+		"Take all 26 points in a hand to shoot the moon: everyone else gets 26.",
 	},
 	sections = {
-		{ title = "Passing", lines = { "Each round, pick 3 cards to pass: left, then right, then across, then no pass." } },
-		{ title = "Tricks", lines = { "The 2 of Clubs leads the first trick.", "Follow suit if you can. If not, play anything.", "No points on the first trick (unless you have nothing else).", "Hearts can't be led until one has been played." } },
-		{ title = "Winning", lines = { "When someone reaches the target score, the lowest score wins." } },
+		{ title = "Passing", lines = { "Each hand, pick 3 cards to pass: left, then right, then across, then no pass." } },
+		{ title = "Tricks", lines = { "The 2 of Clubs leads the first trick.", "Follow suit if you can. If not, play anything.", "No points on the first trick (unless you have nothing else, and never the Queen of Spades).", "Hearts can't be led until one has been played (unless you have only hearts)." } },
+		{ title = "Shooting the moon", lines = { "Take every heart and the Queen of Spades: everyone else gets 26 instead.", "If that would make you lose the game, you take -26 instead (house rule: always one or the other).", "The Jack of Diamonds (house rule) still counts -10 and doesn't count for the moon." } },
+		{ title = "Winning", lines = { "When someone reaches the target score (100), the lowest score wins.", "Tied for the lowest? Play one more hand." } },
 	},
 }
 
@@ -466,10 +468,10 @@ rules.Spades = {
 		"Make your team's bid for points. Fall short and you lose points.",
 	},
 	sections = {
-		{ title = "Bidding", lines = { "Everyone bids 0-13 tricks. A bid of 0 is Nil: +100 if you take none, -100 if you take any." } },
+		{ title = "Bidding", lines = { "Everyone bids 0-13 tricks. Partners' bids add up to the team's bid.", "A bid of 0 is Nil: +100 if you take none, -100 if you take any. A Nil bidder's tricks don't help the partner's bid; they count as bags." } },
 		{ title = "Tricks", lines = { "Follow suit if you can. Highest spade wins, or else the highest card of the led suit.", "Spades can't be led until one has been played (unless you have only spades)." } },
 		{ title = "Scoring", lines = { "Make your team's bid: 10 per trick bid, plus 1 per extra trick (a bag).", "Fall short: lose 10 per trick bid. Every 10 bags costs 100." } },
-		{ title = "Winning", lines = { "First team to the target wins. A team at -200 loses.", "A game that runs very long (30 hands at 300, 50 at 500) ends after its last hand: higher score wins." } },
+		{ title = "Winning", lines = { "First team to the target (500) wins. A team at -200 loses.", "Tied at the end? Play one more hand.", "A game that runs very long (30 hands at 300, 50 at 500) ends after its last hand: higher score wins. The hand count is on screen." } },
 	},
 }
 
@@ -552,13 +554,13 @@ rules.OhHell = {
 	card = {
 		"Bid exactly how many tricks you'll take this round.",
 		"Follow the suit that was led. The turned-up card's suit is trump.",
-		"Hit your bid exactly for 10 + your bid. Miss and you get nothing.",
+		"Every trick scores 1, and hitting your bid exactly adds 10.",
 	},
 	sections = {
-		{ title = "Rounds", lines = { "Everyone gets one card fewer each round (7 down to 1 by default).", "After the deal one card is turned up: its suit is trump for the round." } },
+		{ title = "Rounds", lines = { "The hand size changes every round (1 up to 7 and back down by default).", "After the deal one card is turned up: its suit is trump for the round." } },
 		{ title = "Bidding", lines = { "Bid 0 up to the hand size, starting left of the dealer.", "The dealer bids last and can't pick the number that makes all the bids add up to the hand size." } },
 		{ title = "Tricks", lines = { "Follow suit if you can. Otherwise play anything.", "The highest trump wins, or else the highest card of the led suit. The winner leads next." } },
-		{ title = "Scoring", lines = { "Exactly your bid: 10 + your bid (bid 0 and take none for 10).", "Any other number of tricks: 0 for the round." } },
+		{ title = "Scoring", lines = { "Every trick you take: 1 point. Exactly your bid: 10 more (bid 0 and take none for 10).", "House rule Exact bid only: exactly your bid scores 10 + your bid, any other number 0.", "Tied for the lead at the end? One more hand at the biggest size." } },
 	},
 }
 
