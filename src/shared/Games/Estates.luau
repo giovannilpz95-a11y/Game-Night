@@ -1784,6 +1784,30 @@ function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 	return { kind = "endTurn" }
 end
 
+-- A person's clock ran out (or they're away): only the moves Rich Up's auto-play makes.
+-- Roll and end the turn, send a deed to auction and never bid, turn trades down, and pay
+-- a debt (raising the cash the way a bot would, since the game can't wait). Never build,
+-- unmortgage, buy or offer with someone else's money.
+function Estates.chooseAfkMove(state, seat: number, _rng: Random): any?
+	local phase = state.phase
+	local p = state.players[seat]
+	if phase == "trade" then
+		return { kind = "reject" }
+	elseif phase == "auction" then
+		return { kind = "pass" }
+	elseif phase == "buy" then
+		return { kind = "decline" }
+	elseif phase == "debt" then
+		if p.cash >= state.debt.amount then
+			return { kind = "payDebt" }
+		end
+		return botRaise(state, seat) or { kind = "bankrupt" }
+	elseif phase == "turn" then
+		return { kind = if state.canRoll then "roll" else "endTurn" }
+	end
+	return nil
+end
+
 -- Stats for the profile (see shared/StatsCatalog.luau).
 function Estates.getMatchStats(state): { [number]: { [string]: number } }
 	local out = {}

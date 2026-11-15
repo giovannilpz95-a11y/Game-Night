@@ -48,6 +48,9 @@ Conquest.id = "Conquest"
 Conquest.minSeats = 2
 Conquest.maxSeats = 6
 
+-- getTimer below is a per-turn clock: MatchService counts a turn with no move as a
+-- timeout, and two in a row mark the player away (a bot plays their seat until they're back).
+Conquest.turnClock = true
 Conquest.TURN_SECONDS = 90 -- the whole turn, not each move (house rule "turnLength" can change it)
 Conquest.HAND_LIMIT = 5 -- holding this many cards forces a trade
 Conquest.LOG_SIZE = 8
