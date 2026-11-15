@@ -25,7 +25,13 @@
 --   { kind = "accept" }          { kind = "reject" }        (the trade's target answers)
 --   { kind = "counter", give = Side, get = Side }            (...or sends one back)
 --
--- House rules (options.rules): fast (deal 2 deeds each, quicker auctions, fewer rounds),
+-- Anyone may send a trade offer between actions, not just the player whose turn it is
+-- (one off-turn offer per player per turn, `getInterruptSeats`).
+--
+-- House rules (options.rules): fast (deal 2 deeds each, quicker auctions, fewer rounds,
+-- hotels after 3 houses), quickHotels (hotels after 3 houses), length ("short" | "normal" |
+-- "long" rounds, "bankrupt" = play until one player is left, "first" = the first
+-- bankruptcy ends it),
 -- firstLap (no building until you've passed Start once, like Monopoly Plus),
 -- jackpot (taxes and fees pile up on Rest Stop for whoever lands there), doubleStart
 -- ($400 for landing right on Start), auctions (false: a declined deed stays unsold).
@@ -50,6 +56,9 @@ Estates.COUNTERS_PER_TRADE = 2
 Estates.AUCTION_SECONDS = 8 -- the auction countdown, restarted by every bid
 Estates.FAST_AUCTION_SECONDS = 5
 Estates.FAST_DEEDS = 2 -- deeds dealt to each player in fast mode
+Estates.OFF_TURN_OFFERS = 1 -- trade offers each other player may send during someone's turn
+Estates.LOG_SIZE = 50
+local MORTGAGE_FEE = 0.1 -- taking over a mortgaged deed costs 10% of its mortgage value
 local MOVE_LIMIT = 4000 -- safety valve: a stuck game still ends
 
 -- Color groups, in board order.
@@ -152,7 +161,7 @@ Estates.isDeed = isDeed
 -- Card decks. Money on cards always comes from or goes to the bank.
 export type Card = {
 	text: string,
-	kind: "collect" | "pay" | "advance" | "back" | "jail" | "jailFree" | "repairs" | "nearestStation" | "nearestUtility",
+	kind: "collect" | "pay" | "advance" | "back" | "jail" | "jailFree" | "repairs" | "nearestStation" | "nearestUtility" | "payEach" | "collectEach",
 	amount: number?,
 	to: number?, -- advance: target position
 	perHouse: number?,
@@ -165,7 +174,7 @@ Estates.decks = {
 		cards = {
 			{ text = "Hop on the party bus to Start. Collect $200.", kind = "advance", to = 1 },
 			{ text = "Treat yourself at Diamond Point.", kind = "advance", to = 40 },
-			{ text = "Pizza night! Go to Pizza Parkway.", kind = "advance", to = 22 },
+			{ text = "Sushi night! Go to Sushi Street.", kind = "advance", to = 25 },
 			{ text = "Flower show at Daisy Court. Head over.", kind = "advance", to = 12 },
 			{ text = "Catch the Harbor Ferry.", kind = "advance", to = 6 },
 			{ text = "Rush to the nearest station. Pay the owner double rent.", kind = "nearestStation" },
@@ -178,6 +187,7 @@ Estates.decks = {
 			{ text = "Get Out of Jail Free. Keep this card.", kind = "jailFree" },
 			{ text = "Fix up your places: $25 per house, $100 per hotel.", kind = "repairs", perHouse = 25, perHotel = 100 },
 			{ text = "Parking ticket. Pay $15.", kind = "pay", amount = 15 },
+			{ text = "You're the party planner. Pay each player $50.", kind = "payEach", amount = 50 },
 		} :: { Card },
 	},
 	mail = {
@@ -197,6 +207,8 @@ Estates.decks = {
 			{ text = "Your noisy party got reported. Go to Jail.", kind = "jail" },
 			{ text = "Get Out of Jail Free. Keep this card.", kind = "jailFree" },
 			{ text = "Street cleanup: $40 per house, $115 per hotel.", kind = "repairs", perHouse = 40, perHotel = 115 },
+			{ text = "It's your birthday! Collect $10 from every player.", kind = "collectEach", amount = 10 },
+			{ text = "Your lemonade stand sold out. Collect $100.", kind = "collect", amount = 100 },
 		} :: { Card },
 	},
 }
@@ -222,7 +234,7 @@ end
 local function log(state, seat: number?, text: string)
 	table.insert(state.log, { seat = seat, text = text, n = state.logCount + 1 })
 	state.logCount += 1
-	while #state.log > 8 do
+	while #state.log > Estates.LOG_SIZE do
 		table.remove(state.log, 1)
 	end
 end
@@ -232,6 +244,7 @@ local function money(n: number): string
 end
 
 local toBank: (any, number) -> ()
+local canTradeOut: (any, number) -> boolean
 
 local function alive(state): { number }
 	local out = {}
@@ -285,6 +298,11 @@ local function countOwned(state, seat: number, list: { number }): number
 		end
 	end
 	return n
+end
+
+-- The 10% due when a mortgaged deed changes hands (trade or bankruptcy).
+function Estates.mortgageFee(pos: number): number
+	return math.ceil((spaces[pos].price :: number) // 2 * MORTGAGE_FEE)
 end
 
 function Estates.unmortgageCost(pos: number): number
@@ -416,9 +434,15 @@ function Estates.new(seatCount: number, options: any?, rng: Random?)
 			end
 		end
 	end
+	-- Game length: rounds by seat count, scaled; or no round limit at all (0).
+	local length = if type(rules.length) == "string" then rules.length else "normal"
 	local maxRounds = Estates.roundsFor(seatCount)
-	if fast then
+	if fast or length == "short" then
 		maxRounds = math.max(10, math.floor(maxRounds * 0.7))
+	elseif length == "long" then
+		maxRounds = math.floor(maxRounds * 1.5)
+	elseif length == "bankrupt" or length == "first" then
+		maxRounds = 0
 	end
 	return {
 		seatCount = seatCount,
@@ -440,6 +464,10 @@ function Estates.new(seatCount: number, options: any?, rng: Random?)
 		auctions = rules.auctions ~= false,
 		jailRent = rules.jailRent ~= false, -- house rule: off means owners in Jail collect no rent
 		firstLap = rules.firstLap == true, -- house rule: no building until you've passed Start once
+		hotelAt = if fast or rules.quickHotels == true then 3 else 4, -- houses before a hotel
+		firstBankruptEnds = length == "first",
+		auctionQueue = {}, -- deeds a player bankrupt to the bank left behind, auctioned one by one
+		offTurn = {}, -- [seat] = off-turn offers sent this turn
 		pot = 0, -- jackpot rule: cash waiting on Rest Stop
 		clock = 0, -- bumped whenever a phase clock (the auction countdown) restarts
 		phase = "turn", -- turn | buy | auction | debt | trade | over
@@ -507,6 +535,7 @@ local function startTurn(state, seat: number)
 	state.doubles = 0
 	state.tradesThisTurn = 0
 	state.actionsThisTurn = 0
+	state.offTurn = {}
 end
 
 local function advanceTurn(state)
@@ -517,7 +546,7 @@ local function advanceTurn(state)
 	local seat = nextAlive(state, from)
 	if seat <= from then
 		state.round += 1
-		if state.round > state.maxRounds then
+		if state.maxRounds > 0 and state.round > state.maxRounds then
 			endByWorth(state, `Round limit: richest player wins`)
 			return
 		end
@@ -541,24 +570,43 @@ local function sellAllBuildings(state, seat: number)
 	end
 end
 
+local nextQueuedAuction: (any) -> ()
+
 local function goBankrupt(state, seat: number, creditor: number?)
 	local p = state.players[seat]
 	sellAllBuildings(state, seat)
 	if creditor then
 		state.players[creditor].cash += p.cash
+		local fees = 0
 		for pos = 1, #spaces do
 			if state.owner[pos] == seat then
 				state.owner[pos] = creditor
+				if state.mortgaged[pos] then
+					fees += Estates.mortgageFee(pos)
+				end
 			end
+		end
+		-- Taking over mortgaged deeds costs 10% of their mortgage value (paid as far as
+		-- the creditor's cash goes).
+		fees = math.min(fees, state.players[creditor].cash)
+		if fees > 0 then
+			state.players[creditor].cash -= fees
+			toBank(state, fees)
+			log(state, creditor, `paid {money(fees)} in fees on the mortgaged deeds`)
 		end
 		for _, deck in p.cards do
 			table.insert(state.players[creditor].cards, deck)
 		end
 	else
+		-- Bankrupt to the bank: every deed goes up for auction (official rules), one by
+		-- one, unless auctions are off.
 		for pos = 1, #spaces do
 			if state.owner[pos] == seat then
 				state.owner[pos] = nil
 				state.mortgaged[pos] = false
+				if state.auctions then
+					table.insert(state.auctionQueue, pos)
+				end
 			end
 		end
 		for _, deck in p.cards do
@@ -578,9 +626,14 @@ local function goBankrupt(state, seat: number, creditor: number?)
 	if checkLastStanding(state) then
 		return
 	end
+	if state.firstBankruptEnds then
+		endByWorth(state, "First bankruptcy: richest player wins")
+		return
+	end
 	if state.turn == seat then
 		advanceTurn(state)
 	end
+	nextQueuedAuction(state)
 end
 
 -- Money paid to the bank: with the jackpot rule it waits on Rest Stop instead.
@@ -588,6 +641,33 @@ function toBank(state, amount: number)
 	if state.jackpot then
 		state.pot += amount
 	end
+end
+
+-- Could a trade still save them? They hold a deed or a Jail card and someone else has cash.
+-- (Official rules: you can sell deeds to other players before you're declared bankrupt.)
+function canTradeOut(state, seat: number): boolean
+	if state.phase ~= "turn" and state.phase ~= "buy" then
+		return false -- a debt can only open on the player's own turn
+	end
+	if state.turn ~= seat or state.tradesThisTurn >= Estates.TRADES_PER_TURN then
+		return false
+	end
+	local has = #state.players[seat].cards > 0
+	for pos = 1, #spaces do
+		if state.owner[pos] == seat and tradable(state, pos) then
+			has = true
+			break
+		end
+	end
+	if not has then
+		return false
+	end
+	for other = 1, state.seatCount do
+		if other ~= seat and not state.players[other].bankrupt and state.players[other].cash > 0 then
+			return true
+		end
+	end
+	return false
 end
 
 -- Seat owes `amount` to `to` (a seat, or nil for the bank). Pays at once if it can;
@@ -609,7 +689,7 @@ local function charge(state, seat: number, amount: number, to: number?, why: str
 		log(state, seat, paidText)
 		return true
 	end
-	if Estates.liquidValue(state, seat) < amount then
+	if Estates.liquidValue(state, seat) < amount and not canTradeOut(state, seat) then
 		log(state, seat, `owes {money(amount)} ({why}) and can't pay`)
 		goBankrupt(state, seat, to)
 		return false
@@ -677,6 +757,38 @@ local function drawCard(state, seat: number, deckKey: string)
 		p.cash += card.amount :: number
 	elseif card.kind == "pay" then
 		charge(state, seat, card.amount :: number, nil, "card", `paid {money(card.amount :: number)}`)
+	elseif card.kind == "payEach" then
+		-- Paid to every other player still in. Short of cash: it's one debt, shared out
+		-- when it's paid (or lost to the bank on a bankruptcy).
+		local others = {}
+		for _, other in alive(state) do
+			if other ~= seat then
+				table.insert(others, other)
+			end
+		end
+		local each = card.amount :: number
+		local total = each * #others
+		if p.cash >= total then
+			for _, other in others do
+				p.cash -= each
+				state.players[other].cash += each
+			end
+			log(state, seat, `paid {money(each)} to each player`)
+		elseif not charge(state, seat, total, nil, "card", `paid {money(total)}`) and state.debt then
+			state.debt.each = others
+		end
+	elseif card.kind == "collectEach" then
+		-- Everyone pays what they can (a player short of $10 just pays what they have).
+		local got = 0
+		for _, other in alive(state) do
+			if other ~= seat then
+				local pay = math.min(card.amount :: number, state.players[other].cash)
+				state.players[other].cash -= pay
+				got += pay
+			end
+		end
+		p.cash += got
+		log(state, seat, `collected {money(got)} from the other players`)
 	elseif card.kind == "repairs" then
 		local cost = 0
 		for pos = 1, #spaces do
@@ -772,6 +884,15 @@ local function finishAuction(state)
 	else
 		log(state, nil, `Nobody bid on {spaces[a.pos].name}`)
 	end
+	nextQueuedAuction(state)
+end
+
+-- Deeds left by a bankruptcy to the bank are auctioned one after another, between turns.
+function nextQueuedAuction(state)
+	if state.phase ~= "turn" or #state.auctionQueue == 0 then
+		return
+	end
+	startAuction(state, table.remove(state.auctionQueue, 1) :: number)
 end
 
 -- Who can still bid: everyone in the auction except the current leader.
@@ -846,9 +967,27 @@ local function cleanSide(side: any): Side
 	return { props = props, cash = side.cash or 0, cards = side.cards or 0 }
 end
 
+-- What `seat` pays in 10% fees for the mortgaged deeds it receives in `side`.
+local function feesFor(state, side: Side): number
+	local fees = 0
+	for _, pos in side.props do
+		if state.mortgaged[pos] then
+			fees += Estates.mortgageFee(pos)
+		end
+	end
+	return fees
+end
+Estates.feesFor = feesFor
+
 local function moveAssets(state, from: number, to: number, side: Side)
 	for _, pos in side.props do
 		state.owner[pos] = to
+	end
+	local fees = feesFor(state, side)
+	if fees > 0 then
+		state.players[to].cash -= fees
+		toBank(state, fees)
+		log(state, to, `paid {money(fees)} in fees on mortgaged deeds`)
 	end
 	state.players[from].cash -= side.cash
 	state.players[to].cash += side.cash
@@ -858,6 +997,53 @@ local function moveAssets(state, from: number, to: number, side: Side)
 end
 
 -- Building and mortgages ------------------------------------------------------
+
+-- Selling the hotel on `pos`: it goes back to `hotelAt` houses. When the bank hasn't got
+-- that many houses, the whole color set is sold down evenly to whatever the bank's houses
+-- allow (official rules: one house at a time, a hotel being worth 5 houses).
+-- Returns { levels = { [pos] = houses }, cash, hotels (back to the bank), housesLeft, wholeSet }.
+function Estates.hotelSale(state, pos: number): any
+	local hotelAt = state.hotelAt or 4
+	local cost = spaces[pos].houseCost :: number
+	if state.housesLeft >= hotelAt then
+		return { levels = { [pos] = hotelAt }, cash = cost // 2, hotels = 1, housesLeft = state.housesLeft - hotelAt, wholeSet = false }
+	end
+	local group = groupMembers[spaces[pos].group :: number]
+	-- Everything in the set goes back to the bank first...
+	local pool = state.housesLeft
+	local hotels = 0
+	local worth = 0 -- buildings in the set, in houses (a hotel = hotelAt + 1)
+	for _, street in group do
+		local h = state.houses[street]
+		if h == 5 then
+			hotels += 1
+			worth += hotelAt + 1
+		else
+			pool += h
+			worth += h
+		end
+	end
+	-- ...then the highest even level the bank's houses allow is put back.
+	local level = hotelAt
+	while level > 0 and level * #group > pool do
+		level -= 1
+	end
+	local levels = {}
+	local kept = 0
+	for _, street in group do
+		local h = state.houses[street]
+		local now = if h == 5 then level else math.min(h, level)
+		levels[street] = now
+		kept += now
+	end
+	return {
+		levels = levels,
+		cash = (worth - kept) * cost // 2,
+		hotels = hotels,
+		housesLeft = pool - kept,
+		wholeSet = true,
+	}
+end
 
 function Estates.canBuild(state, seat: number, pos: number): (boolean, string?)
 	local space = spaces[pos]
@@ -883,9 +1069,10 @@ function Estates.canBuild(state, seat: number, pos: number): (boolean, string?)
 			return false, "Build evenly: add to the other streets in this color first"
 		end
 	end
-	if h == 4 and state.hotelsLeft <= 0 then
+	local hotelAt = state.hotelAt or 4
+	if h >= hotelAt and state.hotelsLeft <= 0 then
 		return false, "The bank is out of hotels"
-	elseif h < 4 and state.housesLeft <= 0 then
+	elseif h < hotelAt and state.housesLeft <= 0 then
 		return false, "The bank is out of houses"
 	end
 	if state.players[seat].cash < (space.houseCost :: number) then
@@ -951,14 +1138,68 @@ function Estates.getActiveSeats(state): { number }
 	return { state.turn }
 end
 
+-- Anyone else may send one trade offer while the player whose turn it is is between
+-- actions (official rules: trade at any time; Rich Up lets anyone open a trade).
+function Estates.getInterruptSeats(state): { number }
+	local out = {}
+	if state.phase ~= "turn" then
+		return out
+	end
+	for seat = 1, state.seatCount do
+		if seat ~= state.turn and not state.players[seat].bankrupt and (state.offTurn[seat] or 0) < Estates.OFF_TURN_OFFERS then
+			table.insert(out, seat)
+		end
+	end
+	return out
+end
+
 local MANAGE_PHASES = { turn = true, buy = true, debt = true }
+
+-- What a side of a trade is worth on paper: deeds at price (half if mortgaged), cash,
+-- and $50 a Jail card.
+local function sideValue(state, side: Side): number
+	local value = side.cash + 50 * side.cards
+	for _, pos in side.props do
+		local price = spaces[pos].price :: number
+		value += if state.mortgaged[pos] then price // 2 else price
+	end
+	return value
+end
+
+-- Rich Up's rule: "you can't give the game away". A trade may not hand over more than
+-- half of someone's worth for less than a quarter of it back.
+local function giveaway(state, from: number, to: number, give: Side, get: Side): string?
+	local gives, gets = sideValue(state, give), sideValue(state, get)
+	if gives > 0.5 * Estates.netWorth(state, from) and gets < 0.25 * gives then
+		return "That's a giveaway. Ask for something fair back."
+	end
+	if gets > 0.5 * Estates.netWorth(state, to) and gives < 0.25 * gets then
+		return "That asks them to give the game away. Offer something fair."
+	end
+	return nil
+end
+
+-- Both sides must be able to pay the 10% fees on mortgaged deeds they'd receive.
+local function feesOk(state, from: number, to: number, give: Side, get: Side): (boolean, string?)
+	local fromCash = state.players[from].cash - give.cash + get.cash - feesFor(state, get)
+	local toCash = state.players[to].cash + give.cash - get.cash - feesFor(state, give)
+	if fromCash < 0 or toCash < 0 then
+		return false, "Not enough cash for the 10% fee on the mortgaged deeds"
+	end
+	return true
+end
 
 function Estates.validateMove(state, seat: number, move: any): (boolean, string?)
 	if state.phase == "over" then
 		return false, "The game is over"
 	end
+	local offTurn = false
 	if not table.find(Estates.getActiveSeats(state), seat) then
-		return false, "It's not your turn"
+		if type(move) == "table" and move.kind == "offer" and table.find(Estates.getInterruptSeats(state), seat) then
+			offTurn = true -- checked with the offer below
+		else
+			return false, "It's not your turn"
+		end
 	end
 	if type(move) ~= "table" or type(move.kind) ~= "string" then
 		return false, "Bad move"
@@ -1056,7 +1297,11 @@ function Estates.validateMove(state, seat: number, move: any): (boolean, string?
 		if #give.props + #get.props + give.cash + get.cash + give.cards + get.cards == 0 then
 			return false, "Add something to the trade"
 		end
-		return true
+		local unfair = giveaway(state, seat, t.from, give, get)
+		if unfair then
+			return false, unfair
+		end
+		return feesOk(state, seat, t.from, give, get)
 	elseif kind == "accept" or kind == "reject" then
 		if phase ~= "trade" then
 			return false, "There's no trade offer"
@@ -1068,13 +1313,18 @@ function Estates.validateMove(state, seat: number, move: any): (boolean, string?
 			if ok then
 				ok, err = checkSide(state, t.to, t.get)
 			end
+			if ok then
+				ok, err = feesOk(state, t.from, t.to, t.give, t.get)
+			end
 			if not ok then
 				return false, err
 			end
 		end
 		return true
 	elseif kind == "build" or kind == "sell" or kind == "mortgage" or kind == "unmortgage" then
-		if not MANAGE_PHASES[phase] then
+		-- During an auction bidders may sell or mortgage to raise cash for a bid.
+		local raising = phase == "auction" and (kind == "sell" or kind == "mortgage")
+		if not MANAGE_PHASES[phase] and not raising then
 			return false, "Not right now"
 		end
 		if not isInt(move.pos, 1, #spaces) then
@@ -1096,11 +1346,15 @@ function Estates.validateMove(state, seat: number, move: any): (boolean, string?
 			return Estates.canUnmortgage(state, seat, move.pos)
 		end
 	elseif kind == "offer" then
-		if phase ~= "turn" and phase ~= "debt" then
-			return false, "You can trade on your turn"
-		end
-		if state.tradesThisTurn >= Estates.TRADES_PER_TURN then
-			return false, `Only {Estates.TRADES_PER_TURN} trade offers a turn`
+		if offTurn then
+			-- getInterruptSeats already checked the phase and this player's one offer.
+		else
+			if phase ~= "turn" and phase ~= "debt" then
+				return false, "Trade between actions"
+			end
+			if state.tradesThisTurn >= Estates.TRADES_PER_TURN then
+				return false, `Only {Estates.TRADES_PER_TURN} trade offers a turn`
+			end
 		end
 		local to = move.to
 		if not isInt(to, 1, state.seatCount) or to == seat or state.players[to].bankrupt then
@@ -1118,7 +1372,11 @@ function Estates.validateMove(state, seat: number, move: any): (boolean, string?
 		if #give.props + #get.props + give.cash + get.cash + give.cards + get.cards == 0 then
 			return false, "Add something to the trade"
 		end
-		return true
+		local unfair = giveaway(state, seat, to, give, get)
+		if unfair then
+			return false, unfair
+		end
+		return feesOk(state, seat, to, give, get)
 	end
 	return false, "Bad move"
 end
@@ -1236,7 +1494,12 @@ function Estates.applyMove(state, seat: number, move: any)
 	elseif kind == "payDebt" then
 		local d = state.debt
 		p.cash -= d.amount
-		if d.to then
+		if d.each and #d.each > 0 then
+			local share = d.amount // #d.each
+			for _, other in d.each do
+				state.players[other].cash += share
+			end
+		elseif d.to then
 			state.players[d.to].cash += d.amount
 		else
 			toBank(state, d.amount)
@@ -1253,30 +1516,36 @@ function Estates.applyMove(state, seat: number, move: any)
 	elseif kind == "build" then
 		local pos = move.pos
 		p.cash -= spaces[pos].houseCost :: number
-		if state.houses[pos] == 4 then
+		local hotelAt = state.hotelAt or 4
+		if state.houses[pos] >= hotelAt then
 			state.hotelsLeft -= 1
-			state.housesLeft += 4
+			state.housesLeft += state.houses[pos]
+			state.houses[pos] = 5
 			log(state, seat, `built a hotel on {spaces[pos].name}`)
 		else
 			state.housesLeft -= 1
+			state.houses[pos] += 1
 			log(state, seat, `built a house on {spaces[pos].name}`)
+			if state.housesLeft <= 3 then
+				log(state, nil, if state.housesLeft == 0 then "The bank is out of houses!" else `Only {state.housesLeft} house{if state.housesLeft == 1 then "" else "s"} left in the bank!`)
+			end
 		end
-		state.houses[pos] += 1
 	elseif kind == "sell" then
 		local pos = move.pos
 		local cost = spaces[pos].houseCost :: number
 		if state.houses[pos] == 5 then
-			state.hotelsLeft += 1
-			if state.housesLeft >= 4 then
-				state.housesLeft -= 4
-				state.houses[pos] = 4
-				p.cash += cost // 2
-			else
-				-- Not enough houses to break the hotel down: it all goes.
-				state.houses[pos] = 0
-				p.cash += 5 * cost // 2
+			local plan = Estates.hotelSale(state, pos)
+			state.hotelsLeft += plan.hotels
+			state.housesLeft = plan.housesLeft
+			for street, level in plan.levels do
+				state.houses[street] = level
 			end
-			log(state, seat, `sold the hotel on {spaces[pos].name}`)
+			p.cash += plan.cash
+			if plan.wholeSet then
+				log(state, seat, `sold the {Estates.groups[spaces[pos].group :: number].name} set down evenly (the bank is short of houses)`)
+			else
+				log(state, seat, `sold the hotel on {spaces[pos].name}`)
+			end
 		else
 			state.houses[pos] -= 1
 			state.housesLeft += 1
@@ -1294,7 +1563,11 @@ function Estates.applyMove(state, seat: number, move: any)
 		p.cash -= Estates.unmortgageCost(pos)
 		log(state, seat, `paid off the mortgage on {spaces[pos].name}`)
 	elseif kind == "offer" then
-		state.tradesThisTurn += 1
+		if seat == state.turn then
+			state.tradesThisTurn += 1
+		else
+			state.offTurn[seat] = (state.offTurn[seat] or 0) + 1
+		end
 		state.trade = { from = seat, to = move.to, give = cleanSide(move.give), get = cleanSide(move.get), returnPhase = state.phase }
 		state.phase = "trade"
 		log(state, seat, "offered a trade")
@@ -1411,6 +1684,14 @@ function Estates.getView(state, seat: number?)
 		jackpot = state.jackpot,
 		auctions = state.auctions,
 		firstLap = state.firstLap,
+		hotelAt = state.hotelAt or 4,
+		endless = state.maxRounds == 0,
+		firstBankruptEnds = state.firstBankruptEnds,
+		-- Can this seat send a trade offer right now (on its turn, or off-turn between actions)?
+		canOffer = seat ~= nil and state.players[seat] ~= nil and not state.players[seat].bankrupt and (
+			(seat == state.turn and (state.phase == "turn" or state.phase == "debt") and state.tradesThisTurn < Estates.TRADES_PER_TURN)
+			or table.find(Estates.getInterruptSeats(state), seat) ~= nil
+		),
 		auctionSeconds = Estates.auctionSeconds(state),
 		log = GameModule.copy(state.log),
 		yourSeat = seat,
@@ -1481,6 +1762,9 @@ local RESERVE = { easy = 50, medium = 50, hard = 30 }
 
 -- How much a deed is worth to `seat`: its price, plus a lot more if it finishes (or
 -- nearly finishes) a color set for them.
+local setPremium: (any, number, { [number]: number }, { number }) -> number
+local tradeIncome: (any, any) -> number
+
 local function deedValue(state, seat: number, pos: number, owners: { [number]: number }?): number
 	local space = spaces[pos]
 	local own = owners or state.owner
@@ -1548,6 +1832,35 @@ local function newSetFor(state, seat: number, owners: { [number]: number }): boo
 	return false
 end
 
+-- What a set-finishing sale should cost: for every set the deal completes for `buyer`,
+-- twice the price of the streets handed over plus one house per street of the set.
+-- Hard bots ask 20% more, easy bots 20% less.
+function setPremium(state, buyer: number, owners: { [number]: number }, given: { number }): number
+	local needed = 0
+	for g = 1, #groupMembers do
+		if ownsGroup({ owner = owners } :: any, buyer, g) and not ownsGroup(state, buyer, g) then
+			for _, pos in groupMembers[g] do
+				if table.find(given, pos) then
+					needed += 2 * (spaces[pos].price :: number)
+				end
+				needed += spaces[pos].houseCost :: number
+			end
+		end
+	end
+	local factor = if state.botLevel == "hard" then 1.2 elseif state.botLevel == "easy" then 0.8 else 1
+	return math.floor(needed * factor)
+end
+
+-- What the answering side gets out of a trade in money terms: cash in minus cash out,
+-- plus the printed price of the deeds it receives.
+function tradeIncome(state, t): number
+	local income = t.give.cash - t.get.cash + 50 * (t.give.cards - t.get.cards)
+	for _, pos in t.give.props do
+		income += spaces[pos].price :: number
+	end
+	return income
+end
+
 local function shouldAccept(state, seat: number, rng: Random): boolean
 	local t = state.trade
 	local owners = table.clone(state.owner)
@@ -1573,14 +1886,16 @@ local function shouldAccept(state, seat: number, rng: Random): boolean
 	for _, pos in t.get.props do
 		given += spaces[pos].price :: number
 	end
-	if received > given * 1.5 + 100 then
-		return false
+	-- Handing someone a new color set: fine when we get a set back, or when they pay a
+	-- premium (twice the streets' price plus a house on every street of the set). A
+	-- premium isn't a gift, but more than twice that is.
+	local completes = newSetFor(state, t.from, owners) and not newSetFor(state, seat, owners)
+	if completes then
+		local needed = setPremium(state, t.from, owners, t.get.props)
+		local income = tradeIncome(state, t)
+		return income >= needed and income <= needed * 2 + 100
 	end
-	-- Never hand someone a new color set unless we get one too (or a huge payday).
-	if newSetFor(state, t.from, owners) and not newSetFor(state, seat, owners) then
-		if state.botLevel == "easy" then
-			return gain > 300
-		end
+	if received > given * 1.5 + 100 then
 		return false
 	end
 	if state.botLevel == "easy" then
@@ -1610,8 +1925,39 @@ local function botTradeOffer(state, seat: number): any?
 			local holder = state.owner[missing]
 			local key = `{seat}:{missing}`
 			if holder and holder ~= seat and not state.players[holder].bankrupt and not state.botTradeTried[key] and tradable(state, missing) and not groupHasBuildings(state, g) then
-				local price = spaces[missing].price :: number
-				local offer = math.floor(price * (if state.botLevel == "hard" then 1.8 else 1.5))
+				-- A swap first: one of our streets that finishes a set for them.
+				local swap = nil
+				for g2 = 1, #groupMembers do
+					if g2 ~= g and not groupHasBuildings(state, g2) then
+						local theirs, gap = 0, nil
+						for _, pos in groupMembers[g2] do
+							if state.owner[pos] == holder then
+								theirs += 1
+							else
+								gap = pos
+							end
+						end
+						if gap and theirs == #groupMembers[g2] - 1 and state.owner[gap] == seat and tradable(state, gap) then
+							swap = gap
+							break
+						end
+					end
+				end
+				if swap then
+					state.botTradeTried[key] = true
+					-- Square up the difference in price with cash.
+					local diff = (spaces[missing].price :: number) - (spaces[swap].price :: number)
+					local give = { props = { swap }, cash = math.max(0, diff), cards = 0 }
+					local get = { props = { missing }, cash = math.max(0, -diff), cards = 0 }
+					local move = { kind = "offer", to = holder, give = give, get = get }
+					if Estates.validateMove(state, seat, move) then
+						return move
+					end
+				end
+				-- Otherwise cash: the premium a set-finishing street is worth.
+				local owners = table.clone(state.owner)
+				owners[missing] = seat
+				local offer = setPremium(state, seat, owners, { missing })
 				if p.cash - offer >= RESERVE[state.botLevel] then
 					state.botTradeTried[key] = true
 					return {
@@ -1704,14 +2050,76 @@ local function ownedShare(state): number
 	return owned / total
 end
 
+-- A counter-offer instead of a flat no, when the deal is close: same deeds, a bit more
+-- cash our way. nil if there's nothing sensible to ask.
+local function botCounter(state, seat: number): any?
+	local t = state.trade
+	if state.botLevel == "easy" or (t.counters or 0) >= Estates.COUNTERS_PER_TRADE then
+		return nil
+	end
+	local owners = table.clone(state.owner)
+	for _, pos in t.give.props do
+		owners[pos] = t.to
+	end
+	for _, pos in t.get.props do
+		owners[pos] = t.from
+	end
+	local short = 0
+	if newSetFor(state, t.from, owners) and not newSetFor(state, seat, owners) then
+		short = setPremium(state, t.from, owners, t.get.props) - tradeIncome(state, t)
+	else
+		local before = holdingsValue(state, seat, state.owner)
+		local after = holdingsValue(state, seat, owners) + t.give.cash - t.get.cash + 50 * (t.give.cards - t.get.cards)
+		short = before - after + (if state.botLevel == "hard" then 40 else 0)
+	end
+	if short <= 0 or short > 600 then
+		return nil
+	end
+	local ask = math.ceil(short / 10) * 10
+	local give = { props = table.clone(t.get.props), cash = t.get.cash, cards = t.get.cards }
+	local get = { props = table.clone(t.give.props), cash = t.give.cash, cards = t.give.cards }
+	if give.cash >= ask then
+		give.cash -= ask
+	else
+		get.cash += ask - give.cash
+		give.cash = 0
+	end
+	local move = { kind = "counter", give = give, get = get }
+	if Estates.validateMove(state, seat, move) then
+		return move
+	end
+	return nil
+end
+
+-- A loose deed to mortgage (not in a set, no buildings, not in `keep`'s color).
+local function looseDeed(state, seat: number, keepGroup: number?): number?
+	local best, bestPrice = nil, math.huge
+	for pos = 1, #spaces do
+		if Estates.canMortgage(state, seat, pos) then
+			local space = spaces[pos]
+			local inSet = space.kind == "street" and ownsGroup(state, seat, space.group :: number)
+			if not inSet and (keepGroup == nil or space.group ~= keepGroup) and (space.price :: number) < bestPrice then
+				best, bestPrice = pos, space.price :: number
+			end
+		end
+	end
+	return best
+end
+
 function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 	local p = state.players[seat]
 	local level = state.botLevel
 	local reserve = RESERVE[level] or 150
 	local phase = state.phase
+	if not table.find(Estates.getActiveSeats(state), seat) then
+		return nil -- bots don't send off-turn offers
+	end
 
 	if phase == "trade" then
-		return { kind = if shouldAccept(state, seat, rng) then "accept" else "reject" }
+		if shouldAccept(state, seat, rng) then
+			return { kind = "accept" }
+		end
+		return botCounter(state, seat) or { kind = "reject" }
 	elseif phase == "auction" then
 		local a = state.auction
 		local value = deedValue(state, seat, a.pos)
@@ -1750,6 +2158,18 @@ function Estates.chooseBotMove(state, seat: number, rng: Random): any?
 					if count == #groupMembers[space.group :: number] - 1 then
 						wanted = true
 					end
+				end
+			end
+		end
+		-- Short of cash for a street that finishes our set: mortgage a loose deed first.
+		local space = spaces[pos]
+		if level ~= "easy" and p.cash < price and space.kind == "street" then
+			local owners = table.clone(state.owner)
+			owners[pos] = seat
+			if ownsGroup({ owner = owners } :: any, seat, space.group :: number) then
+				local loose = looseDeed(state, seat, space.group :: number)
+				if loose then
+					return { kind = "mortgage", pos = loose }
 				end
 			end
 		end

@@ -48,6 +48,7 @@ type Entry = {
 	strikes: { [number]: number }, -- timeouts in a row per seat (Config.AwayAfterTimeouts marks them away)
 	clockId: number, -- bumped whenever the turn clock restarts (stale clocks do nothing)
 	drafted: any?, -- the turn key that already got the drafting extension
+	extended: any?, -- the turn key someone already gave +30 s (handlers.extend)
 	timerOwn: { [number]: number }?, -- turnClock games: ownMoves when the current phase clock started
 	series: Series.Tally?, -- the running score across rematches (Core/Series)
 }
@@ -886,6 +887,30 @@ function handlers.drafting(player: Player, _request: any)
 	entry.drafted = key
 	startClock(entry, key, Config.DraftSeconds)
 	broadcast(entry)
+end
+
+-- "+30 s": another player at the table gives whoever is thinking more time (Rich Up's
+-- "+1 minute"), once per turn.
+function handlers.extend(player: Player, _request: any)
+	local entry = entryFor(player)
+	local seat = entry and entry.match:seatOf(player.UserId)
+	if not entry or not seat or entry.ended or entry.intro or entry.timerId then
+		return
+	end
+	local key = entry.turnKey
+	if key == nil or entry.extended == key or entry.match:isSeatActive(seat) or not entry.turnEndsAt then
+		return
+	end
+	entry.extended = key
+	local left = math.max(0, entry.turnEndsAt - workspace:GetServerTimeNow())
+	startClock(entry, key, left + Config.ExtendSeconds)
+	broadcast(entry)
+	for index, s in entry.match.seats do
+		local other = s.kind == "player" and s.userId and Players:GetPlayerByUserId(s.userId)
+		if other and index ~= seat then
+			notify(other, `{player.DisplayName} gave +{Config.ExtendSeconds} s`)
+		end
+	end
 end
 
 function handlers.leave(player: Player, _request: any)

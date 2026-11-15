@@ -126,9 +126,10 @@ rules.Estates = {
 	},
 	sections = {
 		{ title = "Your turn", lines = { "Roll two dice and move. Doubles roll again; three doubles in a row sends you to Jail.", "Free deed: buy it, or it goes to a live auction. Everyone bids at once; each bid restarts the countdown, and the top bid when it runs out wins.", "Someone's deed: pay rent. Card spaces draw a card; tax spaces cost cash." } },
-		{ title = "Building and deals", lines = { "With a full color group, build houses evenly, then hotels.", "Sell buildings or mortgage deeds to raise cash.", "Offer trades of deeds, cash and cards to other players any time on your turn. They can accept, decline or send back a counter-offer.", "Tap any deed on the board (or the table) to see its card. Manage opens all your sets at once." } },
+		{ title = "Building and deals", lines = { "With a full color group, build houses evenly, then hotels (after 4 houses, or 3 with Quick hotels or Fast mode). The bank has 32 houses and 12 hotels.", "Sell buildings or mortgage deeds to raise cash.", "Offer trades of deeds, cash and cards on your turn. Anyone else can send one offer while someone is between actions. They can accept, decline or send back a counter-offer.", "No giveaways: a trade can't hand over more than half of someone's worth for little back.", "Tap any deed on the board (or the table) to see its card. Manage opens all your sets at once." } },
+		{ title = "Money", lines = { "Mortgage a deed for half its price; paying it off costs that plus 10%.", "Taking over a mortgaged deed (by trade or bankruptcy) costs 10% of its mortgage value right away.", "A hotel sold while the bank is short of houses sells the whole set down evenly." } },
 		{ title = "Jail", lines = { "Before rolling, pay $50 or use a Get Out of Jail Free card. Or roll: doubles get you out, and after 3 misses you pay and move." } },
-		{ title = "Winning", lines = { "Can't pay what you owe? Raise cash or go bankrupt.", "Last player standing wins. After the round limit, the highest net worth (cash, deeds and buildings) wins." } },
+		{ title = "Winning", lines = { "Can't pay what you owe? Raise cash, sell a deed to another player, or go bankrupt.", "Bankrupt to the bank: your deeds go up for auction.", "Last player standing wins. After the round limit, the highest net worth (cash, deeds and buildings) wins.", "The Game length house rule changes the rounds, or plays until one player is left or the first bankruptcy." } },
 	},
 }
 
