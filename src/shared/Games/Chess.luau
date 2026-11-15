@@ -4,7 +4,11 @@
 -- House rule "threeCheck": giving check a third time also wins.
 -- House rule "shuffle" (Shuffle Chess, a cousin of Chess960): the back-row pieces start in
 -- a random order (the same for both sides, bishops on opposite colors, the king between
--- the rooks) and there is no castling.
+-- the rooks), as in Chess960. Castling works the Chess960 way: the king ends on g1 (or c1)
+-- and the rook on f1 (or d1) whatever their start squares. Every square between them and
+-- their ends must be empty and the king's path not attacked. To castle, move the king onto
+-- its own rook (or to its end square when that isn't also a plain king move). FENs for these
+-- positions carry the rooks' files as rights (Shredder-FEN, "HAha").
 --
 -- Squares are 0..63: a1 = 0, h1 = 7, a8 = 56, h8 = 63 (file = sq % 8, rank = sq // 8).
 -- Pieces are numbers: 1 pawn, 2 knight, 3 bishop, 4 rook, 5 queen, 6 king.
@@ -50,6 +54,10 @@ export type Pos = {
 	halfmove: number,
 	fullmove: number,
 	kings: { [number]: number },
+	-- Chess960 positions only: the rook each castling right uses, and the rights lost when a
+	-- piece leaves or lands on a square.
+	castleRooks: { [number]: number }?,
+	castleMask: { [number]: number }?,
 }
 
 export type Move = {
@@ -59,6 +67,11 @@ export type Move = {
 	captured: number,
 	promo: number?, -- piece type (unsigned)
 	flag: string?, -- "ep" | "double" | "castleK" | "castleQ"
+	-- Chess960 castling: `to` is the rook's square (king takes own rook); the king and rook
+	-- end on kto and rto.
+	rook: number?,
+	kto: number?,
+	rto: number?,
 }
 
 -- Square helpers ------------------------------------------------------------
@@ -120,20 +133,64 @@ function Chess.fromFen(fen: string): Pos
 	end
 	local castle = 0
 	local rights = parts[3] or "-"
-	if string.find(rights, "K", 1, true) then
-		castle += WK
+	-- Which rook each right uses: KQkq mean the outermost rook on that side of the king
+	-- (X-FEN); file letters (Shredder-FEN) name it.
+	local rooks: { [number]: number } = {}
+	for i = 1, #rights do
+		local ch = string.sub(rights, i, i)
+		local color = if ch == string.upper(ch) then 1 else -1
+		local base = if color == 1 then 0 else 56
+		local king = kings[color]
+		local kfile = if king >= 0 and king // 8 == base // 8 then king % 8 else -1
+		local file: number? = nil
+		local lower = string.lower(ch)
+		if lower == "k" or lower == "q" then
+			local step = if lower == "k" then -1 else 1
+			local f = if lower == "k" then 7 else 0
+			while f ~= kfile and f >= 0 and f <= 7 do
+				if board[base + f] == ROOK * color then
+					file = f
+					break
+				end
+				f += step
+			end
+		else
+			local f = string.find(FILES, lower, 1, true)
+			if f and board[base + f - 1] == ROOK * color then
+				file = f - 1
+			end
+		end
+		if file and kfile >= 0 and file ~= kfile then
+			local bit = if file > kfile then (if color == 1 then WK else BK) else (if color == 1 then WQ else BQ)
+			if not bit32.btest(castle, bit) then
+				castle += bit
+				rooks[bit] = base + file
+			end
+		end
 	end
-	if string.find(rights, "Q", 1, true) then
-		castle += WQ
+	-- Standard squares (king on e1/e8, rooks in the corners) keep the classic code path.
+	local standard = true
+	for bit, sq in rooks do
+		local home = if bit == WK or bit == WQ then 4 else 60
+		local corner = if bit == WK then 7 elseif bit == WQ then 0 elseif bit == BK then 63 else 56
+		if sq ~= corner or kings[if bit == WK or bit == WQ then 1 else -1] ~= home then
+			standard = false
+		end
 	end
-	if string.find(rights, "k", 1, true) then
-		castle += BK
-	end
-	if string.find(rights, "q", 1, true) then
-		castle += BQ
+	local castleRooks, castleMask = nil, nil
+	if not standard then
+		castleRooks, castleMask = rooks, {}
+		for bit, sq in rooks do
+			local color = if bit == WK or bit == WQ then 1 else -1
+			local both = if color == 1 then WK + WQ else BK + BQ
+			castleMask[sq] = bit32.bor(castleMask[sq] or 0, bit)
+			castleMask[kings[color]] = both
+		end
 	end
 	return {
 		board = board,
+		castleRooks = castleRooks,
+		castleMask = castleMask,
 		side = if parts[2] == "b" then -1 else 1,
 		castle = castle,
 		ep = if parts[4] and parts[4] ~= "-" then (Chess.parseSquare(parts[4]) or -1) else -1,
@@ -166,17 +223,17 @@ function Chess.toFen(pos: Pos): string
 		table.insert(rows, row)
 	end
 	local rights = ""
-	if bit32.btest(pos.castle, WK) then
-		rights ..= "K"
-	end
-	if bit32.btest(pos.castle, WQ) then
-		rights ..= "Q"
-	end
-	if bit32.btest(pos.castle, BK) then
-		rights ..= "k"
-	end
-	if bit32.btest(pos.castle, BQ) then
-		rights ..= "q"
+	for _, pair in { { WK, "K" }, { WQ, "Q" }, { BK, "k" }, { BQ, "q" } } do
+		if bit32.btest(pos.castle, pair[1]) then
+			local sq = pos.castleRooks and pos.castleRooks[pair[1]]
+			if sq then
+				-- Chess960: name the rook's file (Shredder-FEN).
+				local letter = string.sub(FILES, sq % 8 + 1, sq % 8 + 1)
+				rights ..= if pair[1] == WK or pair[1] == WQ then string.upper(letter) else letter
+			else
+				rights ..= pair[2]
+			end
+		end
 	end
 	return table.concat({
 		table.concat(rows, "/"),
@@ -309,7 +366,39 @@ local function pseudoMoves(pos: Pos, capturesOnly: boolean?): { Move }
 						end
 					end
 				end
-				if kind == KING and not capturesOnly then
+				if kind == KING and not capturesOnly and pos.castleRooks then
+					-- Chess960 castling: the king ends on g/c, the rook on f/d.
+					local base = if side == 1 then 0 else 56
+					for _, bit in (if side == 1 then { WK, WQ } else { BK, BQ }) do
+						local r = pos.castleRooks[bit]
+						if r and bit32.btest(pos.castle, bit) and board[r] == ROOK * side and from // 8 == base // 8 then
+							local kingside = bit == WK or bit == BK
+							local kto = base + (if kingside then 6 else 2)
+							local rto = base + (if kingside then 5 else 3)
+							local ok = true
+							for sq = math.min(from, kto, r, rto), math.max(from, kto, r, rto) do
+								if sq ~= from and sq ~= r and board[sq] ~= 0 then
+									ok = false
+									break
+								end
+							end
+							if ok and not attacked(board, from, -side) then
+								-- No square the king crosses may be attacked (with king and rook lifted off).
+								board[from], board[r] = 0, 0
+								for sq = math.min(from, kto), math.max(from, kto) do
+									if attacked(board, sq, -side) then
+										ok = false
+										break
+									end
+								end
+								board[from], board[r] = v, ROOK * side
+								if ok then
+									table.insert(moves, { from = from, to = r, piece = v, captured = 0, flag = if kingside then "castleK" else "castleQ", rook = r, kto = kto, rto = rto })
+								end
+							end
+						end
+					end
+				elseif kind == KING and not capturesOnly then
 					-- Castling: rights, empty squares, rook in place, and no attacked squares on the king's path.
 					local home = if side == 1 then 4 else 60
 					local kBit = if side == 1 then WK else BK
@@ -365,6 +454,20 @@ local function makeMove(pos: Pos, m: Move): Undo
 	local board = pos.board
 	local undo = { castle = pos.castle, ep = pos.ep, halfmove = pos.halfmove }
 	local side = pos.side
+	if m.rook then
+		-- Chess960 castling: lift both, then put them on their end squares.
+		board[m.from], board[m.rook] = 0, 0
+		board[m.kto :: number], board[m.rto :: number] = m.piece, ROOK * side
+		pos.kings[side] = m.kto :: number
+		pos.castle = bit32.band(pos.castle, bit32.bnot(if side == 1 then WK + WQ else BK + BQ))
+		pos.ep = -1
+		pos.halfmove += 1
+		if side == -1 then
+			pos.fullmove += 1
+		end
+		pos.side = -side
+		return undo
+	end
 	board[m.from] = 0
 	if m.flag == "ep" then
 		board[m.to - 8 * side] = 0
@@ -380,7 +483,8 @@ local function makeMove(pos: Pos, m: Move): Undo
 	if math.abs(m.piece) == KING then
 		pos.kings[side] = m.to
 	end
-	local lost = (CASTLE_MASK[m.from] or 0) + (CASTLE_MASK[m.to] or 0)
+	local mask = pos.castleMask or CASTLE_MASK
+	local lost = bit32.bor(mask[m.from] or 0, mask[m.to] or 0)
 	if lost > 0 then
 		pos.castle = bit32.band(pos.castle, bit32.bnot(lost))
 	end
@@ -405,6 +509,12 @@ local function unmakeMove(pos: Pos, m: Move, undo: Undo)
 		pos.fullmove -= 1
 	end
 	pos.castle, pos.ep, pos.halfmove = undo.castle, undo.ep, undo.halfmove
+	if m.rook then
+		board[m.kto :: number], board[m.rto :: number] = 0, 0
+		board[m.from], board[m.rook] = m.piece, ROOK * side
+		pos.kings[side] = m.from
+		return
+	end
 	board[m.from] = m.piece
 	if m.flag == "ep" then
 		board[m.to] = 0
@@ -591,15 +701,18 @@ function Chess.findLegal(pos: Pos, move: any): Move?
 	if type(move) ~= "table" then
 		return nil
 	end
+	local castle = nil
 	for _, m in legalMoves(pos) do
 		if Chess.squareName(m.from) == move.from and Chess.squareName(m.to) == move.to then
 			local promo = if m.promo then PIECE_TO_LETTER[m.promo] else nil
 			if promo == nil or promo == (move.promotion or "q") then
 				return m
 			end
+		elseif m.kto and Chess.squareName(m.from) == move.from and Chess.squareName(m.kto) == move.to then
+			castle = m -- Chess960 castling entered as the king's end square
 		end
 	end
-	return nil
+	return castle
 end
 
 -- The game as PGN, for "Copy PGN" (paste it into Lichess or chess.com to analyse).
@@ -614,6 +727,9 @@ function Chess.pgn(sans: { string }, startFen: string?, result: string?, white: 
 	}
 	local fen = startFen or START_FEN
 	local pos = Chess.fromFen(fen)
+	if pos.castleRooks then
+		table.insert(lines, `[Variant "Chess960"]`) -- so Lichess reads the castling right
+	end
 	if fen ~= START_FEN then
 		table.insert(lines, `[SetUp "1"]`)
 		table.insert(lines, `[FEN "{fen}"]`)
@@ -667,7 +783,9 @@ function Chess.shuffledFen(rng: Random): string
 	local open = free()
 	row[open[1]], row[open[2]], row[open[3]] = "r", "k", "r"
 	local black = table.concat(row)
-	return `{black}/pppppppp/8/8/8/8/PPPPPPPP/{string.upper(black)} w - - 0 1`
+	-- Castling rights name the rooks' files (Shredder-FEN), as in Chess960.
+	local rights = string.sub(FILES, open[3], open[3]) .. string.sub(FILES, open[1], open[1])
+	return `{black}/pppppppp/8/8/8/8/PPPPPPPP/{string.upper(black)} w {string.upper(rights)}{rights} - 0 1`
 end
 
 function Chess.new(seatCount: number, options: any?, rng: Random?)
@@ -806,7 +924,15 @@ function Chess.premoves(fen: string, seat: number): { any }
 				for _, d in (if kind == KNIGHT then KNIGHT_STEPS else KING_STEPS) do
 					add(from, sqAt(file + d[1], rank + d[2]))
 				end
-				if kind == KING then
+				if kind == KING and pos.castleRooks then
+					-- Chess960: queue castling as the king onto its own rook.
+					for _, bit in (if side == 1 then { WK, WQ } else { BK, BQ }) do
+						local r = pos.castleRooks[bit]
+						if r and bit32.btest(pos.castle, bit) and board[r] == ROOK * side then
+							add(from, r)
+						end
+					end
+				elseif kind == KING then
 					local home = if side == 1 then 4 else 60
 					if from == home then
 						local function clear(a: number, b: number): boolean
@@ -858,6 +984,7 @@ local function findMove(state, move: any): Move?
 			return nil
 		end
 	end
+	local castle = nil
 	for _, m in legalMoves(state.pos) do
 		if m.from == from and m.to == to then
 			if m.promo == nil then
@@ -865,9 +992,11 @@ local function findMove(state, move: any): Move?
 			elseif m.promo == (promo or QUEEN) then
 				return m
 			end
+		elseif m.kto == to and m.from == from and m.kto ~= m.from then
+			castle = m -- Chess960 castling entered as the king's end square (a plain king move wins)
 		end
 	end
-	return nil
+	return castle
 end
 
 function Chess.validateMove(state, seat: number, move: any): (boolean, string?)

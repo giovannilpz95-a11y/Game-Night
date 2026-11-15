@@ -704,12 +704,19 @@ function Chess.create(container: Frame, sendMove: (any) -> ())
 		local reviewed = review and review.done and reviewFor == view.startFen .. #view.past
 		local shown = if reviewed then review.moves[viewing or #view.past] else nil
 		if reviewed then
-			capturedLabel.Text = `Accuracy  White {review.accuracy[1]}  ·  Black {review.accuracy[2]}\n` .. capturedLabel.Text
+			-- Key moments per side, like chess.com's review summary: "!! 1  ! 2  ?? 0".
+			local function moments(side: number): string
+				local c = review.counts[side] or {}
+				return `!! {c.Brilliant or 0}  ! {c.Great or 0}  ?? {c.Blunder or 0}`
+			end
+			capturedLabel.Text = `Accuracy  White {review.accuracy[1]}  ·  Black {review.accuracy[2]}\n`
+				.. `White {moments(1)}  ·  Black {moments(2)}\n`
+				.. capturedLabel.Text
 			if shown then
 				capturedLabel.Text ..= `\n{shown.symbol} {ChessReview.describe(shown)}`
 			end
 		end
-		local labelHeight = if reviewed then 100 else 58
+		local labelHeight = if reviewed then 118 else 58
 		capturedLabel.Size = UDim2.new(1, 0, 0, labelHeight)
 		capturedLabel.TextWrapped = true
 		moves.Position = UDim2.new(0, 0, 0, labelHeight + 6)

@@ -69,6 +69,7 @@ rules.Chess = {
 		} },
 		{ title = "Special moves", lines = {
 			"Castling: king moves two toward a rook, the rook hops over. Neither may have moved, and the king can't pass through check.",
+			"Shuffle start (house rule): castle by moving the king onto its rook. The king ends on g or c, the rook next to it on f or d, as in Chess960.",
 			"En passant: a pawn that just moved two can be captured as if it moved one.",
 			"Promotion: a pawn reaching the far row becomes a queen, rook, bishop or knight.",
 		} },

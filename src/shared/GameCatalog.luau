@@ -70,7 +70,7 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "kingOfTheHill", name = "King of the hill", hint = "Also win by walking your king to one of the four center squares.", choices = Toggle, default = 1 },
 			{ key = "threeCheck", name = "Three-check", hint = "Also win by putting the other king in check three times.", choices = Toggle, default = 1 },
-			{ key = "shuffle", name = "Shuffle start", hint = "The back-row pieces start in a random order (the same for both sides). No castling.", choices = Toggle, default = 1 },
+			{ key = "shuffle", name = "Shuffle start", hint = "Chess960-style: the back-row pieces start in a random order (the same for both sides). Castle by moving the king onto its rook.", choices = Toggle, default = 1 },
 			{ key = "timeControl", name = "Chess clock", hint = "Real clocks: minutes each + seconds added per move. Out of time loses.", choices = GameClock.Choices, default = 1 },
 		},
 	},
