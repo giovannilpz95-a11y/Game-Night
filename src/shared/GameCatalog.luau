@@ -26,8 +26,10 @@ export type Entry = {
 	-- Party Host (see shared/HouseRules.luau and shared/CustomContent.luau)
 	houseRules: { any }?, -- this game's own house rules; turn games also get the Turn timer
 	custom: string?, -- "words" or "quiz": the host's own word lists or quiz decks work here
+	serverData: { [string]: string }?, -- options key -> module in ServerScriptService Data (answers clients must never see)
 }
 
+local Config = require(script.Parent.Config)
 local Toggle = require(script.Parent.HouseRules).Toggle
 local GameClock = require(script.Parent.GameClock)
 
@@ -153,7 +155,10 @@ local entries: { Entry } = {
 		-- Off for launch (Giovanni, 2026-11-04). The game is built and tested; set this to
 		-- "ready" to turn it back on.
 		-- Held from launch: freehand drawing counts as "free-form user creation", which
-		-- Roblox limits to 16+ for the whole experience. See docs/Launch.md.
+		-- Roblox limits to 16+ for the whole experience. With Config.SketchFreeDraw = false
+		-- (the default) every table is stamps only (pre-made stamps, no pen). Turn this on
+		-- only after Roblox confirms in writing that stamps aren't free-form creation.
+		-- See docs/Launch.md blocker 1.
 		status = "soon",
 		coin = "party",
 		typicalMinutes = 10,
@@ -163,7 +168,7 @@ local entries: { Entry } = {
 			{
 				key = "rounds",
 				name = "Rounds",
-				hint = "How many times each player draws.",
+				hint = "How many times each player draws (big tables get fewer, so everyone draws the same).",
 				choices = { { label = "1", value = 1 }, { label = "2", value = 2 }, { label = "3", value = 3 } },
 				default = 2,
 			},
@@ -175,6 +180,7 @@ local entries: { Entry } = {
 			},
 			{
 				key = "tools",
+				freeDrawOnly = true, -- only where Config.SketchFreeDraw is on (else stamps only)
 				name = "Drawing tools",
 				hint = "Shapes only: lines, boxes and ovals, no free pen.",
 				choices = { { label = "Pen and shapes", value = "all" }, { label = "Shapes only", value = "shapes" } },
@@ -195,6 +201,7 @@ local entries: { Entry } = {
 				default = 2,
 			},
 		},
+		serverData = { wordBank = "SketchWords", doodles = "SketchDoodles" }, -- the word list stays on the server
 		custom = "words",
 	},
 	{
@@ -211,6 +218,7 @@ local entries: { Entry } = {
 		minMinutes = 1,
 		minMoves = 5,
 		minOwnMoves = 3, -- answer at least 3 questions yourself
+		serverData = { questionBank = "TriviaQuestions" }, -- answers stay on the server
 		houseRules = {
 			{
 				key = "questions",
@@ -224,7 +232,7 @@ local entries: { Entry } = {
 				choices = { { label = "10 s", value = 10 }, { label = "15 s", value = 15 }, { label = "25 s", value = 25 } },
 				default = 2,
 			},
-			{ key = "speed", name = "Speed points", hint = "Faster right answers score more. Off: every right answer is worth 1000.", choices = Toggle, default = 2 },
+			{ key = "speed", name = "Speed points", hint = "Faster right answers score more (500 to 1000). Off: every right answer is worth 1000.", choices = Toggle, default = 2 },
 			{ key = "streaks", name = "Streak bonus", hint = "Extra points for right answers in a row.", choices = Toggle, default = 2 },
 			{ key = "wrongPenalty", name = "Wrong answers cost", hint = "A wrong answer loses 250 points, so guessing is risky.", choices = Toggle, default = 1 },
 			{ key = "categoryVote", name = "Category vote", hint = "Before every 3 questions, everyone votes on the category.", choices = Toggle, default = 2 },
@@ -255,7 +263,7 @@ local entries: { Entry } = {
 			{
 				key = "wolves",
 				name = "Werewolves",
-				hint = "Auto: 1 wolf with 5-6 players, 2 with 7-8.",
+				hint = "Auto: 1 wolf with 5-6 players, 2 with 7-8. 2 wolves need at least 6 players.",
 				choices = { { label = "Auto", value = 0 }, { label = "1", value = 1 }, { label = "2", value = 2 } },
 				default = 1,
 			},
@@ -631,8 +639,13 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "swaps", name = "Card swap", hint = "Between rounds the Beggar hands their best cards to the President.", choices = Toggle, default = 2 },
-			{ key = "twoClears", name = "2s clear the pile", hint = "Playing 2s clears the pile and you lead again.", choices = Toggle, default = 1 },
-			{ key = "revolution", name = "Revolution", hint = "Four of a kind flips the order: low beats high until the round ends.", choices = Toggle, default = 1 },
+			{ key = "lockout", name = "Pass locks you out", hint = "Once you pass, you sit out until the pile clears. Off: a pass only skips that turn.", choices = Toggle, default = 2 },
+			{ key = "threeClubs", name = "Must lead the 3♣", hint = "The first lead of the game must include the 3 of Clubs.", choices = Toggle, default = 2 },
+			{ key = "twoClears", name = "2s clear the pile", hint = "A 2 (even a single 2 on a pair) clears the pile and you lead again. A led 2 is a normal lead.", choices = Toggle, default = 1 },
+			{ key = "revolution", name = "Revolution", hint = "Four of a kind flips the order at once: low beats high until the round ends.", choices = Toggle, default = 1 },
+			{ key = "sameRankSkips", name = "Same rank skips", hint = "Play the same rank on the pile to skip the next player.", choices = Toggle, default = 1 },
+			{ key = "eightClears", name = "8s clear the pile", hint = "Playing 8s clears the pile and you lead again.", choices = Toggle, default = 1 },
+			{ key = "downfall", name = "Downfall", hint = "If the President doesn't go out first, they drop straight to Beggar.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -674,26 +687,39 @@ local entries: { Entry } = {
 		turnSeconds = 20,
 		status = "ready",
 		coin = "cards",
-		typicalMinutes = 12,
+		typicalMinutes = 18,
 		minMinutes = 2,
 		minMoves = 40,
 		houseRules = {
 			{
 				key = "target",
 				name = "Game ends at",
-				hint = "The game ends when someone reaches this score. Lowest score wins.",
-				choices = { { label = "50 points", value = 50 }, { label = "100 points", value = 100 } },
+				hint = "The game ends when someone reaches this score. Lowest score wins. 100 takes about 20 min.",
+				choices = { { label = "100 points", value = 100 }, { label = "Quick game (50)", value = 50 } },
 				default = 1,
 			},
-			{ key = "passing", name = "Passing", hint = "Pass 3 cards before each round (left, right, across, none).", choices = Toggle, default = 2 },
+			{
+				key = "passing",
+				name = "Passing",
+				hint = "Which way 3 cards go before each hand.",
+				choices = {
+					{ label = "Left, right, across, hold", value = "classic" },
+					{ label = "Left, right, across", value = "nohold" },
+					{ label = "Always left", value = "left" },
+					{ label = "Off", value = false },
+				},
+				default = 1,
+			},
 			{
 				key = "moon",
 				name = "Shooting the moon",
-				choices = { { label = "Others take 26", value = "others" }, { label = "You take -26", value = "self" } },
+				hint = "Smart: others take 26, unless that would make the shooter lose (then -26 for the shooter).",
+				choices = { { label = "Smart", value = "smart" }, { label = "Others take 26", value = "others" }, { label = "You take -26", value = "self" } },
 				default = 1,
 			},
-			{ key = "jackDiamonds", name = "Jack of Diamonds", hint = "Whoever takes the Jack of Diamonds scores -10.", choices = Toggle, default = 1 },
-			{ key = "queenBreaks", name = "Queen breaks hearts", hint = "Playing the Queen of Spades breaks hearts too.", choices = Toggle, default = 1 },
+			{ key = "jackDiamonds", name = "Jack of Diamonds", hint = "Whoever takes the Jack of Diamonds scores -10. It doesn't count for the moon.", choices = Toggle, default = 1 },
+			{ key = "firstTrickPoints", name = "Points on the first trick", hint = "Hearts and the Queen may be played on the first trick.", choices = Toggle, default = 1 },
+			{ key = "queenBreaks", name = "Queen breaks hearts", hint = "Playing the Queen of Spades breaks hearts too (World of Card Games plays it on).", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -707,20 +733,37 @@ local entries: { Entry } = {
 		turnSeconds = 20,
 		status = "ready",
 		coin = "cards",
-		typicalMinutes = 15,
+		typicalMinutes = 22,
 		minMinutes = 2,
 		minMoves = 40,
 		houseRules = {
 			{
 				key = "target",
 				name = "Play to",
-				hint = "First team to this score wins.",
-				choices = { { label = "200", value = 200 }, { label = "300", value = 300 }, { label = "500", value = 500 } },
-				default = 2,
+				hint = "First team to this score wins. 500 takes about 25 min.",
+				choices = { { label = "500", value = 500 }, { label = "Short game (300)", value = 300 }, { label = "Quick game (200)", value = 200 } },
+				default = 1,
+			},
+			{
+				key = "hands",
+				name = "Game length",
+				hint = "Play to the score above, or a set number of hands (higher score wins).",
+				choices = { { label = "Play to the score", value = 0 }, { label = "6 hands", value = 6 }, { label = "10 hands", value = 10 } },
+				default = 1,
 			},
 			{ key = "nilBids", name = "Nil bids", hint = "Bid 0 (Nil) for +100 if you take no tricks.", choices = Toggle, default = 2 },
-			{ key = "bags", name = "Bag penalty", hint = "Every 10 extra tricks (bags) costs 100 points.", choices = Toggle, default = 2 },
-			{ key = "blindNil", name = "Blind Nil", hint = "100+ behind? Bid Nil before looking at your cards for +200 / -200.", choices = Toggle, default = 1 },
+			{
+				key = "bags",
+				name = "Bag penalty",
+				hint = "Extra tricks (bags) pile up and cost points.",
+				choices = { { label = "10 bags = -100", value = 10 }, { label = "5 bags = -50", value = 5 }, { label = "Off", value = false } },
+				default = 1,
+			},
+			{ key = "blindNil", name = "Blind Nil", hint = "100+ behind? Bid Nil before looking at your cards for +200 / -200, then swap 2 cards with your partner.", choices = Toggle, default = 1 },
+			{ key = "clubLead", name = "2 of Clubs leads", hint = "The 2 of Clubs leads the first trick, and no spades on it.", choices = Toggle, default = 1 },
+			{ key = "minTeamBid", name = "Minimum team bid", hint = "Partners' bids must add up to at least 4 (Nil aside).", choices = { { label = "Off", value = 0 }, { label = "4", value = 4 } }, default = 1 },
+			{ key = "tenFor200", name = "10 for 200", hint = "A team bid of 10 or more scores double when made (and loses double when set).", choices = Toggle, default = 1 },
+			{ key = "whiz", name = "Whiz", hint = "Bid Nil or exactly your number of spades. Quick and simple.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -878,7 +921,7 @@ local entries: { Entry } = {
 		turnSeconds = 20,
 		status = "ready",
 		coin = "cards",
-		typicalMinutes = 10,
+		typicalMinutes = 14,
 		minMinutes = 2,
 		minMoves = 20,
 		houseRules = {
@@ -886,21 +929,43 @@ local entries: { Entry } = {
 				key = "rounds",
 				name = "Rounds",
 				hint = "Hand sizes from the first round to the last.",
-				choices = { { label = "5 down to 1", value = "short" }, { label = "7 down to 1", value = "classic" }, { label = "1 up to 7 and down", value = "updown" } },
-				default = 2,
+				choices = {
+					{ label = "1 up to 7 and down", value = "updown" },
+					{ label = "7 down to 1", value = "classic" },
+					{ label = "5 down to 1", value = "short" },
+					{ label = "Full game: 10 down and up", value = "full" },
+				},
+				default = 1,
 			},
 			{ key = "hook", name = "Dealer's hook", hint = "The dealer may not bid the number that makes the bids add up.", choices = Toggle, default = 2 },
 			{
 				key = "scoring",
 				name = "Scoring",
-				choices = { { label = "Exact bid only", value = "exact" }, { label = "Every trick counts", value = "tricks" } },
+				hint = "Every trick counts: 1 per trick, +10 for an exact bid. Exact only: 10 + bid, else 0.",
+				choices = { { label = "Every trick counts", value = "tricks" }, { label = "Exact bid only", value = "exact" } },
 				default = 1,
 			},
+			{ key = "miss", name = "Missed bids", hint = "What a missed bid scores.", choices = { { label = "Nothing extra", value = "zero" }, { label = "-5 per trick off", value = "minus5" } }, default = 1 },
+			{ key = "noTrumpTop", name = "No trump on the biggest hand", hint = "The biggest hand of the game is played without trump.", choices = Toggle, default = 1 },
+			{ key = "trumpBroken", name = "Trump must be broken", hint = "Trump can't be led until one has been played.", choices = Toggle, default = 1 },
 		},
 	},
 }
 
 local GameCatalog = {}
+
+-- Rules that only make sense with freehand drawing allowed (see Config.SketchFreeDraw).
+if not Config.SketchFreeDraw then
+	for _, entry in entries do
+		if entry.houseRules then
+			for i = #entry.houseRules, 1, -1 do
+				if entry.houseRules[i].freeDrawOnly then
+					table.remove(entry.houseRules, i)
+				end
+			end
+		end
+	end
+end
 
 GameCatalog.entries = entries
 

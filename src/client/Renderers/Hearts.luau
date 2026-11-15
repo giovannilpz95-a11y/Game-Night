@@ -28,9 +28,36 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 	local STEP = { left = 1, right = -1, across = 2 }
 	local afterHand = CardFx.tricks(ui.felt)
 	local QUEEN_OF_SPADES = PlayingCards.make(12, 1)
+	local noPassRound: number? = nil
 
 	local function nameOf(seat: number?): string
 		return CardTable.nameOf(snapshot, seat)
+	end
+
+	local function signed(n: number): string
+		return if n >= 0 then `+{n}` else tostring(n)
+	end
+
+	-- The score sheet: every hand's points, then the totals (Windows Hearts, cardgames.io).
+	local function openScores()
+		local view = snapshot.view
+		local columns = { "Hand" }
+		for seat = 1, 4 do
+			table.insert(columns, nameOf(seat))
+		end
+		local rows = {}
+		for _, h in view.history or {} do
+			local cells = { if h.moon then `{h.round} 🌙` else tostring(h.round) }
+			for seat = 1, 4 do
+				table.insert(cells, signed(h.points[seat] or 0))
+			end
+			table.insert(rows, cells)
+		end
+		local totals = { "Total" }
+		for seat = 1, 4 do
+			table.insert(totals, tostring(view.scores[seat]))
+		end
+		CardTable.scoreSheet(ui, `Scores · game ends at {view.target}`, columns, rows, totals)
 	end
 
 	function render()
@@ -52,21 +79,27 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 		local chips = {}
 		for i = 1, if me then 3 else 4 do
 			local seat = ((me or 4) - 1 + i) % 4 + 1
-			local line2 = if view.phase == "pass" then (if view.passed[tostring(seat)] then "passed" else "choosing...") else `+{view.taken[seat]} this round`
+			local line2 = if view.phase == "pass" then (if view.passed[tostring(seat)] then "passed" else "choosing...") else `+{view.taken[seat]} this hand`
 			table.insert(chips, { seat = seat, lines = { `{view.scores[seat]} pts`, line2 }, turn = view.phase == "play" and view.turn == seat })
 		end
 		CardTable.seatChips(ui.seats, snapshot, chips)
 
 		Kit.clear(ui.content)
+		local summaryTitle, summaryLines = nil, nil
 		if view.phase == "round" or view.phase == "done" then
-			CardTable.feltText(ui.content, if view.moon then `{nameOf(view.moon)} shot the moon!` else `Round {view.round} over`, 0.1, 20).TextColor3 = Theme.Accent
-			local lines = {}
+			summaryTitle = if view.moon then `🌙 {nameOf(view.moon)} shot the moon!` else `Hand {view.round} over`
+			summaryLines = {}
 			for seat = 1, 4 do
-				table.insert(lines, `{nameOf(seat)}: +{(view.roundPoints or {})[seat] or 0}  (total {view.scores[seat]})`)
+				table.insert(summaryLines, `{nameOf(seat)}: {signed((view.roundPoints or {})[seat] or 0)}  (total {view.scores[seat]})`)
 			end
-			Kit.label(table.concat(lines, "\n"), { TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromScale(0.05, 0.3), Size = UDim2.fromScale(0.9, 0.65), ZIndex = 6, Parent = ui.content })
+			if view.tied then
+				table.insert(summaryLines, "Tied for the lowest score: one more hand!")
+			end
+			CardTable.feltText(ui.content, summaryTitle, 0.1, 20).TextColor3 = Theme.Accent
+			Kit.label(table.concat(summaryLines, "\n"), { TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromScale(0.05, 0.3), Size = UDim2.fromScale(0.9, 0.65), ZIndex = 6, Parent = ui.content })
 		elseif view.phase == "pass" then
-			CardTable.feltText(ui.content, `Pass 3 cards {view.pass}`, 0.38, 22).TextColor3 = Theme.Accent
+			local passTo = if me and STEP[view.pass or ""] then ` to {nameOf((me - 1 + STEP[view.pass]) % 4 + 1)}` else ""
+			CardTable.feltText(ui.content, `Pass 3 cards{passTo} ({view.pass})`, 0.38, 22).TextColor3 = Theme.Accent
 			CardTable.feltText(ui.content, `Game ends at {view.target} points. Lowest score wins.`, 0.58, 14).TextColor3 = Theme.SubText
 		else
 			local plays = view.trick
@@ -101,11 +134,30 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 			local done = view.passed[tostring(me)]
 			passArrow.set(dir, if done then `Passed to {nameOf(to)}` else `Pass 3 to {nameOf(to)}`)
 			passArrow.frame.Position = if held then UDim2.new(0.5, 0, 0.555, -26) else UDim2.new(0.5, 0, 0.19 + 0.42 * 0.82, 0)
-		elseif view.phase == "pass" and me and view.pass == "none" then
-			passArrow.set("hold", "No passing this round")
 		else
 			passArrow.set(nil)
 		end
+		-- A no-pass hand goes straight to play, so say so as it starts (Windows' Hold hand).
+		if view.pass == "none" and view.phase == "play" and view.round ~= noPassRound and #view.trick == 0 and view.lastTrick == nil then
+			noPassRound = view.round
+			if view.passPattern ~= "off" then
+				HudKit.callout(ui.root, "No passing this hand", Theme.Accent)
+			end
+		end
+
+		-- Table view: the felt is hidden, so the running lines, the hand summary and the
+		-- last trick come up on screen instead.
+		local info = { `Game ends at {view.target} · lowest wins`, if view.heartsBroken then "♥ broken" else "♥ not broken" }
+		if view.received and view.phase == "play" and #view.trick == 0 and view.lastTrick == nil then
+			local names = {}
+			for _, id in view.received do
+				table.insert(names, PlayingCards.short(id))
+			end
+			table.insert(info, `You got {table.concat(names, " ")}`)
+		end
+		CardTable.info(ui, info)
+		CardTable.notice(ui, summaryTitle, summaryLines)
+		CardTable.trickPanel(ui, snapshot, if peekLast and view.lastTrick then view.lastTrick.plays else nil, if view.lastTrick then view.lastTrick.winner else nil)
 		-- The moment hearts break gets its own call-out, like the classic game's.
 		if wasBroken == false and view.heartsBroken and view.phase == "play" then
 			CardFx.pop("♥ BROKEN!", Color3.fromRGB(235, 87, 110), ui.root)
@@ -117,6 +169,9 @@ function Hearts.create(container: Frame, sendMove: (any) -> ())
 		end
 
 		local buttons = {}
+		if #(view.history or {}) > 0 then
+			table.insert(buttons, { text = "Scores", color = Theme.Panel, onClick = openScores })
+		end
 		if canPeek then
 			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
 				peekLast = not peekLast

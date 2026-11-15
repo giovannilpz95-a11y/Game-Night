@@ -101,17 +101,17 @@ Economy.MaxLookSlots = 30 -- cap on free + VIP + bought slots
 -- Robux products. Create them in the Creator Hub (Monetization > Developer Products / Passes)
 -- and paste each ID here. An ID of 0 means "not set up yet" and the shop greys it out.
 Economy.GemPacks = {
-	{ key = "gems50", productId = 0, robux = 49, gems = 50 },
-	{ key = "gems110", productId = 0, robux = 99, gems = 110, bonus = "+10%" },
-	{ key = "gems300", productId = 0, robux = 249, gems = 300, bonus = "+20%" },
-	{ key = "gems650", productId = 0, robux = 499, gems = 650, bonus = "+30%" },
-	{ key = "gems1400", productId = 0, robux = 999, gems = 1400, bonus = "+40%" },
+	{ key = "gems50", productId = 3731718478, robux = 49, gems = 50 },
+	{ key = "gems110", productId = 3731718553, robux = 99, gems = 110, bonus = "+10%" },
+	{ key = "gems300", productId = 3731718555, robux = 249, gems = 300, bonus = "+20%" },
+	{ key = "gems650", productId = 3731718559, robux = 499, gems = 650, bonus = "+30%" },
+	{ key = "gems1400", productId = 3731718563, robux = 999, gems = 1400, bonus = "+40%" },
 }
 
 -- Starter Pack: a developer product so we can limit it to a player's first days.
 Economy.StarterPack = {
 	key = "starter",
-	productId = 0,
+	productId = 3731718566,
 	robux = 79,
 	gems = 300,
 	items = { "hub_cozy_cabin", "hub_nameplate_cozy" },
@@ -123,7 +123,7 @@ Economy.StarterPack = {
 -- stay out: they're earned by playing that game.
 Economy.ReactionBundle = {
 	key = "reactionsAll",
-	productId = 0,
+	productId = 3731718567,
 	robux = 499,
 	items = {
 		"reactions_party",
@@ -146,7 +146,7 @@ Economy.ReactionBundle = {
 Economy.Passes = {
 	vip = {
 		name = "VIP",
-		gamePassId = 0,
+		gamePassId = 2089036059,
 		robux = 399,
 		perks = {
 			"+25% Gems and Coins from play",
@@ -158,7 +158,7 @@ Economy.Passes = {
 	},
 	partyHost = {
 		name = "Party Host",
-		gamePassId = 0,
+		gamePassId = 2089198115,
 		robux = 199,
 		perks = {
 			"Private and password tables",

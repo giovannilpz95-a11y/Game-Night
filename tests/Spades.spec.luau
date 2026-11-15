@@ -138,6 +138,7 @@ return function(T)
 
 	T.test("reaching the target wins for the team", function()
 		local s = playing({ {}, {}, {}, {} })
+		s.target = 300
 		s.scores = { 280, 100 }
 		s.bids = { 2, 2, 2, 2 }
 		s.tricks = { 4, 2, 4, 3 }
@@ -146,6 +147,112 @@ return function(T)
 		Spades.onTimeout(s)
 		local result = Spades.getResult(s) :: any
 		T.ok(table.find(result.winners, 1) ~= nil and table.find(result.winners, 3) ~= nil)
+	end)
+
+	T.test("500 by default; a tie at the end plays one more hand; history is kept", function()
+		local s = playing({ {}, {}, {}, {} })
+		T.eq(s.target, 500)
+		s.target = 300
+		s.scores = { 280, 290 }
+		s.bids = { 2, 2, 1, 1 }
+		s.tricks = { 4, 2, 4, 3 }
+		s.tricksPlayed = 13
+		s.phase = "trick"
+		Spades.onTimeout(s)
+		-- Team 1: bid 4 took 8 = 44 -> 324. Team 2: bid 3 took 5 = 32 -> 322.
+		T.eq(Spades.getResult(s) ~= nil, true)
+		local tie = playing({ {}, {}, {}, {} })
+		tie.target = 300
+		tie.scores = { 290, 300 }
+		tie.bids = { 2, 2, 2, 1 }
+		tie.tricks = { 4, 3, 3, 3 }
+		tie.tricksPlayed = 13
+		tie.phase = "trick"
+		Spades.onTimeout(tie)
+		T.eq(Spades.getResult(tie), nil, "tied at 333: one more hand")
+		T.eq(#Spades.getView(tie, 1).history, 1)
+	end)
+
+	T.test("house rules: 2 of clubs leads, minimum team bid, 10 for 200, whiz, 5-bag penalty, play N hands", function()
+		local s = Spades.new(4, { rules = { clubLead = true } }, T.Random.new(4))
+		for i = 1, 4 do
+			local seat = s.turn
+			apply(s, seat, { kind = "bid", bid = 3 })
+		end
+		T.eq(s.phase, "play")
+		T.ok(table.find(s.hands[s.turn], C(2, 4)) ~= nil, "2 of clubs leads")
+		T.eq(#Spades.playable(s, s.turn), 1)
+
+		local m = Spades.new(4, { rules = { minTeamBid = 4 } }, T.Random.new(5))
+		local first = m.turn
+		apply(m, first, { kind = "bid", bid = 1 })
+		apply(m, first % 4 + 1, { kind = "bid", bid = 2 })
+		local partner = (first + 1) % 4 + 1
+		T.eq((Spades.validateMove(m, partner, { kind = "bid", bid = 2 })), false, "1 + 2 is under 4")
+		T.ok(Spades.validateMove(m, partner, { kind = "bid", bid = 3 }))
+
+		local ten = Spades.new(4, { rules = { tenFor200 = true } }, T.Random.new(1))
+		ten.bids = { 5, 1, 5, 1 }
+		ten.tricks = { 6, 1, 5, 1 }
+		T.eq(Spades._scoreTeam(ten, 1).points, 201)
+
+		local w = Spades.new(4, { rules = { whiz = true } }, T.Random.new(6))
+		local seat = w.turn
+		local spades = 0
+		for _, id in w.hands[seat] do
+			if PlayingCards.suit(id) == S then
+				spades += 1
+			end
+		end
+		for _, m2 in Spades.getLegalMoves(w, seat) do
+			T.ok(m2.bid == 0 or m2.bid == spades, "whiz bids")
+		end
+
+		local five = playing({ {}, {}, {}, {} })
+		five.bagLimit = 5
+		five.bags = { 4, 0 }
+		five.bids = { 1, 3, 1, 3 }
+		five.tricks = { 2, 3, 2, 3 }
+		five.tricksPlayed = 13
+		five.phase = "trick"
+		Spades.onTimeout(five)
+		T.eq(five.bags[1], 1, "4 + 2 bags = 6: -50, 1 left")
+		T.eq(five.scores[1], 22 - 50)
+
+		local short = Spades.new(4, { rules = { hands = 2 } }, T.Random.new(7))
+		short.scores = { 0, 0 }
+		short.round = 2
+		short.bids = { 3, 3, 3, 3 }
+		short.tricks = { 4, 3, 3, 3 }
+		short.tricksPlayed = 13
+		short.phase = "trick"
+		Spades.onTimeout(short)
+		T.ok(Spades.getResult(short) ~= nil, "ends after 2 hands")
+	end)
+
+	T.test("Blind Nil swaps 2 cards with partner", function()
+		local s = Spades.new(4, { rules = { blindNil = true } }, T.Random.new(8))
+		s.scores = { 0, 150 }
+		-- Team 1 (seats 1, 3) is 150 behind.
+		while s.phase == "bid" do
+			local seat = s.turn
+			if Spades.canBlindNil(s, seat) and seat == 1 then
+				apply(s, seat, { kind = "bid", bid = 0, blind = true })
+			else
+				apply(s, seat, { kind = "bid", bid = 3 })
+			end
+		end
+		T.eq(s.phase, "exchange")
+		T.eq(Spades.getActiveSeats(s)[1], 1)
+		local give = { s.hands[1][1], s.hands[1][2] }
+		apply(s, 1, { kind = "exchange", cards = give })
+		T.eq(Spades.getActiveSeats(s)[1], 3)
+		local back = { s.hands[3][1], s.hands[3][2] }
+		apply(s, 3, { kind = "exchange", cards = back })
+		T.eq(s.phase, "play")
+		T.ok(table.find(s.hands[3], give[1]) ~= nil)
+		T.ok(table.find(s.hands[1], back[1]) ~= nil)
+		T.eq(#s.hands[1], 13)
 	end)
 
 	T.test("bot games always finish", function()

@@ -28,6 +28,7 @@ export type Match = typeof(setmetatable(
 		aborted: boolean,
 		lastMove: { seat: number, move: any, number: number }?,
 		now: (() -> number)?, -- server clock for games with chess clocks (MatchService sets it)
+		phaseElapsed: (() -> number)?, -- seconds since the phase clock started (MatchService sets it)
 	},
 	Match
 ))
@@ -106,6 +107,12 @@ function Match.submitMove(self: Match, seat: number, move: any): (boolean, strin
 	end
 	if not self:canMove(seat) then
 		return false, "It's not your turn"
+	end
+	-- Games that go by time (see elapsedField in GameModule) get the server's own clock,
+	-- never a time the client made up. Stamped before validateMove so it can use it.
+	local field = self.rules.elapsedField
+	if field and type(move) == "table" then
+		move[field] = if self.phaseElapsed then math.max(0, self.phaseElapsed()) else nil
 	end
 	local ok, err = self.rules.validateMove(self.state, seat, move)
 	if not ok then

@@ -1,17 +1,22 @@
 -- Oh Hell: bid exactly how many tricks you'll take, then take exactly that many. 3-7 seats.
 --
--- The hand size changes every round: 7 cards, then 6, down to 1 (house rule "rounds":
--- 5 down to 1, 7 down to 1, or 1 up to 7 and back down). Fewer seats can't go above 51
--- cards dealt. After the deal the next card is turned up: its suit is trump.
+-- The hand size changes every round (house rule "rounds": 1 up to 7 and back down by
+-- default; 5 down to 1; 7 down to 1; or the full game, Pagat's 10 down to 1 and back up,
+-- starting at 10 cards for 3-5 players, 8 for 6, 7 for 7). Fewer seats can't go above
+-- 51 cards dealt. After the deal the next card is turned up: its suit is trump.
+-- The first dealer is picked at random, then it moves left.
 -- Bids go round from the dealer's left, 0 up to the hand size. The dealer bids last and
 -- may not bid the number that makes the bids add up to the hand size (so someone always
 -- misses). Left of the dealer leads; follow suit if you can, trump beats other suits.
--- Make your bid exactly for 10 + your bid; miss it by any amount and score nothing.
--- Highest score after the last round wins.
+-- Scoring: every trick scores 1 and an exact bid adds 10 (cardgames.io, Trickster).
+-- Highest score after the last round wins; tied, one more hand at the top size is played
+-- (Pagat), up to 3 times.
 --
 -- House rules (options.rules): hook (default on: the dealer's banned bid above),
--- scoring ("exact": only an exact bid scores; "tricks": every trick scores 1, and an
--- exact bid adds 10).
+-- scoring ("tricks" as above; "exact": only an exact bid scores, 10 + the bid), miss
+-- ("zero": a missed bid scores nothing extra; "minus5": a missed bid scores -5 per trick
+-- off instead), noTrumpTop (no trump on the biggest hand), trumpBroken (trump can't be
+-- led until one has been played, unless you hold only trumps).
 --
 -- Moves: { kind = "bid", bid = 0..hand size }  (bid phase, in turn)
 --        { kind = "play", card = id }          (your turn)
@@ -30,6 +35,7 @@ OhHell.maxSeats = 7
 OhHell.TRICK_SECONDS = 1.4
 OhHell.ROUND_SECONDS = 6
 OhHell.EXACT_BONUS = 10
+OhHell.MAX_TIE_HANDS = 3
 
 local suit = PlayingCards.suit
 local power = PlayingCards.aceHigh
@@ -39,6 +45,17 @@ function OhHell.schedule(kind: string?, seatCount: number): { number }
 	local cap = math.floor(51 / seatCount)
 	local top = math.min(if kind == "short" then 5 else 7, cap)
 	local out = {}
+	if kind == "full" then
+		-- Pagat: 10 cards with 3-5 players, 8 with 6, 7 with 7; down to 1 and back up.
+		top = math.min(cap, if seatCount <= 5 then 10 elseif seatCount == 6 then 8 else 7)
+		for n = top, 1, -1 do
+			table.insert(out, n)
+		end
+		for n = 2, top do
+			table.insert(out, n)
+		end
+		return out
+	end
 	if kind == "updown" then
 		for n = 1, top do
 			table.insert(out, n)
@@ -67,6 +84,12 @@ local function deal(state)
 	end
 	state.trumpCard = table.remove(deck) :: number
 	state.trump = suit(state.trumpCard)
+	-- House rule: the biggest hand of the game is played without trump.
+	if state.noTrumpTop and size == state.topSize then
+		state.trump = nil
+	end
+	state.trumpBrokenNow = false
+	state.played = {}
 	state.handSize = size
 	state.dealer = state.dealer % state.seatCount + 1
 	state.bids = {}
@@ -81,7 +104,7 @@ end
 function OhHell.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 3 and seatCount <= 7, "Oh Hell needs 3-7 seats")
 	local rules = if options and type(options.rules) == "table" then options.rules else {}
-	local kind = if rules.rounds == "short" or rules.rounds == "updown" then rules.rounds else "classic"
+	local kind = if rules.rounds == "short" or rules.rounds == "classic" or rules.rounds == "full" then rules.rounds else "updown"
 	local scores = {}
 	for seat = 1, seatCount do
 		scores[seat] = 0
@@ -97,7 +120,7 @@ function OhHell.new(seatCount: number, options: any?, rng: Random?)
 		made = table.clone(scores), -- rounds where the bid was hit
 		round = 0,
 		handSize = 0,
-		dealer = seatCount, -- seat 1 deals first after the bump in deal()
+		dealer = (rng or Random.new()):NextInteger(1, seatCount), -- deal() moves it on one
 		trick = {},
 		lastTrick = nil,
 		tricksPlayed = 0,
@@ -109,9 +132,21 @@ function OhHell.new(seatCount: number, options: any?, rng: Random?)
 		phaseId = 0,
 		over = false,
 		hook = rules.hook ~= false,
-		everyTrick = rules.scoring == "tricks",
+		everyTrick = rules.scoring ~= "exact",
+		missPenalty = rules.miss == "minus5",
+		noTrumpTop = rules.noTrumpTop == true,
+		trumpMustBreak = rules.trumpBroken == true,
+		trumpBrokenNow = false,
+		history = {}, -- one row per finished hand: { round, size, trump, rows = { [seat] = { bid, took, points } } }
+		tieHands = 0,
+		played = {},
 		botLevel = (options and options.botLevel) or "medium",
 	}
+	local top = 0
+	for _, n in state.schedule do
+		top = math.max(top, n)
+	end
+	state.topSize = top
 	deal(state)
 	return state
 end
@@ -130,7 +165,19 @@ function OhHell.forbiddenBid(state, seat: number): number?
 end
 
 function OhHell.playable(state, seat: number): { number }
-	return Tricks.followable(state.hands[seat], state.trick)
+	local hand = state.hands[seat]
+	if #state.trick == 0 and state.trumpMustBreak and state.trump and not state.trumpBrokenNow then
+		local other = {}
+		for _, id in hand do
+			if suit(id) ~= state.trump then
+				table.insert(other, id)
+			end
+		end
+		if #other > 0 then
+			return other
+		end
+	end
+	return Tricks.followable(hand, state.trick)
 end
 
 function OhHell.getActiveSeats(state): { number }
@@ -190,7 +237,7 @@ function OhHell.validateMove(state, seat: number, move: any): (boolean, string?)
 			return false, "That card isn't in your hand"
 		end
 		if not table.find(OhHell.playable(state, seat), move.card) then
-			return false, "Follow suit"
+			return false, if #state.trick == 0 then "Trump isn't broken yet" else "Follow suit"
 		end
 		return true
 	end
@@ -205,6 +252,9 @@ local function endRound(state)
 		if state.everyTrick then
 			points = took + (if bid == took then OhHell.EXACT_BONUS else 0)
 		end
+		if state.missPenalty and bid ~= took then
+			points = -5 * math.abs(bid - took)
+		end
 		state.scores[seat] += points
 		if bid == took then
 			state.made[seat] += 1
@@ -212,9 +262,27 @@ local function endRound(state)
 		summary[tostring(seat)] = { bid = bid, took = took, points = points }
 	end
 	state.roundSummary = summary
+	table.insert(state.history, { round = state.round, size = state.handSize, trump = state.trump, rows = GameModule.copy(summary) })
+	state.tied = false
 	if state.round >= #state.schedule then
-		state.over = true
-		state.phase = "done"
+		local best, count = -math.huge, 0
+		for seat = 1, state.seatCount do
+			if state.scores[seat] > best then
+				best, count = state.scores[seat], 1
+			elseif state.scores[seat] == best then
+				count += 1
+			end
+		end
+		if count > 1 and state.tieHands < OhHell.MAX_TIE_HANDS then
+			-- Tied at the top: one more hand at the top size (Pagat).
+			state.tieHands += 1
+			state.tied = true
+			table.insert(state.schedule, state.topSize)
+			state.phase = "round"
+		else
+			state.over = true
+			state.phase = "done"
+		end
 	else
 		state.phase = "round"
 	end
@@ -237,6 +305,10 @@ function OhHell.applyMove(state, seat: number, move: any)
 	local hand = state.hands[seat]
 	table.remove(hand, table.find(hand, move.card) :: number)
 	table.insert(state.trick, { seat = seat, card = move.card })
+	state.played[move.card] = true
+	if state.trump and suit(move.card) == state.trump then
+		state.trumpBrokenNow = true
+	end
 	if #state.trick < n then
 		state.turn = seat % n + 1
 		return
@@ -318,6 +390,12 @@ function OhHell.getView(state, seat: number?)
 		nextHandSize = state.schedule[state.round + 1],
 		trump = state.trump,
 		trumpCard = state.trumpCard,
+		noTrump = state.trump == nil,
+		history = GameModule.copy(state.history),
+		tied = state.tied == true,
+		scoring = if state.everyTrick then "tricks" else "exact",
+		missPenalty = state.missPenalty,
+		trumpMustBreak = state.trumpMustBreak and state.trump ~= nil and not state.trumpBrokenNow,
 		dealer = state.dealer,
 		turn = state.turn,
 		phase = state.phase,
@@ -328,7 +406,8 @@ function OhHell.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, state.seatCount do
 		local bid = state.bids[seat]
-		info[seat] = `{state.scores[seat]} pts · {if bid == nil then "bidding" else `bid {bid}`} · {state.tricks[seat]} won`
+		local dealer = if seat == state.dealer then " · D" else ""
+		info[seat] = `{state.scores[seat]} pts · {if bid == nil then "bidding" else `bid {bid}`} · {state.tricks[seat]} won{dealer}`
 	end
 	return info
 end
@@ -348,33 +427,67 @@ end
 
 -- Bots ------------------------------------------------------------------------
 
--- A rough count of the tricks a hand will take with this trump and this many players.
-function OhHell.estimate(hand: { number }, trump: number, seatCount: number): number
+-- A count of the tricks a hand should take with this trump and this many players. Each
+-- card counts as its chance that nobody else holds a higher card of its suit (fewer cards
+-- dealt, more of the high cards are still in the box), side cards a little less for the
+-- risk of being trumped. Short side suits let spare trumps ruff.
+function OhHell.estimate(hand: { number }, trump: number?, seatCount: number): number
+	local size = #hand
+	if size == 0 then
+		return 0
+	end
+	local unseen = 52 - size - 1
+	local others = math.min(unseen, (seatCount - 1) * size)
+	local keep = 1 - others / unseen -- chance one unseen card is NOT in another hand
 	local bySuit = { {}, {}, {}, {} }
 	for _, id in hand do
 		table.insert(bySuit[suit(id)], power(id))
 	end
-	local crowd = (seatCount - 3) * 0.08 -- more players, more chance a high card gets beaten
 	local est = 0
-	for s = 1, 4 do
-		local n = #bySuit[s]
-		for _, p in bySuit[s] do
-			if s == trump then
-				if p >= 13 then
-					est += 1
-				elseif p >= 11 then
-					est += 0.55 - crowd
-				elseif n >= 3 then
-					est += 0.3
+	local spareTrumps = 0
+	for s2 = 1, 4 do
+		local cards = bySuit[s2]
+		table.sort(cards, function(x, y)
+			return x > y
+		end)
+		for i, p in cards do
+			-- Higher cards of this suit we don't hold.
+			local higher = (14 - p) - (i - 1)
+			local chance = keep ^ math.max(0, higher)
+			-- Low cards rarely get the lead to win: they count for much less.
+			chance = chance ^ 1.8
+			-- Our own higher cards in the suit take the same tricks first.
+			if i > 1 then
+				chance *= 0.6
+			end
+			if s2 == trump then
+				est += chance
+				if chance < 0.5 then
+					spareTrumps += 1
 				end
-			elseif p == 14 then
-				est += 0.85 - crowd
-			elseif p == 13 and n >= 2 then
-				est += 0.45 - crowd
+			else
+				-- A side card can be trumped once someone runs out of the suit.
+				local ruff = if trump then math.min(0.5, 0.06 * (seatCount - 1) * math.max(0, size - 3) / 3 + (i - 1) * 0.12) else 0
+				est += chance * (1 - ruff)
 			end
 		end
 	end
-	return math.max(0, est)
+	if trump then
+		-- Voids and singletons with spare low trumps: each can ruff a trick.
+		for s2 = 1, 4 do
+			if s2 ~= trump and spareTrumps > 0 and size >= 3 then
+				local n = #bySuit[s2]
+				if n == 0 then
+					est += 0.55 * 3 / seatCount
+					spareTrumps -= 1
+				elseif n == 1 and spareTrumps > 0 then
+					est += 0.3 * 3 / seatCount
+					spareTrumps -= 1
+				end
+			end
+		end
+	end
+	return math.clamp(est, 0, size)
 end
 
 local function chooseBid(state, seat: number, rng: Random): number
@@ -400,10 +513,11 @@ local function choosePlay(state, seat: number, rng: Random): number
 	if state.botLevel == "easy" or #cards == 1 then
 		return cards[rng:NextInteger(1, #cards)]
 	end
+	local hard = state.botLevel == "hard"
 	local trump = state.trump
 	local need = state.bids[seat] - state.tricks[seat]
 	local trick = state.trick
-	-- Hard bots count trumps as worth more than their face value.
+	-- Trumps count as worth more than their face value.
 	local function cost(id: number): number
 		return power(id) + (if suit(id) == trump then 20 else 0)
 	end
@@ -426,8 +540,26 @@ local function choosePlay(state, seat: number, rng: Random): number
 		return best
 	end
 	if #trick == 0 then
-		-- Leading: want tricks, lead strength; don't, lead low.
-		return if need > 0 then dearest(cards) else cheapest(cards)
+		if need > 0 then
+			-- Lead side Aces first and keep the trumps to ruff.
+			local aces = {}
+			for _, id in cards do
+				if power(id) == 14 and suit(id) ~= trump then
+					table.insert(aces, id)
+				end
+			end
+			if #aces > 0 then
+				return aces[1]
+			end
+			local side = {}
+			for _, id in cards do
+				if suit(id) ~= trump then
+					table.insert(side, id)
+				end
+			end
+			return dearest(if #side > 0 then side else cards)
+		end
+		return cheapest(cards)
 	end
 	local winners, losers = {}, {}
 	for _, id in cards do
@@ -441,8 +573,22 @@ local function choosePlay(state, seat: number, rng: Random): number
 		if #winners > 0 then
 			-- Hard bots with players still to come win high, so the trick can't be taken
 			-- back; otherwise win as cheaply as possible.
-			if state.botLevel == "hard" and #trick < state.seatCount - 1 then
-				return dearest(winners)
+			if hard and #trick < state.seatCount - 1 then
+				-- The cheapest winner nobody can top in its suit (counting cards played).
+				local safe = {}
+				for _, id in winners do
+					local boss = true
+					for p = power(id) + 1, 14 do
+						local other = PlayingCards.make(if p == 14 then 1 else p, suit(id))
+						if not state.played[other] and not table.find(state.hands[seat], other) then
+							boss = false
+						end
+					end
+					if boss then
+						table.insert(safe, id)
+					end
+				end
+				return if #safe > 0 then cheapest(safe) else dearest(winners)
 			end
 			return cheapest(winners)
 		end

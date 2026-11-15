@@ -9,20 +9,28 @@
 -- 1 per extra trick ("bags"). Fall short and lose 10 per trick bid. Every 10 bags costs
 -- 100 points. Nil: +100 if that player takes no tricks, -100 if they take any (their
 -- tricks count as bags, not toward the partner's bid).
--- First team to the target (300 by default) wins; a team at -200 or below loses. A safety
+-- First team to the target (500 by default) wins; a team at -200 or below loses. A safety
 -- limit of hands (Spades.maxRoundsFor: a tenth of the target, at least 15, so 30 at 300
 -- and 50 at 500) ends a game that never gets there: the higher score wins. The limit is in
--- the view, and the table is told when the last hand starts.
+-- the view ("Hand 12 of 50"), and the table is told when the last hand starts. A game
+-- never ends on a tie: tied at the end, one more hand is played (Wikipedia).
+-- The first dealer is picked at random (Pagat).
 --
 -- House rules (options.rules): nilBids (default on; off means every bid is 1-13), bags
--- (default on: every 10 bags costs 100; off: bags are just +1 each), blindNil (default
--- off, like Spades Plus and Trickster: a player whose team is 100+ behind may bid Nil
--- before looking at their cards, for +200 / -200; their hand stays face down until they
--- look or bid).
+-- (10: every 10 bags costs 100; 5: every 5 bags costs 50; false: bags are just +1 each),
+-- blindNil (default off, like Spades Plus and Trickster: a player whose team is 100+ behind
+-- may bid Nil before looking at their cards, for +200 / -200; their hand stays face down
+-- until they look or bid; then the blind bidder and their partner swap 2 cards, Pagat),
+-- clubLead (the 2 of Clubs leads the first trick and no spades may be played on it unless
+-- you have nothing else), minTeamBid (4: partners' bids must add up to 4 or more), tenFor200
+-- (a team bid of 10 or more scores double when made and loses double when set), hands (0:
+-- play to the target; N: the game ends after N hands, higher score wins), whiz (bid Nil
+-- or exactly the number of spades you hold).
 --
 -- Moves: { kind = "bid", bid = 0..13, blind = true? }  (bid phase, in turn; blind only
 --        for bid 0 while you haven't looked)
---        { kind = "look" }               (bid phase, your turn: turn your cards over)
+--        { kind = "look" }               (bid phase: turn your cards over)
+--        { kind = "exchange", cards = { id, id } } (Blind Nil swap: bidder, then partner)
 --        { kind = "play", card = id }   (your turn)
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -36,7 +44,8 @@ Spades.id = "Spades"
 Spades.minSeats = 4
 Spades.maxSeats = 4
 
-Spades.TARGET = 300 -- house rule "target" can change it
+Spades.TARGET = 500 -- house rule "target" can change it (200 and 300 are the quick games)
+Spades.MAX_TIE_HANDS = 5 -- extra hands to break a tie at the end before it's a draw
 Spades.FLOOR = -200
 Spades.MIN_ROUNDS_LIMIT = 15
 
@@ -51,7 +60,8 @@ Spades.ROUND_SECONDS = 6
 Spades.BLIND_NIL = 200
 Spades.BLIND_BEHIND = 100 -- how far behind a team must be to bid blind
 
-local SPADES = 1
+local SPADES, CLUBS = 1, 4
+local TWO_OF_CLUBS = PlayingCards.make(2, CLUBS)
 local suit = PlayingCards.suit
 local power = PlayingCards.aceHigh
 
@@ -81,6 +91,8 @@ local function deal(state)
 	state.round += 1
 	state.dealer = state.dealer % 4 + 1
 	state.bids = {}
+	state.exchange = nil -- the Blind Nil swap: { bidder, partner, step = 1 | 2, given }
+	state.played = {}
 	state.blind = {} -- seat -> true: bid Blind Nil this round
 	state.looked = {} -- seat -> true: has seen this round's cards
 	state.trick = {}
@@ -103,7 +115,7 @@ function Spades.new(seatCount: number, options: any?, rng: Random?)
 		scores = { 0, 0 }, -- per team
 		bags = { 0, 0 }, -- per team, below 10
 		round = 0,
-		dealer = 4, -- seat 1 deals first after the bump in deal()
+		dealer = 4, -- set at random below; deal() moves it on one
 		trick = {},
 		lastTrick = nil,
 		tricksPlayed = 0,
@@ -116,17 +128,49 @@ function Spades.new(seatCount: number, options: any?, rng: Random?)
 		target = if type(rules.target) == "number" and rules.target > 0 then rules.target else Spades.TARGET,
 		allowNil = rules.nilBids ~= false,
 		bagPenalty = rules.bags ~= false,
+		bagLimit = if rules.bags == 5 then 5 else 10,
 		blindNil = rules.blindNil == true,
+		clubLead = rules.clubLead == true,
+		minTeamBid = if type(rules.minTeamBid) == "number" and rules.minTeamBid > 0 then math.floor(rules.minTeamBid) else 0,
+		tenFor200 = rules.tenFor200 == true,
+		handsLimit = if type(rules.hands) == "number" and rules.hands > 0 then math.floor(rules.hands) else 0,
+		whiz = rules.whiz == true,
+		history = {}, -- one row per finished hand: { round, team = { [1] = summary, [2] = summary } }
+		tieHands = 0,
+		played = {},
 		blind = {},
 		looked = {},
 		botLevel = (options and options.botLevel) or "medium",
 	}
+	state.dealer = state.rng:NextInteger(1, 4) - 1
+	if state.dealer == 0 then
+		state.dealer = 4
+	end
 	deal(state)
 	return state
 end
 
+-- The hand limit for this game: "Play N hands", else the safety limit.
+local function handLimit(state): number
+	return if state.handsLimit > 0 then state.handsLimit + state.tieHands else Spades.maxRoundsFor(state.target) + state.tieHands
+end
+
 function Spades.playable(state, seat: number): { number }
 	local hand = state.hands[seat]
+	if state.clubLead and state.tricksPlayed == 0 then
+		-- House rule: the 2 of Clubs leads, and no spades on the first trick if you can help it.
+		if #state.trick == 0 then
+			return if table.find(hand, TWO_OF_CLUBS) then { TWO_OF_CLUBS } else table.clone(hand)
+		end
+		local cards = Tricks.followable(hand, state.trick)
+		local noSpades = {}
+		for _, id in cards do
+			if suit(id) ~= SPADES then
+				table.insert(noSpades, id)
+			end
+		end
+		return if #noSpades > 0 then noSpades else cards
+	end
 	if #state.trick == 0 then
 		if not state.spadesBroken then
 			local other = {}
@@ -153,8 +197,39 @@ function Spades.canBlindNil(state, seat: number): boolean
 	return state.scores[3 - team] - state.scores[team] >= Spades.BLIND_BEHIND
 end
 
+-- The bids this seat may make now (house rules: Nil off, Whiz, minimum team bid).
+function Spades.allowedBids(state, seat: number): { number }
+	local out = {}
+	local partnerBid = state.bids[partnerOf(seat)]
+	local spades = #Tricks.ofSuit(state.hands[seat], SPADES)
+	for bid = 0, 13 do
+		local ok = true
+		if bid == 0 and state.allowNil == false then
+			ok = false
+		elseif state.whiz and bid ~= 0 and bid ~= spades then
+			ok = false
+		elseif state.minTeamBid > 0 and partnerBid ~= nil and bid ~= 0 and partnerBid ~= 0 and bid + partnerBid < state.minTeamBid then
+			-- The second partner to bid must bring the team up to the minimum (Nil aside).
+			ok = state.whiz
+		end
+		if ok then
+			table.insert(out, bid)
+		end
+	end
+	if #out == 0 then
+		table.insert(out, math.max(1, spades))
+	end
+	return out
+end
+
 function Spades.getActiveSeats(state): { number }
-	if state.over or (state.phase ~= "bid" and state.phase ~= "play") then
+	if state.over then
+		return {}
+	end
+	if state.phase == "exchange" and state.exchange then
+		return { if state.exchange.step == 1 then state.exchange.bidder else state.exchange.partner }
+	end
+	if state.phase ~= "bid" and state.phase ~= "play" then
 		return {}
 	end
 	return { state.turn }
@@ -162,11 +237,21 @@ end
 
 function Spades.getLegalMoves(state, seat: number): { any }
 	local moves = {}
-	if state.over or seat ~= state.turn then
+	if state.over then
+		return moves
+	end
+	if state.phase == "exchange" then
+		if table.find(Spades.getActiveSeats(state), seat) then
+			local hand = sortHand(state.hands[seat])
+			table.insert(moves, { kind = "exchange", cards = { hand[1], hand[2] } })
+		end
+		return moves
+	end
+	if seat ~= state.turn then
 		return moves
 	end
 	if state.phase == "bid" then
-		for bid = if state.allowNil == false then 1 else 0, 13 do
+		for _, bid in Spades.allowedBids(state, seat) do
 			table.insert(moves, { kind = "bid", bid = bid })
 		end
 	elseif state.phase == "play" then
@@ -190,6 +275,18 @@ function Spades.validateMove(state, seat: number, move: any): (boolean, string?)
 		end
 		return true
 	end
+	if move.kind == "exchange" then
+		if state.phase ~= "exchange" or not table.find(Spades.getActiveSeats(state), seat) then
+			return false, "It's not your turn to swap"
+		end
+		if not PlayingCards.isCardList(move.cards, 2) or #move.cards ~= 2 then
+			return false, "Pick 2 cards to give your partner"
+		end
+		if not PlayingCards.holdsAll(state.hands[seat], move.cards) then
+			return false, "Those cards aren't in your hand"
+		end
+		return true
+	end
 	if seat ~= state.turn then
 		return false, "It's not your turn"
 	end
@@ -203,6 +300,12 @@ function Spades.validateMove(state, seat: number, move: any): (boolean, string?)
 		end
 		if bid == 0 and state.allowNil == false then
 			return false, "Nil bids are off at this table"
+		end
+		if not table.find(Spades.allowedBids(state, seat), bid) and not (move.blind == true and bid == 0) then
+			if state.whiz then
+				return false, "Whiz: bid Nil or your number of spades"
+			end
+			return false, `Your team must bid at least {state.minTeamBid} together`
 		end
 		if move.blind ~= nil and move.blind ~= false then
 			if move.blind ~= true or bid ~= 0 then
@@ -221,6 +324,9 @@ function Spades.validateMove(state, seat: number, move: any): (boolean, string?)
 			return false, "That card isn't in your hand"
 		end
 		if not table.find(Spades.playable(state, seat), move.card) then
+			if state.clubLead and state.tricksPlayed == 0 then
+				return false, if #state.trick == 0 then "The 2 of Clubs leads" else "No spades on the first trick"
+			end
 			return false, if #state.trick == 0 then "Spades aren't broken yet" else "Follow suit"
 		end
 		return true
@@ -246,11 +352,13 @@ local function scoreTeam(state, team: number)
 		end
 	end
 	if contract > 0 then
+		-- House rule "10 for 200": a team bid of 10 or more is worth double.
+		local worth = if state.tenFor200 and contract >= 10 then 20 else 10
 		if took >= contract then
-			pts += contract * 10 + (took - contract)
+			pts += contract * worth + (took - contract)
 			bags += took - contract
 		else
-			pts -= contract * 10
+			pts -= contract * worth
 		end
 	end
 	return { bid = contract, took = took, points = pts, bags = bags, nils = nils }
@@ -265,20 +373,35 @@ local function endRound(state)
 		state.scores[team] += s.points
 		state.bags[team] += s.bags
 		s.bagPenalty = 0
-		while state.bagPenalty ~= false and state.bags[team] >= 10 do
-			state.bags[team] -= 10
-			state.scores[team] -= 100
-			s.bagPenalty += 100
+		local limit = state.bagLimit or 10
+		while state.bagPenalty ~= false and state.bags[team] >= limit do
+			state.bags[team] -= limit
+			state.scores[team] -= limit * 10
+			s.bagPenalty += limit * 10
 		end
 		summary[team] = s
 	end
 	state.roundSummary = summary
+	local row = { round = state.round, team = GameModule.copy(summary), scores = table.clone(state.scores), bids = {}, tricks = table.clone(state.tricks) }
+	for seat = 1, 4 do
+		row.bids[seat] = state.bids[seat]
+	end
+	table.insert(state.history, row)
 	local a, b = state.scores[1], state.scores[2]
-	local reached = (a >= state.target or b >= state.target) and a ~= b
+	local reached = (a >= state.target or b >= state.target) and state.handsLimit == 0
 	local sunk = a <= Spades.FLOOR or b <= Spades.FLOOR
-	if reached or sunk or state.round >= Spades.maxRoundsFor(state.target) then
-		state.over = true
-		state.phase = "done"
+	local limitHit = state.round >= handLimit(state)
+	state.tied = false
+	if reached or sunk or limitHit then
+		if a == b and state.tieHands < Spades.MAX_TIE_HANDS then
+			-- Never end on a tie: one more hand (Wikipedia).
+			state.tieHands += 1
+			state.tied = true
+			state.phase = "round"
+		else
+			state.over = true
+			state.phase = "done"
+		end
 	else
 		state.phase = "round"
 	end
@@ -298,9 +421,37 @@ function Spades.applyMove(state, seat: number, move: any)
 		state.looked[seat] = true
 		state.turn = seat % 4 + 1
 		if state.bids[state.turn] ~= nil then
-			-- Everyone has bid: the player left of the dealer leads.
-			state.phase = "play"
-			state.turn = state.dealer % 4 + 1
+			-- Everyone has bid. A Blind Nil bidder swaps 2 cards with their partner first
+			-- (Pagat); then the player left of the dealer leads.
+			for s2 = 1, 4 do
+				if state.blind[s2] and state.exchange == nil then
+					state.exchange = { bidder = s2, partner = partnerOf(s2), step = 1 }
+				end
+			end
+			if state.exchange then
+				state.phase = "exchange"
+			else
+				Spades._startPlay(state)
+			end
+			state.phaseId += 1
+		end
+		return
+	end
+	if move.kind == "exchange" then
+		local ex = state.exchange
+		PlayingCards.removeCards(state.hands[seat], move.cards)
+		if ex.step == 1 then
+			ex.given = table.clone(move.cards)
+			ex.step = 2
+		else
+			for _, id in ex.given do
+				table.insert(state.hands[ex.partner], id)
+			end
+			for _, id in move.cards do
+				table.insert(state.hands[ex.bidder], id)
+			end
+			ex.back = table.clone(move.cards)
+			Spades._startPlay(state)
 			state.phaseId += 1
 		end
 		return
@@ -308,6 +459,7 @@ function Spades.applyMove(state, seat: number, move: any)
 	local hand = state.hands[seat]
 	table.remove(hand, table.find(hand, move.card) :: number)
 	table.insert(state.trick, { seat = seat, card = move.card })
+	state.played[move.card] = true
 	if suit(move.card) == SPADES then
 		state.spadesBroken = true
 	end
@@ -322,6 +474,18 @@ function Spades.applyMove(state, seat: number, move: any)
 	state.turn = winner
 	state.phase = "trick"
 	state.phaseId += 1
+end
+
+function Spades._startPlay(state)
+	state.phase = "play"
+	state.turn = state.dealer % 4 + 1
+	if state.clubLead then
+		for s2 = 1, 4 do
+			if table.find(state.hands[s2], TWO_OF_CLUBS) then
+				state.turn = s2
+			end
+		end
+	end
 end
 
 function Spades.getTimer(state): { id: number, seconds: number }?
@@ -359,7 +523,7 @@ function Spades.getResult(state): GameModule.Result?
 		return { winners = { 1, 2, 3, 4 }, isDraw = true, reason = `Tied at {a}` }
 	end
 	local team = if a > b then 1 else 2
-	local reason = if math.max(a, b) >= state.target then `Reached {state.target}` elseif math.min(a, b) <= Spades.FLOOR then "The other team sank" else `Higher score after {state.round} hands`
+	local reason = if state.handsLimit == 0 and math.max(a, b) >= state.target then `Reached {state.target}` elseif math.min(a, b) <= Spades.FLOOR then "The other team sank" else `Higher score after {state.round} hands`
 	return { winners = if team == 1 then { 1, 3 } else { 2, 4 }, isDraw = false, reason = reason }
 end
 
@@ -394,7 +558,17 @@ function Spades.getView(state, seat: number?)
 		allowNil = state.allowNil ~= false,
 		roundSummary = GameModule.copy(state.roundSummary),
 		round = state.round,
-		maxRounds = Spades.maxRoundsFor(state.target),
+		maxRounds = handLimit(state),
+		handsMode = state.handsLimit > 0,
+		history = GameModule.copy(state.history),
+		tied = state.tied == true,
+		bagLimit = if state.bagPenalty then state.bagLimit else nil,
+		whiz = state.whiz,
+		minTeamBid = state.minTeamBid,
+		allowedBids = if seat and state.phase == "bid" and seat == state.turn then Spades.allowedBids(state, seat) else nil,
+		suggestBid = if seat and state.phase == "bid" and state.hands[seat] then math.clamp(math.floor(Spades.estimate(state.hands[seat]) + 0.5), 1, 13) else nil,
+		exchange = if state.exchange then { bidder = state.exchange.bidder, partner = state.exchange.partner, step = state.exchange.step, yours = seat ~= nil and (seat == state.exchange.bidder or seat == state.exchange.partner) } else nil,
+		received = if seat and state.exchange and state.tricksPlayed == 0 and #state.trick == 0 then (if seat == state.exchange.partner then GameModule.copy(state.exchange.given) elseif seat == state.exchange.bidder then GameModule.copy(state.exchange.back) else nil) else nil,
 		target = state.target,
 		dealer = state.dealer,
 		spadesBroken = state.spadesBroken,
@@ -408,7 +582,9 @@ function Spades.getSeatInfo(state): { [number]: string }
 	for seat = 1, 4 do
 		local bid = state.bids[seat]
 		local bidText = if bid == nil then "bidding" elseif bid == 0 then (if state.blind[seat] then "Blind Nil" else "Nil") else `bid {bid}`
-		info[seat] = `Team {teamOf(seat)} · {bidText} · {state.tricks[seat]} won`
+		local team = teamOf(seat)
+		local dealer = if seat == state.dealer then " · D" else ""
+		info[seat] = `Team {team}: {state.scores[team]} · {bidText} · {state.tricks[seat]} won{dealer}`
 	end
 	return info
 end
@@ -468,25 +644,74 @@ function Spades.estimate(hand: { number }): number
 	return est
 end
 
+local function nearestAllowed(state, seat: number, want: number): number
+	local best, gap = want, math.huge
+	for _, bid in Spades.allowedBids(state, seat) do
+		local d = math.abs(bid - want) + (if bid == 0 and want ~= 0 then 0.5 else 0)
+		if d < gap then
+			best, gap = bid, d
+		end
+	end
+	return best
+end
+
 local function chooseBid(state, seat: number, rng: Random): number
 	local hand = state.hands[seat]
 	local est = Spades.estimate(hand)
 	if state.botLevel == "easy" then
-		return math.clamp(math.floor(est + rng:NextNumber() * 2 - 0.5), 1, 13)
+		return nearestAllowed(state, seat, math.clamp(math.floor(est + rng:NextNumber() * 2 - 0.5), 1, 13))
 	end
-	if state.botLevel == "hard" and est < 1 then
-		local highSpade = 0
-		for _, id in hand do
-			if suit(id) == SPADES then
-				highSpade = math.max(highSpade, power(id))
-			end
+	local highSpade, spadeCount = 0, 0
+	for _, id in hand do
+		if suit(id) == SPADES then
+			highSpade = math.max(highSpade, power(id))
+			spadeCount += 1
 		end
-		local partnerBid = state.bids[partnerOf(seat)]
-		if highSpade <= 10 and (partnerBid == nil or partnerBid >= 3) then
+	end
+	local partnerBid = state.bids[partnerOf(seat)]
+	local hard = state.botLevel == "hard"
+	if state.allowNil ~= false and partnerBid ~= 0 then
+		-- Nil with a weak hand: no high spades, few spades, nothing that must win.
+		local weak = if hard then est < 1 and highSpade <= 10 else est < 0.6 and highSpade <= 9 and spadeCount <= 3
+		if weak and (partnerBid == nil or partnerBid >= 3) then
 			return 0
 		end
 	end
-	return math.clamp(math.floor(est + 0.5), 1, 13)
+	return nearestAllowed(state, seat, math.clamp(math.floor(est + 0.2), 1, 13))
+end
+
+-- Is `id` the highest card of its suit still out (counting cards played and our own)?
+local function isBoss(state, seat: number, id: number): boolean
+	local s = suit(id)
+	for p = power(id) + 1, 14 do
+		local other = PlayingCards.make(if p == 14 then 1 else p, s)
+		if not state.played[other] and not table.find(state.hands[seat], other) then
+			return false
+		end
+	end
+	return true
+end
+
+-- Tricks this seat's team still needs for its bid (Nil bidders aside), and whether an
+-- opponent bid Nil and is still clean.
+local function teamNeed(state, seat: number): number
+	local need = 0
+	for _, s2 in { seat, partnerOf(seat) } do
+		local bid = state.bids[s2]
+		if bid and bid > 0 then
+			need += bid - state.tricks[s2]
+		end
+	end
+	return need
+end
+
+local function cleanNilOpponent(state, seat: number): number?
+	for _, s2 in { seat % 4 + 1, (seat + 2) % 4 + 1 } do
+		if state.bids[s2] == 0 and state.tricks[s2] == 0 then
+			return s2
+		end
+	end
+	return nil
 end
 
 local function choosePlay(state, seat: number, rng: Random): number
@@ -494,16 +719,39 @@ local function choosePlay(state, seat: number, rng: Random): number
 	if state.botLevel == "easy" or #cards == 1 then
 		return cards[rng:NextInteger(1, #cards)]
 	end
+	local hard = state.botLevel == "hard"
 	local trick = state.trick
 	local nilBid = state.bids[seat] == 0
+	local need = teamNeed(state, seat)
+	local partnerNil = state.bids[partnerOf(seat)] == 0 and state.tricks[partnerOf(seat)] == 0
+	local nilFoe = if hard then cleanNilOpponent(state, seat) else nil
+	-- Hard: once the team's bid is made and the other team's is safe too (no set to go
+	-- for), stop taking tricks: bags cost points.
+	local duck = hard and need <= 0 and not partnerNil and teamNeed(state, seat % 4 + 1) <= 0
 	if #trick == 0 then
-		if nilBid then
-			return Tricks.lowest(cards) :: number
+		if nilBid or duck or nilFoe then
+			-- Lead low: a Nil bidder hides, a made team ducks, and a low lead makes the
+			-- opposing Nil bidder play over it.
+			local side = {}
+			for _, id in cards do
+				if suit(id) ~= SPADES then
+					table.insert(side, id)
+				end
+			end
+			return Tricks.lowest(if #side > 0 then side else cards) :: number
 		end
-		-- Lead a side-suit Ace if we have one, else something low.
+		-- Lead a boss (a side Ace, or a card whose higher ones are all gone).
 		for _, id in cards do
-			if power(id) == 14 and suit(id) ~= SPADES then
+			if suit(id) ~= SPADES and (power(id) == 14 or isBoss(state, seat, id)) then
 				return id
+			end
+		end
+		-- Draw trump with the top spade once spades are broken.
+		if state.spadesBroken then
+			for _, id in cards do
+				if suit(id) == SPADES and isBoss(state, seat, id) then
+					return id
+				end
 			end
 		end
 		local side = {}
@@ -527,45 +775,84 @@ local function choosePlay(state, seat: number, rng: Random): number
 		return if #losers > 0 then Tricks.highest(losers) :: number else Tricks.lowest(winners) :: number
 	end
 	local leader = trick[Tricks.winningIndex(trick, SPADES)].seat
-	local partnerNil = state.bids[partnerOf(seat)] == 0
-	if leader == partnerOf(seat) and not partnerNil then
-		-- Partner has it: throw something cheap (not a spade if we can help it).
+	local function cheapest(list: { number }): number
 		local cheap = {}
-		for _, id in losers do
+		for _, id in list do
 			if suit(id) ~= SPADES then
 				table.insert(cheap, id)
 			end
 		end
-		if #cheap > 0 then
-			return Tricks.lowest(cheap) :: number
+		return Tricks.lowest(if #cheap > 0 then cheap else list) :: number
+	end
+	if nilFoe and leader == nilFoe and #losers > 0 then
+		-- The opposing Nil bidder is winning this trick: let them have it.
+		return Tricks.highest(losers) :: number
+	end
+	if (leader == partnerOf(seat) and not partnerNil) or (duck and #losers > 0) then
+		-- Partner has it (or our bid is made): throw something cheap, ducking as high as
+		-- we can when ducking.
+		if duck and #losers > 0 then
+			local side = {}
+			for _, id in losers do
+				if suit(id) ~= SPADES then
+					table.insert(side, id)
+				end
+			end
+			return Tricks.highest(if #side > 0 then side else losers) :: number
 		end
-		return Tricks.lowest(if #losers > 0 then losers else cards) :: number
+		return cheapest(if #losers > 0 then losers else cards)
 	end
 	if #winners > 0 then
-		-- Win as cheaply as possible (a low trump beats a high side card).
+		-- Win as cheaply as possible (a low trump beats a high side card). With players
+		-- still to come, a boss card is safer than a low winner they could top.
 		local best, bestScore = winners[1], math.huge
 		for _, id in winners do
 			local score = power(id) + (if suit(id) == SPADES then 20 else 0)
+			if #trick < 3 and not isBoss(state, seat, id) then
+				score += 8
+			end
 			if score < bestScore then
 				best, bestScore = id, score
 			end
 		end
 		return best
 	end
-	local cheap = {}
-	for _, id in losers do
-		if suit(id) ~= SPADES then
-			table.insert(cheap, id)
-		end
-	end
-	return Tricks.lowest(if #cheap > 0 then cheap else cards) :: number
+	return cheapest(if #losers > 0 then losers else cards)
+end
+
+local function chooseExchange(state, seat: number): { number }
+	-- The Blind Nil bidder gives away its highest cards; the partner gives back its lowest.
+	local hand = table.clone(state.hands[seat])
+	local ex = state.exchange
+	table.sort(hand, function(a, b)
+		local pa = power(a) + (if suit(a) == SPADES then 13 else 0)
+		local pb = power(b) + (if suit(b) == SPADES then 13 else 0)
+		return if seat == ex.bidder then pa > pb else pa < pb
+	end)
+	return { hand[1], hand[2] }
 end
 
 function Spades.chooseBotMove(state, seat: number, rng: Random): any?
-	if state.over or seat ~= state.turn then
+	if state.over then
+		return nil
+	end
+	if state.phase == "exchange" then
+		if table.find(Spades.getActiveSeats(state), seat) then
+			return { kind = "exchange", cards = chooseExchange(state, seat) }
+		end
+		return nil
+	end
+	if seat ~= state.turn then
 		return nil
 	end
 	if state.phase == "bid" then
+		if state.botLevel == "hard" and Spades.canBlindNil(state, seat) then
+			-- Far behind late in the game: gamble on Blind Nil.
+			local team = teamOf(seat)
+			if state.scores[3 - team] - state.scores[team] >= 200 and state.scores[3 - team] >= state.target * 0.6 and state.bids[partnerOf(seat)] ~= 0 then
+				return { kind = "bid", bid = 0, blind = true }
+			end
+		end
 		local b = chooseBid(state, seat, rng)
 		if b == 0 and state.allowNil == false then
 			b = 1

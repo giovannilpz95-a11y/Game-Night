@@ -12,13 +12,22 @@
 -- so someone alone with bots still gets drawings to guess. Each drawer draws ROUNDS times
 -- (more when there are only one or two drawers).
 -- House rules (options.rules): rounds = 1..3, drawSeconds = 60 | 80 | 120,
--- tools = "all" (brush and shapes) | "shapes" (lines, boxes and ovals only, no brush),
+-- tools = "all" (brush and shapes) | "shapes" (lines, boxes and ovals only, no brush) |
+-- "stamps" (pre-made stamps only: no pen, lines, boxes, ovals or fill; see Stamps below),
 -- wordChoices = 1 | 3 | 5 (words the drawer picks from), hints = "none" | "normal" | "lots".
 -- options.customWords: a Party Host's word list (already filtered by the server). When
 -- set, every choice comes from it instead of our list.
+-- options.wordBank / options.doodles: our word list and bot doodles. They are server-only
+-- (ServerScriptService Data) so clients never get a ready-made cheat dictionary; the
+-- server passes them in. Without them (previews, tests) a tiny sample list is used.
 --
 -- Scoring: a correct guess earns more the earlier it comes (fewer hints shown, fewer
--- people ahead of you). The drawer earns DRAWER_POINTS per correct guesser.
+-- people ahead of you). The drawer earns half of each correct guesser's points, so a
+-- drawing that many get quickly pays the drawer the most.
+--
+-- Guess limit: GUESS_LIMIT guesses per hint (20 s) and one per GUESS_GAP seconds per
+-- seat, checked against the server's own clock (elapsedField), so a modded client can't
+-- brute-force every word that fits the blanks.
 --
 -- Moderation: guessers can vote to skip a drawing (more than half of the players = wiped
 -- and skipped) or report it (a report is also a skip vote; the client hides that player's
@@ -34,6 +43,10 @@
 --                      points = "<2 encoded points: start and end / two corners>", fill = bool }
 --                    { kind = "bucket", color, points = "<1 encoded point>" }   (fill an area)
 --                    { kind = "undo" } | { kind = "clear" }
+--   drawer, draw, stamps tables (tools = "stamps"; the only drawing moves there):
+--                    { kind = "stamp", stamp = <id from SketchGuess.stamps>, color, x, y, w, h, rot }
+--                    { kind = "stampEdit", index, color, x, y, w, h, rot, layer = "front" | "back" | nil }
+--                    { kind = "stampDelete", index }   (plus undo and clear)
 --   drawer, any:     { kind = "giveUp" }   (skip my turn; also what a bot drawer does)
 --   guesser, draw:   { kind = "guess", text = "...", shown = "<filtered by the server>" }
 --                    { kind = "voteSkip" } | { kind = "report" }
@@ -42,8 +55,14 @@
 --   guesser, draw or reveal: { kind = "rate", up = bool }   (like / dislike the drawing)
 
 local GameModule = require(script.Parent.Parent.GameModule)
-local Words = require(script.Parent.Data.SketchWords)
-local Doodles = require(script.Parent.Data.SketchDoodles)
+
+-- Only for previews and tests: real matches get the server's lists.
+local SAMPLE_WORDS = {
+	easy = { "apple", "sun", "cat", "house", "tree", "fish" },
+	medium = { "castle", "rocket", "guitar", "penguin" },
+	hard = { "lighthouse", "volcano", "telescope" },
+}
+local NO_DOODLES = {}
 
 local SketchGuess = {}
 
@@ -51,6 +70,8 @@ SketchGuess.id = "SketchGuess"
 SketchGuess.minSeats = 3
 SketchGuess.maxSeats = 8
 SketchGuess.textField = "text"
+SketchGuess.elapsedField = "elapsed"
+SketchGuess.SAMPLE_WORDS = SAMPLE_WORDS
 
 local CHOOSE_SECONDS = 12
 local DRAW_SEGMENT = 20 -- seconds between hint letters
@@ -58,12 +79,14 @@ local DRAW_SEGMENTS = 4 -- so a drawing lasts 80 seconds
 local REVEAL_SECONDS = 5
 local ROUNDS = 2
 local MAX_TURNS = 16
-local DRAWER_POINTS = 50
+local GUESS_LIMIT = 5 -- guesses per seat per hint segment
+local GUESS_GAP = 1 -- seconds between one seat's guesses (or green-chat lines)
 local MAX_FEED = 40
 local MAX_GUESS = 40
 local STRIKES = 2 -- drawings skipped by vote before a player stops drawing this match
 local BOT_DRAWERS_BELOW = 3 -- bots take drawing turns when there are fewer players than this
 local MAX_BUCKETS = 20 -- fill buckets per drawing (each one is a batch of Frames)
+local MAX_STAMPS = 40 -- stamps per drawing at a stamps table
 local GALLERY_SECONDS = 12
 local GALLERY_SIZE = 4 -- drawings shown in the end-of-game gallery
 local HINT_SHARE = { none = 0, normal = 0.5, lots = 0.7 } -- most letters a hint shows
@@ -100,6 +123,38 @@ SketchGuess.palette = {
 }
 SketchGuess.sizes = { 4, 9, 18, 36 } -- brush widths in pixels on a 600px canvas
 SketchGuess.shapes = { "line", "rect", "ellipse" }
+
+-- Stamps --------------------------------------------------------------------------
+-- The stamps-only mode (tools = "stamps") is how Sketch & Guess avoids free-form drawing:
+-- the drawer can only place pre-made stamps from this fixed list, then move, scale,
+-- stretch, rotate, recolor and layer them, MAX_STAMPS per drawing. There is no pen, no
+-- line, box or oval tool, no fill and no text. x, y (the stamp's center) are 0..resolution
+-- across and down the canvas; w, h are in 0..resolution of the canvas WIDTH (so w == h is
+-- square on the 4:3 canvas). rot is whole degrees, 0..359. Stamps with stretch = false
+-- keep w == h. w and h are the default size, as a share of the canvas width.
+-- Drawn by shared/SketchCanvas (Frames, UIGradient cuts and a few font glyphs).
+SketchGuess.stamps = {
+	{ id = "circle", label = "Circle", stretch = true, w = 0.16, h = 0.16 },
+	{ id = "ring", label = "Ring", stretch = true, w = 0.16, h = 0.16 },
+	{ id = "square", label = "Square", stretch = true, w = 0.16, h = 0.16 },
+	{ id = "frame", label = "Frame", stretch = true, w = 0.16, h = 0.16 },
+	{ id = "stick", label = "Stick", stretch = true, w = 0.24, h = 0.03 },
+	{ id = "triangle", label = "Triangle", stretch = true, w = 0.16, h = 0.14 },
+	{ id = "dome", label = "Dome", stretch = true, w = 0.18, h = 0.09 },
+	{ id = "arc", label = "Arc", stretch = true, w = 0.18, h = 0.09 },
+	{ id = "cloud", label = "Cloud", stretch = true, w = 0.24, h = 0.15 },
+	{ id = "heart", label = "Heart", stretch = false, w = 0.14, h = 0.14 },
+	{ id = "star", label = "Star", stretch = false, w = 0.14, h = 0.14 },
+	{ id = "flower", label = "Flower", stretch = false, w = 0.14, h = 0.14 },
+	{ id = "sun", label = "Sun", stretch = false, w = 0.16, h = 0.16 },
+}
+SketchGuess.stampById = {}
+for _, def in SketchGuess.stamps do
+	SketchGuess.stampById[def.id] = def
+end
+SketchGuess.maxStamps = MAX_STAMPS
+SketchGuess.stampMin = 24 -- smallest w or h (about 0.6% of the canvas width)
+SketchGuess.stampMax = SketchGuess.resolution -- biggest w or h (the whole canvas width)
 
 -- Point encoding: 2 characters per coordinate (base 64), x then y, so a point is 4 chars.
 local ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
@@ -139,6 +194,7 @@ end
 
 local function normalize(text: string): string
 	local s = string.lower(text)
+	s = string.gsub(s, "[%-_]", " ") -- "jack-o-lantern" = "jack o lantern"
 	s = string.gsub(s, "[^%a ]", "")
 	s = string.gsub(s, "%s+", " ")
 	s = string.gsub(s, "^ ", "")
@@ -155,6 +211,22 @@ local function parseEntry(entry: string): (string, { string })
 	end
 	return answers[1], normalized
 end
+
+-- A guess counts if it matches an answer, also with the spaces left out on either side
+-- ("hotdog" for "hot dog", "ant hill" for "anthill").
+local function matchesAnswer(answers: { string }, guess: string): boolean
+	if table.find(answers, guess) then
+		return true
+	end
+	local squeezed = string.gsub(guess, " ", "")
+	for _, answer in answers do
+		if string.gsub(answer, " ", "") == squeezed then
+			return true
+		end
+	end
+	return false
+end
+SketchGuess.matchesAnswer = matchesAnswer
 
 local function editDistance(a: string, b: string): number
 	if math.abs(#a - #b) > 2 then
@@ -194,12 +266,53 @@ local function doodlePoint(x: number, y: number): (number, number)
 end
 
 local doodleCache: { [string]: { any } } = {}
+local stampDoodleCache: { [string]: { any } } = {}
 
--- The moves a bot makes to draw `word` (shape moves only, so they're fine in any mode),
--- or nil when we have no doodle for it.
-function SketchGuess.doodleMoves(word: string?): { any }?
+-- A doodle length (400 across) in stamp size units (resolution = the canvas width).
+local function doodleSize(d: number): number
+	return math.clamp(math.floor(math.abs(d) / 400 * SketchGuess.resolution + 0.5), SketchGuess.stampMin, SketchGuess.stampMax)
+end
+
+-- A doodle as stamps (stamps tables): filled ovals and boxes become circle and square
+-- stamps, outlines rings and frames, and each straight line a stick.
+local function doodleStamps(word: string, Doodles: { [string]: any }): { any }
+	local moves = {}
+	for _, op in Doodles[word] do
+		if op[1] == "l" then
+			local pts, color, size = op[2], op[3], op[4]
+			local thick = (SketchGuess.sizes[size] or SketchGuess.sizes[2]) / 600 * 400 -- brush px on 600 -> doodle units
+			for i = 1, #pts - 3, 2 do
+				local x1, y1, x2, y2 = pts[i], pts[i + 1], pts[i + 2], pts[i + 3]
+				local cx, cy = doodlePoint((x1 + x2) / 2, (y1 + y2) / 2)
+				local len = math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+				local rot = math.floor(math.deg(math.atan2(y2 - y1, x2 - x1)) + 0.5) % 360
+				table.insert(moves, { kind = "stamp", stamp = "stick", color = color, x = cx, y = cy, w = doodleSize(len + thick), h = doodleSize(thick), rot = rot })
+			end
+		else
+			local fill = op[8] == true
+			local cx, cy = doodlePoint((op[2] + op[4]) / 2, (op[3] + op[5]) / 2)
+			local stamp = if op[1] == "e" then (if fill then "circle" else "ring") else (if fill then "square" else "frame")
+			table.insert(moves, { kind = "stamp", stamp = stamp, color = op[6], x = cx, y = cy, w = doodleSize(op[4] - op[2]), h = doodleSize(op[5] - op[3]), rot = 0 })
+		end
+	end
+	return moves
+end
+
+-- The moves a bot makes to draw `word`, or nil when we have no doodle for it. `doodles` is
+-- the server's doodle list. Shape moves (lines, boxes, ovals), or stamp moves at a stamps
+-- table (`stamps`).
+function SketchGuess.doodleMoves(word: string?, doodles: { [string]: any }?, stamps: boolean?): { any }?
+	local Doodles = doodles or NO_DOODLES
 	if not word or not Doodles[word] then
 		return nil
+	end
+	if stamps then
+		local list = stampDoodleCache[word]
+		if not list then
+			list = doodleStamps(word, Doodles)
+			stampDoodleCache[word] = list
+		end
+		return list
 	end
 	local cached = doodleCache[word]
 	if cached then
@@ -231,19 +344,19 @@ function SketchGuess.doodleMoves(word: string?): { any }?
 	return moves
 end
 
-local doodleWords: { string }? = nil
-local function doodleWordList(): { string }
-	if not doodleWords then
+-- Easy words a bot can draw (falls back to every easy word; the bot then gives up).
+local function doodleWordList(state): { string }
+	if not state.doodleWords then
 		local list = {}
-		for _, entry in Words.easy do
-			if Doodles[(parseEntry(entry))] then
+		for _, entry in state.words.easy do
+			if state.doodles[(parseEntry(entry))] then
 				table.insert(list, entry)
 			end
 		end
 		table.sort(list)
-		doodleWords = list
+		state.doodleWords = if #list > 0 then list else state.words.easy
 	end
-	return doodleWords :: { string }
+	return state.doodleWords
 end
 
 -- Game ----------------------------------------------------------------------------
@@ -273,11 +386,13 @@ function SketchGuess.new(seatCount: number, options: any?, rng: Random?)
 	local rules = (options and options.rules) or {}
 	local baseRounds = if type(rules.rounds) == "number" then math.clamp(math.floor(rules.rounds), 1, 3) else ROUNDS
 	local rounds = if #drawers <= 2 then baseRounds + 1 else baseRounds
+	-- Cap rounds, not turns, so everyone draws the same number of times.
+	rounds = math.max(1, math.min(rounds, MAX_TURNS // #drawers))
 	local drawSegments = DRAW_SEGMENTS
 	if type(rules.drawSeconds) == "number" then
 		drawSegments = math.clamp(math.floor(rules.drawSeconds / DRAW_SEGMENT + 0.5), 2, 6)
 	end
-	local tools = if rules.tools == "shapes" then "shapes" else "all"
+	local tools = if rules.tools == "shapes" or rules.tools == "stamps" then rules.tools else "all"
 	local wordChoices = if CHOICE_LEVELS[rules.wordChoices] then rules.wordChoices else 3
 	local hintShare = HINT_SHARE[rules.hints] or HINT_SHARE.normal
 	local customWords = nil
@@ -290,7 +405,12 @@ function SketchGuess.new(seatCount: number, options: any?, rng: Random?)
 		botLevel = (options and options.botLevel) or "medium",
 		botSeats = botSeats,
 		drawers = drawers,
-		totalTurns = math.min(#drawers * rounds, MAX_TURNS),
+		totalTurns = #drawers * rounds,
+		words = if options and type(options.wordBank) == "table" and type(options.wordBank.easy) == "table" then options.wordBank else SAMPLE_WORDS,
+		doodles = if options and type(options.doodles) == "table" then options.doodles else NO_DOODLES,
+		doodleWords = nil, -- built on first use
+		guessCounts = {}, -- [seat] = guesses this hint segment
+		lastGuessAt = {}, -- [seat] = server time (seconds into the segment) of their last guess
 		turnNumber = 0,
 		phase = "choose",
 		timerId = 0,
@@ -301,6 +421,7 @@ function SketchGuess.new(seatCount: number, options: any?, rng: Random?)
 		revealed = {}, -- [letter index] = true for hint letters
 		segment = 0,
 		strokes = {},
+		strokeRev = 0, -- goes up when strokes change other than by adding to the end
 		pointCount = 0,
 		guessed = {}, -- [seat] = order they guessed in (1 = first)
 		guessedCount = 0,
@@ -361,7 +482,7 @@ function SketchGuess._startTurn(state)
 	state.choiceLevels = table.clone(CHOICE_LEVELS[count])
 	if state.botSeats[state.drawer] then
 		-- Bots pick from the words they have a doodle for.
-		local list = doodleWordList()
+		local list = doodleWordList(state)
 		local choices = {}
 		for _ = 1, count do
 			local entry
@@ -394,7 +515,7 @@ function SketchGuess._startTurn(state)
 		for _, level in state.choiceLevels do
 			local entry
 			for _ = 1, 10 do
-				entry = pickWord(Words[level], state.usedWords, state.rng)
+				entry = pickWord(state.words[level] or state.words.easy, state.usedWords, state.rng)
 				if not table.find(choices, entry) then
 					break
 				end
@@ -408,6 +529,7 @@ function SketchGuess._startTurn(state)
 	state.revealed = {}
 	state.segment = 0
 	state.strokes = {}
+	state.strokeRev += 1
 	state.pointCount = 0
 	state.guessed = {}
 	state.guessedCount = 0
@@ -417,6 +539,8 @@ function SketchGuess._startTurn(state)
 	state.buckets = 0
 	state.lastPoints = {}
 	state.endReason = nil
+	state.guessCounts = {}
+	state.lastGuessAt = {}
 	nextTimer(state)
 end
 
@@ -558,7 +682,7 @@ function SketchGuess.getLegalMoves(state, seat: number): { any }
 	if state.phase == "choose" and seat == state.drawer then
 		return { { kind = "choose", index = 1 }, { kind = "choose", index = 2 }, { kind = "choose", index = 3 } }
 	elseif state.phase == "draw" and seat == state.drawer then
-		if SketchGuess.doodleMoves(state.word) then
+		if SketchGuess.doodleMoves(state.word, state.doodles, state.tools == "stamps") then
 			return {} -- a bot that has finished its doodle just waits
 		end
 		return { { kind = "giveUp" } }
@@ -586,6 +710,8 @@ function SketchGuess.validateMove(state, seat: number, move: any): (boolean, str
 		elseif state.phase == "draw" then
 			if kind == "undo" or kind == "clear" then
 				return true
+			elseif state.tools == "stamps" then
+				return SketchGuess._validateStamp(state, move)
 			elseif kind == "bucket" then
 				if not isInt(move.color, 1, #SketchGuess.palette) then
 					return false, "Bad brush"
@@ -653,6 +779,12 @@ function SketchGuess.validateMove(state, seat: number, move: any): (boolean, str
 	if state.phase ~= "draw" then
 		return false, "Wait for the next drawing"
 	end
+	if (kind == "chat" or kind == "guess") and type(move.elapsed) == "number" then
+		local last = state.lastGuessAt[seat]
+		if last and move.elapsed - last < GUESS_GAP then
+			return false, "Slow down!"
+		end
+	end
 	if kind == "chat" then
 		if not state.guessed[seat] then
 			return false, "Guess the word first"
@@ -684,9 +816,90 @@ function SketchGuess.validateMove(state, seat: number, move: any): (boolean, str
 		if normalize(move.text) == "" then
 			return false, "Type a guess"
 		end
+		if (state.guessCounts[seat] or 0) >= GUESS_LIMIT then
+			return false, "That's a lot of guesses! Wait for the next hint."
+		end
 		return true
 	end
 	return false, "Bad move"
+end
+
+-- A stamp's color, place, size and turn (shared by "stamp" and "stampEdit").
+local function validStampFields(def: any, move: any): (boolean, string?)
+	if not isInt(move.color, 1, #SketchGuess.palette) then
+		return false, "Bad color"
+	end
+	local res = SketchGuess.resolution
+	if not isInt(move.x, 0, res) or not isInt(move.y, 0, res) then
+		return false, "Bad spot"
+	end
+	if not isInt(move.w, SketchGuess.stampMin, SketchGuess.stampMax) or not isInt(move.h, SketchGuess.stampMin, SketchGuess.stampMax) then
+		return false, "Bad size"
+	end
+	if not def.stretch and move.w ~= move.h then
+		return false, "That stamp can't be stretched"
+	end
+	if not isInt(move.rot, 0, 359) then
+		return false, "Bad turn"
+	end
+	return true
+end
+
+-- Drawing moves at a stamps table: only stamps (and undo / clear, checked before).
+function SketchGuess._validateStamp(state, move: any): (boolean, string?)
+	local kind = move.kind
+	if kind == "stamp" then
+		local def = type(move.stamp) == "string" and SketchGuess.stampById[move.stamp]
+		if not def then
+			return false, "Bad stamp"
+		end
+		if #state.strokes >= MAX_STAMPS then
+			return false, `That's the most stamps for one drawing ({MAX_STAMPS}). Delete or move one.`
+		end
+		return validStampFields(def, move)
+	elseif kind == "stampEdit" or kind == "stampDelete" then
+		if not isInt(move.index, 1, #state.strokes) then
+			return false, "That stamp is gone"
+		end
+		if kind == "stampDelete" then
+			return true
+		end
+		local def = SketchGuess.stampById[state.strokes[move.index].stamp]
+		if not def then
+			return false, "That stamp is gone"
+		end
+		if move.layer ~= nil and move.layer ~= "front" and move.layer ~= "back" then
+			return false, "Bad move"
+		end
+		return validStampFields(def, move)
+	elseif kind == "stroke" or kind == "shape" or kind == "bucket" then
+		return false, "Stamps only at this table: pick a stamp and tap the canvas"
+	end
+	return false, "Not now"
+end
+
+local function stampStroke(stamp: string, move: any): any
+	return {
+		shape = "stamp",
+		stamp = stamp,
+		color = move.color,
+		size = 1,
+		rot = move.rot,
+		points = SketchGuess.encodePoints({ move.x, move.y, move.w, move.h }),
+		cont = false,
+	}
+end
+
+-- A stamp stroke's place and size: x, y, w, h (see Stamps above), or nil.
+function SketchGuess.stampBox(stroke: any): (number?, number?, number?, number?)
+	if stroke.shape ~= "stamp" then
+		return nil
+	end
+	local p = SketchGuess.decodePoints(stroke.points or "")
+	if not p or #p < 4 then
+		return nil
+	end
+	return p[1], p[2], p[3], p[4]
 end
 
 local function allGuessed(state): boolean
@@ -713,6 +926,28 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 		table.insert(state.strokes, { shape = move.shape, fill = move.fill == true, color = move.color, size = move.size, points = move.points, cont = false })
 		state.pointCount += 2
 		return
+	elseif kind == "stamp" then
+		table.insert(state.strokes, stampStroke(move.stamp, move))
+		state.pointCount += 2
+		return
+	elseif kind == "stampEdit" then
+		local s = stampStroke(state.strokes[move.index].stamp, move)
+		if move.layer == "front" then
+			table.remove(state.strokes, move.index)
+			table.insert(state.strokes, s)
+		elseif move.layer == "back" then
+			table.remove(state.strokes, move.index)
+			table.insert(state.strokes, 1, s)
+		else
+			state.strokes[move.index] = s
+		end
+		state.strokeRev += 1
+		return
+	elseif kind == "stampDelete" then
+		table.remove(state.strokes, move.index)
+		state.pointCount -= 2
+		state.strokeRev += 1
+		return
 	elseif kind == "bucket" then
 		table.insert(state.strokes, { shape = "bucket", color = move.color, size = 1, points = move.points, cont = false })
 		state.pointCount += 2
@@ -726,6 +961,7 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 		end
 		return
 	elseif kind == "chat" then
+		state.lastGuessAt[seat] = if type(move.elapsed) == "number" then move.elapsed else nil
 		-- Only the drawer and players who got it see this (it may name the word).
 		local shown = if type(move.shown) == "string" and move.shown ~= "" then move.shown else "(hidden)"
 		addFeed(state, { kind = "chat", seat = seat, text = shown, secret = true })
@@ -742,11 +978,13 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 				break
 			end
 		end
+		state.strokeRev += 1
 		return
 	elseif kind == "clear" then
 		state.strokes = {}
 		state.pointCount = 0
 		state.buckets = 0
+		state.strokeRev += 1
 		return
 	elseif kind == "voteSkip" or kind == "report" then
 		if kind == "report" then
@@ -773,6 +1011,7 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 			local drawer = state.drawer
 			state.lastPoints = {}
 			state.strokes = {}
+			state.strokeRev += 1
 			state.pointCount = 0
 			state.strikes[drawer] = (state.strikes[drawer] or 0) + 1
 			endDrawing(state, "Skipped by vote")
@@ -785,8 +1024,10 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 	end
 
 	-- A guess.
+	state.guessCounts[seat] = (state.guessCounts[seat] or 0) + 1
+	state.lastGuessAt[seat] = if type(move.elapsed) == "number" then move.elapsed else nil
 	local guess = normalize(move.text)
-	if table.find(state.answers, guess) then
+	if matchesAnswer(state.answers, guess) then
 		state.guessedCount += 1
 		state.guessed[seat] = state.guessedCount
 		-- Up to 200 for guessing before any hint (less as hints appear), up to 200 for
@@ -795,8 +1036,11 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 		local points = 100 + math.floor(200 * timeLeft + 0.5) + math.max(0, 200 - 40 * (state.guessedCount - 1))
 		state.scores[seat] += points
 		state.lastPoints[seat] = (state.lastPoints[seat] or 0) + points
-		state.scores[state.drawer] += DRAWER_POINTS
-		state.lastPoints[state.drawer] = (state.lastPoints[state.drawer] or 0) + DRAWER_POINTS
+		-- The drawer earns half of what each guesser got, so quick, widely guessed
+		-- drawings pay best (skribbl style) and drawing isn't a score penalty.
+		local drawerPoints = points // 2
+		state.scores[state.drawer] += drawerPoints
+		state.lastPoints[state.drawer] = (state.lastPoints[state.drawer] or 0) + drawerPoints
 		addFeed(state, { kind = "correct", seat = seat, text = "guessed the word!" })
 		if allGuessed(state) then
 			endDrawing(state, "Everyone guessed it!")
@@ -838,6 +1082,8 @@ function SketchGuess.onTimeout(state)
 		chooseWord(state, 1)
 	elseif state.phase == "draw" then
 		state.segment += 1
+		state.guessCounts = {} -- a fresh hint, fresh guesses
+		state.lastGuessAt = {} -- the segment clock restarts with the next hint
 		if state.segment >= state.drawSegments then
 			endDrawing(state, "Time's up!")
 		else
@@ -853,11 +1099,33 @@ function SketchGuess.onTimeout(state)
 	end
 end
 
+-- Party chat: while a drawing is on, the drawer and everyone who guessed it talk only
+-- among themselves, so nobody can spoil the word in normal Roblox chat.
+function SketchGuess.getChatGroup(state, seat: number): string?
+	if state.phase ~= "draw" or state.finished then
+		return nil
+	end
+	if seat == state.drawer or state.guessed[seat] ~= nil then
+		return "knows"
+	end
+	return nil
+end
+
+-- Guesses and green-chat lines from players the viewer may not chat with (Roblox chat
+-- settings) show as "(hidden)".
+function SketchGuess.hideText(view: any, hidden: { [number]: boolean })
+	for _, entry in view.feed or {} do
+		if (entry.kind == "guess" or entry.kind == "chat") and hidden[entry.seat] then
+			entry.text = "(hidden)"
+		end
+	end
+end
+
 function SketchGuess.getResult(state): GameModule.Result?
 	if not state.finished then
 		return nil
 	end
-	local best = -1
+	local best = -math.huge
 	for seat = 1, state.seatCount do
 		best = math.max(best, state.scores[seat])
 	end
@@ -920,6 +1188,8 @@ function SketchGuess.getView(state, seat: number?)
 		hint = if state.phase == "draw" then SketchGuess.hint(state) else nil,
 		-- The gallery carries its own drawings, so the last one isn't sent twice.
 		strokes = if state.phase == "gallery" or state.phase == "done" then {} else GameModule.copy(state.strokes),
+		strokeRev = state.strokeRev,
+		maxStamps = MAX_STAMPS,
 		gallery = if state.phase == "gallery" then GameModule.copy(SketchGuess.galleryOf(state)) else nil,
 		likes = likeCount(state.likes),
 		youLiked = if seat ~= nil then state.likes[seat] else nil,
@@ -958,13 +1228,13 @@ end
 local function botDraw(state): any?
 	if state.phase == "choose" then
 		for i, entry in state.choices do
-			if Doodles[(parseEntry(entry))] then
+			if state.doodles[(parseEntry(entry))] then
 				return { kind = "choose", index = i }
 			end
 		end
 		return { kind = "giveUp" }
 	end
-	local moves = SketchGuess.doodleMoves(state.word)
+	local moves = SketchGuess.doodleMoves(state.word, state.doodles, state.tools == "stamps")
 	if not moves then
 		return { kind = "giveUp" }
 	end
@@ -997,7 +1267,7 @@ function SketchGuess.chooseBotMove(state, seat: number, rng: Random): any?
 	if rng:NextNumber() < chance then
 		return { kind = "guess", text = state.word, shown = state.word }
 	end
-	local pools = { Words.easy, Words.medium, Words.hard }
+	local pools = { state.words.easy, state.words.medium or state.words.easy, state.words.hard or state.words.easy }
 	for _ = 1, 5 do
 		local pool = pools[rng:NextInteger(1, 3)]
 		local wrong = (parseEntry(pool[rng:NextInteger(1, #pool)]))

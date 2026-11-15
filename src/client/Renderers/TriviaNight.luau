@@ -157,6 +157,20 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 
 	local lastPhaseKey = ""
 	local wasPick = false
+	local isDocked = false
+
+	local function placeText(view: any): string?
+		if not view.place then
+			return nil
+		end
+		local ahead = view.ahead and snapshot.seats[view.ahead]
+		if view.place == 1 then
+			return "You're 1st!"
+		elseif ahead then
+			return `You're {Rules.ordinal(view.place)}, {view.gap} behind {ahead.name}`
+		end
+		return `You're {Rules.ordinal(view.place)}`
+	end
 
 	local function render()
 		local view = snapshot.view
@@ -174,6 +188,11 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 				HudKit.callout((if Kit.inPreview(container) then nil else container:FindFirstAncestorWhichIsA("ScreenGui")) or root, `🎯 {string.upper(view.pickedCategory)}!`, Theme.Accent)
 			end
 			wasPick = view.phase == "pick"
+			-- Table view hides the footer, so the place pops up once per reveal instead.
+			local place = placeText(view)
+			if view.phase == "reveal" and isDocked and place then
+				HudKit.callout((if Kit.inPreview(container) then nil else container:FindFirstAncestorWhichIsA("ScreenGui")) or root, place, Theme.Accent)
+			end
 		end
 
 		counter.Text = if view.phase == "done" then "" else `Question {view.number} of {view.total}`
@@ -250,6 +269,10 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 			if snapshot.yourSeat and view.yourAnswer == nil then
 				footer.Text ..= "  (you ran out of time)"
 			end
+			local place = placeText(view)
+			if place then
+				footer.Text ..= `   ·   {place}`
+			end
 		elseif view.phase == "pick" then
 			footer.Text = `{view.answeredCount} of {#snapshot.seats} voted`
 		else
@@ -265,6 +288,7 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		-- Table view: the screen over the table shows the question, so the dock gets just
 		-- the four answers in one row.
 		setDocked = function(docked: boolean)
+			isDocked = docked
 			top.Visible = not docked
 			footer.Visible = not docked
 			if docked then

@@ -9,16 +9,30 @@ local President = {}
 
 function President.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout)
 	local history = Cards.pileHistory()
+	local clearedShown = false
 	return Cards.shell(boardCF, parent, layout, function(folder, view)
 		for seat, count in view.handCounts or {} do
 			Scene.hand(folder, boardCF, layout, seat, count)
 		end
 		-- Every play this round lands on one messy pile, turned toward whoever played it.
+		-- Cards that clear the pile (2s, 8s) stay on it until the next play.
 		local pile = view.pile
 		local action = view.lastAction
-		if not pile or #(pile.cards or {}) == 0 then
+		local fresh = history.seen(Cards.actionKey(action, view.round))
+		if action and action.cleared and action.cards then
+			if fresh then
+				history.clear()
+				history.add(action.seat, action.cards)
+				clearedShown = true
+			end
+		elseif not pile or #(pile.cards or {}) == 0 then
 			history.clear()
-		elseif history.seen(Cards.actionKey(action, view.round)) and action.kind == "play" then
+			clearedShown = false
+		elseif fresh and action.kind == "play" then
+			if clearedShown then
+				history.clear()
+				clearedShown = false
+			end
 			history.add(action.seat, action.cards or {})
 		end
 		if pile and #history.items == 0 then
@@ -26,6 +40,10 @@ function President.create(boardCF: CFrame, parent: Instance, layout: Scene.Layou
 		end
 		if pile then
 			history.setTop(pile.cards or {})
+		end
+		-- Who passed gets a "Pass" bubble, like Thirty-One's knock.
+		if action and action.kind == "pass" then
+			Cards.speech(folder, boardCF, layout, action.seat, "Pass", Color3.fromRGB(220, 220, 235))
 		end
 		Cards.messyPile(folder, boardCF, layout, Cards.center(boardCF, 0), history.items, function(id)
 			return Scene.playingFront(PlayingCards, id)

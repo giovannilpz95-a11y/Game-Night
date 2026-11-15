@@ -11,6 +11,13 @@
 -- bucket (a flood fill, see shared/SketchFill), undo and clear. Keyboard: P L B O F, Ctrl+Z.
 -- Pen lines are drawn locally right away and sent in small chunks (about 5 a second) so
 -- everyone sees the drawing build up live. Touch follows one finger only.
+-- Stamps tables (view.tools == "stamps", the launch form): no pen, lines, boxes, ovals or
+-- fill. The drawer picks a stamp and taps the canvas to place it (drag to move it as it
+-- lands); tapping a placed stamp selects it, drag moves it, and the buttons make it
+-- bigger / smaller, wider / narrower, taller / shorter, turn it 15 degrees, send it to
+-- the front or back, or delete it. A color tap recolors the selected stamp. Keyboard:
+-- Delete, R / Shift+R turn, + / - size, Esc deselects; the mouse wheel sizes it. Changes
+-- show at once (a local copy) and edits go to the server a moment later, batched.
 -- Guessers: type guesses in the box. Near misses get a private "close!" note. Once you
 -- got it, the box chats with the drawer and the others who got it (nobody else sees it).
 -- Like / dislike: thumbs under the drawing, and at the reveal. After the last drawing the
@@ -69,6 +76,12 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	local hiddenTurn: number? = nil -- turn the player hid by hand
 	local hiddenDrawers: { [number]: boolean } = {} -- seats the player reported
 	local rerender: () -> ()
+	local armedStamp = Rules.stamps[1].id -- stamps tables: the stamp a tap places
+	local selected: number? = nil -- stamps tables: index of the selected stamp
+	local stampEditButtons: { TextButton } = {}
+	local stampButtons: { [string]: TextButton } = {}
+	local stampAction: (string) -> () -- set in the Drawing section
+	local recolorSelected: () -> ()
 
 	local root = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = container })
 
@@ -157,6 +170,12 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			b.BackgroundColor3 = if id == tool then Theme.Accent else Theme.PanelLight
 			b.TextColor3 = if id == tool then Theme.AccentText else Theme.Text
 		end
+		for id, b in stampButtons do
+			b.BackgroundColor3 = if id == armedStamp then Theme.Accent else Theme.PanelLight
+		end
+		for _, b in stampEditButtons do
+			b.TextColor3 = if selected then Theme.Text else Theme.SubText
+		end
 		local shapeTool = tool == "rect" or tool == "ellipse"
 		fillButton.BackgroundColor3 = if fill and shapeTool then Theme.Accent else Theme.PanelLight
 		fillButton.TextColor3 = if fill and shapeTool then Theme.AccentText else (if shapeTool then Theme.Text else Theme.SubText)
@@ -176,6 +195,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		Kit.onPress(b, function()
 			brushColor = i
 			refreshTools()
+			recolorSelected()
 		end)
 		swatchButtons[i] = b
 	end
@@ -218,17 +238,77 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 		refreshTools()
 	end)
-	toolButton("Undo", 30, function()
+	toolButton("Undo", 80, function()
+		selected = nil
 		sendMove({ kind = "undo" })
 	end)
-	toolButton("Clear", 31, function()
+	toolButton("Clear", 81, function()
+		selected = nil
 		sendMove({ kind = "clear" })
 	end)
-	toolButton("Skip", 32, function()
+	toolButton("Skip", 82, function()
 		sendMove({ kind = "giveUp" })
 	end, Theme.Bad)
+	-- Stamps tables: the stamp picker and the buttons that change the selected stamp.
+	for i, def in Rules.stamps do
+		local b = Kit.new("TextButton", { Text = "", BackgroundColor3 = Theme.PanelLight, BorderSizePixel = 0, LayoutOrder = 40 + i, Visible = false, Parent = tools }, { Kit.corner(8) })
+		-- A small copy of the stamp, its default shape, in ink.
+		local scale = 26 / math.max(def.w, def.h)
+		local holder = Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(1, 1), Parent = b })
+		SketchCanvas.stampFrame(holder, def.id, SketchCanvas.color(1), 0, 0, def.w * scale, def.h * scale, 0)
+		Kit.onPress(b, function()
+			armedStamp = def.id
+			refreshTools()
+		end)
+		stampButtons[def.id] = b
+	end
+	local STAMP_EDITS = {
+		{ id = "bigger", label = "Bigger" },
+		{ id = "smaller", label = "Smaller" },
+		{ id = "wider", label = "Wider" },
+		{ id = "narrower", label = "Narrower" },
+		{ id = "taller", label = "Taller" },
+		{ id = "shorter", label = "Shorter" },
+		{ id = "turn", label = "Turn" },
+		{ id = "turnBack", label = "Turn back" },
+		{ id = "front", label = "Front" },
+		{ id = "back", label = "Back" },
+		{ id = "delete", label = "Delete" },
+	}
+	for i, e in STAMP_EDITS do
+		local b = toolButton(e.label, 60 + i, function()
+			stampAction(e.id)
+		end)
+		b.Visible = false
+		table.insert(stampEditButtons, b)
+	end
 	refreshTools()
-	local TOOL_COUNT = #Rules.sizes + #TOOLS + 4
+	local PEN_TOOL_COUNT = #Rules.sizes + #TOOLS + 4
+	local STAMP_TOOL_COUNT = #Rules.stamps + #STAMP_EDITS + 3
+	local TOOL_COUNT = PEN_TOOL_COUNT
+
+	-- Pen tools or stamp tools, for the table's mode.
+	local stampTools = false
+	local function setStampTools(on: boolean)
+		if on == stampTools then
+			return
+		end
+		stampTools = on
+		for _, b in sizeButtons do
+			b.Visible = not on
+		end
+		for _, t in TOOLS do
+			toolButtons[t.id].Visible = not on
+		end
+		fillButton.Visible = not on
+		for _, b in stampButtons do
+			b.Visible = on
+		end
+		for _, b in stampEditButtons do
+			b.Visible = on
+		end
+		TOOL_COUNT = if on then STAMP_TOOL_COUNT else PEN_TOOL_COUNT
+	end
 
 	-- Guessers' buttons -------------------------------------------------------------------
 
@@ -522,6 +602,9 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 
 	local rendered = 0 -- how many of the server's strokes are on the canvas
 	local renderedLast: string? = nil
+	local renderedRev: number? = nil -- the view's strokeRev they came from (edits, undo...)
+	local renderStamps: () -> ()
+	local isStampDrawer: () -> boolean
 	local raster = SketchCanvas.newRaster() -- where fill buckets spread
 
 	-- Drawer's own lines and shapes that the server hasn't echoed yet.
@@ -543,6 +626,10 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 	end
 
 	local function redrawAll()
+		if isStampDrawer() then
+			renderStamps()
+			return
+		end
 		strokeLayer:ClearAllChildren()
 		raster:reset()
 		local strokes = snapshot and snapshot.view.strokes or {}
@@ -551,11 +638,18 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 		rendered = #strokes
 		renderedLast = if rendered > 0 then strokes[rendered].points else nil
+		renderedRev = snapshot and snapshot.view.strokeRev
 	end
 
 	local function syncStrokes()
+		if isStampDrawer() then
+			renderStamps()
+			return
+		end
 		local strokes = snapshot.view.strokes
-		local consistent = #strokes >= rendered and (rendered == 0 or strokes[rendered].points == renderedLast)
+		local consistent = #strokes >= rendered
+			and (rendered == 0 or strokes[rendered].points == renderedLast)
+			and snapshot.view.strokeRev == renderedRev
 		if not consistent then
 			redrawAll()
 			clearPreview()
@@ -580,6 +674,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 		rendered = #strokes
 		renderedLast = if rendered > 0 then strokes[rendered].points else nil
+		renderedRev = snapshot.view.strokeRev
 	end
 
 	canvas:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
@@ -685,6 +780,300 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		table.insert(previewSentAt, os.clock())
 	end
 
+	-- Stamps -------------------------------------------------------------------------
+	-- The drawer works on a local copy of the stamps so every change shows at once. The
+	-- server's strokes replace it as soon as they include our last change (or after 2 s).
+
+	local STAMP_STEP = 1.2 -- Bigger / Smaller / Wider... multiply or divide by this
+	local TURN_STEP = 15 -- degrees per Turn
+	local EDIT_DELAY = 0.2 -- seconds an edit waits so quick changes go as one move
+	local localStamps: { any } = {} -- the drawer's copy of the strokes (all stamps)
+	local stampFrames: { Frame } = {}
+	-- What the server's strokes look like once it has all our sent changes.
+	local pendingBase: { rev: number, count: number, at: number }? = nil
+	local adoptedKey = ""
+	local queuedEdit: { index: number, at: number }? = nil
+	local stampDrag: { index: number, start: Vector2, x: number, y: number, isNew: boolean, moved: boolean, input: InputObject }? = nil
+	local selection = Kit.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 4, Parent = canvas }, {
+		Kit.new("UIStroke", { Thickness = 2, Color = Theme.Accent }),
+	})
+	local stampHint = Kit.label("Pick a stamp below, then tap the canvas", {
+		TextColor3 = Color3.fromRGB(150, 150, 160),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		Parent = canvas,
+	})
+
+	function isStampDrawer(): boolean
+		local view = snapshot and snapshot.view
+		return view ~= nil and view.tools == "stamps" and amDrawing()
+	end
+
+	local function stampBoxOf(stroke: any): (number, number, number, number, number)
+		local x, y, w, h = Rules.stampBox(stroke)
+		return x or 0, y or 0, w or Rules.stampMin, h or Rules.stampMin, stroke.rot or 0
+	end
+
+	local function setStampBox(stroke: any, x: number, y: number, w: number, h: number)
+		local def = Rules.stampById[stroke.stamp]
+		w = math.clamp(math.floor(w + 0.5), Rules.stampMin, Rules.stampMax)
+		h = math.clamp(math.floor(h + 0.5), Rules.stampMin, Rules.stampMax)
+		if def and not def.stretch then
+			h = w
+		end
+		x = math.clamp(math.floor(x + 0.5), 0, RES)
+		y = math.clamp(math.floor(y + 0.5), 0, RES)
+		stroke.points = Rules.encodePoints({ x, y, w, h })
+	end
+
+	local function updateSelection()
+		local stroke = selected and localStamps[selected]
+		if not stroke then
+			selected = nil
+			selection.Visible = false
+			return
+		end
+		local x, y, w, h = SketchCanvas.stampPixels(stroke, canvasSize)
+		selection.Visible = x ~= nil
+		if x then
+			selection.Position = UDim2.fromOffset(x, y :: number)
+			selection.Size = UDim2.fromOffset((w :: number) + 8, (h :: number) + 8)
+			selection.Rotation = stroke.rot or 0
+		end
+	end
+
+	local stampTurn = -1
+	function renderStamps()
+		local view = snapshot.view
+		if view.turnNumber ~= stampTurn then
+			stampTurn = view.turnNumber
+			selected, pendingBase, queuedEdit, stampDrag = nil, nil, nil, nil
+		end
+		-- Take the server's stamps unless it hasn't caught up with our last change yet.
+		local serverStrokes = view.strokes or {}
+		local waiting = pendingBase ~= nil
+			and ((view.strokeRev or 0) < pendingBase.rev or #serverStrokes ~= pendingBase.count)
+			and os.clock() - pendingBase.at < 2
+		if not waiting and not stampDrag and not queuedEdit then
+			pendingBase = nil
+			local last = serverStrokes[#serverStrokes]
+			local key = `{view.turnNumber}:{view.strokeRev}:{#serverStrokes}:{if last then last.points .. (last.rot or 0) else ""}`
+			if key ~= adoptedKey then
+				adoptedKey = key
+				localStamps = {}
+				for i, stroke in serverStrokes do
+					localStamps[i] = table.clone(stroke)
+				end
+			end
+		end
+		strokeLayer:ClearAllChildren()
+		raster:reset()
+		table.clear(stampFrames)
+		for i, stroke in localStamps do
+			local x, y, w, h = SketchCanvas.stampPixels(stroke, canvasSize)
+			if x then
+				stampFrames[i] = (SketchCanvas.stampFrame(strokeLayer, stroke.stamp, SketchCanvas.color(stroke.color), x, y :: number, w :: number, h :: number, stroke.rot or 0))
+			end
+		end
+		if selected and selected > #localStamps then
+			selected = nil
+		end
+		updateSelection()
+		stampHint.Visible = #localStamps == 0
+		-- The plain path redraws from scratch once we stop being the stamp drawer.
+		rendered, renderedLast, renderedRev = 0, nil, -1
+		refreshTools()
+	end
+
+	-- Call after sending a stamp move; bumpsRev for edits and deletes (see strokeRev).
+	local function markPending(bumpsRev: boolean)
+		local base = pendingBase or { rev = snapshot.view.strokeRev or 0, count = 0, at = 0 }
+		base.rev += if bumpsRev then 1 else 0
+		base.count = #localStamps
+		base.at = os.clock()
+		pendingBase = base
+	end
+
+	local function editMove(index: number, layer: string?): any
+		local stroke = localStamps[index]
+		local x, y, w, h, rot = stampBoxOf(stroke)
+		return { kind = "stampEdit", index = index, color = stroke.color, x = x, y = y, w = w, h = h, rot = rot, layer = layer }
+	end
+
+	local function flushEdit()
+		local q = queuedEdit
+		queuedEdit = nil
+		if q and localStamps[q.index] then
+			sendMove(editMove(q.index))
+			markPending(true)
+		end
+	end
+
+	local function queueEdit(index: number)
+		if queuedEdit and queuedEdit.index ~= index then
+			flushEdit()
+		end
+		queuedEdit = { index = index, at = os.clock() }
+	end
+
+	-- Topmost stamp under a screen point.
+	local function stampAt(screen: Vector2): number?
+		local rel = screen - canvas.AbsolutePosition
+		for i = #localStamps, 1, -1 do
+			local stroke = localStamps[i]
+			local x, y, w, h = SketchCanvas.stampPixels(stroke, canvasSize)
+			if x then
+				local a = math.rad(stroke.rot or 0)
+				local dx, dy = rel.X - x, rel.Y - (y :: number)
+				local lx = dx * math.cos(a) + dy * math.sin(a)
+				local ly = -dx * math.sin(a) + dy * math.cos(a)
+				if math.abs(lx) <= (w :: number) / 2 + 6 and math.abs(ly) <= (h :: number) / 2 + 6 then
+					return i
+				end
+			end
+		end
+		return nil
+	end
+
+	local function stampBegin(input: InputObject)
+		flushEdit()
+		local pos = Vector2.new(input.Position.X, input.Position.Y)
+		local hit = stampAt(pos)
+		if hit then
+			selected = hit
+			local x, y = stampBoxOf(localStamps[hit])
+			stampDrag = { index = hit, start = pos, x = x, y = y, isNew = false, moved = false, input = input }
+			updateSelection()
+			refreshTools()
+			return
+		end
+		local view = snapshot.view
+		if #localStamps >= (view.maxStamps or Rules.maxStamps) then
+			Juice.nope(stampButtons[armedStamp])
+			return
+		end
+		local def = Rules.stampById[armedStamp]
+		local x, y = toCanvas(pos)
+		local stroke = { shape = "stamp", stamp = def.id, color = brushColor, size = 1, rot = 0, cont = false, points = "" }
+		setStampBox(stroke, x, y, def.w * RES, def.h * RES)
+		table.insert(localStamps, stroke)
+		selected = #localStamps
+		local sx, sy = stampBoxOf(stroke)
+		stampDrag = { index = selected :: number, start = pos, x = sx, y = sy, isNew = true, moved = false, input = input }
+		renderStamps()
+		Audio.play("pop", { volume = 0.4 })
+	end
+
+	local function stampMove(screen: Vector2)
+		local d = stampDrag :: any
+		local stroke = localStamps[d.index]
+		if not stroke then
+			return
+		end
+		local delta = (screen - d.start) / canvas.AbsoluteSize * RES
+		if delta.Magnitude > 8 then
+			d.moved = true
+		end
+		local _, _, w, h = stampBoxOf(stroke)
+		setStampBox(stroke, d.x + delta.X, d.y + delta.Y, w, h)
+		local frame = stampFrames[d.index]
+		local px, py = SketchCanvas.stampPixels(stroke, canvasSize)
+		if frame and px then
+			frame.Position = UDim2.fromOffset(px, py :: number)
+		end
+		updateSelection()
+	end
+
+	local function stampEnd()
+		local d = stampDrag
+		stampDrag = nil
+		if not d then
+			return
+		end
+		local stroke = localStamps[d.index]
+		if not stroke then
+			return
+		end
+		if d.isNew then
+			local x, y, w, h, rot = stampBoxOf(stroke)
+			sendMove({ kind = "stamp", stamp = stroke.stamp, color = stroke.color, x = x, y = y, w = w, h = h, rot = rot })
+			markPending(false)
+		elseif d.moved then
+			queueEdit(d.index)
+		end
+	end
+
+	function recolorSelected()
+		if not isStampDrawer() or not selected or not localStamps[selected] then
+			return
+		end
+		localStamps[selected].color = brushColor
+		queueEdit(selected)
+		renderStamps()
+	end
+
+	function stampAction(action: string)
+		if not isStampDrawer() then
+			return
+		end
+		local index = selected
+		local stroke = index and localStamps[index]
+		if not stroke or not index then
+			Juice.nope(stampEditButtons[1])
+			return
+		end
+		local def = Rules.stampById[stroke.stamp]
+		local x, y, w, h, rot = stampBoxOf(stroke)
+		if action == "delete" then
+			flushEdit()
+			table.remove(localStamps, index)
+			selected = nil
+			sendMove({ kind = "stampDelete", index = index })
+			markPending(true)
+		elseif action == "front" or action == "back" then
+			flushEdit()
+			table.remove(localStamps, index)
+			if action == "front" then
+				table.insert(localStamps, stroke)
+				selected = #localStamps
+			else
+				table.insert(localStamps, 1, stroke)
+				selected = 1
+			end
+			sendMove(editMove(selected :: number, action))
+			markPending(true)
+		else
+			local stretch = def and def.stretch
+			if action == "bigger" then
+				w, h = w * STAMP_STEP, h * STAMP_STEP
+			elseif action == "smaller" then
+				w, h = w / STAMP_STEP, h / STAMP_STEP
+			elseif action == "wider" or action == "narrower" or action == "taller" or action == "shorter" then
+				if not stretch then
+					Audio.play("pop", { volume = 0.3 })
+					return -- heart, star, flower and sun keep their shape
+				end
+				if action == "wider" then
+					w *= STAMP_STEP
+				elseif action == "narrower" then
+					w /= STAMP_STEP
+				elseif action == "taller" then
+					h *= STAMP_STEP
+				else
+					h /= STAMP_STEP
+				end
+			elseif action == "turn" then
+				stroke.rot = (rot + TURN_STEP) % 360
+			elseif action == "turnBack" then
+				stroke.rot = (rot - TURN_STEP) % 360
+			end
+			setStampBox(stroke, x, y, w, h)
+			queueEdit(index)
+		end
+		renderStamps()
+	end
+
 	-- The ScreenGui ignores the GUI inset, so input positions and AbsolutePosition
 	-- already share one space.
 	local function screenPos(input: InputObject): Vector2
@@ -709,6 +1098,12 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			return
 		end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if isStampDrawer() then
+				if not stampDrag then
+					stampBegin(input)
+				end
+				return
+			end
 			if tool == "bucket" then
 				-- One tap pours the fill. It shows when the server echoes it (the area depends
 				-- on the whole drawing); the empty placeholder keeps the preview queue in step.
@@ -740,6 +1135,26 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end)
 	local moved = UserInputService.InputChanged:Connect(function(input)
+		if stampDrag then
+			local d = stampDrag
+			local isMouse = input.UserInputType == Enum.UserInputType.MouseMovement and d.input.UserInputType == Enum.UserInputType.MouseButton1
+			if isMouse or (input.UserInputType == Enum.UserInputType.Touch and input == d.input) then
+				if isStampDrawer() then
+					stampMove(Vector2.new(input.Position.X, input.Position.Y))
+				else
+					stampDrag = nil
+				end
+			end
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseWheel and isStampDrawer() and selected then
+			-- The wheel over the canvas sizes the selected stamp.
+			local rel = Vector2.new(input.Position.X, input.Position.Y) - canvas.AbsolutePosition
+			if rel.X >= 0 and rel.Y >= 0 and rel.X <= canvas.AbsoluteSize.X and rel.Y <= canvas.AbsoluteSize.Y then
+				stampAction(if input.Position.Z > 0 then "bigger" else "smaller")
+			end
+			return
+		end
 		if not drawing then
 			return
 		end
@@ -759,6 +1174,13 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		end
 	end)
 	local ended = UserInputService.InputEnded:Connect(function(input)
+		if stampDrag then
+			local d = stampDrag
+			if input == d.input or (input.UserInputType == Enum.UserInputType.MouseButton1 and d.input.UserInputType == Enum.UserInputType.MouseButton1) then
+				stampEnd()
+			end
+			return
+		end
 		if not drawing then
 			return
 		end
@@ -781,6 +1203,9 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		stopDrawing()
 	end)
 	local heartbeat = RunService.Heartbeat:Connect(function(dt)
+		if queuedEdit and os.clock() - queuedEdit.at >= EDIT_DELAY and not stampDrag then
+			flushEdit()
+		end
 		if drawing and liveTool == "pen" then
 			sinceSend += dt
 			if sinceSend >= SEND_EVERY then
@@ -802,6 +1227,24 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			sendMove({ kind = "undo" })
 			return
 		end
+		if isStampDrawer() then
+			local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			local key = input.KeyCode
+			if key == Enum.KeyCode.Delete or key == Enum.KeyCode.Backspace then
+				stampAction("delete")
+			elseif key == Enum.KeyCode.R then
+				stampAction(if shift then "turnBack" else "turn")
+			elseif key == Enum.KeyCode.Equals or key == Enum.KeyCode.KeypadPlus then
+				stampAction("bigger")
+			elseif key == Enum.KeyCode.Minus or key == Enum.KeyCode.KeypadMinus then
+				stampAction("smaller")
+			elseif key == Enum.KeyCode.Escape then
+				selected = nil
+				updateSelection()
+				refreshTools()
+			end
+			return
+		end
 		local pick = SHORTCUTS[input.KeyCode]
 		if pick and not ctrl and toolButtons[pick] and toolButtons[pick].Visible then
 			tool = pick
@@ -820,7 +1263,7 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 		Parent = canvas,
 	}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), Kit.new("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(120, 120, 130) }) })
 	local function updateCursor()
-		local show = isDrawer() and not overlay.Visible and UserInputService.MouseEnabled and not UserInputService.TouchEnabled
+		local show = isDrawer() and not isStampDrawer() and not overlay.Visible and UserInputService.MouseEnabled and not UserInputService.TouchEnabled
 		local rel = mousePos - canvas.AbsolutePosition
 		local inside = rel.X >= 0 and rel.Y >= 0 and rel.X <= canvas.AbsoluteSize.X and rel.Y <= canvas.AbsoluteSize.Y
 		cursor.Visible = show and inside
@@ -1155,11 +1598,19 @@ function SketchGuess.create(container: Frame, sendMove: (any) -> ())
 			wordBar.Text = ""
 		end
 
+		setStampTools(view.tools == "stamps")
 		if view.tools == "shapes" and tool == "pen" then
 			tool = "line"
 			refreshTools()
 		end
-		toolButtons.pen.Visible = view.tools ~= "shapes"
+		if view.tools ~= "stamps" then
+			toolButtons.pen.Visible = view.tools ~= "shapes"
+		end
+		if not isStampDrawer() then
+			stampHint.Visible = false
+			selection.Visible = false
+			stampDrag = nil
+		end
 
 		local drawerSeat = snapshot.seats[view.drawer]
 		local drawerIsBot = view.drawerIsBot or (drawerSeat ~= nil and drawerSeat.kind == "bot")

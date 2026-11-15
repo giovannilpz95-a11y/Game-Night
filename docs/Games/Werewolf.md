@@ -18,7 +18,9 @@ The classic hidden-role party game (the folk game also called Mafia) for 5-8 sea
 - Sounds: `night`, `dawn` and `caught` in `shared/Sounds.luau`, played by the renderer on phase changes.
 - Stats: wins as a werewolf, wolves found as Seer, saves as Guardian, games survived. Badge "Pack Leader" (5 wolf wins).
 - Tests: `tests/Werewolf.spec.luau`.
-- Last words: a seat voted or eaten out gets a 12 s `lastWords` phase to type one line (`textField = "text"`, filtered by MatchService into `shown`). Bots say a canned line.
+- Last words: a seat voted or eaten out gets a 12 s `lastWords` phase to type one line (`textField = "text"`, filtered by MatchService into `shown`). Players who may not chat with the speaker (Roblox chat settings) see "(hidden by chat settings)" (`hideText`), and the table screen never shows players' words. Bots say a canned line.
 - Hunter (house rule, from 6 players by default): when out, gets a 15 s `hunter` phase to `shoot` someone (0 = no shot). Witch (from 7): one heal (sees the wolves' pick once every wolf has picked, `view.witchSees`) and one poison per game.
 - Dead chat: `getChatGroup` puts players who are out in the "out" group; party chat only delivers "out" messages to other "out" players (`ChatView.shouldDeliver`).
+- Pack chat: at night, living wolves with a living packmate are in the "wolves" group, so their chat reaches only the pack (they still read everyone else). A lone wolf keeps public chat.
+- Wolf count: the "2" house rule is capped at a third of the seats (`maxWolves`), so 2 wolves need 6+ players.
 - Not yet: Cupid, voice push-to-talk hints.

@@ -9,11 +9,15 @@
 --             everyone has voted. Skipped when the deck has only one category.
 -- After QUESTIONS questions the highest score wins (ties share the win).
 --
--- Scoring: the first correct answer earns 1000, each later one 100 less (never under
--- 500). Answer order is decided by the server, so it can't be faked by a client.
+-- Scoring (Kahoot style): a correct answer earns 1000 x (1 - (time taken / timer) / 2),
+-- so 500 to 1000 by its own speed (under half a second is the full 1000). The answer
+-- time is stamped by the server (elapsedField), so a client can't fake it.
 -- A streak of correct answers adds STREAK_BONUS per question in the streak (capped).
 --
--- The correct answer is never in a view until the reveal.
+-- The correct answer is never in a view until the reveal, and the question bank is
+-- server-only: the server passes it in options.questionBank (ServerScriptService Data),
+-- so clients never get the answers. Without it (picker previews, tests) a tiny sample
+-- bank is used.
 --
 -- House rules (options.rules): questions = 5..20, answerSeconds = 10 | 15 | 25,
 -- speed (default on: earlier right answers score more; off: every right answer is 1000),
@@ -24,9 +28,19 @@
 -- our bank when set.
 --
 -- Moves: { kind = "answer", choice = 1..4 }   { kind = "pick", choice = 1..#offer }
+-- (`elapsed` on an answer is set by the server; anything a client sends is overwritten.)
 
 local GameModule = require(script.Parent.Parent.GameModule)
-local Questions = require(script.Parent.Data.TriviaQuestions)
+
+-- Only for previews and tests: real matches always get the server's bank.
+local SAMPLE = {
+	{ c = "Science", q = "What is H2O better known as?", a = { "Water", "Salt", "Hydrogen", "Sugar" } },
+	{ c = "Animals", q = "How many legs does a spider have?", a = { "8", "6", "10", "4" } },
+	{ c = "Geography", q = "Which is the largest ocean?", a = { "Pacific", "Atlantic", "Indian", "Arctic" } },
+	{ c = "Food", q = "Which fruit is dried to make raisins?", a = { "Grapes", "Plums", "Apples", "Figs" } },
+	{ c = "Sports", q = "How many players does a soccer team have on the field?", a = { "11", "9", "7", "12" } },
+	{ c = "Music", q = "How many strings does a standard guitar have?", a = { "6", "4", "5", "8" } },
+}
 
 local TriviaNight = {}
 
@@ -43,6 +57,18 @@ local PICK_SECONDS = 8
 local ROUND = 3 -- questions per category vote
 
 TriviaNight.questionCount = QUESTIONS
+TriviaNight.elapsedField = "elapsed"
+TriviaNight.SAMPLE = SAMPLE
+
+-- Kahoot's formula: 1000 for an instant answer, 500 for one on the buzzer.
+function TriviaNight.speedPoints(elapsed: number?, seconds: number): number
+	local t = if type(elapsed) == "number" and elapsed == elapsed then elapsed else 0
+	if t < 0.5 then
+		return 1000
+	end
+	local share = math.clamp(t / math.max(seconds, 1), 0, 1)
+	return math.floor(1000 * (1 - share / 2) + 0.5)
+end
 
 local BOT_ACCURACY = { easy = 0.4, medium = 0.65, hard = 0.85 }
 
@@ -52,7 +78,10 @@ function TriviaNight.new(seatCount: number, options: any?, rng: Random?)
 	local rules = (options and options.rules) or {}
 	local count = if type(rules.questions) == "number" then math.clamp(math.floor(rules.questions), 1, 30) else QUESTIONS
 	local seconds = if type(rules.answerSeconds) == "number" then math.clamp(rules.answerSeconds, 5, 60) else QUESTION_SECONDS
-	local bank = Questions
+	local bank = SAMPLE
+	if options and type(options.questionBank) == "table" and #options.questionBank > 0 then
+		bank = options.questionBank
+	end
 	if options and type(options.customQuestions) == "table" and #options.customQuestions > 0 then
 		bank = options.customQuestions
 	end
@@ -321,7 +350,7 @@ function TriviaNight.applyMove(state, seat: number, move: any)
 		state.streaks[seat] += 1
 		GameModule.addStat(state, seat, "correct")
 		GameModule.maxStat(state, seat, "streak", state.streaks[seat])
-		local points = if state.speed == false then 1000 else math.max(500, 1000 - 100 * (state.correctCount - 1))
+		local points = if state.speed == false then 1000 else TriviaNight.speedPoints(move.elapsed, state.answerSeconds)
 		if state.streakBonus ~= false then
 			points += math.min(MAX_STREAK_BONUS, STREAK_BONUS * (state.streaks[seat] - 1))
 		end
@@ -362,7 +391,7 @@ function TriviaNight.getResult(state): GameModule.Result?
 	if not state.finished then
 		return nil
 	end
-	local best = -1
+	local best = -math.huge
 	for seat = 1, state.seatCount do
 		best = math.max(best, state.scores[seat])
 	end
@@ -379,6 +408,24 @@ function TriviaNight.getScores(state): { [number]: number }
 	return table.clone(state.scores)
 end
 
+local function ordinal(n: number): string
+	local tens = n % 100
+	local suffix = if tens >= 11 and tens <= 13 then "th" elseif n % 10 == 1 then "st" elseif n % 10 == 2 then "nd" elseif n % 10 == 3 then "rd" else "th"
+	return `{n}{suffix}`
+end
+TriviaNight.ordinal = ordinal
+
+-- Place on the scoreboard (ties share a place: 1st, 1st, 3rd).
+local function placeOf(state, seat: number): number
+	local place = 1
+	for other = 1, state.seatCount do
+		if state.scores[other] > state.scores[seat] then
+			place += 1
+		end
+	end
+	return place
+end
+
 function TriviaNight.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, state.seatCount do
@@ -391,7 +438,10 @@ function TriviaNight.getSeatInfo(state): { [number]: string }
 			local got = state.lastPoints[seat] or 0
 			tag = if state.answers[seat] == state.correct then `  +{got}` elseif got < 0 then `  {got}` else "  +0"
 		end
-		info[seat] = `{state.scores[seat]} pts{tag}`
+		-- Your place shows from the first reveal on (before that everyone is tied at 0).
+		local ranked = state.seatCount > 1 and (state.index > 1 or state.phase == "reveal")
+		local place = if ranked then `{ordinal(placeOf(state, seat))} · ` else ""
+		info[seat] = `{place}{state.scores[seat]} pts{tag}`
 	end
 	return info
 end
@@ -455,6 +505,19 @@ function TriviaNight.getView(state, seat: number?)
 		end
 	end
 	view.answeredSeats = answeredSeats
+	if seat and state.seatCount > 1 then
+		-- "You're 2nd, 300 behind Ava": your place and the gap to the seat just ahead.
+		view.place = placeOf(state, seat)
+		local ahead, gap = nil, math.huge
+		for other = 1, state.seatCount do
+			local diff = state.scores[other] - state.scores[seat]
+			if diff > 0 and diff < gap then
+				ahead, gap = other, diff
+			end
+		end
+		view.ahead = ahead
+		view.gap = if ahead then gap else nil
+	end
 	if state.phase == "reveal" then
 		view.correct = state.correct
 		view.answersBySeat = table.clone(state.answers)

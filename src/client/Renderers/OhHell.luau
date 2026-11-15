@@ -27,6 +27,38 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 		return CardTable.nameOf(snapshot, seat)
 	end
 
+	local function signed(n: number): string
+		return if n >= 0 then `+{n}` else tostring(n)
+	end
+
+	local function trumpText(view: any): string
+		return if view.noTrump then "No trump" else `Trump {PlayingCards.suitSymbols[view.trump]} {PlayingCards.suitNames[view.trump]}`
+	end
+
+	-- The score sheet: every hand's bid / took / points per player (Trickster, BGA).
+	local function openScores()
+		local view = snapshot.view
+		local n = #snapshot.seats
+		local columns = { "Hand" }
+		for seat = 1, n do
+			table.insert(columns, nameOf(seat))
+		end
+		local rows = {}
+		for _, h in view.history or {} do
+			local cells = { `{h.round} · {h.size}{if h.trump then PlayingCards.suitSymbols[h.trump] else "NT"}` }
+			for seat = 1, n do
+				local r = h.rows[tostring(seat)]
+				table.insert(cells, if r then `{r.bid}/{r.took} {signed(r.points)}` else "")
+			end
+			table.insert(rows, cells)
+		end
+		local totals = { "Total" }
+		for seat = 1, n do
+			table.insert(totals, tostring(view.scores[seat]))
+		end
+		CardTable.scoreSheet(ui, "Scores · bid/took points", columns, rows, totals)
+	end
+
 	function render()
 		local view = snapshot.view
 		-- Last trick peek (Trickster, Spades Plus, Windows Hearts): look back at the trick
@@ -62,7 +94,7 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 
 		Kit.clear(ui.content)
 		-- Round info and the trump card, top left.
-		Kit.label(`Round {view.round}/{view.rounds} · {view.handSize} {if view.handSize == 1 then "card" else "cards"}\nTrump {PlayingCards.suitSymbols[view.trump]} {PlayingCards.suitNames[view.trump]}`, {
+		Kit.label(`Round {view.round}/{view.rounds} · {view.handSize} {if view.handSize == 1 then "card" else "cards"}\n{trumpText(view)}`, {
 			TextSize = 12,
 			TextColor3 = Theme.SubText,
 			TextYAlignment = Enum.TextYAlignment.Top,
@@ -71,7 +103,7 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 			ZIndex = 6,
 			Parent = ui.content,
 		})
-		if view.phase ~= "round" and view.phase ~= "done" then
+		if view.phase ~= "round" and view.phase ~= "done" and not view.noTrump then
 			local trumpSlot = PlayingCard.slot({ Position = UDim2.new(0, 10, 0, 44), Size = UDim2.new(0.3, 0, 0.5, -44), Parent = ui.content })
 			PlayingCard.show(trumpSlot, view.trumpCard)
 		end
@@ -89,23 +121,28 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 			})
 		end
 
+		local summaryTitle, summaryLines = nil, nil
+		local total = 0
+		for _, b in view.bids do
+			total += b
+		end
 		if view.phase == "round" or view.phase == "done" then
 			local lines = {}
 			for seat = 1, n do
 				local s = (view.roundSummary or {})[tostring(seat)]
 				if s then
-					local made = if s.bid == s.took then `made {s.bid} → +{s.points}` else `bid {s.bid}, took {s.took} → 0`
+					local made = if s.bid == s.took then `made {s.bid} → {signed(s.points)}` else `bid {s.bid}, took {s.took} → {signed(s.points)}`
 					table.insert(lines, `{nameOf(seat)}: {made}`)
 				end
 			end
+			if view.tied then
+				table.insert(lines, "Tied at the top: one more hand!")
+			end
 			local title = if view.phase == "done" then "Final round over" else `Round {view.round} over · next: {view.nextHandSize or "?"} cards`
+			summaryTitle, summaryLines = title, lines
 			CardTable.feltText(ui.content, title, 0.06, 18).TextColor3 = Theme.Accent
 			Kit.label(table.concat(lines, "\n"), { TextSize = if n > 5 then 13 else 15, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, Position = UDim2.fromScale(0.05, 0.22), Size = UDim2.fromScale(0.9, 0.76), ZIndex = 6, Parent = ui.content })
 		elseif view.phase == "bid" then
-			local total = 0
-			for _, b in view.bids do
-				total += b
-			end
 			CardTable.feltText(ui.content, "Bidding", 0.3, 22).TextColor3 = Theme.Accent
 			CardTable.feltText(ui.content, `Bids so far: {total} of {view.handSize} tricks`, 0.52, 16)
 		else
@@ -121,7 +158,28 @@ function OhHell.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 
+		-- Table view: the felt is hidden, so the round, trump, bids so far, the hand summary
+		-- and the last trick come up on screen instead.
+		local tricksTaken = 0
+		for seat = 1, n do
+			tricksTaken += view.tricks[seat] or 0
+		end
+		local info = {
+			`Round {view.round}/{view.rounds} · {view.handSize} {if view.handSize == 1 then "card" else "cards"}`,
+			trumpText(view) .. (if view.trumpMustBreak then " (not broken)" else ""),
+			if view.phase == "bid" then `Bids so far: {total} of {view.handSize}` else `Bids {total} of {view.handSize} · {tricksTaken} taken`,
+		}
+		if me and view.bids[tostring(me)] ~= nil then
+			table.insert(info, `You: bid {view.bids[tostring(me)]} · won {view.tricks[me]} · {view.scores[me]} pts`)
+		end
+		CardTable.info(ui, info)
+		CardTable.notice(ui, summaryTitle, summaryLines)
+		CardTable.trickPanel(ui, snapshot, if peekLast and view.lastTrick then view.lastTrick.plays else nil, if view.lastTrick then view.lastTrick.winner else nil)
+
 		local buttons = {}
+		if #(view.history or {}) > 0 then
+			table.insert(buttons, { text = "Scores", color = Theme.Panel, onClick = openScores })
+		end
 		if canPeek then
 			table.insert(buttons, { text = if peekLast then "Back to trick" else "Last trick", color = Theme.Panel, onClick = function()
 				peekLast = not peekLast
