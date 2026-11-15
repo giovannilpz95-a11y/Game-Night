@@ -100,15 +100,17 @@ WordTiles.boards = {
 		name = "Quick board",
 		size = 11,
 		premium = buildPremium(11, {
-			W = { { 0, 3 } },
+			-- One triple word in the middle of each edge: no two share a line, so no 9x words.
+			W = { { 0, 5 } },
 			w = { { 1, 1 }, { 3, 3 } },
 			L = { { 0, 0 }, { 2, 4 } },
-			l = { { 1, 3 }, { 4, 4 }, { 0, 5 } },
+			l = { { 1, 3 }, { 4, 4 }, { 0, 2 } },
 		}),
-		-- 60 tiles: the usual mix, scaled down so the bag runs out on a smaller board.
+		-- 60 tiles: the usual mix, scaled down so the bag runs out on a smaller board
+		-- (three U's so the Q isn't stuck).
 		bag = {
-			a = 5, b = 1, c = 1, d = 2, e = 7, f = 1, g = 2, h = 1, i = 5, j = 1, k = 1, l = 2, m = 1,
-			n = 4, o = 5, p = 1, q = 1, r = 4, s = 3, t = 4, u = 2, v = 1, w = 1, x = 1, y = 1, z = 1,
+			a = 5, b = 1, c = 1, d = 2, e = 6, f = 1, g = 2, h = 1, i = 5, j = 1, k = 1, l = 2, m = 1,
+			n = 4, o = 5, p = 1, q = 1, r = 4, s = 3, t = 4, u = 3, v = 1, w = 1, x = 1, y = 1, z = 1,
 			["?"] = 1,
 		},
 	},
@@ -116,8 +118,9 @@ WordTiles.boards = {
 		name = "Classic board",
 		size = 15,
 		premium = buildPremium(15, {
-			W = { { 0, 4 } },
-			w = { { 1, 1 }, { 3, 3 }, { 2, 7 } },
+			-- Triple words 8 apart along an edge, so a 9x needs a 9-letter word.
+			W = { { 0, 3 } },
+			w = { { 1, 1 }, { 4, 4 }, { 2, 7 } },
 			L = { { 0, 0 }, { 2, 5 }, { 5, 5 } },
 			l = { { 0, 7 }, { 1, 4 }, { 3, 6 }, { 6, 6 } },
 		}),
@@ -383,7 +386,7 @@ function WordTiles.new(seatCount: number, options: any?, rng: Random?)
 		bag = bag,
 		racks = {},
 		scores = {},
-		turn = 1,
+		turn = 1, -- MatchService shuffles the seats (and rotates them on a rematch)
 		turns = 0,
 		scoreless = 0,
 		lastPlay = nil,
@@ -539,10 +542,7 @@ local function finish(state, reason: string)
 end
 
 local function addLog(state, entry)
-	table.insert(state.log, entry)
-	while #state.log > 8 do
-		table.remove(state.log, 1)
-	end
+	table.insert(state.log, entry) -- the whole game, like the apps' move history
 end
 
 function WordTiles.applyMove(state, seat: number, move: any)
@@ -596,6 +596,7 @@ function WordTiles.applyMove(state, seat: number, move: any)
 	end
 
 	if move.kind == "place" and #rack == 0 and #state.bag == 0 then
+		state.preAdjust = table.clone(state.scores) -- for the tie-break
 		-- Out of tiles: collect what's left on everyone else's rack.
 		local bonus = 0
 		for other = 1, state.seatCount do
@@ -609,7 +610,14 @@ function WordTiles.applyMove(state, seat: number, move: any)
 		finish(state, "Out of tiles")
 		return
 	end
-	if state.scoreless >= math.max(SCORELESS_LIMIT, state.seatCount * 2) or state.turns >= TURN_LIMIT then
+	-- Words With Friends doesn't end a game at 0-0: keep going until someone scores.
+	local anyScore = false
+	for other = 1, state.seatCount do
+		anyScore = anyScore or state.scores[other] ~= 0
+	end
+	local limit = math.max(SCORELESS_LIMIT, state.seatCount * 2)
+	if state.scoreless >= (if anyScore then limit else limit * 3) or state.turns >= TURN_LIMIT then
+		state.preAdjust = table.clone(state.scores)
 		for other = 1, state.seatCount do
 			state.scores[other] -= rackValue(state.racks[other])
 		end
@@ -632,6 +640,21 @@ function WordTiles.getResult(state): GameModule.Result?
 		if state.scores[seat] == best then
 			table.insert(winners, seat)
 		end
+	end
+	-- A tie goes to whoever was ahead before the leftover tiles were counted (Hasbro rule).
+	local before = state.preAdjust
+	if #winners > 1 and before then
+		local top = -math.huge
+		for _, seat in winners do
+			top = math.max(top, before[seat])
+		end
+		local kept = {}
+		for _, seat in winners do
+			if before[seat] == top then
+				table.insert(kept, seat)
+			end
+		end
+		winners = kept
 	end
 	return {
 		winners = winners,
@@ -777,6 +800,7 @@ local function findPlays(state, rack: { string }, dict: WordTrie.Trie): { any }
 
 	local plays = {}
 	local bestIndex = 0
+	local topIndex = 0
 	local bagEmpty = #state.bag == 0
 
 	-- dir 1 = across (line = row), dir 2 = down (line = column).
@@ -894,13 +918,32 @@ local function findPlays(state, rack: { string }, dict: WordTrie.Trie): { any }
 			local score = mainSum * wordMult + cross + (if newCount == RACK_SIZE then BINGO_BONUS else 0)
 			local leave = if bagEmpty then 0 else leaveValue(counts, blanks)
 			local play = { score = score, leave = leave, tiles = tiles, length = depth }
+			-- Once the store is full, keep both the best play by score + leave (the hard bot)
+			-- and the top-scoring play (hindsight) by overwriting some other slot.
 			if #plays < MAX_STORED then
 				table.insert(plays, play)
 				if bestIndex == 0 or score + leave > plays[bestIndex].score + plays[bestIndex].leave then
 					bestIndex = #plays
 				end
-			elseif score + leave > plays[bestIndex].score + plays[bestIndex].leave then
-				plays[bestIndex] = play
+				if topIndex == 0 or score > plays[topIndex].score then
+					topIndex = #plays
+				end
+			else
+				local better = score + leave > plays[bestIndex].score + plays[bestIndex].leave
+				local higher = score > plays[topIndex].score
+				if better or higher then
+					local slot = 1
+					while slot == bestIndex or slot == topIndex do
+						slot += 1
+					end
+					plays[slot] = play
+					if better then
+						bestIndex = slot
+					end
+					if higher then
+						topIndex = slot
+					end
+				end
 			end
 		end
 
@@ -1078,6 +1121,15 @@ local function exchangeMove(rack: { string })
 	return { kind = "exchange", letters = letters }
 end
 
+-- A person whose turn clock ran out passes (the apps never play a word for you, and a
+-- bot's word could beat what they'd have played themselves).
+function WordTiles.chooseAfkMove(state, seat: number, _rng: Random): any?
+	if state.finished or seat ~= state.turn then
+		return nil
+	end
+	return { kind = "pass" }
+end
+
 function WordTiles.chooseBotMove(state, seat: number, rng: Random)
 	local dict = getDictionary()
 	if state.finished or seat ~= state.turn or not dict then
@@ -1112,11 +1164,32 @@ function WordTiles.chooseBotMove(state, seat: number, rng: Random)
 		end
 		choice = pool[rng:NextInteger(1, #pool)]
 	elseif level == "hard" then
+		-- Bag empty: going out ends the game and wins twice the others' leftover tiles
+		-- (they lose theirs, we gain them), so it's worth more than its face score.
+		local outBonus = 0
+		if #state.bag == 0 then
+			for other = 1, state.seatCount do
+				if other ~= seat then
+					outBonus += rackValue(state.racks[other])
+				end
+			end
+			outBonus *= 2
+		end
+		local function value(play): number
+			if #state.bag == 0 then
+				return play.score + (if #play.tiles == #rack then outBonus else 0)
+			end
+			return play.score + play.leave
+		end
 		choice = plays[1]
 		for _, play in plays do
-			if play.score + play.leave > choice.score + choice.leave then
+			if value(play) > value(choice) then
 				choice = play
 			end
+		end
+		-- A strong player swaps a bad rack (VVWWUUQ) instead of taking a few points.
+		if #state.bag >= EXCHANGE_MIN_BAG and choice.score < 12 and choice.score + choice.leave < 8 then
+			return exchangeMove(rack)
 		end
 	else
 		-- A decent casual player: everyday-length words (up to 6 letters, never all 7

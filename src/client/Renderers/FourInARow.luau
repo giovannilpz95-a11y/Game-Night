@@ -1,6 +1,7 @@
 -- Four in a Row board: hover a column to see a ghost disc, tap anywhere in it to drop.
 -- With Pop Out, tapping a column whose bottom disc is yours asks "Drop" or "Pop out".
--- New discs fall into place with a bounce.
+-- New discs fall into place with a bounce. After a pop the popped disc slides out of the
+-- bottom and the column drops one row; on your turn your poppable bottom discs glow.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -111,10 +112,13 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 	end
 	openChoice = function(c: number)
 		closeChoice()
+		-- Kept inside the board at the edge columns, so it never runs off a phone screen.
+		local anchorX = if c <= 2 then 0 elseif c >= COLS - 1 then 1 else 0.5
+		local x = if c <= 2 then (c - 1) / COLS elseif c >= COLS - 1 then c / COLS else (c - 0.5) / COLS
 		local frame = Kit.new("Frame", {
 			BackgroundColor3 = Theme.Panel,
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new((c - 0.5) / COLS, 0, 1, 6),
+			AnchorPoint = Vector2.new(anchorX, 0),
+			Position = UDim2.new(x, 0, 1, 6),
 			Size = UDim2.fromOffset(190, 44),
 			ZIndex = 20,
 			Parent = board,
@@ -185,10 +189,37 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 		end)
 	end
 
+	local lastPopSeen = -1
 	local function render()
 		local view = snapshot.view
 		if not myTurn() then
 			closeChoice()
+		end
+		-- A new pop: redraw that column so every disc slides down one row, and slide the
+		-- popped disc out of the bottom.
+		local last = view.lastMove
+		local popColumn: number? = nil
+		if last and last.pop and view.moveCount ~= lastPopSeen then
+			lastPopSeen = view.moveCount
+			popColumn = last.column
+			for r = 1, ROWS do
+				shown[last.column * 10 + r] = -1
+			end
+			local popper = if view.winner or view.isDraw then view.turn else 3 - view.turn
+			local bottom = holes[last.column][1]
+			local gone = discVisual(popper)
+			gone.AnchorPoint = bottom.AnchorPoint
+			gone.Size = bottom.Size
+			gone.Position = bottom.Position
+			gone.ZIndex = 3
+			gone.Parent = board
+			local below = bottom.Position + UDim2.fromScale(0, 1.5 / ROWS)
+			local tween = TweenService:Create(gone, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = below })
+			tween:Play()
+			tween.Completed:Connect(function()
+				gone:Destroy()
+			end)
+			Audio.play("piece", { volume = 0.4 })
 		end
 		local winning: { [number]: boolean } = {}
 		for _, cell in view.winningCells or {} do
@@ -206,8 +237,13 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 					if v ~= 0 then
 						local disc = discVisual(v)
 						disc.Parent = hole
-						local last = view.lastMove
-						if last and last.column == c and last.row == r then
+						if popColumn == c then
+							-- Slide down one row (a hole is 0.88 of a row tall).
+							disc.Position = UDim2.fromScale(0, -1 / 0.88)
+							TweenService:Create(disc, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+								Position = UDim2.fromScale(0, 0),
+							}):Play()
+						elseif last and not last.pop and last.column == c and last.row == r then
 							-- Drop from above the board.
 							local fallRows = ROWS - r + 1.5
 							disc.Position = UDim2.new(0, 0, -fallRows, 0)
@@ -222,6 +258,14 @@ function FourInARow.create(container: Frame, sendMove: (any) -> ())
 					Kit.new("UIStroke", { Name = "WinStroke", Color = Theme.Accent, Thickness = 4, Parent = hole })
 				elseif not winning[key] and stroke then
 					stroke:Destroy()
+				end
+				-- Pop Out: your bottom discs you could pop this turn.
+				local poppable = r == 1 and myTurn() and view.offer == nil and Rules.canPop(view, snapshot.yourSeat, c)
+				local glow = hole:FindFirstChild("PopGlow")
+				if poppable and not glow then
+					Kit.new("UIStroke", { Name = "PopGlow", Color = Color3.new(1, 1, 1), Thickness = 3, Transparency = 0.25, Parent = hole })
+				elseif not poppable and glow then
+					glow:Destroy()
 				end
 			end
 		end

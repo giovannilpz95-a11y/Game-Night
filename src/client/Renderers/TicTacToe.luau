@@ -178,6 +178,11 @@ function TicTacToe.create(container: Frame, sendMove: (any) -> ())
 	return {
 		update = function(newSnapshot: any)
 			snapshot = newSnapshot
+			local view = snapshot.view
+			hint.Text = if view.classic and view.misere then "Classic upside down: marks stay. Don't make three in a row!"
+				elseif view.classic then "Classic rules: marks stay. A full board is a draw."
+				elseif view.misere then "Upside down: making three in a row loses. You keep 3 marks."
+				else "You keep 3 marks. The faded one disappears on your next move."
 			paint()
 		end,
 		destroy = function()

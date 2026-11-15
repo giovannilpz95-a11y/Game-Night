@@ -142,4 +142,54 @@ return function(T)
 		-- It blunders now and then on purpose, but should block nearly every time.
 		T.ok(blocked >= 40, `blocked {blocked} of 50`)
 	end)
+
+	T.test("classic Hard never loses, whatever the other side plays", function()
+		local losses = 0
+		local function explore(s, hardSeat)
+			local result = TicTacToe.getResult(s)
+			if result then
+				if result.winners[1] and result.winners[1] ~= hardSeat then
+					losses += 1
+				end
+				return
+			end
+			if s.turn == hardSeat then
+				local copy = GameModule.copy(s)
+				copy.botLevel = "hard"
+				local move = TicTacToe.chooseBotMove(copy, hardSeat, T.Random.new(#copy.placed[1] * 10 + #copy.placed[2]))
+				local nextState = GameModule.copy(s)
+				TicTacToe.applyMove(nextState, hardSeat, move)
+				explore(nextState, hardSeat)
+			else
+				for _, move in TicTacToe.getLegalMoves(s, s.turn) do
+					local nextState = GameModule.copy(s)
+					TicTacToe.applyMove(nextState, s.turn, move)
+					explore(nextState, hardSeat)
+				end
+			end
+		end
+		for hardSeat = 1, 2 do
+			explore(TicTacToe.new(2, { rules = { vanish = false } }), hardSeat)
+		end
+		T.eq(losses, 0)
+	end)
+
+	T.test("classic is a draw as soon as no line can be made", function()
+		local s = TicTacToe.new(2, { rules = { vanish = false } })
+		for _, cell in { 5, 1, 9, 3, 2, 8, 4, 6 } do
+			play(s, s.turn, cell)
+		end
+		local result = TicTacToe.getResult(s)
+		T.ok(result and result.isDraw, "drawn with one square left")
+		T.eq(result.reason, "No line can be made")
+	end)
+
+	T.test("Hard takes a win with vanishing marks", function()
+		local s = TicTacToe.new(2, { botLevel = "hard" })
+		-- X has 1 and 2; O has 4 and 5. X to move wins at 3.
+		for _, cell in { 1, 4, 2, 5 } do
+			play(s, s.turn, cell)
+		end
+		T.eq(TicTacToe.chooseBotMove(s, 1, T.Random.new(1)).cell, 3)
+	end)
 end
