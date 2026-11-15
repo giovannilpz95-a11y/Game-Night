@@ -176,6 +176,7 @@ function Werewolf.new(seatCount: number, options: any?, rng: Random?)
 		alive = alive,
 		wolfCount = wolves,
 		withGuardian = withGuardian,
+		withSeer = table.find(pool, "seer") ~= nil,
 		withHunter = table.find(pool, "hunter") ~= nil,
 		withWitch = table.find(pool, "witch") ~= nil,
 		potions = { heal = true, poison = true }, -- the Witch's, each usable once
@@ -198,6 +199,7 @@ function Werewolf.new(seatCount: number, options: any?, rng: Random?)
 		statements = {}, -- [seat] = { kind, target?, wolf? }, this day
 		votes = {}, -- [seat] = target (0 = skip), this day
 		history = {}, -- every statement ever: { day, seat, kind, target?, wolf? }
+		nights = {}, -- what each dawn told the village: { day, caught?, poisoned?, saved }
 		voteHistory = {}, -- { day, seat, target }
 		peeks = {}, -- the Seer's checks: [target] = isWolf
 		lastShield = nil, -- the Guardian may not shield the same seat two nights running
@@ -414,6 +416,8 @@ local function resolveNight(state)
 	end
 	state.nightPicks = {}
 	state.witchHeal, state.witchPoison, state.witchDone = false, nil, false
+	local ln = state.lastNight
+	table.insert(state.nights, { day = state.day, caught = ln.caught, poisoned = ln.poisoned, saved = ln.saved })
 	setPhase(state, "dawn")
 end
 
@@ -732,10 +736,8 @@ function Werewolf.applyMove(state, seat: number, move: any)
 		-- The step always runs its full length, so nothing shows when she's done.
 		if move.potion == "heal" then
 			state.witchHeal = true
-			GameModule.addStat(state, seat, "potions")
 		elseif move.potion == "poison" then
 			state.witchPoison = move.target
-			GameModule.addStat(state, seat, "potions")
 		else
 			state.witchDone = true
 		end
@@ -776,9 +778,7 @@ function Werewolf.applyMove(state, seat: number, move: any)
 		end
 	elseif state.phase == "vote" then
 		state.votes[seat] = move.target
-		if move.target ~= 0 then
-			table.insert(state.voteHistory, { day = state.day, seat = seat, target = move.target })
-		end
+		table.insert(state.voteHistory, { day = state.day, seat = seat, target = move.target }) -- 0 = skipped
 		local all = true
 		for s = 1, state.seatCount do
 			if state.alive[s] and state.votes[s] == nil then
@@ -969,6 +969,7 @@ function Werewolf.getView(state, seat: number?)
 		reveal = state.reveal,
 		wolfCount = state.wolfCount,
 		withGuardian = state.withGuardian,
+		withSeer = state.withSeer,
 		withHunter = state.withHunter,
 		withWitch = state.withWitch,
 		lastWords = GameModule.copy(state.lastWords),
@@ -980,6 +981,10 @@ function Werewolf.getView(state, seat: number?)
 		actedSeats = actedSeats,
 		lastNight = if state.lastNight then table.clone(state.lastNight) else nil,
 		outOrder = GameModule.copy(state.outOrder),
+		-- The village log (all public): each dawn, every statement and every vote so far.
+		nights = GameModule.copy(state.nights),
+		history = GameModule.copy(state.history),
+		voteHistory = GameModule.copy(state.voteHistory),
 		winner = state.winner,
 		reason = state.reason,
 	}

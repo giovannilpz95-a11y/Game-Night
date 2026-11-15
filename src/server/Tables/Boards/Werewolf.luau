@@ -1,7 +1,8 @@
 -- Werewolf at the table: a little village of cottages round a campfire in the middle,
 -- under a four-sided screen that shows the phase to the room (moon at night, sun by
 -- day, the open vote, who is out). Each seat has a lantern: lit while that player is in,
--- dark once they're out, with their role card laid face up if roles are shown.
+-- dark once they're out, with their role card laid face up if roles are shown. During
+-- the vote each lantern shows how many votes that player has.
 -- The board only ever gets the spectator view, so nothing secret reaches it.
 -- In Table view each lantern is a tap spot ("seat:N", Scene.tappable): players pick who
 -- to catch, check, shield or vote out by tapping that player's lantern.
@@ -64,11 +65,18 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 		Models.house(model, spot, cottage[i + 1], 0.7, Color3.fromRGB(120, 62, 48))
 	end
 
-	local lanterns: { [number]: { flame: BasePart, spot: CFrame } } = {}
+	local lanterns: { [number]: { flame: BasePart, spot: CFrame, votes: TextLabel } } = {}
 	local cards: { [number]: Instance } = {}
 	for seat in layout.seats do
 		local spot = Scene.seatSpot(boardCF, layout, seat, 0.7)
-		lanterns[seat] = { flame = lantern(model, spot * CFrame.new(-0.55, 0, 0), seat), spot = spot }
+		local flame = lantern(model, spot * CFrame.new(-0.55, 0, 0), seat)
+		-- The open vote at each lantern: "🗳 2" floats over it while votes are on show.
+		local votes = Scene.floatText(model, spot * CFrame.new(-0.55, 1.15, 0), 1.2, 0.45, "", {
+			TextColor3 = Color3.fromRGB(255, 226, 150),
+			TextStrokeColor3 = Color3.fromRGB(30, 20, 10),
+			TextStrokeTransparency = 0.2,
+		})
+		lanterns[seat] = { flame = flame, spot = spot, votes = votes }
 	end
 	model.Parent = parent
 
@@ -133,16 +141,22 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 					tally[t] = (tally[t] or 0) + 1
 				end
 			end
-			local row = 0
+			local rows = {}
 			for seat = 1, view.seatCount do
-				local n = tally[seat]
-				if n and row < 4 then
-					Scene.screenText(frame, `{nameOf(seat)}  {string.rep("●", n)}`, UDim2.fromScale(0.08, 0.56 + row * 0.1), UDim2.fromScale(0.84, 0.09), {
-						TextColor3 = Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1),
-						TextXAlignment = Enum.TextXAlignment.Left,
-					})
-					row += 1
+				if tally[seat] then
+					table.insert(rows, seat)
 				end
+			end
+			-- Every seat with votes fits: two columns once there are more than four.
+			local cols = if #rows > 4 then 2 else 1
+			local perCol = math.max(1, math.ceil(#rows / cols))
+			local h = math.min(0.1, 0.42 / perCol)
+			for i, seat in rows do
+				local col, row = (i - 1) // perCol, (i - 1) % perCol
+				Scene.screenText(frame, `{nameOf(seat)}  {string.rep("●", tally[seat])}`, UDim2.fromScale(0.06 + col * 0.46, 0.56 + row * h), UDim2.fromScale(if cols == 2 then 0.44 else 0.86, h * 0.92), {
+					TextColor3 = Scene.SEAT_COLORS[seat] or Color3.new(1, 1, 1),
+					TextXAlignment = Enum.TextXAlignment.Left,
+				})
 			end
 		else
 			local inCount = 0
@@ -165,7 +179,14 @@ function Werewolf.create(boardCF: CFrame, parent: Instance, layout: Scene.Layout
 			screen.Color = if night then SCREEN_NIGHT else SCREEN_DAY
 			fire.Color = if night then Color3.fromRGB(255, 120, 50) else FLAME
 			fire.Size = if night then Vector3.new(0.4, 0.55, 0.4) else Vector3.new(0.5, 0.75, 0.5)
+			local tally = {}
+			for _, t in view.votes or {} do
+				if t ~= 0 then
+					tally[t] = (tally[t] or 0) + 1
+				end
+			end
 			for seat, l in lanterns do
+				l.votes.Text = if tally[seat] then `🗳 {tally[seat]}` else ""
 				local alive = view.alive and view.alive[seat]
 				l.flame.Color = if alive then (if night then MOON else FLAME) else DARK
 				l.flame.Material = if alive then Enum.Material.Neon else Enum.Material.SmoothPlastic

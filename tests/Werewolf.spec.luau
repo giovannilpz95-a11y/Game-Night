@@ -362,6 +362,32 @@ return function(T)
 		T.eq(solo.phase, "vote")
 	end)
 
+	T.test("the village log: every dawn, statement and vote is in the view", function()
+		local s = fixed(6)
+		Werewolf.onTimeout(s) -- night 1: nobody picked, the pack catches someone anyway
+		local v = Werewolf.getView(s, 2)
+		T.eq(#v.nights, 1)
+		T.eq(v.nights[1].day, 1)
+		T.ok(v.nights[1].caught ~= nil)
+		T.eq(v.withSeer, true)
+		Werewolf.onTimeout(s) -- dawn -> day
+		for seat = 1, 6 do
+			if s.alive[seat] then
+				apply(s, seat, { kind = "pass" })
+			end
+		end
+		T.eq(s.phase, "vote")
+		for seat = 1, 6 do
+			if s.alive[seat] then
+				apply(s, seat, { kind = "vote", target = 0 })
+			end
+		end
+		local later = Werewolf.getView(s, nil)
+		T.eq(#later.history, 5, "five statements")
+		T.eq(#later.voteHistory, 5, "five votes")
+		T.eq(later.nights[1].caught, v.nights[1].caught)
+	end)
+
 	T.test("players who are out chat only with each other", function()
 		local s = fixed(6)
 		night(s, { [1] = 4, [3] = 3 })

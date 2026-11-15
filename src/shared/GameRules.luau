@@ -265,7 +265,7 @@ rules.Werewolf = {
 				"🔮 Seer: each night, learn whether one player is a werewolf.",
 				"🛡️ Guardian: each night, shield one player (you can shield yourself, but not the same player two nights running).",
 				"🏹 Hunter (6+ players): when you go out, take one player down with you.",
-				"🧪 Witch (7+ players): two potions, once each. Once the wolves have picked, see who they went for and save them; or poison anyone.",
+				"🧪 Witch (7+ players): two potions, once each. After the night picks, see who the wolves went for and save them, and/or poison another player (not yourself).",
 				"🧑‍🌾 Villager: no power at night, just a hunch. Your vote is your power.",
 			},
 		},
@@ -281,7 +281,8 @@ rules.Werewolf = {
 			title = "Day",
 			lines = {
 				"See who was caught, then talk. Make one statement: suspect someone, claim the Seer saw something, or pass.",
-				"The day ends early once everyone has spoken.",
+				"The day ends once everyone has spoken, but with two or more players it lasts at least 20 seconds so the talk isn't cut short.",
+				"Tap \"Log\" any time for the village log: who went out, when and how, and every day's statements and votes.",
 			},
 		},
 		{
@@ -289,7 +290,7 @@ rules.Werewolf = {
 			lines = {
 				"Vote a player out or skip. Votes are public.",
 				"The player with the most votes is out, unless there's a tie or more skips than votes for them.",
-				"Whoever is voted out gets a few seconds for last words.",
+				"Whoever is voted out gets 20 seconds for last words.",
 				"Players who are out can only chat with each other until the game ends.",
 			},
 		},

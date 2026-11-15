@@ -82,12 +82,34 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		BackgroundTransparency = 0,
 		BackgroundColor3 = Theme.PanelLight,
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 12),
-		Size = UDim2.new(0.36, -12, 0, 36),
+		Position = UDim2.new(1, -90, 0, 12),
+		Size = UDim2.new(0.36, -90, 0, 36),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		Parent = header,
 	})
 	HudKit.pill(roleChip)
+	-- The roles in this game and the day cap (they change with table size and house rules).
+	local setupLabel = Kit.label("", {
+		TextSize = 12,
+		TextColor3 = Theme.SubText,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -12, 0, 50),
+		Size = UDim2.new(0.4, 0, 0, 14),
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = header,
+	})
+	local openLog: () -> () = function() end
+	Kit.button("📜 Log", function()
+		openLog()
+	end, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -12, 0, 12),
+		Size = UDim2.fromOffset(72, 36),
+		TextSize = 15,
+		BackgroundColor3 = Theme.PanelLight,
+		Parent = header,
+	})
 	local track = Kit.new("Frame", {
 		BackgroundColor3 = Theme.PanelLight,
 		BorderSizePixel = 0,
@@ -166,6 +188,18 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 	local function roleText(role: string?): string
 		local info = role and ROLES[role]
 		return if info then `{info.icon} {info.name}` else "?"
+	end
+
+	-- "🐺x2 · 🔮 🛡️ 🏹 🧪 · Day 3 of 8"
+	local function setupText(view: any): string
+		local icons = {}
+		for _, pair in { { view.withSeer, "seer" }, { view.withGuardian, "guardian" }, { view.withHunter, "hunter" }, { view.withWitch, "witch" } } do
+			if pair[1] then
+				table.insert(icons, ROLES[pair[2]].icon)
+			end
+		end
+		local wolves = `🐺x{view.wolfCount or 1}{if view.wolvesLeft then ` ({view.wolvesLeft} left)` else ""}`
+		return `{wolves} · {table.concat(icons, " ")} · Day {view.day or 1} of {view.maxDays or 8}`
 	end
 
 	local function statementText(st: any): string
@@ -716,6 +750,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		end
 	end
 
+	local autoSend: (number) -> () = function() end
 	local heartbeat = RunService.Heartbeat:Connect(function()
 		if not snapshot or not snapshot.turnEndsAt or not timerStart then
 			fill.Size = UDim2.fromScale(0, 1)
@@ -725,7 +760,177 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		local total = math.max(0.1, snapshot.turnEndsAt - timerStart)
 		fill.Size = UDim2.fromScale(math.clamp(left / total, 0, 1), 1)
 		fill.BackgroundColor3 = if left < 5 then Theme.Bad else Theme.Accent
+		autoSend(left)
 	end)
+
+	-- Village log --------------------------------------------------------------------
+	-- Day by day: what each dawn told the village, every statement, every vote and who
+	-- went out (with their role when roles are shown). A window in both views.
+
+	local logList = Kit.new("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+	})
+	Kit.list(4).Parent = logList
+	local logKey = ""
+
+	local HOW = { night = "caught by the wolves", poison = "poisoned", vote = "voted out", hunter = "taken down by the Hunter" }
+
+	local function buildLog(view: any)
+		local key = `{#(view.nights or {})}:{#(view.history or {})}:{#(view.voteHistory or {})}:{#(view.outOrder or {})}:{view.phase == "done"}`
+		if key == logKey then
+			return
+		end
+		logKey = key
+		for _, child in logList:GetChildren() do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+		local order = 0
+		local function line(text: string, props: { [string]: any }?)
+			order += 1
+			local label = Kit.label(text, {
+				TextSize = 15,
+				TextWrapped = true,
+				RichText = true,
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, -10, 0, 18),
+				LayoutOrder = order,
+				Parent = logList,
+			})
+			for k, v in props or {} do
+				(label :: any)[k] = v
+			end
+			return label
+		end
+		local function outLine(o: any)
+			local role = view.roles and view.roles[o.seat]
+			line(`☠️ {nameOf(o.seat)} was {HOW[o.how] or "out"}{if role then ` · {roleText(role)}` else ""}`, { TextColor3 = Theme.Bad })
+		end
+		local any = false
+		for day = 1, view.day or 1 do
+			local night
+			for _, n in view.nights or {} do
+				if n.day == day then
+					night = n
+				end
+			end
+			local said, votes, outs = {}, {}, {}
+			for _, h in view.history or {} do
+				if h.day == day then
+					table.insert(said, h)
+				end
+			end
+			for _, v in view.voteHistory or {} do
+				if v.day == day then
+					table.insert(votes, v)
+				end
+			end
+			for _, o in view.outOrder or {} do
+				if o.day == day then
+					table.insert(outs, o)
+				end
+			end
+			if night or #said > 0 or #votes > 0 or #outs > 0 then
+				any = true
+				line(`🌙 Night {day}`, { Font = Theme.FontTitle, TextSize = 18, TextColor3 = Color3.fromRGB(170, 184, 255) })
+				if night and not night.caught and not night.poisoned then
+					line(if night.saved then "Someone was saved. Nobody was caught." else "Nobody was caught.", { TextColor3 = Theme.SubText })
+				end
+				for _, o in outs do
+					if o.how == "night" or o.how == "poison" then
+						outLine(o)
+					end
+				end
+				if #said > 0 or #votes > 0 then
+					line(`☀️ Day {day}`, { Font = Theme.FontTitle, TextSize = 18, TextColor3 = Color3.fromRGB(255, 200, 120) })
+				end
+				for _, h in said do
+					line(`<b>{nameOf(h.seat)}</b>  {statementText(h)}`)
+				end
+				if #votes > 0 then
+					local byTarget, skips = {}, {}
+					for _, v in votes do
+						if v.target == 0 or v.target == nil then
+							table.insert(skips, nameOf(v.seat))
+						else
+							byTarget[v.target] = byTarget[v.target] or {}
+							table.insert(byTarget[v.target], nameOf(v.seat))
+						end
+					end
+					for target = 1, view.seatCount do
+						local list = byTarget[target]
+						if list then
+							line(`🗳 <b>{nameOf(target)}</b> ({#list}): {table.concat(list, ", ")}`)
+						end
+					end
+					if #skips > 0 then
+						line(`🗳 Skipped ({#skips}): {table.concat(skips, ", ")}`, { TextColor3 = Theme.SubText })
+					end
+				end
+				for _, o in outs do
+					if o.how ~= "night" and o.how ~= "poison" then
+						outLine(o)
+					end
+				end
+			end
+		end
+		if not any then
+			line("Nothing yet. The log fills in as the nights and days go by.", { TextColor3 = Theme.SubText })
+		end
+	end
+
+	-- The 2D view's log window.
+	local logOverlay = Kit.new("Frame", {
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.35,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		ZIndex = 25,
+		Parent = root,
+	})
+	local logPanel = Kit.panel({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(0.9, 0, 0.86, 0),
+		ZIndex = 26,
+		Parent = logOverlay,
+	})
+	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(560, 640), Parent = logPanel })
+	Kit.label("📜 Village log", { Font = Theme.FontTitle, TextSize = 22, Size = UDim2.new(1, -60, 0, 30), ZIndex = 27, Parent = logPanel })
+	Kit.button("X", function()
+		logOverlay.Visible = false
+	end, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(36, 30), ZIndex = 27, Parent = logPanel })
+	local logHolder = Kit.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 38), Size = UDim2.new(1, 0, 1, -38), ZIndex = 27, Parent = logPanel })
+	logList.Parent = logHolder
+
+	-- If the clock runs out while you have a player selected at night or in the vote,
+	-- that pick goes in (you tapped, then time ran out before the button).
+	local autoSent: string? = nil
+	autoSend = function(left: number)
+		if left > 0.6 or not selected or not snapshot then
+			return
+		end
+		local view = snapshot.view
+		local key = `{view.phase}:{view.day}`
+		if autoSent == key or not myTurn() or not canPick(selected) then
+			return
+		end
+		if view.phase == "night" then
+			autoSent = key
+			send({ kind = "night", target = selected })
+		elseif view.phase == "vote" then
+			autoSent = key
+			send({ kind = "vote", target = selected })
+		end
+	end
 
 	-- Table view ------------------------------------------------------------------------
 
@@ -774,6 +979,18 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			sayWords()
 		end
 	end)
+
+	openLog = function()
+		if not snapshot then
+			return
+		end
+		buildLog(snapshot.view)
+		if tableMode then
+			prompt.sheet(logList, "📜 Village log", function() end)
+		else
+			logOverlay.Visible = true
+		end
+	end
 
 	local function openVillage()
 		villageOpen = true
@@ -832,6 +1049,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		local info = role and ROLES[role]
 		local title, sub = headline(view)
 		local villageButton = { text = "Village", color = Theme.PanelLight, onClick = openVillage }
+		local logButton = { text = "📜 Log", color = Theme.PanelLight, onClick = openLog }
 		wordsPanel.Visible = false
 
 		-- Chips: your role, the phase, your pack.
@@ -840,6 +1058,9 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			table.insert(chips, TablePrompt.chip(`You: {info.icon} {info.name}`, info.color))
 		end
 		table.insert(chips, TablePrompt.chip(title))
+		if view.phase ~= "done" then
+			table.insert(chips, TablePrompt.chip(setupText(view)))
+		end
 		if view.pack and #view.pack > 0 and view.phase ~= "done" then
 			local names = {}
 			for _, s in view.pack do
@@ -875,7 +1096,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		local who = if selected then nameOf(selected) else nil
 		local tapHint = "Tap a player's lantern"
 		if me == nil then
-			prompt.bar("watch", `{title} · {sub}`, { villageButton })
+			prompt.bar("watch", `{title} · {sub}`, { villageButton, logButton })
 		elseif view.phase == "lastWords" and mine then
 			wordsPanel.Visible = true
 			wordsBox.Text = wordsDraft
@@ -898,7 +1119,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 				end },
 			})
 		elseif not view.youAlive then
-			prompt.bar("out", `You're out ({roleText(role)}). Watch quietly: no spoilers on voice!`, { villageButton })
+			prompt.bar("out", `You're out ({roleText(role)}). Watch quietly: no spoilers on voice!`, { villageButton, logButton })
 		elseif view.phase == "witch" and role == "witch" then
 			local buttons = if witchTurn() then witchButtons(view) else {}
 			table.insert(buttons, villageButton)
@@ -951,6 +1172,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 						send({ kind = "pass" })
 					end },
 					villageButton,
+					logButton,
 				})
 			end
 		elseif view.phase == "vote" and mine then
@@ -964,6 +1186,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 					send({ kind = "vote", target = 0 })
 				end },
 				villageButton,
+				logButton,
 			})
 		else
 			-- Waiting, or a phase with nothing to do (dawn, verdict, someone's last words).
@@ -977,7 +1200,7 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 			elseif view.phase == "lastWords" and view.lastWords and view.lastWords.text then
 				line = `🕯️ {nameOf(view.lastWords.seat)}: "{view.lastWords.text}"`
 			end
-			prompt.bar(`wait:{view.phase}`, line, { villageButton })
+			prompt.bar(`wait:{view.phase}`, line, { villageButton, logButton })
 		end
 	end
 
@@ -996,11 +1219,13 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 		if selected and not canPick(selected) then
 			selected = nil
 		end
+		buildLog(view)
 		applyLayout()
 
 		local title, sub = headline(view)
 		phaseLabel.Text = title
 		subLabel.Text = sub
+		setupLabel.Text = if view.phase == "done" then "" else setupText(view)
 		local night = view.phase == "night" or view.phase == "witch" or view.phase == "roles"
 		local gradient = header:FindFirstChild("HudGradient")
 		if gradient and gradient:IsA("UIGradient") then
@@ -1036,6 +1261,10 @@ function Werewolf.create(container: Frame, sendMove: (any) -> ())
 				revealText.Text = "Each night, check one player. Share what you learn, but the wolves will come for you."
 			elseif view.yourRole == "guardian" then
 				revealText.Text = "Each night, shield one player from the wolves."
+			elseif view.yourRole == "hunter" then
+				revealText.Text = "No power at night, but if you go out, you take someone down with you. Choose well."
+			elseif view.yourRole == "witch" then
+				revealText.Text = "Two potions, once each: after the night picks you see who the wolves went for. Save them, poison someone, or both."
 			else
 				revealText.Text = "No power at night. Listen, talk, and vote out the werewolves."
 			end
