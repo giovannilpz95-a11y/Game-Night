@@ -118,6 +118,15 @@ function games.Checkers(move)
 	return if from and to then { kind = "move", from = from, to = to } else nil
 end
 
+-- Gin Rummy: taking the first upcard is a draw, passing on it waves it off.
+function games.GinRummy(move)
+	if move.kind == "upcard" then
+		return { kind = if move.take == true then "draw" else "pass" }
+	end
+	local gesture = ({ draw = "draw", discard = "card", knock = "knock" })[move.kind]
+	return if gesture then { kind = gesture } else nil
+end
+
 function games.FourInARow(move)
 	return if isInt(move.column, 1, 16) then { kind = "place", column = move.column } else nil
 end
@@ -156,7 +165,6 @@ local KINDS: { [string]: { [string]: string } } = {
 	SlapStack = { flip = "card", slap = "slap" },
 	OldMaid = { draw = "draw" },
 	Snap = { flip = "card", snap = "slap" },
-	GinRummy = { draw = "draw", discard = "card", knock = "knock" },
 	OhHell = { play = "card", bid = "knock" },
 }
 

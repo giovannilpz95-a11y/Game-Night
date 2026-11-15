@@ -70,8 +70,9 @@ end
 
 export type Arrangement = { melds: { { number } }, deadwood: { number }, value: number }
 
--- The arrangement of `hand` into melds that leaves the least deadwood.
-function Melds.best(hand: { number }): Arrangement
+-- The search behind Melds.best and Melds.bestOptions: solve(used) is the least deadwood
+-- left among the cards not in the bit set `used`.
+local function solver(hand: { number })
 	local n = #hand
 	local index = {}
 	for i, id in hand do
@@ -86,20 +87,21 @@ function Melds.best(hand: { number }): Arrangement
 		end
 		masks[i] = mask
 	end
+	local function firstFree(used: number): number?
+		for i = 1, n do
+			if bit32.band(used, bit32.lshift(1, i - 1)) == 0 then
+				return i
+			end
+		end
+		return nil
+	end
 	local memo: { [number]: { score: number, pick: number? } } = {}
-	-- score = deadwood value of the cards not in `used`
 	local function solve(used: number): number
 		local cached = memo[used]
 		if cached then
 			return cached.score
 		end
-		local first = nil
-		for i = 1, n do
-			if bit32.band(used, bit32.lshift(1, i - 1)) == 0 then
-				first = i
-				break
-			end
-		end
+		local first = firstFree(used)
 		if not first then
 			memo[used] = { score = 0 }
 			return 0
@@ -120,30 +122,69 @@ function Melds.best(hand: { number }): Arrangement
 		memo[used] = { score = bestScore, pick = bestPick }
 		return bestScore
 	end
-	local value = solve(0)
+	return { solve = solve, memo = memo, masks = masks, melds = melds, firstFree = firstFree }
+end
+
+-- The arrangement of `hand` into melds that leaves the least deadwood.
+function Melds.best(hand: { number }): Arrangement
+	local s = solver(hand)
+	local value = s.solve(0)
 	local chosen, deadwood = {}, {}
 	local used = 0
 	while true do
-		local first = nil
-		for i = 1, n do
-			if bit32.band(used, bit32.lshift(1, i - 1)) == 0 then
-				first = i
-				break
-			end
-		end
+		local first = s.firstFree(used)
 		if not first then
 			break
 		end
-		local pick = memo[used].pick
+		local pick = s.memo[used].pick
 		if pick then
-			table.insert(chosen, PlayingCards.sortHand(melds[pick]))
-			used = bit32.bor(used, masks[pick])
+			table.insert(chosen, PlayingCards.sortHand(s.melds[pick]))
+			used = bit32.bor(used, s.masks[pick])
 		else
 			table.insert(deadwood, hand[first])
 			used = bit32.bor(used, bit32.lshift(1, first - 1))
 		end
 	end
 	return { melds = chosen, deadwood = PlayingCards.sortHand(deadwood), value = value }
+end
+
+-- Every arrangement of `hand` that leaves the least deadwood (at most `limit`, 24 by
+-- default). A knocker picks among these the one that lets the other player lay off least.
+function Melds.bestOptions(hand: { number }, limit: number?): { Arrangement }
+	local s = solver(hand)
+	local value = s.solve(0)
+	local cap = limit or 24
+	local out: { Arrangement } = {}
+	local function walk(used: number, chosen: { { number } }, deadwood: { number })
+		if #out >= cap then
+			return
+		end
+		local first = s.firstFree(used)
+		if not first then
+			local melds = {}
+			for _, meld in chosen do
+				table.insert(melds, PlayingCards.sortHand(meld))
+			end
+			table.insert(out, { melds = melds, deadwood = PlayingCards.sortHand(table.clone(deadwood)), value = value })
+			return
+		end
+		local target = s.solve(used)
+		local bitFirst = bit32.lshift(1, first - 1)
+		if Melds.value(hand[first]) + s.solve(bit32.bor(used, bitFirst)) == target then
+			table.insert(deadwood, hand[first])
+			walk(bit32.bor(used, bitFirst), chosen, deadwood)
+			table.remove(deadwood)
+		end
+		for i, mask in s.masks do
+			if bit32.band(mask, bitFirst) ~= 0 and bit32.band(mask, used) == 0 and s.solve(bit32.bor(used, mask)) == target then
+				table.insert(chosen, s.melds[i])
+				walk(bit32.bor(used, mask), chosen, deadwood)
+				table.remove(chosen)
+			end
+		end
+	end
+	walk(0, {}, {})
+	return out
 end
 
 -- Can `card` be added to `meld` (a set short of 4, or either end of a run)?

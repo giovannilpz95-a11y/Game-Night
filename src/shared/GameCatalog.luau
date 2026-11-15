@@ -780,8 +780,16 @@ local entries: { Entry } = {
 				choices = { { label = "2", value = 2 }, { label = "3", value = 3 }, { label = "4", value = 4 } },
 				default = 2,
 			},
-			{ key = "trips", name = "Three of a kind", hint = "Three of a kind is worth 30.5.", choices = Toggle, default = 1 },
+			{
+				key = "trips",
+				name = "Three of a kind",
+				hint = "What three of a kind is worth (30.5 beats any 30).",
+				choices = { { label = "Off", value = false }, { label = "30", value = 30 }, { label = "30.5", value = 30.5 } },
+				default = 1,
+			},
 			{ key = "knockDouble", name = "Knocker pays double", hint = "A knocker with the lowest hand loses 2 lives.", choices = Toggle, default = 2 },
+			{ key = "county", name = "On the county", hint = "At 0 hearts you keep playing; the next loss puts you out.", choices = Toggle, default = 2 },
+			{ key = "firstKnock", name = "Knock right away", hint = "Allow knocking on your very first turn.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -882,8 +890,8 @@ local entries: { Entry } = {
 			{
 				key = "target",
 				name = "Play to",
-				hint = "Points needed to win.",
-				choices = { { label = "50", value = 50 }, { label = "100", value = 100 }, { label = "150", value = 150 } },
+				hint = "Points needed to win. Quick stops after 15 hands at most, Classic 25, Long 35.",
+				choices = { { label = "Quick 50", value = 50 }, { label = "Classic 100", value = 100 }, { label = "Long 150", value = 150 } },
 				default = 1,
 			},
 			{
@@ -893,13 +901,14 @@ local entries: { Entry } = {
 				choices = { { label = "10", value = 10 }, { label = "7", value = 7 }, { label = "Gin only", value = 0 } },
 				default = 1,
 			},
-			{ key = "oklahoma", name = "Oklahoma", hint = "The first upcard sets the knock limit (its value; an Ace means gin only).", choices = Toggle, default = 1 },
+			{ key = "oklahoma", name = "Oklahoma", hint = "The first upcard sets the knock limit (its value; an Ace means gin only), and a spade upcard doubles the hand.", choices = Toggle, default = 1 },
 			{
 				key = "undercut",
 				name = "Undercut bonus",
 				choices = { { label = "25", value = 25 }, { label = "10", value = 10 } },
 				default = 1,
 			},
+			{ key = "bonuses", name = "Classic bonuses", hint = "End-of-game tally: +100 to the winner, +25 per hand won, shutouts double. Never changes who wins.", choices = Toggle, default = 2 },
 		},
 	},
 	{

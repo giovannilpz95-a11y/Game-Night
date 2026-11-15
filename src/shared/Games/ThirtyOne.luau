@@ -5,12 +5,16 @@
 -- pile, then throw one card away (not the one you just took from the discard pile).
 -- Instead of drawing you may knock (after the first time around): everyone else gets one
 -- last turn, then all hands are shown. The lowest hand loses a life; if the knocker is
--- lowest alone they lose two, and a knocker tied for lowest is safe. Hitting exactly 31 is a Blitz: hands are shown at once and
--- everyone else loses a life. No chips and no betting, only lives (shown as hearts).
--- Out of lives, out of the game. The last player standing wins.
+-- lowest alone they lose two, and a knocker tied for lowest is safe. Hitting exactly 31
+-- is a Blitz: hands are shown at once and everyone else loses a life (everyone dealt 31
+-- is spared). No chips and no betting, only lives (shown as hearts).
+-- With no hearts left you're "on the county": still playing, and the next loss puts you
+-- out. The last player standing wins. If everyone left would go out on the same hand, the
+-- hand is replayed instead.
 --
--- House rules (options.rules): trips (three of a kind = 30.5), knockDouble (default on:
--- a knocker with the lowest hand loses two lives).
+-- House rules (options.rules): trips (three of a kind: false, 30 or 30.5; true = 30.5),
+-- knockDouble (default on: a knocker with the lowest hand loses two lives), county
+-- (default on), firstKnock (knocking allowed on your very first turn).
 --
 -- Moves: { kind = "draw", from = "stock" | "discard" }  |  { kind = "knock" }
 --        { kind = "discard", card = id }  (after drawing)
@@ -37,10 +41,15 @@ local function cardValue(id: number): number
 end
 
 -- Best single-suit total of a hand.
--- trips (house rule): three of a kind is worth 30.5, beating any 30.
-function ThirtyOne.value(hand: { number }, trips: boolean?): number
+-- trips (house rule): three of a kind is worth 30 or 30.5 (true means 30.5).
+function ThirtyOne.value(hand: { number }, trips: (boolean | number)?): number
 	if trips and #hand == 3 and rank(hand[1]) == rank(hand[2]) and rank(hand[2]) == rank(hand[3]) then
-		return 30.5
+		local tripsValue = if type(trips) == "number" then trips else 30.5
+		local totals = { 0, 0, 0, 0 }
+		for _, id in hand do
+			totals[suit(id)] += cardValue(id)
+		end
+		return math.max(tripsValue, totals[1], totals[2], totals[3], totals[4])
 	end
 	local totals = { 0, 0, 0, 0 }
 	for _, id in hand do
@@ -50,10 +59,16 @@ function ThirtyOne.value(hand: { number }, trips: boolean?): number
 end
 local value = ThirtyOne.value
 
+-- Still in the game: lives left, or on the county (0 lives, not out yet).
+local function isAlive(state, seat: number): boolean
+	return not state.out[seat]
+end
+ThirtyOne.isAlive = isAlive
+
 local function aliveSeats(state): { number }
 	local out = {}
 	for seat = 1, state.seatCount do
-		if state.lives[seat] > 0 then
+		if isAlive(state, seat) then
 			table.insert(out, seat)
 		end
 	end
@@ -63,14 +78,14 @@ end
 local function nextAlive(state, seat: number): number
 	for i = 1, state.seatCount do
 		local s = (seat - 1 + i) % state.seatCount + 1
-		if state.lives[s] > 0 then
+		if isAlive(state, s) then
 			return s
 		end
 	end
 	return seat
 end
 
-local reveal: (any, number?) -> ()
+local reveal: (any, number?, { number }?) -> ()
 
 local function deal(state)
 	local deck = PlayingCards.newDeck(state.rng)
@@ -91,12 +106,15 @@ local function deal(state)
 	state.taken = nil
 	state.lastAction = nil
 	state.showdown = nil
-	-- A dealt 31 is a Blitz straight away.
+	-- A dealt 31 is a Blitz straight away; everyone dealt 31 is spared.
+	local dealt31 = {}
 	for _, seat in aliveSeats(state) do
 		if value(state.hands[seat], state.trips) == 31 then
-			reveal(state, seat)
-			return
+			table.insert(dealt31, seat)
 		end
+	end
+	if #dealt31 > 0 then
+		reveal(state, dealt31[1], dealt31)
 	end
 end
 
@@ -104,14 +122,22 @@ function ThirtyOne.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 2 and seatCount <= 8, "Thirty-One needs 2-8 seats")
 	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local startLives = if type(rules.lives) == "number" and rules.lives >= 1 then math.floor(rules.lives) else ThirtyOne.LIVES
-	local lives = {}
+	local lives, out = {}, {}
 	for seat = 1, seatCount do
 		lives[seat] = startLives
+		out[seat] = false
+	end
+	local trips: (boolean | number) = false
+	if rules.trips == true then
+		trips = 30.5
+	elseif rules.trips == 30 or rules.trips == 30.5 then
+		trips = rules.trips
 	end
 	local state = {
 		seatCount = seatCount,
 		rng = rng or Random.new(),
 		lives = lives,
+		out = out, -- out of the game (lost with no hearts left)
 		startLives = startLives,
 		hands = {},
 		stock = {},
@@ -129,16 +155,19 @@ function ThirtyOne.new(seatCount: number, options: any?, rng: Random?)
 		lastAction = nil,
 		turnsTotal = 0,
 		winners = nil,
-		trips = rules.trips == true,
+		trips = trips,
 		knockDouble = rules.knockDouble ~= false,
+		county = rules.county ~= false,
+		firstKnock = rules.firstKnock == true,
 		botLevel = (options and options.botLevel) or "medium",
 	}
 	deal(state)
 	return state
 end
 
--- Everyone shows their hand; lives are lost. blitz = the seat that hit 31, if any.
-function reveal(state, blitz: number?)
+-- Everyone shows their hand; lives are lost. blitz = the seat that hit 31, if any;
+-- spared = every seat dealt 31 (none of them lose).
+function reveal(state, blitz: number?, spared: { number }?)
 	local alive = aliveSeats(state)
 	local values, hands, lost = {}, {}, {}
 	for _, seat in alive do
@@ -146,8 +175,9 @@ function reveal(state, blitz: number?)
 		hands[tostring(seat)] = table.clone(state.hands[seat])
 	end
 	if blitz then
+		local safe = spared or { blitz }
 		for _, seat in alive do
-			if seat ~= blitz then
+			if not table.find(safe, seat) then
 				lost[tostring(seat)] = 1
 			end
 		end
@@ -172,25 +202,37 @@ function reveal(state, blitz: number?)
 			end
 		end
 	end
+	local before = { lives = table.clone(state.lives), out = table.clone(state.out) }
+	local wentOut = {}
 	for key, n in lost do
 		local seat = tonumber(key) :: number
-		state.lives[seat] = math.max(0, state.lives[seat] - n)
+		for _ = 1, n do
+			if state.lives[seat] > 0 then
+				state.lives[seat] -= 1
+				if state.lives[seat] == 0 and not state.county then
+					state.out[seat] = true
+				end
+			else
+				-- On the county: this loss puts you out.
+				state.out[seat] = true
+			end
+		end
+		if state.out[seat] then
+			table.insert(wentOut, seat)
+		end
 	end
-	state.showdown = { hands = hands, values = values, lost = lost, blitz = blitz, knocker = state.knocker }
+	state.showdown = { hands = hands, values = values, lost = lost, blitz = blitz, knocker = state.knocker, out = wentOut, spared = if spared and #spared > 1 then spared else nil }
 	state.phase = "reveal"
 	state.phaseId += 1
 	local still = aliveSeats(state)
-	if #still <= 1 then
-		if #still == 1 then
-			state.winners = still
-		else
-			-- Everyone went out together: they share the win.
-			local shared = {}
-			for _, seat in alive do
-				table.insert(shared, seat)
-			end
-			state.winners = shared
-		end
+	if #still == 0 then
+		-- Everyone left would go out on the same hand: replay it (Pagat).
+		state.lives = before.lives
+		state.out = before.out
+		state.showdown.replay = true
+		state.showdown.out = {}
+	elseif #still == 1 then
+		state.winners = still
 		state.phase = "done"
 	end
 end
@@ -217,7 +259,7 @@ function ThirtyOne.canKnock(state, seat: number): boolean
 	return state.phase == "draw"
 		and seat == state.turn
 		and state.knocker == nil
-		and state.turnsThisRound >= #aliveSeats(state)
+		and (state.firstKnock or state.turnsThisRound >= #aliveSeats(state))
 end
 
 function ThirtyOne.getActiveSeats(state): { number }
@@ -353,7 +395,7 @@ function ThirtyOne.getResult(state): GameModule.Result?
 	return {
 		winners = table.clone(state.winners),
 		isDraw = #state.winners > 1,
-		reason = if #state.winners > 1 then "Everyone left went out together" else "Last one with lives",
+		reason = if #state.winners > 1 then "Everyone left went out together" else "Last one standing",
 	}
 end
 
@@ -362,7 +404,7 @@ function ThirtyOne.getView(state, seat: number?)
 	for s = 1, state.seatCount do
 		counts[s] = if state.hands[s] then #state.hands[s] else 0
 	end
-	local hand = if seat and state.hands[seat] and state.lives[seat] > 0 then table.clone(state.hands[seat]) else nil
+	local hand = if seat and state.hands[seat] and isAlive(state, seat) then table.clone(state.hands[seat]) else nil
 	if state.phase == "done" and seat and state.hands[seat] then
 		hand = table.clone(state.hands[seat])
 	end
@@ -371,6 +413,11 @@ function ThirtyOne.getView(state, seat: number?)
 		handValue = if hand then value(hand, state.trips) else nil,
 		handCounts = counts,
 		lives = table.clone(state.lives),
+		out = table.clone(state.out),
+		county = state.county,
+		firstKnock = state.firstKnock,
+		dealer = state.dealer,
+		lastTurns = state.lastTurns,
 		startLives = state.startLives,
 		discardTop = state.discard[#state.discard],
 		stockCount = #state.stock,
@@ -389,7 +436,7 @@ function ThirtyOne.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, state.seatCount do
 		local n = state.lives[seat]
-		info[seat] = if n == 0 then "Out" else string.rep("♥", n)
+		info[seat] = if state.out[seat] then "Out" elseif n == 0 then "On the county" else string.rep("♥", n)
 	end
 	return info
 end
@@ -429,8 +476,15 @@ function ThirtyOne.chooseBotMove(state, seat: number, rng: Random): any?
 		local now = value(hand, state.trips)
 		if ThirtyOne.canKnock(state, seat) then
 			local at = KNOCK_AT[state.botLevel] or 26
-			if state.botLevel == "hard" and state.lives[seat] == 1 then
-				at += 2 -- careful on the last life
+			if state.botLevel == "hard" then
+				if state.lives[seat] <= 1 then
+					at += 2 -- careful on the last life (or on the county)
+				elseif state.lives[seat] >= 3 and #aliveSeats(state) <= 3 then
+					at -= 1 -- lives to spare and few rivals: knock earlier
+				end
+			end
+			if state.botLevel ~= "easy" and #aliveSeats(state) >= 6 then
+				at += 1 -- a big table: someone usually beats a middling hand
 			end
 			if now >= at and (state.botLevel ~= "easy" or rng:NextNumber() < 0.7) then
 				return { kind = "knock" }

@@ -484,9 +484,9 @@ rules.ThirtyOne = {
 	},
 	sections = {
 		{ title = "Hand value", lines = { "Only your best suit counts. Aces are 11, face cards 10, others their number." } },
-		{ title = "Your turn", lines = { "Take the top card of the stock or discard pile, then discard one (not the one you just took from the discard).", "Or knock instead of drawing (after the first time around)." } },
-		{ title = "Showdown", lines = { "After a knock, everyone else gets one last turn, then hands are shown.", "The lowest hand loses a life. A knocker who is lowest alone loses two; tied for lowest, the knocker is safe.", "Hit exactly 31 for a Blitz: everyone else loses a life." } },
-		{ title = "Winning", lines = { "Out of lives, out of the game. Last player standing wins." } },
+		{ title = "Your turn", lines = { "Take the top card of the stock or discard pile, then discard one (not the one you just took from the discard).", "Or knock instead of drawing (after the first time around, unless the house rule allows it on your first turn)." } },
+		{ title = "Showdown", lines = { "After a knock, everyone else gets one last turn, then hands are shown.", "The lowest hand loses a life. A knocker who is lowest alone loses two; a knocker who ties for lowest is safe.", "Hit exactly 31 for a Blitz: everyone else loses a life. Everyone dealt 31 is spared.", "A hand that drags past 60 turns is shown down with no knocker." } },
+		{ title = "Winning", lines = { "At 0 hearts you're on the county: you keep playing, and one more loss puts you out.", "Last player standing wins. If everyone left would go out on the same hand, it's replayed." } },
 	},
 }
 
@@ -542,10 +542,13 @@ rules.GinRummy = {
 		"Deadwood of 10 or less? Knock. None at all is Gin.",
 	},
 	sections = {
-		{ title = "Melds", lines = { "Set: 3 or 4 cards of the same rank.", "Run: 3 or more cards in a row in one suit. Ace is low (A-2-3, not Q-K-A).", "Your hand is sorted into its best melds for you." } },
+		{ title = "The upcard", lines = { "After the deal one card is turned face up.", "The player who didn't deal may take it or pass, then the dealer may.", "If you both pass, the non-dealer starts by drawing from the stock." } },
+		{ title = "Melds", lines = { "Set: 3 or 4 cards of the same rank.", "Run: 3 or more cards in a row in one suit. Ace is low (A-2-3, not Q-K-A).", "Your hand is sorted into its best melds for you, and melds and lay offs at a knock are arranged automatically." } },
 		{ title = "Deadwood", lines = { "Cards not in a meld. Ace 1, number cards their number, faces 10." } },
 		{ title = "Your turn", lines = { "Take the top of the stock or the discard pile.", "Discard one card (not the one you just took from the discard pile).", "Or press Knock and pick the card to discard, if your deadwood is low enough." } },
-		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Stock down to 2 cards with no knock: nobody scores." } },
+		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Stock down to 2 cards with no knock: nobody scores and the same dealer deals again." } },
+		{ title = "Winning", lines = { "First to the target wins (50, 100 or 150).", "A game stops after 15 hands at 50, 25 at 100 and 35 at 150; then the higher score wins.", "House rule Classic bonuses: at the end the winner adds 100, each player adds 25 per hand won, and a shutout doubles the winner's points." } },
+		{ title = "Oklahoma (house rule)", lines = { "The first upcard sets the knock limit: its value, and an Ace means Gin only.", "A spade upcard doubles that hand's points." } },
 	},
 }
 
