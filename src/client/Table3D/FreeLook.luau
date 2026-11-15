@@ -14,6 +14,9 @@
 -- that"). Everything stays playable locked: the crosshair clicks the table, A / D and
 -- Enter pick cards (UI/KeyPick), number keys press the buttons on screen (UI/Hotkeys).
 -- Roblox's own menu and typing in chat let go of the mouse while they're open.
+-- The lock is only for playing: it's off while no game is going (the match is over, the
+-- end card and the winners' celebration) and through Showtime's shots (Giovanni,
+-- 2026-11-15), and comes back with the next game if you had it on.
 --
 -- Where you look is sent to the server (HeadLook), so the others see your head turn.
 
@@ -35,6 +38,8 @@ local HINT_TIME = 9
 
 local active = false
 local preferLocked = true -- the player's choice (Alt / the button), for the session
+local playing = false -- a game is going on at your table (MatchView)
+local cinematic = false -- Showtime has the camera (Controller)
 local target: SeatLook.Look = { yaw = 0, pitch = 0 }
 local shown: SeatLook.Look = { yaw = 0, pitch = 0 }
 local recentering = false
@@ -73,6 +78,8 @@ function FreeLook.isLocked(): boolean
 	return active
 		and usesMouse()
 		and preferLocked
+		and playing
+		and not cinematic
 		and not GuiService.MenuIsOpen
 		and UserInputService:GetFocusedTextBox() == nil
 end
@@ -99,8 +106,27 @@ end
 
 -- Alt or the lock button: lock the mouse if it's free, free it if it's locked.
 function FreeLook.toggle()
+	if not playing or cinematic then
+		return -- nothing to lock for: no game going, or a Showtime shot
+	end
 	preferLocked = not FreeLook.isLocked()
 	notify()
+end
+
+-- A game is going on at your table (not over, no end card or celebration yet).
+function FreeLook.setPlaying(value: boolean)
+	if value ~= playing then
+		playing = value
+		notify()
+	end
+end
+
+-- Showtime's intro or victory shots have the camera.
+function FreeLook.setCinematic(value: boolean)
+	if value ~= cinematic then
+		cinematic = value
+		notify()
+	end
 end
 
 -- Turn back to the seat's resting view: at once (`instant`, a new match or seat) or with
