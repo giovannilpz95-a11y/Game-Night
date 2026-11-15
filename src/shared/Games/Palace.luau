@@ -20,6 +20,8 @@
 -- burns the pile), eightSkips (each 8 played skips the next player), invisibleThree (a 3
 -- is see-through: the card under it counts), gamble (stuck with cards in hand? Flip the
 -- top of the draw pile instead: it's played if it fits, else you pick up with it).
+-- toLoser (play on after the first player goes out: everyone who sheds their cards
+-- escapes, the last one left loses).
 --
 -- Moves: { kind = "swap", hand = id, up = id }  |  { kind = "ready" }   (setup, everyone)
 --        { kind = "play", cards = { id, ... } }  (from your hand, or face-up when it's empty)
@@ -106,6 +108,10 @@ function Palace.new(seatCount: number, options: any?, rng: Random?)
 		invisibleThree = rules.invisibleThree == true,
 		gamble = rules.gamble == true,
 		mustPlay = nil, -- the starter's lowest card, which their first play must include
+		toLoser = rules.toLoser == true,
+		out = {}, -- [seat] = finishing place, when playing on to find the loser
+		finishOrder = {},
+		loser = nil,
 		turn = 1,
 		turns = 0,
 		lastAction = nil,
@@ -219,11 +225,54 @@ local function burns(state): boolean
 	return false
 end
 
+local function stillIn(state): { number }
+	local seats = {}
+	for s = 1, state.seatCount do
+		if not state.out[s] then
+			table.insert(seats, s)
+		end
+	end
+	return seats
+end
+
+-- Playing on to find the loser: the last player still holding cards loses, everyone else escapes.
+local function endWithLoser(state, loser: number, reason: string)
+	state.loser = loser
+	local winners = table.clone(state.finishOrder)
+	for s = 1, state.seatCount do
+		if s ~= loser and not table.find(winners, s) then
+			table.insert(winners, s)
+		end
+	end
+	state.winners = winners
+	state.reason = reason
+end
+
 local function nextTurn(state, seat: number)
 	state.turns += 1
 	if cardsLeft(state, seat) == 0 then
-		state.winners = { seat }
-		state.reason = "Out of cards first"
+		if not state.toLoser then
+			state.winners = { seat }
+			state.reason = "Out of cards first"
+			return
+		end
+		table.insert(state.finishOrder, seat)
+		state.out[seat] = #state.finishOrder
+		local left = stillIn(state)
+		if #left <= 1 then
+			endWithLoser(state, left[1] or seat, "Last one holding cards")
+			return
+		end
+	end
+	if state.toLoser and state.turns >= Palace.TURN_LIMIT then
+		-- Too long: whoever still holds the most cards loses.
+		local worst, most = nil, -1
+		for _, s in stillIn(state) do
+			if cardsLeft(state, s) > most then
+				worst, most = s, cardsLeft(state, s)
+			end
+		end
+		endWithLoser(state, worst :: number, "Most cards after a long game")
 		return
 	end
 	if state.turns >= Palace.TURN_LIMIT then
@@ -242,7 +291,14 @@ local function nextTurn(state, seat: number)
 	end
 	local step = 1 + (state.skipNext or 0)
 	state.skipNext = 0
-	state.turn = (seat - 1 + step) % state.seatCount + 1
+	-- Each step moves to the next player still holding cards (finished players are skipped).
+	local nxt = seat
+	for _ = 1, step do
+		repeat
+			nxt = nxt % state.seatCount + 1
+		until not state.out[nxt]
+	end
+	state.turn = nxt
 end
 
 -- Put cards on the pile; burn if needed. Returns true if the player goes again.
@@ -578,6 +634,9 @@ function Palace.getView(state, seat: number?)
 		canGamble = seat ~= nil and Palace.canGamble(state, seat),
 		mustPlay = if seat == state.turn then state.mustPlay else nil,
 		effectiveTop = top(state),
+		toLoser = state.toLoser,
+		out = table.clone(state.out), -- [seat] = finishing place
+		loser = state.loser,
 		turn = state.turn,
 		phase = state.phase,
 		lastAction = GameModule.copy(state.lastAction),
@@ -587,7 +646,7 @@ end
 function Palace.getSeatInfo(state): { [number]: string }
 	local info = {}
 	for seat = 1, state.seatCount do
-		info[seat] = `{#state.hands[seat]} in hand · {#state.up[seat] + downLeft(state, seat)} on table`
+		info[seat] = if state.out[seat] then `Out · #{state.out[seat]}` else `{#state.hands[seat]} in hand · {#state.up[seat] + downLeft(state, seat)} on table`
 	end
 	return info
 end
@@ -595,7 +654,8 @@ end
 function Palace.getScores(state): { [number]: number }
 	local scores = {}
 	for seat = 1, state.seatCount do
-		scores[seat] = -cardsLeft(state, seat)
+		-- Finishers rank by the order they went out, ahead of everyone still holding cards.
+		scores[seat] = if state.out[seat] then 100 - state.out[seat] else -cardsLeft(state, seat)
 	end
 	return scores
 end

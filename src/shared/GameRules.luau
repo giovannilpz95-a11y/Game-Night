@@ -448,6 +448,7 @@ rules.Cheat = {
 		{ title = "Your turn", lines = { "The called rank goes Aces, 2s, 3s ... Kings, then Aces again.", "Put 1-4 cards face down. You must play, even if you have none of that rank." } },
 		{ title = "Doubting", lines = { "After each play everyone else gets a few seconds to doubt it.", "The cards are turned over. If any isn't the called rank, the player who bluffed takes the whole pile.", "If they were honest, the doubter takes it. Nobody doubts: play goes on." } },
 		{ title = "Winning", lines = { "First to empty their hand (and survive any doubt) wins.", "A very long game ends early: fewest cards left wins." } },
+		{ title = "Big tables", lines = { "With 6 or more players two decks are shuffled together (a host can change this), so up to 8 of a rank are out there." } },
 	},
 }
 
@@ -540,7 +541,7 @@ rules.Palace = {
 		{ title = "Special cards", lines = { "2: goes on anything and resets the pile.", "10: goes on anything and burns the pile. You go again.", "Four of the same rank in a row also burns the pile." } },
 		{ title = "Table cards", lines = { "With your hand empty and the draw pile gone, play your face-up cards.", "Then flip face-down cards blind. If one can't be played, you pick up the pile." } },
 		{ title = "House rules", lines = { "Lower card (5, 7 or 9): after it, the next card must be equal or lower.", "8 skips: each 8 skips the next player.", "Invisible 3: a 3 goes on anything and the card under it still counts.", "Gamble on the deck: stuck with cards in hand, flip the top of the draw pile instead." } },
-		{ title = "Winning", lines = { "First player out of cards wins." } },
+		{ title = "Winning", lines = { "First player out of cards wins.", "House rule Find the loser: play on after someone goes out. Everyone who sheds their cards escapes; the last one holding cards loses." } },
 	},
 }
 
@@ -584,7 +585,7 @@ rules.GinRummy = {
 		{ title = "Melds", lines = { "Set: 3 or 4 cards of the same rank.", "Run: 3 or more cards in a row in one suit. Ace is low (A-2-3, not Q-K-A).", "Your hand is sorted into its best melds for you, and melds and lay offs at a knock are arranged automatically." } },
 		{ title = "Deadwood", lines = { "Cards not in a meld. Ace 1, number cards their number, faces 10." } },
 		{ title = "Your turn", lines = { "Take the top of the stock or the discard pile.", "Discard one card (not the one you just took from the discard pile).", "Or press Knock and pick the card to discard, if your deadwood is low enough." } },
-		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Stock down to 2 cards with no knock: nobody scores and the same dealer deals again." } },
+		{ title = "Scoring a hand", lines = { "The other player can lay deadwood off on the knocker's melds.", "Knock: the knocker scores the difference in deadwood.", "Undercut: if the other player has the same or less, they score 25 + the difference.", "Gin: 25 + the other player's deadwood, and no laying off.", "Big Gin: all 11 cards in melds right after drawing. Go out without discarding for 31 + the other player's deadwood.", "Stock down to 2 cards with no knock: nobody scores and the same dealer deals again." } },
 		{ title = "Winning", lines = { "First to the target wins (50, 100 or 150).", "A game stops after 15 hands at 50, 25 at 100 and 35 at 150; then the higher score wins.", "House rule Classic bonuses: at the end the winner adds 100, each player adds 25 per hand won, and a shutout doubles the winner's points." } },
 		{ title = "Oklahoma (house rule)", lines = { "The first upcard sets the knock limit: its value, and an Ace means Gin only.", "A spade upcard doubles that hand's points." } },
 	},
