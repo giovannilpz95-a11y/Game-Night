@@ -170,7 +170,9 @@ function Cards.speech(folder: Instance, boardCF: CFrame, layout: Scene.Layout, s
 	if not info then
 		return
 	end
-	local pos = info.dir * (info.reach + 1.6) + Vector3.new(0, 4.3, 0)
+	-- Just over the speaker's head: higher went off the top of the seated view (under the
+	-- header) for the players across the table.
+	local pos = info.dir * (info.reach + 1.6) + Vector3.new(0, 3.7, 0)
 	local label = Scene.floatText(folder, boardCF * CFrame.new(pos), 3.2, 0.9, text, {
 		TextColor3 = Color3.fromRGB(30, 24, 20),
 		TextStrokeTransparency = 1,

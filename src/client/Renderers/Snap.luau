@@ -30,8 +30,17 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 	local snapScale = Kit.new("UIScale", { Parent = snapButton })
 
 	local connection = UserInputService.InputBegan:Connect(function(input, processed)
-		if not processed and input.KeyCode == Enum.KeyCode.Space and snapshot and snapshot.yourSeat and not snapshot.result then
+		if processed or not snapshot or not snapshot.yourSeat or snapshot.result then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Space then
 			sendMove({ kind = "snap" })
+		elseif input.KeyCode == Enum.KeyCode.F then
+			-- Flip from the keyboard (Enter works too, through the held pile's KeyPick).
+			local view = snapshot.view
+			if view.turn == snapshot.yourSeat and not view.pause then
+				sendMove({ kind = "flip" })
+			end
 		end
 	end)
 
@@ -188,7 +197,7 @@ function SnapRenderer.create(container: Frame, sendMove: (any) -> ())
 		elseif not alive then
 			ui.prompt.Text = "You're out of cards"
 		elseif myTurn then
-			ui.prompt.Text = "Your flip! Then watch for matching cards"
+			ui.prompt.Text = "Your flip! (F) Then watch for matching cards"
 		else
 			local what = if view.color then "the same rank and color" else "the same rank"
 			ui.prompt.Text = if poolCount > 0 then `SNAP when two piles (or a pile and the pool) show {what}!` else `SNAP when two piles show {what}!`

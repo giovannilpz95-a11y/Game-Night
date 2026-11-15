@@ -189,12 +189,13 @@ function OldMaid.create(container: Frame, sendMove: (any) -> ())
 			mineRow = nil
 		end
 		if myTurn and ui.docked and #(view.hand or {}) > 0 then
-			-- Table view: your own cards stay in sight, small, over the cards you pick from.
+			-- Table view: your own cards stay in sight, small, in the bottom-left corner beside
+			-- the cards you pick from (the held strip only shows the screen from 0.55 down).
 			mineRow = CardTable.cardRow(ui.root, view.hand, {
-				AnchorPoint = Vector2.new(0.5, 1),
-				Position = UDim2.new(0.5, 0, 0.545, -4),
-				Size = UDim2.new(0.5, 0, 0.1, 0),
-				ZIndex = 4,
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 12, 1, -12),
+				Size = UDim2.new(0.13, 0, 0.11, 0),
+				ZIndex = 8,
 			})
 		end
 		if myTurn then

@@ -90,6 +90,7 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0.67, 0),
 		Size = UDim2.new(1, 0, 0, 20),
+		ZIndex = 8,
 		Parent = root,
 	})
 	-- When a card fits both piles: "Left" / "Right" buttons over your draw-pile line, so
@@ -111,7 +112,7 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		TextColor3 = Theme.Accent,
 		TextStrokeTransparency = 0.3,
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Position = UDim2.new(0, 0, 0.6, 0),
+		Position = UDim2.new(0, 0, 0.645, 0), -- the held strip shows the screen from 0.64 down
 		Size = UDim2.new(1, 0, 0, 28),
 		Visible = false,
 		ZIndex = 8,
@@ -215,7 +216,12 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 			Kit.clear(hand)
 			return
 		end
-		myLabel.Text = `Your draw pile: {view.drawCounts[mine]}{scoreText}`
+		if docked then
+			local score = if scoreText ~= "" then `\nYou {view.scores[me]} · {theirName} {view.scores[them]}` else ""
+			myLabel.Text = `Your draw pile: {view.drawCounts[mine]}{score}`
+		else
+			myLabel.Text = `Your draw pile: {view.drawCounts[mine]}{scoreText}`
+		end
 		local playable = view.playable or {}
 		if selected and not playable[tostring(selected)] then
 			selected = nil
@@ -235,7 +241,7 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 			end
 		end
 		pileRow.Visible = selected ~= nil
-		myLabel.Visible = selected == nil
+		myLabel.Visible = selected == nil or docked
 		-- Nothing is grayed out: playable cards lift, and after a quiet spell one of them pulses.
 		local cards = {}
 		local hinted = false
@@ -288,6 +294,14 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		theirHand.Visible = not docked
 		felt.Visible = not docked
 		myLabel.TextStrokeTransparency = if docked then 0.35 else 1
+		-- Held, the raised card would cover the line over the fan: it goes in the bottom-left
+		-- corner beside the hand instead.
+		myLabel.AnchorPoint = if docked then Vector2.new(0, 1) else Vector2.new(0, 0)
+		myLabel.Position = if docked then UDim2.new(0, 12, 1, -14) else UDim2.new(0, 0, 0.67, 0)
+		myLabel.Size = if docked then UDim2.new(0.13, 0, 0, 44) else UDim2.new(1, 0, 0, 20)
+		myLabel.TextWrapped = docked
+		myLabel.TextXAlignment = if docked then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center
+		myLabel.TextYAlignment = if docked then Enum.TextYAlignment.Bottom else Enum.TextYAlignment.Center
 		PlayingCard.setHeld(hand, docked)
 		hand.Position = if docked then UDim2.new(0.14, 0, 0.72, 0) else UDim2.new(0, 0, 0.72, 0)
 		hand.Size = if docked then UDim2.new(0.72, 0, 0.4, 0) else UDim2.new(1, 0, 0.28, 0)

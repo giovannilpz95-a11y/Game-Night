@@ -204,7 +204,8 @@ function SlapStack.create(container: Frame, sendMove: (any) -> ())
 				BackgroundColor3 = Theme.Panel,
 				BackgroundTransparency = 0.15,
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.5),
+				-- Held, low on the card so it's clear of the prompt pill over the fan.
+				Position = UDim2.fromScale(0.5, if ui.docked then 0.66 else 0.5),
 				Size = UDim2.new(0.7, 0, 0, 32),
 				ZIndex = 6,
 				Parent = slot,
