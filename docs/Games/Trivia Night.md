@@ -4,7 +4,7 @@ Back to [[Home]].
 
 Quick-fire multiple choice for 1-8 seats. Everyone answers at once.
 
-- Rules: `src/shared/Games/TriviaNight.luau`. Questions: `src/shared/Games/Data/TriviaQuestions.luau` (160 of our own, 10 categories; the correct answer is listed first and shuffled per game).
+- Rules: `src/shared/Games/TriviaNight.luau`. Questions: `src/server/Data/TriviaQuestions.luau` (160 of our own, 10 categories; the correct answer is listed first and shuffled per game). Server-only: MatchService passes it in `options.questionBank` (GameCatalog `serverData`), so clients never get the answers. Scoring is Kahoot style (500-1000 by the server-stamped answer time, `elapsedField`).
 - Match: 10 different questions. Each one is open for 15 s (or until everyone answers), then the reveal shows for 5 s.
 - Scoring: first correct answer 1000, each later correct answer 100 less (never under 500). Streak bonus +100 per question in a row (max +300). Answer order is set by the server.
 - The correct answer is not in any view until the reveal.

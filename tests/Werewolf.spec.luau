@@ -190,6 +190,38 @@ return function(T)
 		T.eq(s.lastWords.text, "It was seat 1!", "only the filtered text is kept")
 		T.eq(Werewolf.getView(s, 2).lastWords.text, "It was seat 1!")
 		T.eq(s.phase, "night")
+		-- A viewer who may not chat with seat 5 (Roblox chat settings) gets it blanked.
+		local view = Werewolf.getView(s, 2)
+		Werewolf.hideText(view, { [5] = true })
+		T.eq(view.lastWords.text, nil)
+		T.ok(view.lastWords.hidden)
+		local other = Werewolf.getView(s, 3)
+		Werewolf.hideText(other, { [4] = true })
+		T.eq(other.lastWords.text, "It was seat 1!", "only the hidden seats' words go")
+	end)
+
+	T.test("2 wolves need 6+ players: at 5 seats the house rule deals 1", function()
+		T.eq(#seatsOf(Werewolf.new(5, { rules = { wolves = 2 } }, T.Random.new(1)), "wolf"), 1)
+		T.eq(#seatsOf(Werewolf.new(6, { rules = { wolves = 2 } }, T.Random.new(1)), "wolf"), 2)
+		T.eq(#seatsOf(Werewolf.new(8, { rules = { wolves = 1 } }, T.Random.new(1)), "wolf"), 1)
+		T.eq(Werewolf.maxWolves(5), 1)
+		T.eq(Werewolf.maxWolves(8), 2)
+	end)
+
+	T.test("wolf pack chat at night only, and only with a living packmate", function()
+		local s = Werewolf.new(7, nil, T.Random.new(1))
+		s.roles = { "wolf", "wolf", "seer", "guardian", "villager", "villager", "villager" }
+		Werewolf.onTimeout(s) -- roles -> night 1
+		T.eq(s.phase, "night")
+		T.eq(Werewolf.getChatGroup(s, 1), "wolves")
+		T.eq(Werewolf.getChatGroup(s, 2), "wolves")
+		T.eq(Werewolf.getChatGroup(s, 3), nil, "villagers stay public")
+		s.alive[2] = false
+		T.eq(Werewolf.getChatGroup(s, 1), nil, "a lone wolf keeps public chat")
+		T.eq(Werewolf.getChatGroup(s, 2), "out")
+		s.alive[2] = true
+		s.phase = "day"
+		T.eq(Werewolf.getChatGroup(s, 1), nil, "by day the wolves talk in public")
 	end)
 
 	T.test("the Hunter takes someone down: at dawn and after a vote", function()

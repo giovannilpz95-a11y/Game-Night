@@ -97,11 +97,16 @@ local function isInt(value: any, lo: number, hi: number): boolean
 	return type(value) == "number" and value == value and value % 1 == 0 and value >= lo and value <= hi
 end
 
+-- The most wolves a table can hold and still get a real game: a third of the seats.
+-- 2 wolves at 5 seats would win at the first dawn after a single catch (2 vs 2).
+local function maxWolves(seatCount: number): number
+	return math.max(1, seatCount // 3)
+end
+Werewolf.maxWolves = maxWolves
+
 local function wolfCountFor(seatCount: number, wanted: number?): number
-	if wanted == 1 then
-		return 1
-	elseif wanted == 2 then
-		return 2
+	if wanted == 1 or wanted == 2 then
+		return math.min(wanted, maxWolves(seatCount))
 	end
 	return if seatCount >= 7 then 2 else 1
 end
@@ -763,12 +768,33 @@ function Werewolf.onTimeout(state)
 	end
 end
 
--- Party chat: players who are out talk only among themselves until the game ends.
+-- Party chat: players who are out talk only among themselves until the game ends, and
+-- at night the living wolves have their own pack chat (everyone else's chat still
+-- reaches them, so they can listen in).
 function Werewolf.getChatGroup(state, seat: number): string?
-	if not state.finished and isInt(seat, 1, state.seatCount) and not state.alive[seat] then
+	if state.finished or not isInt(seat, 1, state.seatCount) then
+		return nil
+	end
+	if not state.alive[seat] then
 		return "out"
 	end
+	if state.phase == "night" and state.roles[seat] == "wolf" then
+		for other = 1, state.seatCount do
+			if other ~= seat and state.alive[other] and state.roles[other] == "wolf" then
+				return "wolves" -- a lone wolf has nobody to whisper to, so keeps public chat
+			end
+		end
+	end
 	return nil
+end
+
+-- Last words from a player the viewer may not chat with (Roblox chat settings) stay blank.
+function Werewolf.hideText(view: any, hidden: { [number]: boolean })
+	local words = view.lastWords
+	if type(words) == "table" and hidden[words.seat] and words.text ~= nil then
+		words.text = nil
+		words.hidden = true
+	end
 end
 
 function Werewolf.getResult(state): GameModule.Result?
