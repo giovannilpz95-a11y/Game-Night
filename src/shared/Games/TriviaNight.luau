@@ -7,7 +7,13 @@
 --             everyone votes for one of up to four categories; the next ROUND questions
 --             come from the winner (ties: a random one of them). PICK_SECONDS, or until
 --             everyone has voted. Skipped when the deck has only one category.
--- After QUESTIONS questions the highest score wins (ties share the win).
+-- After QUESTIONS questions the highest score wins. A tie goes to whoever took the least
+-- total time over their right answers; only a true tie shares the win.
+--
+-- Questions have 2 to 4 answers (True/False ones keep True first) and a difficulty
+-- (d = 1 easy, 2 medium, 3 hard; missing = 1). A game ramps up: the first third of the
+-- questions come easy, the middle medium, the last third hard, as far as the bank
+-- allows. Bots get harder questions wrong more often.
 --
 -- Scoring (Kahoot style): a correct answer earns 1000 x (1 - (time taken / timer) / 2),
 -- so 500 to 1000 by its own speed (under half a second is the full 1000). The answer
@@ -27,7 +33,10 @@
 -- { { c = category, q = question, a = { right, wrong, wrong, wrong } } }. Used instead of
 -- our bank when set.
 --
--- Moves: { kind = "answer", choice = 1..4 }   { kind = "pick", choice = 1..#offer }
+-- Scores in views are held back while a question is open (each seat's points for it
+-- show at the reveal), so nobody learns who got it right from the seat list.
+--
+-- Moves: { kind = "answer", choice = 1..#answers }   { kind = "pick", choice = 1..#offer }
 -- (`elapsed` on an answer is set by the server; anything a client sends is overwritten.)
 
 local GameModule = require(script.Parent.Parent.GameModule)
@@ -71,6 +80,41 @@ function TriviaNight.speedPoints(elapsed: number?, seconds: number): number
 end
 
 local BOT_ACCURACY = { easy = 0.4, medium = 0.65, hard = 0.85 }
+local BOT_HARDER = 0.12 -- bots' accuracy drops this much per difficulty step
+
+local function difficultyOf(q: any): number
+	local d = q and q.d
+	return if type(d) == "number" and d >= 1 and d <= 3 then math.floor(d) else 1
+end
+TriviaNight.difficultyOf = difficultyOf
+
+-- The difficulty question `slot` of `total` aims for: easy, then medium, then hard.
+local function targetDifficulty(slot: number, total: number): number
+	if total <= 2 then
+		return 1
+	end
+	return math.clamp(math.floor((slot - 1) * 3 / total) + 1, 1, 3)
+end
+TriviaNight.targetDifficulty = targetDifficulty
+
+-- Take one of `candidates` (bank indexes) for `slot`, nearest the slot's difficulty.
+local function takeFor(bank: { any }, candidates: { number }, slot: number, total: number, rng: Random): number?
+	if #candidates == 0 then
+		return nil
+	end
+	local want = targetDifficulty(slot, total)
+	local best, bestGap = {}, math.huge
+	for i, index in candidates do
+		local gap = math.abs(difficultyOf(bank[index]) - want)
+		if gap < bestGap then
+			best, bestGap = { i }, gap
+		elseif gap == bestGap then
+			table.insert(best, i)
+		end
+	end
+	local at = best[rng:NextInteger(1, #best)]
+	return table.remove(candidates, at)
+end
 
 function TriviaNight.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 1 and seatCount <= TriviaNight.maxSeats, "Trivia Night needs 1-8 seats")
@@ -85,14 +129,15 @@ function TriviaNight.new(seatCount: number, options: any?, rng: Random?)
 	if options and type(options.customQuestions) == "table" and #options.customQuestions > 0 then
 		bank = options.customQuestions
 	end
-	-- Pick distinct questions.
+	-- Pick distinct questions, easy first and harder later.
 	local pool = {}
 	for i = 1, #bank do
 		pool[i] = i
 	end
+	local total = math.min(count, #pool)
 	local picked = {}
-	for _ = 1, math.min(count, #pool) do
-		table.insert(picked, table.remove(pool, random:NextInteger(1, #pool)) :: number)
+	for slot = 1, total do
+		table.insert(picked, takeFor(bank, pool, slot, total, random) :: number)
 	end
 	local state = {
 		seatCount = seatCount,
@@ -110,6 +155,7 @@ function TriviaNight.new(seatCount: number, options: any?, rng: Random?)
 		answeredCount = 0,
 		correctCount = 0,
 		scores = table.create(seatCount, 0),
+		rightTime = table.create(seatCount, 0), -- seconds spent on right answers (tie-break)
 		streaks = table.create(seatCount, 0),
 		lastPoints = {},
 		finished = false,
@@ -146,12 +192,28 @@ local function openCategories(state): { string }
 	return out
 end
 
+local function isTrueFalse(q: any): boolean
+	local a = q.a
+	return #a == 2 and ((a[1] == "True" and a[2] == "False") or (a[1] == "False" and a[2] == "True"))
+end
+TriviaNight.isTrueFalse = isTrueFalse
+
 local function startQuestion(state)
 	state.phase = "question"
-	local order = { 1, 2, 3, 4 }
-	for i = 4, 2, -1 do
-		local j = state.rng:NextInteger(1, i)
-		order[i], order[j] = order[j], order[i]
+	local q = state.bank[state.questions[state.index]]
+	local n = math.clamp(#q.a, 2, 4)
+	local order = {}
+	for i = 1, n do
+		order[i] = i
+	end
+	if isTrueFalse(q) then
+		-- True on the left, always.
+		order = if q.a[1] == "True" then { 1, 2 } else { 2, 1 }
+	else
+		for i = n, 2, -1 do
+			local j = state.rng:NextInteger(1, i)
+			order[i], order[j] = order[j], order[i]
+		end
 	end
 	state.order = order
 	state.correct = table.find(order, 1) :: number
@@ -178,7 +240,7 @@ local function useCategory(state, category: string)
 		if #fresh == 0 then
 			break
 		end
-		local pick = table.remove(fresh, state.rng:NextInteger(1, #fresh)) :: number
+		local pick = takeFor(state.bank, fresh, slot, #state.questions, state.rng) :: number
 		-- Swap it in, keeping every question in the game distinct.
 		local at = table.find(state.questions, pick)
 		if at and at > slot then
@@ -220,7 +282,8 @@ function TriviaNight._nextQuestion(state)
 		state.finished = true
 		return
 	end
-	if state.categoryVote and (state.index - 1) % ROUND == 0 then
+	-- A vote opens every ROUND questions, but not for a single last question.
+	if state.categoryVote and (state.index - 1) % ROUND == 0 and #state.questions - state.index >= 1 then
 		local open = openCategories(state)
 		if #open >= 2 then
 			-- Up to four of them, at random.
@@ -290,12 +353,11 @@ function TriviaNight.getLegalMoves(state, seat: number): { any }
 	if state.phase ~= "question" or state.answers[seat] ~= nil then
 		return {}
 	end
-	return {
-		{ kind = "answer", choice = 1 },
-		{ kind = "answer", choice = 2 },
-		{ kind = "answer", choice = 3 },
-		{ kind = "answer", choice = 4 },
-	}
+	local moves = {}
+	for choice = 1, #state.order do
+		table.insert(moves, { kind = "answer", choice = choice })
+	end
+	return moves
 end
 
 function TriviaNight.validateMove(state, seat: number, move: any): (boolean, string?)
@@ -322,7 +384,7 @@ function TriviaNight.validateMove(state, seat: number, move: any): (boolean, str
 		return false, "Bad move"
 	end
 	local choice = move.choice
-	if type(choice) ~= "number" or choice % 1 ~= 0 or choice < 1 or choice > 4 then
+	if type(choice) ~= "number" or choice % 1 ~= 0 or choice < 1 or choice > #state.order then
 		return false, "Pick an answer"
 	end
 	return true
@@ -356,6 +418,9 @@ function TriviaNight.applyMove(state, seat: number, move: any)
 		end
 		state.scores[seat] += points
 		state.lastPoints[seat] = points
+		if type(move.elapsed) == "number" then
+			state.rightTime[seat] += math.max(0, move.elapsed)
+		end
 	elseif state.wrongPenalty then
 		state.streaks[seat] = 0
 		state.scores[seat] -= 250
@@ -395,11 +460,28 @@ function TriviaNight.getResult(state): GameModule.Result?
 	for seat = 1, state.seatCount do
 		best = math.max(best, state.scores[seat])
 	end
-	local winners = {}
+	local tied = {}
 	for seat = 1, state.seatCount do
 		if state.scores[seat] == best then
+			table.insert(tied, seat)
+		end
+	end
+	if #tied == 1 then
+		return { winners = tied, isDraw = false, reason = `Top score: {best} points` }
+	end
+	-- A tie on points: the quickest over their right answers wins.
+	local fastest = math.huge
+	for _, seat in tied do
+		fastest = math.min(fastest, state.rightTime[seat])
+	end
+	local winners = {}
+	for _, seat in tied do
+		if state.rightTime[seat] == fastest then
 			table.insert(winners, seat)
 		end
+	end
+	if #winners < #tied then
+		return { winners = winners, isDraw = false, reason = `Tied on {best} points: won on speed` }
 	end
 	return { winners = winners, isDraw = false, reason = `Top score: {best} points` }
 end
@@ -415,11 +497,20 @@ local function ordinal(n: number): string
 end
 TriviaNight.ordinal = ordinal
 
+-- The score everyone may see: while a question is open, without its points yet.
+local function shownScore(state, seat: number): number
+	if state.phase == "question" then
+		return state.scores[seat] - (state.lastPoints[seat] or 0)
+	end
+	return state.scores[seat]
+end
+
 -- Place on the scoreboard (ties share a place: 1st, 1st, 3rd).
 local function placeOf(state, seat: number): number
 	local place = 1
+	local mine = shownScore(state, seat)
 	for other = 1, state.seatCount do
-		if state.scores[other] > state.scores[seat] then
+		if shownScore(state, other) > mine then
 			place += 1
 		end
 	end
@@ -441,7 +532,7 @@ function TriviaNight.getSeatInfo(state): { [number]: string }
 		-- Your place shows from the first reveal on (before that everyone is tied at 0).
 		local ranked = state.seatCount > 1 and (state.index > 1 or state.phase == "reveal")
 		local place = if ranked then `{ordinal(placeOf(state, seat))} · ` else ""
-		info[seat] = `{place}{state.scores[seat]} pts{tag}`
+		info[seat] = `{place}{shownScore(state, seat)} pts{tag}`
 	end
 	return info
 end
@@ -461,10 +552,14 @@ function TriviaNight.getView(state, seat: number?)
 		phase = state.phase,
 		number = math.min(state.index, #state.questions),
 		total = #state.questions,
-		scores = table.clone(state.scores),
+		scores = {},
 		streak = if seat then state.streaks[seat] else 0,
+		timerSeconds = (TriviaNight.getTimer(state) or { seconds = 0 }).seconds, -- this phase's length
 		answeredCount = state.answeredCount,
 	}
+	for s = 1, state.seatCount do
+		view.scores[s] = shownScore(state, s)
+	end
 	if state.phase == "done" then
 		view.status = "Final scores"
 		return view
@@ -510,7 +605,7 @@ function TriviaNight.getView(state, seat: number?)
 		view.place = placeOf(state, seat)
 		local ahead, gap = nil, math.huge
 		for other = 1, state.seatCount do
-			local diff = state.scores[other] - state.scores[seat]
+			local diff = shownScore(state, other) - shownScore(state, seat)
 			if diff > 0 and diff < gap then
 				ahead, gap = other, diff
 			end
@@ -534,8 +629,10 @@ function TriviaNight.getBotDelay(state, _seat: number, rng: Random): number
 	if state.phase == "pick" then
 		return rng:NextNumber(1.5, 5)
 	end
-	local fastest = if state.botLevel == "hard" then 2 elseif state.botLevel == "medium" then 3 else 4
-	return rng:NextNumber(fastest, 11)
+	-- Scaled to the answer clock, and always in before it runs out.
+	local seconds = state.answerSeconds
+	local fastest = (if state.botLevel == "hard" then 2 elseif state.botLevel == "medium" then 3 else 4) * seconds / 15
+	return rng:NextNumber(fastest, math.max(fastest + 0.5, math.min(seconds * 0.73, seconds - 1)))
 end
 
 function TriviaNight.chooseBotMove(state, seat: number, rng: Random): any?
@@ -548,11 +645,13 @@ function TriviaNight.chooseBotMove(state, seat: number, rng: Random): any?
 	if state.phase ~= "question" or state.answers[seat] ~= nil then
 		return nil
 	end
-	if rng:NextNumber() < (BOT_ACCURACY[state.botLevel] or 0.65) then
+	local d = difficultyOf(currentQuestion(state))
+	local accuracy = (BOT_ACCURACY[state.botLevel] or 0.65) - (d - 1) * BOT_HARDER
+	if rng:NextNumber() < accuracy then
 		return { kind = "answer", choice = state.correct }
 	end
 	local wrong = {}
-	for choice = 1, 4 do
+	for choice = 1, #state.order do
 		if choice ~= state.correct then
 			table.insert(wrong, choice)
 		end

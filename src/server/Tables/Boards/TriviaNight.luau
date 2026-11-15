@@ -78,7 +78,7 @@ function TriviaNight.create(boardCF: CFrame, parent: Instance, layout: Scene.Lay
 				part.Color = if choice == view.correct then RIGHT else WRONG
 				part.Material = Enum.Material.Neon
 				part.CFrame = dome.cf
-			elseif view.phase == "question" and answered[seat] then
+			elseif (view.phase == "question" or view.phase == "pick") and answered[seat] then
 				part.Color = dome.color
 				part.Material = Enum.Material.Neon
 				part.CFrame = dome.cf * CFrame.new(0, -0.08, 0) -- pressed in

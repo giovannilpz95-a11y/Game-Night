@@ -175,15 +175,27 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		Parent = root,
 	})
 
+	local lastTick = 0
 	local heartbeat = RunService.Heartbeat:Connect(function()
 		if not snapshot or not snapshot.turnEndsAt or not timerStart then
 			fill.Size = UDim2.fromScale(0, 1)
 			return
 		end
 		local left = snapshot.turnEndsAt - workspace:GetServerTimeNow()
-		local total = math.max(0.1, snapshot.turnEndsAt - timerStart)
+		-- The phase's real length (a late or rejoining client still drains at the right speed).
+		local seconds = snapshot.view and snapshot.view.timerSeconds
+		local total = if type(seconds) == "number" and seconds > 0 then seconds else math.max(0.1, snapshot.turnEndsAt - timerStart)
 		fill.Size = UDim2.fromScale(math.clamp(left / total, 0, 1), 1)
 		fill.BackgroundColor3 = if left < 5 then Theme.Bad else Theme.Accent
+		-- The last five seconds of a question tick, unless you've answered.
+		local whole = math.ceil(left)
+		local view = snapshot.view
+		if view and view.phase == "question" and view.yourAnswer == nil and snapshot.yourSeat and whole >= 1 and whole <= 5 and whole ~= lastTick then
+			lastTick = whole
+			Audio.play("tick")
+		elseif whole > 5 then
+			lastTick = 0
+		end
 	end)
 
 	local lastPhaseKey = ""
@@ -296,8 +308,8 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		if phaseKey ~= lastPhaseKey then
 			lastPhaseKey = phaseKey
 			pending = nil
-			if tableMode and view.phase == "reveal" and snapshot.yourSeat and view.yourAnswer ~= nil then
-				Audio.play(if view.yourAnswer == view.correct then "win" else "lose")
+			if view.phase == "reveal" and snapshot.yourSeat and view.yourAnswer ~= nil then
+				Audio.play(if view.yourAnswer == view.correct then "coin" else "buzz")
 			end
 			timerStart = workspace:GetServerTimeNow()
 			if view.phase == "question" or view.phase == "pick" then
@@ -337,6 +349,13 @@ function TriviaNight.create(container: Frame, sendMove: (any) -> ())
 		end
 		grid.Visible = true
 		track.Visible = view.phase == "question" or view.phase == "pick"
+		-- Two answers (True / False) take the whole grid.
+		local count = if view.answers then #view.answers else 4
+		if isDocked then
+			gridLayout.CellSize = UDim2.new(if count == 2 then 0.5 else 0.25, -9, 1, 0)
+		else
+			gridLayout.CellSize = if count == 2 then UDim2.new(0.5, -6, 1, 0) else UDim2.new(0.5, -6, 0.5, -6)
+		end
 		question.Text = view.question or ""
 
 		local reveal = view.phase == "reveal"
