@@ -36,6 +36,7 @@ Net.Names = {
 	Showtime = "Showtime", -- server -> clients: game-start intro / winners' celebration; client -> server: { skip = matchId }
 	Reaction = "Reaction", -- both ways: animated reactions over a player's head or seat (client sends { id })
 	HeadLook = "HeadLook", -- client -> server: where your seat camera looks (unit Vector3), or nil when you get up
+	WordCheck = "WordCheck", -- both ways: Word Tiles asks { id, words }, the server answers { id, valid }
 }
 
 local FOLDER_NAME = "Remotes"

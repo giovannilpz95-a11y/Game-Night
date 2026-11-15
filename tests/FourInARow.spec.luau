@@ -90,4 +90,32 @@ return function(T)
 			end
 		end
 	end)
+
+	T.test("Hard opens in the centre and answers the centre with the centre", function()
+		local s = FourInARow.new(2, { botLevel = "hard" })
+		T.eq(FourInARow.chooseBotMove(s, 1, Random.new(1)).column, 4)
+		FourInARow.applyMove(s, 1, { column = 4 })
+		T.eq(FourInARow.chooseBotMove(s, 2, Random.new(1)).column, 4)
+	end)
+
+	T.test("Hard still finds a plain win when pops are in its search", function()
+		local s = FourInARow.new(2, { botLevel = "hard", rules = { popOut = true } })
+		for _, c in { 1, 1, 2, 2, 3, 3 } do
+			FourInARow.applyMove(s, s.turn, { column = c })
+		end
+		local move = FourInARow.chooseBotMove(s, 1, Random.new(1))
+		T.eq(move.column, 4)
+		T.eq(move.pop, nil)
+	end)
+
+	T.test("Hard blocks a double threat before it happens", function()
+		-- Seat 2 has 3 and 4 on the bottom row with 2, 5 and 6 open: seat 1 must take one
+		-- of those, or seat 2 gets an open-ended three.
+		local s = FourInARow.new(2, { botLevel = "hard" })
+		for _, c in { 1, 3, 7, 4 } do
+			FourInARow.applyMove(s, s.turn, { column = c })
+		end
+		local col = FourInARow.chooseBotMove(s, 1, Random.new(1)).column
+		T.ok(col == 2 or col == 5 or col == 6, `played {col}`)
+	end)
 end

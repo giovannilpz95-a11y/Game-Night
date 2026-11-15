@@ -25,12 +25,13 @@ rules.TicTacToe = {
 	goal = "Get three of your marks in a row: across, down or diagonal.",
 	card = {
 		"Tap an empty square to place your mark.",
-		"You only keep 3 marks. Placing a 4th removes your oldest one.",
-		"The mark about to vanish fades the turn before, so plan ahead.",
+		"You only keep 3 marks: placing a 4th removes your oldest (it fades the turn before).",
+		"With Vanishing marks off it's the classic game: marks stay, and it can be a draw.",
 	},
 	sections = {
-		{ title = "Your turn", lines = { "Tap any empty square.", "Once you have 3 marks, your oldest one disappears when you place a new one. The board never fills up, so there are no ties." } },
+		{ title = "Your turn", lines = { "Tap any empty square. You can't place on your fading mark's square: it's still taken.", "Once you have 3 marks, your oldest one disappears when you place a new one. The board never fills up, so there are no ties." } },
 		{ title = "Winning", lines = { "Three in a row wins straight away.", "A very long game (60 moves) ends in a draw." } },
+		{ title = "Classic (Vanishing marks off)", lines = { "Marks stay where they are.", "As soon as no line can be made by either player, it's a draw." } },
 	},
 }
 
@@ -43,6 +44,7 @@ rules.FourInARow = {
 	sections = {
 		{ title = "Your turn", lines = { "Drop one disc into any column that isn't full." } },
 		{ title = "Winning", lines = { "Four in a row in any direction wins.", "If the grid fills up with no four, it's a draw." } },
+		{ title = "Pop Out (house rule)", lines = { "On your turn you may instead pull one of your own discs out of the bottom row. Everything above it drops down one.", "If a pop makes four for both players, the one who popped wins.", "A full grid isn't a draw: you can still pop." } },
 		{ title = "Tip", lines = { "The middle column is part of the most lines. Start there." } },
 	},
 }
@@ -143,7 +145,7 @@ rules.WordTiles = {
 	sections = {
 		{ title = "Your turn", lines = { "Place 1-7 tiles in one row or column with no gaps, touching the tiles already down.", "Every word you make (the main one and any crossing ones) must be a real word.", "Or swap tiles with the bag (needs 7+ in the bag), or pass." } },
 		{ title = "Scoring", lines = { "Add up the letter values. A letter square multiplies that letter; a word square multiplies the whole word.", "Squares only count the turn you cover them.", "Use all 7 tiles in one turn for 50 bonus points.", "Blank tiles can be any letter and score 0." } },
-		{ title = "Game end", lines = { "When someone plays their last tile and the bag is empty, they get the points left on everyone else's racks.", "Too many turns in a row without points also ends it. Top score wins." } },
+		{ title = "Game end", lines = { "When someone plays their last tile and the bag is empty, they get the points left on everyone else's racks, and everyone else loses theirs.", "Six turns in a row without points (eight with 4 players) also end it, and everyone loses what's left on their rack.", "Top score wins. A tie goes to whoever was ahead before the leftover tiles were counted.", "If your turn timer runs out, you pass." } },
 	},
 }
 

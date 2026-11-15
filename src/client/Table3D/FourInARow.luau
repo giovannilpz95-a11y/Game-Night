@@ -12,6 +12,7 @@ local Press = require(script.Parent.Parent.UI.Press)
 local FourInARow = {}
 
 local MARK = Color3.fromRGB(255, 214, 102)
+local COLUMN_MARK = Color3.fromRGB(235, 235, 245) -- white, so it never reads as a third disc colour
 
 function FourInARow.create(ctx: any)
 	local snapshot: any = nil
@@ -126,7 +127,7 @@ function FourInARow.create(ctx: any)
 					local top = Instance.new("Part")
 					top.Size = Vector3.one * (cell * 0.4)
 					top.CFrame = spot
-					ctx.mark(top, MARK, "ball")
+					ctx.mark(top, COLUMN_MARK, "ball")
 					top:Destroy()
 				end
 			end
