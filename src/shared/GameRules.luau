@@ -210,7 +210,7 @@ rules.Whodunit = {
 		"Sure of all three? Accuse. Right wins; wrong puts you out.",
 	},
 	sections = {
-		{ title = "The mystery", lines = { "One suspect, one item and one room are hidden in the case file. All the other cards are dealt to players.", "Any card you see can't be in the case file." } },
+		{ title = "The mystery", lines = { "One suspect, one item and one room are hidden in the case file. All the other cards are dealt to players.", "With 4 or 5 players the cards that don't deal evenly lie face up beside the board for everyone.", "Any card you see can't be in the case file." } },
 		{ title = "Your turn", lines = { "Move to a room next to yours, or take a secret passage between opposite corners.", "Suggest a suspect and an item. Their pawn and the item move into your room.", "Going round the table, the first player with any of those cards shows you one in secret." } },
 		{ title = "Accusing", lines = { "Any time on your turn you can accuse: name a suspect, item and room.", "Right: you win. Wrong: you're out, but you still show cards to others." } },
 		{ title = "Tip", lines = { "Open Detective notes to track what you've seen." } },

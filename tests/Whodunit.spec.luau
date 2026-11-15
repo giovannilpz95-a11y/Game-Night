@@ -35,8 +35,32 @@ return function(T)
 					total += 1
 				end
 			end
+			for _, id in s.leftover do
+				T.ok(not seen[id], "a face-up card is also in a hand")
+				seen[id] = true
+				total += 1
+			end
 			T.eq(total, 18)
+			T.eq(#s.leftover, 18 % seats, "leftover cards lie face up")
+			for seat = 2, seats do
+				T.eq(#s.hands[seat], #s.hands[1], "hands are even")
+			end
 			T.ok(not seen[S(s.solution.suspect)] and not seen[I(s.solution.item)] and not seen[R(s.solution.room)], "case file not dealt")
+		end
+		local uneven = Whodunit.new(4, { rules = { leftover = false } }, T.Random.new(4))
+		T.eq(#uneven.leftover, 0, "house rule off: every card is dealt")
+		T.eq(#uneven.hands[1] + #uneven.hands[2] + #uneven.hands[3] + #uneven.hands[4], 18)
+	end)
+
+	T.test("face-up leftover cards are public and never the answer", function()
+		local s = Whodunit.new(5, nil, T.Random.new(11))
+		T.eq(#s.leftover, 3)
+		local view = Whodunit.getView(s, nil)
+		T.eq(#view.leftover, 3)
+		local d = Whodunit.deduce(s, 1, "easy")
+		for _, id in s.leftover do
+			local category = Whodunit.cards[id].category
+			T.ok(not table.find(d.candidates[category], id), "leftover ruled out of the case file")
 		end
 	end)
 

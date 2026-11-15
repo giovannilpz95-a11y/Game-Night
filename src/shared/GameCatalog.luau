@@ -345,6 +345,7 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "anyRoom", name = "Walk anywhere", hint = "Move to any room on your turn, not just the next one.", choices = Toggle, default = 1 },
 			{ key = "openShow", name = "Show cards to all", hint = "A card shown to answer a suggestion is shown to everyone. Easier, faster games.", choices = Toggle, default = 1 },
+			{ key = "leftover", name = "Leftover cards face up", hint = "With 4 or 5 players, the cards that don't deal evenly lie face up for everyone instead of making some hands bigger.", choices = Toggle, default = 2 },
 		},
 	},
 	{
