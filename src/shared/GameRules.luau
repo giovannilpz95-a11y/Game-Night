@@ -97,7 +97,7 @@ rules.Checkers = {
 }
 
 rules.Conquest = {
-	goal = "Hold the most territories when the last round ends, or take them all.",
+	goal = "Hold the most territories when the cease-fire comes, or take them all.",
 	card = {
 		"Each turn: place new armies, attack neighbours, then move armies once.",
 		"Attack from a territory with 2+ armies. Dice decide it; ties go to the defender.",
@@ -105,10 +105,26 @@ rules.Conquest = {
 		"Your whole turn is on one clock.",
 	},
 	sections = {
-		{ title = "1. Reinforce", lines = { "You get armies: your territories divided by 3 (at least 3), plus each region you hold whole.", "Trade 3 cards for extra armies. With 5 cards you must trade.", "Tap your territories to place them." } },
-		{ title = "2. Attack", lines = { "Pick one of your territories with 2+ armies, then a neighbour.", "You roll up to 3 dice, the defender up to 2. Highest dice are compared in pairs; ties go to the defender.", "Blitz keeps rolling until it falls or you're down to 1 army.", "Take it and move armies in. In the first rounds you can only take a few territories per turn." } },
-		{ title = "3. Fortify", lines = { "Move armies once between two of your territories joined by your land, or just end the turn.", "Conquer at least one territory to earn a card." } },
-		{ title = "Winning", lines = { "Take every territory, or have the most when the round limit is reached.", "Knock a player out and you get their cards." } },
+		{ title = "1. Reinforce", lines = {
+			"You get armies: your territories divided by 3 (at least 3), plus each region you hold whole.",
+			"Fewer territories than the average player (by a whole one)? +2 rally armies.",
+			"Trade 3 cards for extra armies: three of a kind (3, 4 or 5) or one of each (6), or rising values with that house rule. With 5 cards you must trade.",
+			"A traded card showing a territory you hold puts 2 more armies there (one +2 per trade).",
+			"Tap your territories to place them. Still holding a set after placing? Trade it or start attacking.",
+		} },
+		{ title = "2. Attack", lines = {
+			"Pick one of your territories with 2+ armies, then a neighbour.",
+			"Roll up to 3 dice (one fewer than your armies, and you can choose fewer), the defender up to 2. Highest dice are compared in pairs; ties go to the defender.",
+			"Blitz keeps rolling until it falls, you're down to 1 army, or the number you chose to stop at.",
+			"Take it and move armies in (at least as many as the dice you rolled).",
+			"Slow start (house rule, on by default): with 3+ players round 1 is for placing only, then 1 conquest a turn in round 2 and 2 in rounds 3-5.",
+		} },
+		{ title = "3. Fortify", lines = { "Move armies once between two of your territories joined by your own land, which ends your turn. Or just end the turn.", "Conquer at least one territory to earn a card." } },
+		{ title = "Winning", lines = {
+			"Take every territory, or have the most when the game stops. Tied on territories? Most armies wins; still tied is a draw.",
+			"Cease-fire: from a round before the limit, the game can stop after any turn (about once every two rounds), and always by the end of the round after the limit.",
+			"Knock a player out and you get their cards. With 6 or more you trade at once, until you're down to 4.",
+		} },
 		{ title = "Modes (house rules)", lines = {
 			"Fog of war: you only see who holds a land, and its armies, when it's yours or touches yours.",
 			"Secret missions: finish your mission on your turn (hold two regions, hold lots of lands, knock someone out) and you win at once. Nobody else sees it until the end.",

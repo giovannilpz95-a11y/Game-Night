@@ -53,7 +53,9 @@ Conquest.maxSeats = 6
 Conquest.turnClock = true
 Conquest.TURN_SECONDS = 90 -- the whole turn, not each move (house rule "turnLength" can change it)
 Conquest.HAND_LIMIT = 5 -- holding this many cards forces a trade
-Conquest.LOG_SIZE = 8
+Conquest.LOG_SIZE = 14
+Conquest.FIRST_TURN_GRACE = 30 -- extra seconds on everyone's first turn (the how-to card is up)
+Conquest.CARD_LAND_BONUS = 2 -- trading a card whose territory you hold puts 2 armies there
 
 -- Rounds before the game is scored, by seat count. Tuned so most games take 20-30 min.
 local ROUNDS = { [2] = 20, [3] = 16, [4] = 14, [5] = 11, [6] = 9 }
@@ -227,7 +229,17 @@ function Conquest.tradeValue(state, kinds: { string }): number?
 end
 
 -- Conquests allowed this turn (the early-game cap can be turned off).
+-- With 3+ players and Slow start on, round 1 is for placing only: in bot tests the first
+-- seat won a third less often than a fair share when everyone could hit it before its
+-- second turn (4 seats: 16/32/23/29 wins per 100 games; with a quiet first round 35/34/37/43 per 150).
+function Conquest.isPeaceRound(state): boolean
+	return state.earlyLimit ~= false and state.seats >= 3 and state.round == 1
+end
+
 function Conquest.limitFor(state): number
+	if Conquest.isPeaceRound(state) then
+		return 0
+	end
 	if state.earlyLimit == false then
 		return math.huge
 	end
@@ -291,7 +303,9 @@ function Conquest.isRallying(owner: { number }, seat: number): boolean
 		counts[o] += 1
 	end
 	local mine = counts[seat] or 0
-	return mine > 0 and mine * players < TERRITORY_COUNT
+	-- At least a whole territory under the average, so an uneven deal (24 lands among 5
+	-- players) doesn't hand the short seat a bonus from turn one.
+	return mine > 0 and mine * players <= TERRITORY_COUNT - players
 end
 
 function Conquest.income(owner: { number }, seat: number): number
@@ -305,6 +319,20 @@ function Conquest.income(owner: { number }, seat: number): number
 		armies += Conquest.RALLY_ARMIES
 	end
 	return armies
+end
+
+-- Where this turn's armies come from, for "Place 9: 4 lands + 2 Heartwood + 2 rally".
+function Conquest.incomeParts(owner: { number }, seat: number): { any }
+	local parts = { { label = "lands", armies = math.max(3, Conquest.countOwned(owner, seat) // 3) } }
+	for r, region in Conquest.regions do
+		if Conquest.regionOwner(owner, r) == seat then
+			table.insert(parts, { label = region.name, armies = region.bonus })
+		end
+	end
+	if Conquest.isRallying(owner, seat) then
+		table.insert(parts, { label = "rally", armies = Conquest.RALLY_ARMIES })
+	end
+	return parts
 end
 
 -- Are a and b joined by a path through `seat`'s own territories?
@@ -574,7 +602,9 @@ local function startTurn(state)
 	state.conqueredThisTurn = false
 	state.conquestsThisTurn = 0
 	state.occupy = nil
+	state.knockoutTrade = false
 	state.turnId += 1
+	state.turnsPlayed = (state.turnsPlayed or 0) + 1
 end
 
 function Conquest.new(seatCount: number, options: any?, rng: Random?)
@@ -604,6 +634,9 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 		cards = if rules.cards == "rising" then "rising" else "fixed",
 		trades = 0,
 		earlyLimit = rules.earlyLimit ~= false,
+		ending = if rules.ending == "fixed" then "fixed" else "ceasefire",
+		history = {}, -- land counts per seat at the end of each round
+		biggestBattle = nil, -- { attacker, defender, to, lost } for the end screen
 		fog = rules.fog == true,
 		missions = nil, -- { [seat]: mission } with the missions house rule
 		capitals = nil, -- { [seat]: territory } with the capitals house rule
@@ -617,8 +650,10 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 		log = {},
 		result = nil,
 	}
+	state.handLands = {} -- [seat] = the territory on each card in hands[seat] (0: none)
 	for seat = 1, seatCount do
 		state.hands[seat] = {}
+		state.handLands[seat] = {}
 		state.eliminated[seat] = false
 	end
 
@@ -649,13 +684,22 @@ function Conquest.new(seatCount: number, options: any?, rng: Random?)
 		end
 	end
 
+	-- Each non-wild card shows a territory (8 of each kind for our 24 lands): trading it
+	-- while you hold that land puts 2 armies there, like the classic cards.
+	local cardLands = {}
+	for t = 1, TERRITORY_COUNT do
+		cardLands[t] = t
+	end
+	shuffle(cardLands, random)
+	local nextCard = 0
 	for _, kind in Conquest.cardKinds do
 		for _ = 1, CARDS_PER_KIND do
-			table.insert(state.deck, kind)
+			nextCard += 1
+			table.insert(state.deck, { kind = kind, land = cardLands[nextCard] or 0 })
 		end
 	end
 	for _ = 1, WILD_CARDS do
-		table.insert(state.deck, "wild")
+		table.insert(state.deck, { kind = "wild", land = 0 })
 	end
 	shuffle(state.deck, random)
 
@@ -709,8 +753,44 @@ local function totalArmies(state, seat: number): number
 	return n
 end
 
+-- The territories printed on a seat's cards, kept in step with the hand (a hand set
+-- directly, in tests, gets cards with no territory).
+local function handLands(state, seat: number): { number }
+	state.handLands = state.handLands or {}
+	local lands = state.handLands[seat]
+	local hand = state.hands[seat]
+	if lands == nil or #lands ~= #hand then
+		lands = table.create(#hand, 0)
+		state.handLands[seat] = lands
+	end
+	return lands
+end
+Conquest.handLands = handLands
+
+-- Land counts per seat, one row per round (the end screen's share-over-time bar).
+local function recordHistory(state)
+	state.history = state.history or {}
+	local row = {}
+	for seat = 1, state.seats do
+		row[seat] = Conquest.countOwned(state.owner, seat)
+	end
+	table.insert(state.history, row)
+end
+
+-- Cease-fire (default ending): from round maxRounds - 1 on, the game can stop after any
+-- turn, about once every two rounds, and always by the end of round maxRounds + 1.
+-- Nobody knows which turn is the last, so the last seat can't plan a final land grab
+-- (with a fixed last round it won about twice its share).
+function Conquest.ceaseFireChance(state): number
+	return 1 / (2 * math.max(1, #aliveSeats(state)))
+end
+
+function Conquest.ceaseFireNear(state): boolean
+	return state.ending ~= "fixed" and state.round >= state.maxRounds - 1
+end
+
 -- Ends the game on the round limit: most territories, then most armies.
-local function scoreGame(state)
+local function scoreGame(state, ceaseFire: boolean?)
 	local best = {}
 	local bestKey = -1
 	for _, seat in aliveSeats(state) do
@@ -724,9 +804,10 @@ local function scoreGame(state)
 	state.result = {
 		winners = best,
 		isDraw = #best > 1,
-		reason = `Most territories after {state.maxRounds} rounds`,
+		reason = if ceaseFire then `Cease-fire in round {state.round}: most territories` else `Most territories after {state.maxRounds} rounds`,
 	}
 	state.phase = "over"
+	recordHistory(state)
 end
 
 local function endTurn(state)
@@ -738,16 +819,33 @@ local function endTurn(state)
 		end
 		local card = table.remove(state.deck)
 		if card then
-			table.insert(state.hands[seat], card)
+			local lands = handLands(state, seat)
+			if type(card) == "table" then
+				table.insert(state.hands[seat], card.kind)
+				table.insert(lands, card.land or 0)
+			else
+				table.insert(state.hands[seat], card)
+				table.insert(lands, 0)
+			end
 		end
 	end
 	local nextSeat = seat
 	repeat
 		nextSeat = nextSeat % state.seats + 1
 	until not state.eliminated[nextSeat] or nextSeat == seat
-	if nextSeat <= seat then
+	local wrapped = nextSeat <= seat
+	if state.ending ~= "fixed" and state.round >= state.maxRounds - 1 then
+		local lastChance = wrapped and state.round >= state.maxRounds + 1
+		if lastChance or state.rng:NextNumber() < Conquest.ceaseFireChance(state) then
+			log(state, "Cease-fire! The fighting stops.")
+			scoreGame(state, true)
+			return
+		end
+	end
+	if wrapped then
+		recordHistory(state)
 		state.round += 1
-		if state.round > state.maxRounds then
+		if state.ending == "fixed" and state.round > state.maxRounds then
 			scoreGame(state)
 			return
 		end
@@ -760,12 +858,25 @@ local function mustTrade(state, seat: number): boolean
 	return #state.hands[seat] >= Conquest.HAND_LIMIT and Conquest.bestSet(state.hands[seat]) ~= nil
 end
 
--- After placing or trading: move on to attacking once nothing is left to place.
+-- After placing or trading: move on to attacking once nothing is left to place. At the
+-- start of a turn, a player still holding a set gets the choice to trade it first
+-- (startAttack moves on), instead of losing the chance until next turn.
 local function checkReinforceDone(state)
 	if state.phase == "reinforce" and state.reinforcements <= 0 and not mustTrade(state, state.turn) then
+		if not state.knockoutTrade and Conquest.bestSet(state.hands[state.turn]) ~= nil then
+			return
+		end
 		state.phase = "attack"
+		state.knockoutTrade = false
 	end
 end
+
+-- Holding a set with nothing left to place: trade or start attacking.
+local function holdingForTrade(state): boolean
+	return state.phase == "reinforce" and state.reinforcements <= 0 and not mustTrade(state, state.turn)
+		and not state.knockoutTrade and Conquest.bestSet(state.hands[state.turn]) ~= nil
+end
+Conquest.holdingForTrade = holdingForTrade
 
 local function isInt(v: any, lo: number, hi: number): boolean
 	return type(v) == "number" and v == v and v % 1 == 0 and v >= lo and v <= hi
@@ -809,6 +920,15 @@ function Conquest.validateMove(state, seat: number, move: any): (boolean, string
 		if not Conquest.setValue(kinds) then
 			return false, "Those cards aren't a set"
 		end
+		-- After a knockout: trade only until you're down to 4 cards (the classic rule).
+		if state.knockoutTrade and #hand < Conquest.HAND_LIMIT then
+			return false, "You're down to 4 cards: place your armies and attack on"
+		end
+		return true
+	elseif kind == "startAttack" then
+		if not holdingForTrade(state) then
+			return false, if phase == "reinforce" then "Place your armies first" else "You're already attacking"
+		end
 		return true
 	elseif kind == "place" then
 		if phase ~= "reinforce" then
@@ -845,11 +965,21 @@ function Conquest.validateMove(state, seat: number, move: any): (boolean, string
 			return false, "You need at least 2 armies to attack"
 		end
 		local limit = Conquest.limitFor(state)
+		if limit == 0 then
+			return false, "Round 1 is for placing armies: attacks start in round 2"
+		end
 		if state.conquestsThisTurn >= limit then
 			return false, if limit == 1 then "You can take 1 territory a turn this round" else `You can take {limit} territories a turn this round`
 		end
 		if move.blitz ~= nil and type(move.blitz) ~= "boolean" then
 			return false, "Bad move"
+		end
+		-- Optional: how many dice to roll (1-3), and for a blitz where to stop.
+		if move.dice ~= nil and not isInt(move.dice, 1, math.min(3, state.armies[from] - 1)) then
+			return false, "Roll 1 to 3 dice, one fewer than your armies"
+		end
+		if move.stopAt ~= nil and (move.blitz ~= true or not isInt(move.stopAt, 1, state.armies[from] - 1)) then
+			return false, "Stop the blitz at fewer armies than you have"
 		end
 		return true
 	elseif kind == "occupy" then
@@ -877,6 +1007,9 @@ function Conquest.validateMove(state, seat: number, move: any): (boolean, string
 		return true
 	elseif kind == "endTurn" then
 		if phase ~= "attack" then
+			if holdingForTrade(state) then
+				return false, "Trade your set or start attacking first"
+			end
 			return false, if phase == "occupy" then "Move in first" else "Place your armies first"
 		end
 		return true
@@ -898,10 +1031,13 @@ end
 local function eliminate(state, loser: number, by: number)
 	state.eliminated[loser] = true
 	GameModule.addStat(state, by, "knockouts")
-	for _, card in state.hands[loser] do
+	local fromLands, toLands = handLands(state, loser), handLands(state, by)
+	for i, card in state.hands[loser] do
 		table.insert(state.hands[by], card)
+		table.insert(toLands, fromLands[i] or 0)
 	end
 	state.hands[loser] = {}
+	state.handLands[loser] = {}
 	log(state, "is knocked out!", loser)
 	-- Someone else's knockout mission on this player: it turns into "hold 14 lands".
 	for seat, mission in state.missions or {} do
@@ -947,6 +1083,7 @@ local function finishConquest(state, from: number, to: number, dice: number)
 	if state.phase == "attack" and #state.hands[seat] > Conquest.HAND_LIMIT then
 		state.phase = "reinforce"
 		state.reinforcements = 0
+		state.knockoutTrade = true
 	end
 end
 
@@ -957,16 +1094,31 @@ function Conquest.applyMove(state, seat: number, move: any)
 		local kinds = { hand[move.cards[1]], hand[move.cards[2]], hand[move.cards[3]] }
 		local value = Conquest.tradeValue(state, kinds) :: number
 		state.trades = (state.trades or 0) + 1
+		local lands = handLands(state, seat)
 		local indices = { move.cards[1], move.cards[2], move.cards[3] }
 		table.sort(indices, function(a, b)
 			return a > b
 		end)
+		local bonusLand = nil
 		for _, index in indices do
-			table.insert(state.discard, table.remove(hand, index))
+			local land = table.remove(lands, index) or 0
+			local cardKind = table.remove(hand, index)
+			table.insert(state.discard, { kind = cardKind, land = land })
+			-- One +2 per trade, on a traded card's territory you hold.
+			if bonusLand == nil and land > 0 and state.owner[land] == seat then
+				bonusLand = land
+			end
 		end
 		state.reinforcements += value
-		log(state, `traded cards for {value} armies`, seat)
+		if bonusLand then
+			state.armies[bonusLand] += Conquest.CARD_LAND_BONUS
+			log(state, `traded cards for {value} armies, +{Conquest.CARD_LAND_BONUS} on {territoryName(bonusLand)}`, seat, nil, bonusLand)
+		else
+			log(state, `traded cards for {value} armies`, seat)
+		end
 		checkReinforceDone(state)
+	elseif kind == "startAttack" then
+		state.phase = "attack"
 	elseif kind == "place" then
 		state.armies[move.territory] += move.count
 		state.reinforcements -= move.count
@@ -991,8 +1143,10 @@ function Conquest.applyMove(state, seat: number, move: any)
 			defendDice = {},
 		}
 		local lastDice = 1
+		local maxDice = if move.dice then move.dice else 3
+		local stopAt = if move.stopAt then move.stopAt else 1
 		repeat
-			local aCount = math.min(3, state.armies[from] - 1)
+			local aCount = math.min(maxDice, state.armies[from] - 1)
 			local dCount = math.min(2, state.armies[to])
 			local a = rollDice(state.rng, aCount)
 			local d = rollDice(state.rng, dCount)
@@ -1008,8 +1162,12 @@ function Conquest.applyMove(state, seat: number, move: any)
 			battle.rolls += 1
 			battle.attackDice, battle.defendDice = a, d
 			lastDice = aCount
-		until not battle.blitz or state.armies[to] == 0 or state.armies[from] < 2
+		until not battle.blitz or state.armies[to] == 0 or state.armies[from] < 2 or state.armies[from] <= stopAt
 		state.lastBattle = battle
+		local lost = battle.attackerLost + battle.defenderLost
+		if lost > ((state.biggestBattle and state.biggestBattle.lost) or 0) then
+			state.biggestBattle = { attacker = seat, defender = defender, to = to, lost = lost, conquered = state.armies[to] == 0 }
+		end
 		if state.armies[to] == 0 then
 			battle.conquered = true
 			log(state, "took " .. territoryName(to) .. " from {target}", seat, defender, to)
@@ -1017,6 +1175,19 @@ function Conquest.applyMove(state, seat: number, move: any)
 			checkModeWin(state)
 		elseif battle.blitz then
 			log(state, `was held off at {territoryName(to)}`, seat, defender, to)
+		else
+			-- Single rolls at the same place add up in one line.
+			local last = state.log[#state.log]
+			local key = `{seat}:{from}:{to}`
+			if last and last.rollKey == key then
+				last.aLost += battle.attackerLost
+				last.dLost += battle.defenderLost
+				last.text = `attacked {territoryName(to)}: lost {last.aLost}, {"{target}"} lost {last.dLost}`
+			else
+				log(state, `attacked {territoryName(to)}: lost {battle.attackerLost}, {"{target}"} lost {battle.defenderLost}`, seat, defender, to)
+				local entry = state.log[#state.log]
+				entry.rollKey, entry.aLost, entry.dLost = key, battle.attackerLost, battle.defenderLost
+			end
 		end
 	elseif kind == "occupy" then
 		local occupy = state.occupy
@@ -1027,6 +1198,7 @@ function Conquest.applyMove(state, seat: number, move: any)
 		if #state.hands[seat] > Conquest.HAND_LIMIT then
 			state.phase = "reinforce"
 			state.reinforcements = 0
+			state.knockoutTrade = true
 		end
 		checkModeWin(state)
 	elseif kind == "fortify" then
@@ -1133,7 +1305,11 @@ function Conquest.getTimer(state)
 	if state.result then
 		return nil
 	end
-	return { id = state.turnId, seconds = state.turnSeconds or Conquest.TURN_SECONDS }
+	local seconds = state.turnSeconds or Conquest.TURN_SECONDS
+	if state.round == 1 then
+		seconds += Conquest.FIRST_TURN_GRACE -- time to read the how-to card
+	end
+	return { id = state.turnId, seconds = seconds }
 end
 
 -- Where leftover armies go when nobody chose: the most threatened border.
@@ -1170,11 +1346,16 @@ function Conquest.onTimeout(state)
 			local set = Conquest.bestSet(state.hands[seat])
 			Conquest.applyMove(state, seat, { kind = "trade", cards = set })
 		end
-		if state.reinforcements > 0 then
+		-- Leftovers go on the most threatened borders, spread over up to three of them.
+		local placed = 0
+		while state.reinforcements > 0 and placed < 3 do
 			local t = weakestBorder(state, seat)
-			if t then
-				Conquest.applyMove(state, seat, { kind = "place", territory = t, count = state.reinforcements })
+			if not t then
+				break
 			end
+			local count = if placed == 2 then state.reinforcements else math.max(1, math.ceil(state.reinforcements / (3 - placed)))
+			Conquest.applyMove(state, seat, { kind = "place", territory = t, count = math.min(count, state.reinforcements) })
+			placed += 1
 		end
 	end
 	if not state.result then
@@ -1196,6 +1377,9 @@ function Conquest.getLegalMoves(state, seat: number): { any }
 		local set = Conquest.bestSet(state.hands[seat])
 		if set then
 			table.insert(moves, { kind = "trade", cards = set })
+		end
+		if holdingForTrade(state) then
+			table.insert(moves, { kind = "startAttack" })
 		end
 		if not mustTrade(state, seat) and state.reinforcements > 0 then
 			for t = 1, TERRITORY_COUNT do
@@ -1232,15 +1416,21 @@ local function seatStatus(state, seat: number?): string?
 		return "Game over"
 	end
 	local who = state.turn
-	local roundText = `Round {state.round}/{state.maxRounds}`
+	local roundText = if Conquest.ceaseFireNear(state) then `Round {state.round} · cease-fire any turn now` else `Round {state.round}/{state.maxRounds}`
 	if seat == who then
 		if state.phase == "reinforce" then
 			if mustTrade(state, who) then
 				return `{roundText} · You have {#state.hands[who]} cards: trade a set`
 			end
+			if holdingForTrade(state) then
+				return `{roundText} · Trade your set now, or start attacking`
+			end
 			return `{roundText} · Place {state.reinforcements} armies`
 		elseif state.phase == "occupy" then
 			return `{roundText} · Move armies into {territoryName(state.occupy.to)}`
+		end
+		if Conquest.isPeaceRound(state) then
+			return `{roundText} · Move armies or end your turn (attacks start in round 2)`
 		end
 		return `{roundText} · Attack, move armies, or end your turn`
 	end
@@ -1316,9 +1506,37 @@ function Conquest.getView(state, seat: number?)
 		turnId = state.turnId,
 		conquestsLeft = math.min(99, math.max(0, Conquest.limitFor(state) - state.conquestsThisTurn)),
 		earlyLimit = state.earlyLimit ~= false,
+		peaceRound = Conquest.isPeaceRound(state),
 		cards = state.cards,
 		nextRising = if state.cards == "rising" then Conquest.risingValue((state.trades or 0) + 1) else nil,
 		rallying = if seat then Conquest.isRallying(state.owner, seat) else false,
+		-- The territory on each of your cards (0: none), for the +2 bonus.
+		handLands = if seat and state.hands[seat] then table.clone(handLands(state, seat)) else nil,
+		holdForTrade = seat == state.turn and holdingForTrade(state),
+		knockoutTrade = state.knockoutTrade == true,
+		ending = state.ending,
+		ceaseFire = Conquest.ceaseFireNear(state) and not state.result,
+		income = if seat and seat == state.turn and state.phase == "reinforce" and not fogged then Conquest.incomeParts(state.owner, seat) else nil,
+		nextUp = (function()
+			local out = {}
+			local s = state.turn
+			for _ = 1, state.seats do
+				s = s % state.seats + 1
+				if s ~= state.turn and not state.eliminated[s] and #out < 2 then
+					table.insert(out, s)
+				end
+			end
+			return out
+		end)(),
+		history = if state.result then GameModule.copy(state.history or {}) else nil,
+		biggestBattle = if state.result and state.biggestBattle then table.clone(state.biggestBattle) else nil,
+		totals = if state.result then (function()
+			local out = {}
+			for s = 1, state.seats do
+				out[s] = totalArmies(state, s)
+			end
+			return out
+		end)() else nil,
 		log = log,
 		status = seatStatus(state, seat),
 	}
@@ -1417,6 +1635,7 @@ local function botPlace(state, seat: number, rng: Random): any
 	end
 	local focus = focusRegion(state, seat)
 	local best, bestScore = borders[1], -math.huge
+	local second, secondScore = nil, -math.huge
 	for _, t in borders do
 		local score = state.armies[t] * 0.3
 		for _, n in Conquest.neighbors[t] do
@@ -1441,10 +1660,18 @@ local function botPlace(state, seat: number, rng: Random): any
 			end
 		end
 		if score > bestScore then
+			second, secondScore = best, bestScore
 			best, bestScore = t, score
+		elseif score > secondScore then
+			second, secondScore = t, score
 		end
 	end
-	return { kind = "place", territory = best, count = state.reinforcements }
+	-- Two borders in danger: split the armies (60/40) instead of stacking one.
+	local count = state.reinforcements
+	if second and second ~= best and count >= 4 and threatOn(state, second) > state.armies[second] then
+		count = math.ceil(count * 0.6)
+	end
+	return { kind = "place", territory = best, count = count }
 end
 
 local function botAttack(state, seat: number, rng: Random): any?
@@ -1484,6 +1711,12 @@ local function botAttack(state, seat: number, rng: Random): any?
 						end
 					end
 					local wanted = ratio >= threshold and state.armies[from] >= 3
+					-- Hard bots go by the real odds of the blitz, not the army ratio.
+					if level == "hard" then
+						local chance = Conquest.winChance(state.armies[from], state.armies[to])
+						score = chance * 2 + (score - ratio)
+						wanted = chance >= 0.62 and state.armies[from] >= 3
+					end
 					-- Grab one territory a turn for a card when the odds are fair.
 					if not state.conqueredThisTurn and level ~= "easy" and ratio >= 1 and state.armies[from] >= 3 then
 						wanted = true
@@ -1535,8 +1768,12 @@ function Conquest.chooseBotMove(state, seat: number, rng: Random): any?
 	local phase = state.phase
 	if phase == "reinforce" then
 		local set = Conquest.bestSet(state.hands[seat])
-		if set and (level ~= "easy" or mustTrade(state, seat)) then
+		local mayTrade = Conquest.validateMove(state, seat, { kind = "trade", cards = set or { 1, 2, 3 } })
+		if set and mayTrade and (level ~= "easy" or mustTrade(state, seat)) then
 			return { kind = "trade", cards = set }
+		end
+		if state.reinforcements <= 0 then
+			return { kind = "startAttack" }
 		end
 		return botPlace(state, seat, rng)
 	elseif phase == "occupy" then

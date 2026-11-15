@@ -67,6 +67,14 @@ function Conquest.create(boardCF: CFrame, parent: Instance, _layout: Scene.Layou
 		-- A hill so the patches don't read as flat coins.
 		Scene.tappable(Models.egg(model, "Hill", Vector3.new(0.5, 0.2, 0.4), base * CFrame.new(-0.26, TOP_Y - LAND_Y, 0.26), color:Lerp(Color3.new(0, 0, 0), 0.15), Enum.Material.Grass), id)
 	end
+	-- Region names and bonuses on the sea next to each region, like the printed board.
+	for _, region in Rules.regions do
+		local cf = boardCF * CFrame.new((region.labelX - 0.5) * W, 0.21, (region.labelY - 0.5) * D)
+		Scene.flatText(model, cf, 1.9, 0.34, `{region.name} +{region.bonus}`, {
+			TextColor3 = region.color:Lerp(Color3.new(1, 1, 1), 0.45),
+			TextStrokeTransparency = 0.5,
+		})
+	end
 	local dynamic = Scene.dynamic(model)
 	model.Parent = parent
 	local memo = {}
