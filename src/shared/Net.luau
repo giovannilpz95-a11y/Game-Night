@@ -35,6 +35,7 @@ Net.Names = {
 	TableAction = "TableAction", -- both ways: avatars acting out moves and emotes at a table (client sends { emote })
 	Showtime = "Showtime", -- server -> clients: game-start intro / winners' celebration; client -> server: { skip = matchId }
 	Reaction = "Reaction", -- both ways: animated reactions over a player's head or seat (client sends { id })
+	HeadLook = "HeadLook", -- client -> server: where your seat camera looks (unit Vector3), or nil when you get up
 }
 
 local FOLDER_NAME = "Remotes"

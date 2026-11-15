@@ -1111,6 +1111,13 @@ local function stepIdle(idle: Idle, now: number, dt: number)
 		idle.nextGlance = now + 4 + math.random() * 6
 	end
 	local target = if now < idle.glanceUntil then idle.glance else nil
+	-- A real player looks where their seat camera looks (HeadLookService), so you can
+	-- see who's watching whom.
+	local headLook = idle.body:GetAttribute("HeadLook")
+	local head = if typeof(headLook) == "Vector3" then headOf(idle.body) else nil
+	if head then
+		target = head + (headLook :: Vector3) * 10
+	end
 	target = target or turnPoint(idle.table, idle.body) or (anchorPosition(idle.table) + Vector3.new(0, 0.3, 0))
 	local look = idle.look or (target :: Vector3)
 	look = look:Lerp(target :: Vector3, 1 - math.exp(-dt * 4))

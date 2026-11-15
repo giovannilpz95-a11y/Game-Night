@@ -234,6 +234,8 @@ function Scene.pile(parent: Instance, cf: CFrame, count: number, showCount: bool
 	local block = Models.block(parent, "Pile", Vector3.new(Scene.CARD_W, height, Scene.CARD_H), cf * CFrame.new(0, height / 2, 0), CARD_EDGE:Lerp(Color3.new(0, 0, 0), 0.08))
 	if drawPile then
 		block:SetAttribute("DrawPile", true)
+		-- Click the pile in Table view to draw, when the game lets you (renderer.tapTable).
+		Scene.tappable(block, "draw")
 	end
 	cardBack(parent, cf * CFrame.new(0, height, 0))
 	-- Where the next card goes: clear of the back's raised panel and emblem.

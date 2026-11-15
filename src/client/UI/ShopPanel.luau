@@ -91,6 +91,7 @@ function ShopPanel.create(parent: Instance, sendEconomy: (any) -> (), sendPurcha
 		ZIndex = 30,
 		Parent = parent,
 	})
+	Kit.needsMouse(root)
 	Kit.new("UISizeConstraint", { MaxSize = Vector2.new(860, 580) }).Parent = root
 	Kit.new("UIStroke", { Color = Theme.Accent, Thickness = 2, Transparency = 0.2 }).Parent = root
 

@@ -113,6 +113,10 @@ function SceneTap.new(camera: Camera, folder: Instance)
 	local hoverOn: Instance? = nil -- what the hover outline is around
 	local markLights: { Instance } = {}
 	local marksKey = ""
+	-- Keyboard picking (UI/KeyPick): the spot picked with the arrows, and the one the
+	-- mouse or crosshair was last over (moving onto a new spot takes over again).
+	local keyId: any = nil
+	local pointerId: any = nil
 
 	local function scan()
 		scannedAt = os.clock()
@@ -168,6 +172,16 @@ function SceneTap.new(camera: Camera, folder: Instance)
 		hovered, hoverOn = nil, nil
 	end
 
+	-- A part of spot `id` that's still on the table.
+	local function partOf(id: any): BasePart?
+		for _, part in byId[id] or {} do
+			if part.Parent then
+				return part
+			end
+		end
+		return nil
+	end
+
 	local function clearMarks()
 		for _, h in markLights do
 			h:Destroy()
@@ -213,12 +227,28 @@ function SceneTap.new(camera: Camera, folder: Instance)
 			clearHover()
 			return
 		end
+		local canTap = callbacks.canTap
 		local id, part = nil, nil
 		if screen then
 			id, part = hit(screen)
 		end
-		if id ~= nil and not callbacks.canTap(id) then
+		if id ~= nil and not canTap(id) then
 			id = nil
+		end
+		-- Whichever moved last picks: the arrows, or the mouse onto a new spot.
+		if id ~= pointerId then
+			pointerId = id
+			if id ~= nil then
+				keyId = nil
+			end
+		end
+		if keyId ~= nil then
+			local keyPart = if canTap(keyId) then partOf(keyId) else nil
+			if keyPart then
+				id, part = keyId, keyPart
+			else
+				keyId = nil
+			end
 		end
 		if id == hovered and (id == nil or (hoverOn and hoverOn.Parent)) then
 			return
@@ -282,6 +312,60 @@ function SceneTap.new(camera: Camera, folder: Instance)
 		end
 	end
 
+	-- The spots you can tap right now, each once, with where it shows on screen (for the
+	-- arrow keys).
+	function api.choices(): { { key: any, x: number, y: number } }
+		local out = {}
+		if not (callbacks and callbacks.canTap and board) then
+			return out
+		end
+		if os.clock() - scannedAt > RESCAN then
+			scan()
+		end
+		for id, parts in byId do
+			if callbacks.canTap(id) then
+				local sum, n = Vector3.zero, 0
+				for _, part in parts do
+					if part.Parent then
+						sum += part.Position
+						n += 1
+					end
+				end
+				if n > 0 then
+					local p, onScreen = camera:WorldToViewportPoint(sum / n)
+					if onScreen then
+						table.insert(out, { key = id, x = p.X, y = p.Y })
+					end
+				end
+			end
+		end
+		return out
+	end
+
+	-- Whether the mouse or crosshair is over a spot you can tap (the crosshair grows).
+	function api.pointing(): boolean
+		return pointerId ~= nil
+	end
+
+	function api.current(): any
+		return if keyId ~= nil then keyId else hovered
+	end
+
+	-- Picks spot `id` from the keyboard (outlined on the next hover()).
+	function api.select(id: any)
+		keyId = id
+	end
+
+	-- Taps spot `id` (Enter on a picked spot): its middle.
+	function api.tapId(id: any): boolean
+		local part = partOf(id)
+		if not (callbacks and part) then
+			return false
+		end
+		callbacks.tap(id, Vector3.new(0.5, 0.5, 0.5), part)
+		return true
+	end
+
 	function api.partsOf(id: any): { BasePart }
 		if os.clock() - scannedAt > RESCAN then
 			scan()
@@ -298,6 +382,7 @@ function SceneTap.new(camera: Camera, folder: Instance)
 	function api.clear()
 		clearHover()
 		clearMarks()
+		keyId, pointerId = nil, nil
 	end
 
 	return api

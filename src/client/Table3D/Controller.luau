@@ -20,9 +20,12 @@ local Players = game:GetService("Players")
 
 local Kit = require(script.Parent.Parent.UI.Kit)
 local Focus = require(script.Parent.Focus)
+local FreeLook = require(script.Parent.FreeLook)
+local KeyPick = require(script.Parent.Parent.UI.KeyPick)
 local Lift = require(script.Parent.Lift)
 local SceneTap = require(script.Parent.SceneTap)
 local Audio = require(script.Parent.Parent.Audio)
+local TweenService = game:GetService("TweenService")
 local SeatView = require(ReplicatedStorage.Shared.SeatView)
 
 local Controller = {}
@@ -51,6 +54,24 @@ end
 
 function Controller.isCalm(): boolean
 	return calm
+end
+
+-- Eye level (default): the camera sits in your own head at the table and you look
+-- around freely (Table3D/FreeLook). Off ("Raised"), it sits up over your seat like
+-- before, looking down across the table. Lasts the session.
+local eyeLevel = true
+local replaceHooks: { () -> () } = {}
+function Controller.setEyeLevel(value: boolean)
+	if value ~= eyeLevel then
+		eyeLevel = value
+		for _, hook in replaceHooks do
+			hook()
+		end
+	end
+end
+
+function Controller.isEyeLevel(): boolean
+	return eyeLevel
 end
 
 -- Showtime (Table3D/Showtime) has the camera: the table camera stands aside and stops
@@ -100,6 +121,21 @@ local EYE_BACK = 1.2
 local HEAD_ABOVE_TABLE = 2.6 -- the top of a seated player's head
 local FIRST_PERSON_FOV = 68
 local FIND_TIMEOUT = 8 -- seconds to wait for the table and board to stream in
+-- Eye level: where a seated player's eyes are, over the tabletop (used when your own head
+-- can't be measured), and how far in from the seat's middle (leaning in a little).
+local EYE_LEVEL = 2.1
+local EYE_FORWARD = 0.3
+
+-- Your eyes' height over the tabletop: from your own head when you're sitting in `seat`.
+local function eyeAbove(seat: BasePart, tableTop: number): number
+	local character = Players.LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local head = character and character:FindFirstChild("Head")
+	if humanoid and humanoid.SeatPart == seat and head and head:IsA("BasePart") then
+		return math.clamp(head.Position.Y + 0.15 - tableTop, 1.5, 3.2)
+	end
+	return EYE_LEVEL
+end
 
 local function findTable(id: string): Model?
 	for _, inst in CollectionService:GetTagged(Config.TableTag) do
@@ -156,6 +192,18 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local lifter = Lift.new(liftFolder)
 	local scene = SceneTap.new(camera, liftFolder)
 	local hoveredCell: BasePart? = nil
+	-- Keyboard picking (UI/KeyPick): the board cell picked with the arrows, and the cell
+	-- the mouse or crosshair was last over (moving onto a new one takes over again).
+	local keyCell: BasePart? = nil
+	local pointerCell: BasePart? = nil
+	local keyCursor = Instance.new("SelectionBox")
+	keyCursor.Name = "KeyCursor"
+	keyCursor.Color3 = Color3.fromRGB(255, 236, 140)
+	keyCursor.LineThickness = 0.06
+	keyCursor.SurfaceColor3 = Color3.fromRGB(255, 236, 140)
+	keyCursor.SurfaceTransparency = 0.8
+	keyCursor.Parent = liftFolder
+	local wasMine = false -- your turn at the last refresh (the view turns back to the table)
 	local mousePosition: Vector2? = nil -- last mouse spot over the world (nil over the UI)
 	local updateHover: () -> ()
 	local savedCameraType: Enum.CameraType? = nil
@@ -236,11 +284,64 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	-- First person: a small badge over each other player (name and what the game shows
 	-- for them, like "6 cards"), lit up on their turn. Only on this screen.
 	local badges: { [number]: BillboardGui } = {}
+	-- A bobbing gem over whoever's turn it is (above their badge), on this screen.
+	local markers: { [number]: BillboardGui } = {}
 	local function clearBadges()
 		for _, badge in badges do
 			badge:Destroy()
 		end
 		table.clear(badges)
+		for _, marker in markers do
+			marker:Destroy()
+		end
+		table.clear(markers)
+	end
+	local function setMarker(matchSeat: number, seat: BasePart?, on: boolean, parent: Instance)
+		local marker = markers[matchSeat]
+		if not on or not seat then
+			if marker then
+				marker:Destroy()
+				markers[matchSeat] = nil
+			end
+			return
+		end
+		if marker and marker.Adornee == seat then
+			return
+		end
+		if marker then
+			marker:Destroy()
+		end
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "GameNightTurnMarker"
+		gui.Size = UDim2.fromOffset(34, 34)
+		gui.StudsOffset = Vector3.new(0, 6.6, 0)
+		gui.AlwaysOnTop = true
+		gui.MaxDistance = 60
+		gui.Adornee = seat
+		gui.ResetOnSpawn = false
+		-- A gem: a turned square with a lighter core (no glyphs: fonts lack them).
+		local gem = Kit.new("Frame", {
+			Name = "Gem",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(0.62, 0.62),
+			Rotation = 45,
+			BackgroundColor3 = Kit.Theme.Accent,
+			Parent = gui,
+		}, {
+			Kit.new("UICorner", { CornerRadius = UDim.new(0.2, 0) }),
+			Kit.new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2.5 }),
+		})
+		Kit.new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.42, 0.42),
+			Size = UDim2.fromScale(0.34, 0.34),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 0.35,
+			Parent = gem,
+		}, { Kit.new("UICorner", { CornerRadius = UDim.new(0.3, 0) }) })
+		gui.Parent = parent
+		markers[matchSeat] = gui
 	end
 	local function updateBadges()
 		if not (active and firstPerson and tableModel and snapshot and snapshot.table) then
@@ -293,12 +394,21 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 				infoLabel.Text = if type(info) == "string" then info else ""
 				local turn = pill:FindFirstChild("Turn") :: UIStroke
 				turn.Enabled = table.find(snapshot.activeSeats or {}, matchSeat) ~= nil
+				-- Everyone at once (party rounds, real-time card games): no gems.
+				local several = #(snapshot.activeSeats or {}) > 1
+				setMarker(matchSeat, seat, turn.Enabled and not several and snapshot.result == nil, playerGui)
 			end
 		end
 		for matchSeat, badge in badges do
 			if not seen[matchSeat] then
 				badge:Destroy()
 				badges[matchSeat] = nil
+			end
+		end
+		for matchSeat, marker in markers do
+			if not seen[matchSeat] then
+				marker:Destroy()
+				markers[matchSeat] = nil
 			end
 		end
 	end
@@ -470,6 +580,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		active = value
 		anyActive = value
+		FreeLook.setActive(value)
+		KeyPick.setEnabled(value)
+		keyCell, pointerCell = nil, nil
+		keyCursor.Adornee = nil
 		-- Handlers with their own on-screen bits (chess draw offers) hide them in 2D.
 		if handler and handler.setShown then
 			handler.setShown(value)
@@ -639,8 +753,12 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			local viewport = camera.ViewportSize
 			local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
 			local topBar = if viewport.Y > 0 then GuiService:GetGuiInset().Y / viewport.Y else 0
-			local key = `{snapshot.matchId}|{tableSeat}|{#headPoints}|{insetRight}|{insetBottom}|{insetLeft}|{viewport.X}x{viewport.Y}`
-			local view = if seatedView and seatedView.key == key then seatedView.view else SeatView.solve(boardPoints, headPoints, reach * EYE_BACK, EYE_ABOVE_TABLE + reach * EYE_RISE, aspect, {
+			-- Eye level starts in your own head and only rises or backs off as far as the
+			-- board needs; Raised starts up over your seat.
+			local startBack = if eyeLevel then math.max(1, reach - EYE_FORWARD) else reach * EYE_BACK
+			local startHeight = if eyeLevel then eyeAbove(seat, anchor.Y) else EYE_ABOVE_TABLE + reach * EYE_RISE
+			local key = `{snapshot.matchId}|{tableSeat}|{#headPoints}|{insetRight}|{insetBottom}|{insetLeft}|{viewport.X}x{viewport.Y}|{eyeLevel}`
+			local view = if seatedView and seatedView.key == key then seatedView.view else SeatView.solve(boardPoints, headPoints, startBack, startHeight, aspect, {
 				left = -1 + 2 * insetLeft,
 				right = 1 - 2 * insetRight,
 				bottom = -1 + 2 * insetBottom,
@@ -681,8 +799,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			-- the top bar; when both can't fit, it splits the difference.
 			local reach = toSeat.Magnitude
 			local flat = -toSeat.Unit -- from your seat toward the middle
-			local back = reach * EYE_BACK
-			local height = EYE_ABOVE_TABLE + reach * EYE_RISE
+			local back = if eyeLevel then math.max(1, reach - EYE_FORWARD) else reach * EYE_BACK
+			local height = if eyeLevel then eyeAbove(seat, anchor.Y) else EYE_ABOVE_TABLE + reach * EYE_RISE
 			local eye = anchor - flat * back + Vector3.new(0, height, 0)
 			camera.FieldOfView = FIRST_PERSON_FOV
 			local viewport = camera.ViewportSize
@@ -717,6 +835,16 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			return
 		end
 		firstPerson = false
+		if eyeLevel and seat and seat:IsA("BasePart") then
+			-- Eye level at the party screen too: from your own head, looking at it.
+			local eye = anchor + toSeat.Unit * math.max(1, toSeat.Magnitude - EYE_FORWARD) + Vector3.new(0, eyeAbove(seat, anchor.Y), 0)
+			camera.FieldOfView = FIRST_PERSON_FOV
+			home = CFrame.lookAt(eye, anchor + Vector3.new(0, lift, 0))
+			if not shown then
+				shown = camera.CFrame
+			end
+			return
+		end
 		local focus = anchor + Vector3.new(0, lift, 0) - toSeat.Unit * 0.6
 		local cf = CFrame.lookAt(anchor + toSeat.Unit * back + Vector3.new(0, up, 0), focus)
 		camera.FieldOfView = 55
@@ -788,7 +916,8 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		if not calm then
 			-- Seated at a board the view never turns (Giovanni: centered and straight). Leaning
 			-- toward whoever's turn it is turned it, since the eye slides beside your seat.
-			local lean = if seatedBoard then nil else activePoint()
+			-- Looking around is the player's now (FreeLook): no turns of the camera's own.
+			local lean = if seatedBoard or eyeLevel then nil else activePoint()
 			if lean then
 				target = turnToward(target, lean, LEAN)
 			end
@@ -797,7 +926,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 				if w <= 0 and os.clock() - moment.at > MOMENT_TIME then
 					moment = nil
 				elseif w > 0 then
-					if not seatedBoard then
+					if not (seatedBoard or eyeLevel) then
 						target = turnToward(target, moment.point, MOMENT_TURN * w)
 					end
 					-- From your own eyes a lean in, not a dolly across the table.
@@ -810,7 +939,7 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		local current = shown or target
 		local alpha = 1 - math.exp(-dt * (if calm then GLIDE_CALM else GLIDE))
 		shown = current:Lerp(target, alpha)
-		camera.CFrame = shown :: CFrame
+		camera.CFrame = FreeLook.apply(shown :: CFrame)
 	end
 
 	local function context(): Context
@@ -911,6 +1040,28 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		return true
 	end
 
+	-- Your turn: the board (or the table's cards) glows once, softly, as the view turns
+	-- back to it.
+	local function glowBoard()
+		if not board or not board.Parent then
+			return
+		end
+		local glow = Instance.new("Highlight")
+		glow.Name = "TurnGlow"
+		glow.Adornee = board
+		glow.FillColor = Color3.fromRGB(255, 226, 120)
+		glow.OutlineColor = Color3.fromRGB(255, 236, 160)
+		glow.FillTransparency = 0.72
+		glow.OutlineTransparency = 0.2
+		glow.DepthMode = Enum.HighlightDepthMode.Occluded
+		glow.Parent = liftFolder
+		local fade = TweenService:Create(glow, TweenInfo.new(1.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { FillTransparency = 1, OutlineTransparency = 1 })
+		fade.Completed:Once(function()
+			glow:Destroy()
+		end)
+		fade:Play()
+	end
+
 	local function refresh()
 		if not wanted or not snapshot then
 			setActive(false)
@@ -924,6 +1075,13 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			setActive(true)
 			showSign(false)
 			placeCamera()
+			-- Your turn: the view turns back to the table, ready to play.
+			local mine = snapshot.yourSeat ~= nil and snapshot.result == nil and table.find(snapshot.activeSeats or {}, snapshot.yourSeat) ~= nil
+			if mine and not wasMine then
+				FreeLook.recenter()
+				glowBoard()
+			end
+			wasMine = mine
 			updateBadges()
 			if handler then
 				handler.update(snapshot)
@@ -939,25 +1097,43 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local hoverParams = RaycastParams.new()
 	hoverParams.FilterType = Enum.RaycastFilterType.Include
 	function updateHover()
+		-- The crosshair while the mouse is locked, otherwise the mouse.
+		local pointer = if UserInputService.MouseEnabled then FreeLook.pointer(mousePosition) else nil
 		if not handler and board then
 			scene.setBoard(board)
-			scene.hover(if UserInputService.MouseEnabled then mousePosition else nil)
+			scene.hover(pointer)
 			scene.step()
+			FreeLook.setAiming(scene.pointing())
 			return
 		end
 		if not (handler and handler.hover and board) then
+			keyCursor.Adornee = nil
+			FreeLook.setAiming(false)
 			return
 		end
-		local cell: BasePart? = nil
+		local hitCell: BasePart? = nil
 		local cells = board:FindFirstChild("Cells")
-		if mousePosition and cells and UserInputService.MouseEnabled then
+		if pointer and cells then
 			hoverParams.FilterDescendantsInstances = { cells }
-			local ray = camera:ScreenPointToRay(mousePosition.X, mousePosition.Y)
+			local ray = camera:ScreenPointToRay(pointer.X, pointer.Y)
 			local hit = workspace:Raycast(ray.Origin, ray.Direction * 200, hoverParams)
 			if hit and hit.Instance:IsA("BasePart") then
-				cell = hit.Instance
+				hitCell = hit.Instance
 			end
 		end
+		-- Whichever moved last picks: the arrows, or the mouse onto a new cell.
+		if hitCell ~= pointerCell then
+			pointerCell = hitCell
+			if hitCell then
+				keyCell = nil
+			end
+		end
+		if keyCell and not (keyCell :: BasePart):IsDescendantOf(board) then
+			keyCell = nil
+		end
+		keyCursor.Adornee = keyCell
+		FreeLook.setAiming(hitCell ~= nil and wasMine)
+		local cell = keyCell or hitCell
 		if cell ~= hoveredCell then
 			hoveredCell = cell
 			if handler.hover(cell) == true and cell then
@@ -979,6 +1155,9 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			wasCinematic = false
 			return
 		end
+		-- Showtime's shots aren't yours to steer: the mouse stays free through them.
+		FreeLook.hold("showtime", cinematic)
+		FreeLook.step(dt)
 		if cinematic then
 			if not wasCinematic then
 				wasCinematic = true
@@ -999,6 +1178,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		end
 		fadeSelf(true)
 		stepCamera(dt)
+		local bob = math.sin(os.clock() * 3.2) * 0.25
+		for _, marker in markers do
+			marker.StudsOffset = Vector3.new(0, 6.6 + bob, 0)
+		end
 		updateHover()
 		lifter.step(dt)
 	end)
@@ -1033,24 +1216,15 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
 
-	-- Scenes you play by tapping the table: Table3D/SceneTap (TapId parts, the game's
-	-- renderer answers through setSceneTap).
-	local function tapScene(input: InputObject)
-		if board then
-			scene.setBoard(board)
-			scene.tap(Vector2.new(input.Position.X, input.Position.Y))
-		end
-	end
-
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or not active or not board then
-			return
-		end
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+	-- A click (or tap) at `at`, in screen space (below the top bar inset, like
+	-- input.Position); ScreenPointToRay accounts for that, ViewportPointToRay doesn't.
+	local function clickAt(at: Vector2)
+		if not board then
 			return
 		end
 		if not handler then
-			tapScene(input)
+			scene.setBoard(board)
+			scene.tap(at)
 			return
 		end
 		local cells = board:FindFirstChild("Cells")
@@ -1058,12 +1232,93 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 			return
 		end
 		raycastParams.FilterDescendantsInstances = { cells }
-		-- input.Position is in screen space (below the top bar inset); ScreenPointToRay
-		-- accounts for that, ViewportPointToRay doesn't.
-		local ray = camera:ScreenPointToRay(input.Position.X, input.Position.Y)
+		local ray = camera:ScreenPointToRay(at.X, at.Y)
 		local hit = workspace:Raycast(ray.Origin, ray.Direction * 200, raycastParams)
 		if hit and hit.Instance then
 			handler.click(hit.Instance)
+		end
+	end
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or not active or not board then
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			-- Mouse locked: the click lands on the crosshair.
+			local at = FreeLook.pointer(Vector2.new(input.Position.X, input.Position.Y))
+			if at then
+				clickAt(at)
+			end
+		end
+	end)
+
+	-- Fingers look around by dragging, so a touch plays only when it lifts without having
+	-- moved (FreeLook.wasTap).
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.Touch or not active or not board then
+			return
+		end
+		if FreeLook.wasTap(input) then
+			clickAt(Vector2.new(input.Position.X, input.Position.Y))
+		end
+	end)
+
+	-- The arrows and Enter (UI/KeyPick): the board's cells, or the scene's tappable spots.
+	KeyPick.add({
+		priority = KeyPick.BOARD,
+		choices = function(): { KeyPick.Choice }
+			local out: { KeyPick.Choice } = {}
+			local cells = active and handler and board and board:FindFirstChild("Cells")
+			if not cells then
+				return out
+			end
+			for _, cell in cells:GetChildren() do
+				if cell:IsA("BasePart") then
+					local p, onScreen = camera:WorldToViewportPoint(cell.Position)
+					if onScreen then
+						table.insert(out, { key = cell, x = p.X, y = p.Y })
+					end
+				end
+			end
+			return out
+		end,
+		current = function(): any
+			return keyCell or hoveredCell
+		end,
+		select = function(cell: any)
+			keyCell = cell
+			updateHover()
+		end,
+		confirm = function(cell: any)
+			if handler and active then
+				handler.click(cell)
+			end
+		end,
+	})
+	KeyPick.add({
+		priority = KeyPick.SCENE,
+		choices = function(): { KeyPick.Choice }
+			if not (active and board) or handler then
+				return {}
+			end
+			scene.setBoard(board)
+			return scene.choices()
+		end,
+		current = function(): any
+			return scene.current()
+		end,
+		select = function(id: any)
+			scene.select(id)
+		end,
+		confirm = function(id: any)
+			scene.tapId(id)
+		end,
+	})
+
+	table.insert(replaceHooks, function()
+		seatedView = nil
+		if active then
+			placeCamera()
 		end
 	end)
 
@@ -1072,6 +1327,10 @@ function Controller.create(gui: ScreenGui, sendMove: (any) -> (), onActiveChange
 		setSnapshot = function(newSnapshot: any, use3D: boolean)
 			local newMatch = newSnapshot == nil or snapshot == nil or newSnapshot.matchId ~= snapshot.matchId
 			snapshot = newSnapshot
+			if newMatch then
+				wasMine = false
+				FreeLook.recenter(true)
+			end
 			local possible = snapshot ~= nil and snapshot.table ~= nil and (snapshot.table.board3D == true or snapshot.table.scene == true)
 			if newMatch then
 				waitingSince = os.clock()

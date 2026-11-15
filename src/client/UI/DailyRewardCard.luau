@@ -25,6 +25,7 @@ function DailyRewardCard.create(parent: Instance)
 		ZIndex = 40,
 		Parent = parent,
 	})
+	Kit.needsMouse(overlay)
 	local panel = Kit.panel({
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
