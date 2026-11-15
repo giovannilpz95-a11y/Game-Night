@@ -98,6 +98,12 @@ local function onInput(_: string, state: Enum.UserInputState, input: InputObject
 			s.confirm(key)
 			return Enum.ContextActionResult.Sink
 		end
+		-- Nothing picked yet: Enter picks the middle one (a second Enter plays it), so a
+		-- turn never starts with Enter doing nothing.
+		if s.ordered then
+			s.select(choices[math.ceil(#choices / 2)].key)
+			return Enum.ContextActionResult.Sink
+		end
 		return Enum.ContextActionResult.Pass
 	end
 	local dir = DIRECTIONS[input.KeyCode]

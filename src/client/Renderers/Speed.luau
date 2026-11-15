@@ -81,12 +81,15 @@ function Speed.create(container: Frame, sendMove: (any) -> ())
 		Parent = felt,
 	})
 
+	-- Bold white with an outline: it sits over the green felt and, in Table view, the room.
 	local myLabel = Kit.label("", {
-		TextSize = 14,
-		TextColor3 = Theme.SubText,
+		TextSize = 16,
+		Font = Theme.FontBold,
+		TextColor3 = Theme.Text,
+		TextStrokeTransparency = 0.35,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0.67, 0),
-		Size = UDim2.new(1, 0, 0, 18),
+		Size = UDim2.new(1, 0, 0, 20),
 		Parent = root,
 	})
 	-- When a card fits both piles: "Left" / "Right" buttons over your draw-pile line, so
