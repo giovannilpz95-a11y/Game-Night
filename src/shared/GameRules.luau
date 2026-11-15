@@ -150,7 +150,7 @@ rules.WordTiles = {
 }
 
 rules.Hexlands = {
-	goal = "Be the first to reach 8 points on your own turn.",
+	goal = "Be the first to reach the points target (8, or 10 classic; the table shows it) on your own turn.",
 	card = {
 		"Roll the dice: every hex with that number pays the camps and towns around it.",
 		"Spend resources to build roads, camps (1 point) and towns (2 points).",
@@ -158,21 +158,34 @@ rules.Hexlands = {
 	},
 	sections = {
 		{ title = "Setup", lines = { "Everyone places two camps and two roads, in snake order. Your second camp pays one card for each hex around it." } },
-		{ title = "Your turn", lines = { "Roll. Each hex with that number pays its corners: 1 card per camp, 2 per town.", "Then trade and build as much as you like, and end your turn." } },
+		{ title = "Your turn", lines = {
+			"You may play one action card before you roll.",
+			"Roll. Each hex with that number pays its corners: 1 card per camp, 2 per town.",
+			"Then trade and build as much as you like, and end your turn. The clock is for the whole turn.",
+			"The bank has 19 of each resource. If it can't pay everyone a resource, nobody gets that one (unless only one player is owed).",
+		} },
 		{ title = "Trading", lines = {
 			"Offer a trade to everyone (or one player): what you give and what you want. Up to 3 offers a turn.",
-			"Each player says yes, no, or sends a counter-offer. You pick who to trade with, or call it off.",
-			"The bank trades 4 of one resource for 1 of any other; harbors make it 3:1 or 2:1.",
+			"Each player says yes, no, or sends a counter-offer. Once someone says yes the rest have 8 seconds. You pick who to trade with, or call it off.",
+			"The bank trades 4 of one resource for 1 of any other. A harbor (3:1, or 2:1 for one resource) works once you have a camp or town on one of its two corners.",
 		} },
 		{ title = "Costs", lines = {
 			"Road: Lumber + Clay.",
 			"Camp: Lumber + Clay + Wool + Grain. Must be on your road, two corners from any other camp.",
 			"Town: 2 Grain + 3 Stone. Upgrades one of your camps.",
 			"Action card: Wool + Grain + Stone.",
+			"Each player has 15 roads, 5 camps and 4 towns.",
 		} },
-		{ title = "Rolling a 7", lines = { "Nothing pays. Anyone holding more than 7 cards discards half.", "The roller moves the Bandit (that hex stops paying) and steals a card from someone next to it." } },
+		{ title = "Rolling a 7", lines = {
+			"Nothing pays. Anyone holding more than the safe hand (7 cards, or 9 with that house rule) discards half.",
+			"The roller moves the Bandit (that hex stops paying) and steals a card from someone next to it.",
+		} },
 		{ title = "Action cards", lines = { "Guard moves the Bandit. Monument is a hidden point. Road Crew builds 2 free roads. Harvest takes any 2 cards. Hoard takes everyone's cards of one resource.", "Play one per turn, not on the turn you bought it." } },
-		{ title = "Points", lines = { "Camp 1, town 2, Monument 1.", "Longest Road (5+ roads) and Biggest Guard (3+ Guards played) are worth 2 each.", "After the round limit the most points wins." } },
+		{ title = "Points", lines = {
+			"Camp 1, town 2, Monument 1.",
+			"Longest Road (5+ roads) and Biggest Guard (3+ Guards played) are worth 2 each. A tie keeps them with whoever had them first.",
+			"After the round limit (40 rounds with 2 players, 27 with 3, 20 with 4) the most points wins; a tie goes to more towns, then Longest Road, then Biggest Guard.",
+		} },
 	},
 }
 

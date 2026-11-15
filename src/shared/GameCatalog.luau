@@ -476,7 +476,7 @@ local entries: { Entry } = {
 		description = "Settle a hex island: roll for resources, build roads and towns, trade with friends.",
 		minSeats = 2,
 		maxSeats = 4,
-		turnSeconds = 45,
+		turnSeconds = 90, -- the whole turn (getTurnKey), not each move,
 		status = "ready",
 		coin = "hexlands",
 		typicalMinutes = 20,
@@ -489,7 +489,7 @@ local entries: { Entry } = {
 				choices = { { label = "8", value = 8 }, { label = "10 (classic)", value = 10 }, { label = "12", value = 12 } },
 				default = 1,
 			},
-			{ key = "friendly", name = "Friendly Bandit", hint = "The Bandit can't rob anyone with 2 points or fewer.", choices = Toggle, default = 1 },
+			{ key = "friendly", name = "Friendly Bandit", hint = "The Bandit can't block or rob anyone with 2 points or fewer.", choices = Toggle, default = 1 },
 			{
 				key = "handLimit",
 				name = "Safe hand on a 7",
@@ -498,6 +498,14 @@ local entries: { Entry } = {
 				default = 1,
 			},
 			{ key = "balancedDice", name = "Balanced dice", hint = "Rolls come from a shuffled deck of all 36 dice results, so every number turns up about as often as it should.", choices = Toggle, default = 1 },
+			{
+				key = "map",
+				name = "Island",
+				hint = "Random keeps equal numbers apart. Spiral lays the numbers round the island like the printed rules. Beginner is one fixed, fair island for first games.",
+				choices = { { label = "Random", value = "random" }, { label = "Spiral numbers", value = "spiral" }, { label = "Beginner island", value = "beginner" } },
+				default = 1,
+			},
+			{ key = "duel", name = "Duel rules for 2 players", hint = "With 2 players: 10 points to win, safe hand 9, Friendly Bandit and balanced dice, like ranked 1v1 online.", choices = Toggle, default = 2 },
 		},
 	},
 	{

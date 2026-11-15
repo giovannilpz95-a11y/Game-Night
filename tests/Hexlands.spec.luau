@@ -662,4 +662,217 @@ return function(T)
 			end
 		end
 	end)
+
+	local function emptyHands(s)
+		for seat = 1, s.seatCount do
+			for _, r in Hexlands.RES do
+				s.players[seat].hand[r] = 0
+			end
+		end
+	end
+
+	T.test("deep review: Harvest pays out only its two picks", function()
+		local s = afterSetup(2, 10)
+		s.rng = scripted({ 1, 1 })
+		play(s, 1, { kind = "roll" })
+		s.players[1].cards = { { kind = "harvest", bought = 0 } }
+		local stone, bank = s.players[1].hand.stone, s.bank.stone
+		local res: any = { "stone", "stone" }
+		res.extra1 = "stone"
+		res.extra2 = "stone"
+		play(s, 1, { kind = "play", card = "harvest", res = res })
+		T.eq(s.players[1].hand.stone, stone + 2)
+		T.eq(s.bank.stone, bank - 2)
+	end)
+
+	T.test("deep review: any action card before rolling; Road Crew goes back to the roll", function()
+		local s = afterSetup(2, 11)
+		s.players[1].cards = { { kind = "roadcrew", bought = 0 }, { kind = "harvest", bought = 0 } }
+		T.eq(s.phase, "roll")
+		T.eq(Hexlands.getView(s, 1).canPlay.roadcrew, true)
+		play(s, 1, { kind = "play", card = "roadcrew" })
+		T.eq(s.phase, "roads")
+		local e = Hexlands.getView(s, 1).options.edges[1]
+		play(s, 1, { kind = "road", edge = e })
+		play(s, 1, { kind = "doneRoads" })
+		T.eq(s.phase, "roll", "still has to roll")
+		rejects(s, 1, { kind = "play", card = "harvest", res = { "wool", "wool" } }, "one card a turn")
+	end)
+
+	T.test("deep review: Friendly Bandit can't sit on a protected player's hex", function()
+		local s = Hexlands.new(2, { rules = { friendly = true } }, T.Random.new(3))
+		s.phase = "bandit"
+		s.banditReturn = "main"
+		s.turnNumber = 1
+		-- Seat 2 has one camp (1 point): every hex around it is off limits for seat 1.
+		local v = 1
+		s.owner[v] = 2
+		local hexes = Hexlands.banditHexes(s, 1)
+		for _, h in Hexlands.vertices[v].hexes do
+			T.eq(table.find(hexes, h), nil, "protected hex")
+			if h ~= s.bandit then
+				rejects(s, 1, { kind = "bandit", hex = h }, "protected hex")
+			end
+		end
+		T.ok(#hexes > 0)
+		-- Without the house rule it's allowed.
+		s.friendly = false
+		local h = Hexlands.vertices[v].hexes[1]
+		if h == s.bandit then
+			h = Hexlands.vertices[v].hexes[2]
+		end
+		T.ok(table.find(Hexlands.banditHexes(s, 1), h) ~= nil)
+	end)
+
+	T.test("deep review: counters the offerer can't pay are refused", function()
+		local s = afterSetup(2, 8)
+		s.rng = scripted({ 1, 1 })
+		play(s, 1, { kind = "roll" })
+		emptyHands(s)
+		s.players[1].hand.lumber = 1
+		s.players[2].hand.stone = 1
+		play(s, 1, { kind = "offer", to = 2, give = { lumber = 1 }, get = { stone = 1 } })
+		rejects(s, 2, { kind = "counter", give = { lumber = 9 }, get = { stone = 1 } }, "they don't have 9 lumber")
+	end)
+
+	T.test("deep review: a yes starts a short clock; time up with a yes lets the offerer pick", function()
+		local s = afterSetup(3, 8)
+		s.rng = scripted({ 1, 1 })
+		play(s, 1, { kind = "roll" })
+		emptyHands(s)
+		s.players[1].hand.lumber = 2
+		s.players[2].hand.stone = 1
+		s.players[3].hand.stone = 1
+		play(s, 1, { kind = "offer", to = 0, give = { lumber = 1 }, get = { stone = 1 } })
+		T.eq(Hexlands.getTimer(s).seconds, Hexlands.TRADE_SECONDS)
+		play(s, 2, { kind = "accept" })
+		T.eq(Hexlands.getTimer(s).seconds, Hexlands.HURRY_SECONDS, "the rest hurry up")
+		Hexlands.onTimeout(s)
+		T.eq(s.phase, "trade", "a yes isn't lost to the clock")
+		T.eq(Hexlands.getView(s, 1).trade.picking, true)
+		T.eq(Hexlands.getTimer(s).seconds, Hexlands.PICK_SECONDS)
+		T.eq(s.trade.answers[3], 2, "no answer counts as no")
+		play(s, 1, { kind = "confirm", with = 2 })
+		T.eq(s.players[1].hand.stone, 1)
+	end)
+
+	T.test("deep review: a bot's open offer waits for everyone and prefers a person", function()
+		local s = Hexlands.new(3, { botLevel = "hard", bots = { 1, 3 } }, T.Random.new(8))
+		local rng = T.Random.new(8)
+		while s.phase == "setup" do
+			local seat = Hexlands.getActiveSeats(s)[1]
+			play(s, seat, Hexlands.chooseBotMove(s, seat, rng))
+		end
+		s.rng = scripted({ 1, 1 })
+		play(s, 1, { kind = "roll" })
+		emptyHands(s)
+		s.players[1].hand.lumber = 2
+		s.players[2].hand.stone = 1
+		s.players[3].hand.stone = 1
+		play(s, 1, { kind = "offer", to = 0, give = { lumber = 1 }, get = { stone = 1 } })
+		play(s, 3, { kind = "accept" }) -- the other bot says yes first
+		T.eq(table.find(Hexlands.getActiveSeats(s), 1), nil, "the bot doesn't grab it while a person is reading")
+		play(s, 2, { kind = "accept" })
+		T.ok(table.find(Hexlands.getActiveSeats(s), 1) ~= nil)
+		local move = Hexlands.chooseBotMove(s, 1, rng)
+		T.eq(move.kind, "confirm")
+		T.eq(move.with, 2, "the person's yes wins the tie")
+		-- Only people left to answer a bot: the short clock.
+		play(s, 1, move)
+		s.players[1].hand.lumber = 1
+		s.players[2].hand.stone = 1
+		play(s, 1, { kind = "offer", to = 0, give = { lumber = 1 }, get = { stone = 1 } })
+		play(s, 3, { kind = "reject" })
+		T.eq(Hexlands.getTimer(s).seconds, Hexlands.HURRY_SECONDS)
+	end)
+
+	T.test("deep review: bots guess Hoard from public information", function()
+		local s = afterSetup(3, 12)
+		s.rng = scripted({ 1, 1 })
+		play(s, 1, { kind = "roll" })
+		emptyHands(s)
+		-- Seat 2 secretly holds 5 Stone, but makes no Stone: the guess follows production.
+		s.players[2].hand.stone = 5
+		local guess = Hexlands.guessHands(s, 1)
+		local sum = 0
+		for _, r in Hexlands.RES do
+			sum += guess[r]
+		end
+		T.ok(math.abs(sum - 5) < 0.001, "guesses spread the hand sizes")
+		local prod2 = 0
+		for v, owner in s.owner do
+			if owner == 2 then
+				for _, h in Hexlands.vertices[v].hexes do
+					if s.tiles[h].land == "stone" then
+						prod2 += 1
+					end
+				end
+			end
+		end
+		if prod2 == 0 then
+			T.eq(guess.stone, 0, "no peeking at the real hand")
+		end
+	end)
+
+	T.test("deep review: the round limit breaks ties on towns", function()
+		local s = Hexlands.new(2, {}, T.Random.new(1))
+		s.phase = "main"
+		s.turnNumber = 5
+		s.round = s.maxRounds
+		s.turn = 2
+		-- Seat 1: 2 towns (4 points); seat 2: 4 camps (4 points).
+		s.owner[1], s.owner[10], s.town[1], s.town[10] = 1, 1, true, true
+		s.players[1].towns = Hexlands.PIECES.town - 2
+		s.owner[20], s.owner[30], s.owner[40], s.owner[50] = 2, 2, 2, 2
+		play(s, 2, { kind = "endTurn" })
+		T.eq(s.phase, "over")
+		T.eq(#s.winner, 1)
+		T.eq(s.winner[1], 1, "more towns wins the tie")
+		local view = Hexlands.getView(s, 2)
+		T.eq(view.players[1].breakdown.towns, 2)
+		T.eq(view.players[2].breakdown.camps, 4)
+	end)
+
+	T.test("deep review: duel rules for 2 players", function()
+		local duel = Hexlands.new(2, { rules = { duel = true } }, T.Random.new(1))
+		T.eq(duel.target, 10)
+		T.eq(duel.handLimit, 9)
+		T.eq(duel.friendly, true)
+		T.eq(duel.balancedDice, true)
+		local three = Hexlands.new(3, { rules = { duel = true } }, T.Random.new(1))
+		T.eq(three.target, Hexlands.TARGET_POINTS, "only with 2 players")
+		local big = Hexlands.new(2, { rules = { duel = true, target = 12 } }, T.Random.new(1))
+		T.eq(big.target, 12, "a higher target stays")
+	end)
+
+	T.test("deep review: fair maps, spiral numbers and the beginner island", function()
+		for seed = 1, 40 do
+			T.eq(Hexlands.unfairness(Hexlands.new(4, {}, T.Random.new(seed)).tiles), 0, "random maps keep equal numbers apart")
+			T.ok(Hexlands.unfairness(Hexlands.new(4, { rules = { map = "spiral" } }, T.Random.new(seed)).tiles) < 100, "no red numbers touching")
+		end
+		local a = Hexlands.new(3, { rules = { map = "beginner" } }, T.Random.new(1))
+		local b = Hexlands.new(3, { rules = { map = "beginner" } }, T.Random.new(99))
+		for h = 1, #Hexlands.hexes do
+			T.eq(a.tiles[h].land, b.tiles[h].land)
+			T.eq(a.tiles[h].number, b.tiles[h].number)
+		end
+		T.eq(Hexlands.unfairness(a.tiles), 0)
+		for _, order in Hexlands.spiralOrders do
+			T.eq(#order, 19)
+		end
+		T.eq(#Hexlands.spiralOrders, 6)
+	end)
+
+	T.test("deep review: the steal note lasts one turn; the AFK clock is per turn", function()
+		local s = afterSetup(2, 4)
+		local key = Hexlands.getTurnKey(s)
+		s.rng = scripted({ 1, 1 })
+		play(s, 1, { kind = "roll" })
+		T.eq(Hexlands.getTurnKey(s), key, "same turn, same clock")
+		s.lastSteal = { from = 2, to = 1, res = "wool", n = s.moves, turn = s.turnNumber }
+		T.ok(Hexlands.getView(s, 1).steal ~= nil)
+		play(s, 1, { kind = "endTurn" })
+		T.ok(Hexlands.getTurnKey(s) ~= key, "a new turn, a new clock")
+		T.eq(Hexlands.getView(s, 1).steal, nil, "gone next turn")
+	end)
 end
