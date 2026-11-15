@@ -375,7 +375,7 @@ local entries: { Entry } = {
 		minMinutes = 3,
 		minMoves = 30,
 		houseRules = {
-			{ key = "fast", name = "Fast mode", hint = "Everyone starts with 2 random deeds, auctions are quicker and the game is shorter.", choices = Toggle, default = 1 },
+			{ key = "fast", name = "Fast mode", hint = "Everyone starts with 2 free random deeds, hotels come after 3 houses, auctions are quicker and the game is shorter.", choices = Toggle, default = 1 },
 			{ key = "auctions", name = "Auctions", hint = "A deed nobody buys goes to a live auction. Off: it stays with the bank.", choices = Toggle, default = 2 },
 			{ key = "jackpot", name = "Rest Stop jackpot", hint = "Taxes and fees pile up on Rest Stop. Land there to take it all.", choices = Toggle, default = 1 },
 			{ key = "doubleStart", name = "$400 on Start", hint = "Landing right on Start pays double.", choices = Toggle, default = 1 },
@@ -387,6 +387,20 @@ local entries: { Entry } = {
 			},
 			{ key = "jailRent", name = "Rent from Jail", hint = "Off: owners sitting in Jail can't collect rent.", choices = Toggle, default = 2 },
 			{ key = "firstLap", name = "No houses on the first lap", hint = "Nobody can build until they've gone around the board and passed Start once.", choices = Toggle, default = 1 },
+			{ key = "quickHotels", name = "Quick hotels", hint = "Hotels after 3 houses instead of 4 (the official short game).", choices = Toggle, default = 1 },
+			{
+				key = "length",
+				name = "Game length",
+				hint = "Rounds before the richest player wins, or play to the end.",
+				choices = {
+					{ label = "Short", value = "short" },
+					{ label = "Normal", value = "normal" },
+					{ label = "Long", value = "long" },
+					{ label = "Until one is left", value = "bankrupt" },
+					{ label = "First bankruptcy ends it", value = "first" },
+				},
+				default = 2,
+			},
 		},
 	},
 	{
