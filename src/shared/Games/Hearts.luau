@@ -86,6 +86,7 @@ local function deal(state)
 	state.passing = {}
 	state.trick = {}
 	state.lastTrick = nil
+	state.claim = nil -- { seat, tricks, cards, points }: someone claimed the rest this hand
 	state.tricksPlayed = 0
 	state.heartsBroken = false
 	state.roundPoints = nil
@@ -197,6 +198,17 @@ function Hearts.playable(state, seat: number): { number }
 	return cards
 end
 
+-- Claim the rest (Trickster Cards): on your lead with 2+ tricks left, when every card you
+-- hold is sure to win (shared/Cards/Tricks.canClaim), take the rest, points and all.
+function Hearts.canClaim(state, seat: number): boolean
+	return not state.over
+		and state.phase == "play"
+		and seat == state.turn
+		and #state.trick == 0
+		and state.tricksPlayed <= 11
+		and Tricks.canClaim(state.hands, seat, nil)
+end
+
 function Hearts.getActiveSeats(state): { number }
 	if state.over then
 		return {}
@@ -227,6 +239,9 @@ function Hearts.getLegalMoves(state, seat: number): { any }
 		for _, id in Hearts.playable(state, seat) do
 			table.insert(moves, { kind = "play", card = id })
 		end
+		if Hearts.canClaim(state, seat) then
+			table.insert(moves, { kind = "claim" })
+		end
 	end
 	return moves
 end
@@ -250,6 +265,11 @@ function Hearts.validateMove(state, seat: number, move: any): (boolean, string?)
 		end
 		if not PlayingCards.holdsAll(state.hands[seat], move.cards) then
 			return false, "Those cards aren't in your hand"
+		end
+		return true
+	elseif move.kind == "claim" then
+		if not Hearts.canClaim(state, seat) then
+			return false, "You can only claim on your lead when every card you hold is sure to win"
 		end
 		return true
 	elseif move.kind == "play" then
@@ -373,6 +393,28 @@ function Hearts.applyMove(state, seat: number, move: any)
 		end
 		return
 	end
+	if move.kind == "claim" then
+		-- The claimer takes every remaining trick: all the points still out, and the
+		-- Jack of Diamonds if it's among them. Their cards are shown to everyone.
+		local cards = sortHand(state.hands[seat])
+		local p = 0
+		for s2 = 1, 4 do
+			for _, id in state.hands[s2] do
+				p += points(id)
+				state.played[id] = true
+				if id == JACK_OF_DIAMONDS and state.jackDiamonds then
+					state.jackTaker = seat
+				end
+			end
+			state.hands[s2] = {}
+		end
+		state.taken[seat] += p
+		state.claim = { seat = seat, tricks = #cards, cards = cards, points = p }
+		state.tricksPlayed = 13
+		state.phase = "trick" -- the usual pause, then the hand is scored
+		state.phaseId += 1
+		return
+	end
 	local hand = state.hands[seat]
 	table.remove(hand, table.find(hand, move.card) :: number)
 	table.insert(state.trick, { seat = seat, card = move.card })
@@ -459,6 +501,8 @@ function Hearts.getView(state, seat: number?)
 		handCounts = counts,
 		trick = Tricks.copy(state.trick),
 		lastTrick = GameModule.copy(state.lastTrick),
+		claim = GameModule.copy(state.claim),
+		canClaim = seat ~= nil and Hearts.canClaim(state, seat),
 		taken = table.clone(state.taken),
 		scores = table.clone(state.scores),
 		roundPoints = GameModule.copy(state.roundPoints),
@@ -790,6 +834,9 @@ function Hearts.chooseBotMove(state, seat: number, rng: Random): any?
 	if state.phase == "pass" and not state.passing[seat] then
 		return { kind = "pass", cards = choosePass(state, seat, rng) }
 	elseif state.phase == "play" and seat == state.turn then
+		if Hearts.canClaim(state, seat) then
+			return { kind = "claim" }
+		end
 		return { kind = "play", card = choosePlay(state, seat, rng) }
 	end
 	return nil

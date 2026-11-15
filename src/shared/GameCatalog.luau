@@ -70,7 +70,7 @@ local entries: { Entry } = {
 		houseRules = {
 			{ key = "kingOfTheHill", name = "King of the hill", hint = "Also win by walking your king to one of the four center squares.", choices = Toggle, default = 1 },
 			{ key = "threeCheck", name = "Three-check", hint = "Also win by putting the other king in check three times.", choices = Toggle, default = 1 },
-			{ key = "shuffle", name = "Shuffle start", hint = "The back-row pieces start in a random order (the same for both sides). No castling.", choices = Toggle, default = 1 },
+			{ key = "shuffle", name = "Shuffle start", hint = "Chess960-style: the back-row pieces start in a random order (the same for both sides). Castle by moving the king onto its rook.", choices = Toggle, default = 1 },
 			{ key = "timeControl", name = "Chess clock", hint = "Real clocks: minutes each + seconds added per move. Out of time loses.", choices = GameClock.Choices, default = 1 },
 		},
 	},
@@ -437,7 +437,7 @@ local entries: { Entry } = {
 		maxSeats = 6,
 		status = "ready", -- turns are timed by the game itself (Conquest.TURN_SECONDS)
 		coin = "conquest",
-		typicalMinutes = 20,
+		typicalMinutes = 30,
 		minMinutes = 3,
 		minMoves = 30,
 		houseRules = {
@@ -445,14 +445,14 @@ local entries: { Entry } = {
 				key = "turnLength",
 				name = "Turn length",
 				hint = "Time for a whole turn: reinforce, attack and fortify.",
-				choices = { { label = "60 s", value = 60 }, { label = "90 s", value = 90 }, { label = "150 s", value = 150 } },
+				choices = { { label = "60 s", value = 60 }, { label = "90 s", value = 90 }, { label = "2 min", value = 120 }, { label = "150 s", value = 150 }, { label = "5 min (relaxed)", value = 300 } },
 				default = 2,
 			},
 			{
 				key = "cards",
 				name = "Card trades",
-				hint = "Rising: every set traded at the table is worth more (4, 6, 8, 10, 12, 15, then +5).",
-				choices = { { label = "Fixed values", value = "fixed" }, { label = "Rising values", value = "rising" } },
+				hint = "Fixed (small map): 3, 4 or 5 for three of a kind, 6 for one of each. Rising: every set traded at the table is worth more (4, 6, 8, 10, 12, 15, then +5).",
+				choices = { { label = "Fixed (small map)", value = "fixed" }, { label = "Rising values", value = "rising" } },
 				default = 1,
 			},
 			{
@@ -462,7 +462,14 @@ local entries: { Entry } = {
 				choices = { { label = "Short", value = 0.75 }, { label = "Normal", value = 1 }, { label = "Long", value = 1.5 } },
 				default = 2,
 			},
-			{ key = "earlyLimit", name = "Slow start", hint = "Only 1-2 conquests a turn in the first rounds, so nobody runs away early.", choices = Toggle, default = 2 },
+			{
+				key = "ending",
+				name = "Ending",
+				hint = "Cease-fire: near the round limit the game can stop after any turn, so nobody knows which turn is the last. Fixed: it ends after the last round.",
+				choices = { { label = "Cease-fire", value = "ceasefire" }, { label = "Fixed last round", value = "fixed" } },
+				default = 1,
+			},
+			{ key = "earlyLimit", name = "Slow start", hint = "With 3+ players round 1 is for placing; then only 1-2 conquests a turn until round 6, so nobody runs away early.", choices = Toggle, default = 2 },
 			{ key = "fog", name = "Fog of war", hint = "You only see lands that are yours or touch yours.", choices = Toggle, default = 1 },
 			{ key = "missions", name = "Secret missions", hint = "Everyone gets a secret mission. Finish yours on your turn to win at once.", choices = Toggle, default = 1 },
 			{ key = "capitals", name = "Capitals", hint = "Your strongest starting land is your capital. Hold enough capitals to win at once.", choices = Toggle, default = 1 },
@@ -637,6 +644,13 @@ local entries: { Entry } = {
 				default = 2,
 			},
 			{ key = "upDown", name = "Up, down or same", hint = "Each play may be the same rank as the last one, or one above or below it.", choices = Toggle, default = 1 },
+			{
+				key = "twoDecksAt",
+				name = "Two decks",
+				hint = "Shuffle two decks together at a big table, so hands stay big enough to bluff with.",
+				choices = { { label = "6+ players", value = 6 }, { label = "5+ players", value = 5 }, { label = "Never", value = 0 } },
+				default = 1,
+			},
 		},
 	},
 	{
@@ -849,6 +863,7 @@ local entries: { Entry } = {
 			{ key = "eightSkips", name = "8 skips", hint = "Each 8 played skips the next player.", choices = Toggle, default = 1 },
 			{ key = "invisibleThree", name = "Invisible 3", hint = "A 3 goes on anything and is see-through: the card under it counts.", choices = Toggle, default = 1 },
 			{ key = "gamble", name = "Gamble on the deck", hint = "Stuck? Flip the top of the draw pile: it's played if it fits, else you pick up with it.", choices = Toggle, default = 1 },
+			{ key = "toLoser", name = "Find the loser", hint = "Play on after someone goes out. The last player holding cards loses.", choices = Toggle, default = 1 },
 		},
 	},
 	{
@@ -942,6 +957,7 @@ local entries: { Entry } = {
 				default = 1,
 			},
 			{ key = "oklahoma", name = "Oklahoma", hint = "The first upcard sets the knock limit (its value; an Ace means gin only), and a spade upcard doubles the hand.", choices = Toggle, default = 1 },
+			{ key = "bigGin", name = "Big Gin", hint = "All 11 cards in melds after drawing: go out without discarding for 31 + their deadwood.", choices = Toggle, default = 2 },
 			{
 				key = "undercut",
 				name = "Undercut bonus",

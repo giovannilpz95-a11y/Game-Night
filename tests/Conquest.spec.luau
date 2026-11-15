@@ -316,7 +316,7 @@ return function(T)
 	end)
 
 	T.test("the round limit ends the game: most territories wins", function()
-		local s = Conquest.new(2, {}, T.Random.new(4))
+		local s = Conquest.new(2, { rules = { ending = "fixed" } }, T.Random.new(4))
 		s.round = s.maxRounds
 		s.turn = 2
 		s.phase = "attack"
@@ -569,5 +569,147 @@ return function(T)
 			end
 			T.ok(#Conquest.getResult(s).winners >= 1)
 		end
+	end)
+
+	T.test("deep review: cease-fire ends the game at a hidden turn near the limit", function()
+		-- Before the window: never.
+		local s = Conquest.new(3, {}, T.Random.new(4))
+		T.eq(s.ending, "ceasefire")
+		s.round = s.maxRounds - 2
+		s.phase = "attack"
+		s.rng = { NextNumber = function()
+			return 0
+		end, NextInteger = function(_, lo)
+			return lo
+		end }
+		play(s, 1, { kind = "endTurn" })
+		T.eq(Conquest.getResult(s), nil, "too early")
+		T.eq(Conquest.getView(s, 1).ceaseFire, false)
+		-- In the window a low roll stops it after any seat's turn, not just the last one.
+		s.round = s.maxRounds - 1
+		T.eq(Conquest.getView(s, 1).ceaseFire, true)
+		s.phase = "attack"
+		play(s, s.turn, { kind = "endTurn" })
+		local result = Conquest.getResult(s)
+		T.ok(result ~= nil)
+		T.ok(string.find(result.reason, "Cease%-fire") ~= nil)
+		-- High rolls: always over by the end of round maxRounds + 1.
+		local t = Conquest.new(2, { rules = { earlyLimit = false } }, T.Random.new(5))
+		t.rng = { NextNumber = function()
+			return 0.99
+		end, NextInteger = function(_, lo)
+			return lo
+		end }
+		t.round = t.maxRounds + 1
+		t.turn = 2
+		t.phase = "attack"
+		play(t, 2, { kind = "endTurn" })
+		T.ok(Conquest.getResult(t) ~= nil, "forced at the end of round limit + 1")
+		T.ok(#t.history >= 1, "land counts recorded for the end screen")
+	end)
+
+	T.test("deep review: cards show a territory; trading one you hold puts 2 armies there", function()
+		local s = Conquest.new(2, { botLevel = "medium" }, T.Random.new(7))
+		local lands = {}
+		for _, card in s.deck do
+			if card.kind ~= "wild" then
+				T.ok(card.land >= 1 and card.land <= N)
+				T.eq(lands[card.land], nil, "each territory on one card")
+				lands[card.land] = true
+			end
+		end
+		local mine = nil
+		for t = 1, N do
+			if s.owner[t] == 1 then
+				mine = t
+				break
+			end
+		end
+		s.hands[1] = { "sword", "sword", "sword" }
+		s.handLands[1] = { mine, 0, 0 }
+		local before = s.armies[mine]
+		local reinforcements = s.reinforcements
+		play(s, 1, { kind = "trade", cards = { 1, 2, 3 } })
+		T.eq(s.armies[mine], before + 2)
+		T.eq(s.reinforcements, reinforcements + 3)
+		T.eq(#s.handLands[1], 0)
+	end)
+
+	T.test("deep review: after a knockout you trade only down to 4 cards", function()
+		local s = fixedGame({ Icefang = 9 })
+		s.phase = "reinforce"
+		s.reinforcements = 0
+		s.knockoutTrade = true
+		s.hands[1] = { "sword", "sword", "sword", "shield", "shield", "shield" }
+		play(s, 1, { kind = "trade", cards = { 1, 2, 3 } })
+		T.eq(#s.hands[1], 3)
+		rejects(s, 1, { kind = "trade", cards = { 1, 2, 3 } }, "down to 3 cards: no more trades")
+		play(s, 1, { kind = "place", territory = idOf("Icefang"), count = s.reinforcements })
+		T.eq(s.phase, "attack")
+	end)
+
+	T.test("deep review: holding a set after placing everything: trade or start attacking", function()
+		local s = fixedGame({ Icefang = 3, Snowmere = 3 })
+		s.phase = "reinforce"
+		s.reinforcements = 3
+		s.hands[1] = { "sword", "shield", "crown" }
+		play(s, 1, { kind = "place", territory = idOf("Icefang"), count = 3 })
+		T.eq(s.phase, "reinforce", "a chance to trade first")
+		T.eq(Conquest.getView(s, 1).holdForTrade, true)
+		rejects(s, 1, { kind = "endTurn" }, "trade or start attacking first")
+		play(s, 1, { kind = "startAttack" })
+		T.eq(s.phase, "attack")
+		-- No set: straight on to attacking.
+		local t = fixedGame({ Icefang = 3 })
+		t.phase = "reinforce"
+		t.reinforcements = 3
+		t.hands[1] = { "sword", "shield" }
+		play(t, 1, { kind = "place", territory = idOf("Icefang"), count = 3 })
+		T.eq(t.phase, "attack")
+	end)
+
+	T.test("deep review: choose your dice; blitz can stop at N armies", function()
+		local s = fixedGame({ Icefang = 6 }, { Snowmere = 9 })
+		rejects(s, 1, { kind = "attack", from = idOf("Icefang"), to = idOf("Snowmere"), dice = 4 }, "3 dice at most")
+		rejects(s, 1, { kind = "attack", from = idOf("Icefang"), to = idOf("Snowmere"), stopAt = 3 }, "stopAt needs blitz")
+		s.rng = scripted({ 6, 5, 4 })
+		play(s, 1, { kind = "attack", from = idOf("Icefang"), to = idOf("Snowmere"), dice = 1 })
+		T.eq(#s.lastBattle.attackDice, 1, "one die rolled")
+		-- Blitz that stops at 4: the defender wins every roll.
+		local t = fixedGame({ Icefang = 8 }, { Snowmere = 20 })
+		t.rng = scripted({ 1, 1, 1, 6, 6, 1, 1, 1, 6, 6, 1, 1, 1, 6, 6, 1, 1, 1, 6, 6 })
+		play(t, 1, { kind = "attack", from = idOf("Icefang"), to = idOf("Snowmere"), blitz = true, stopAt = 4 })
+		T.eq(t.armies[idOf("Icefang")], 4, "stopped at 4 armies")
+		T.ok(t.biggestBattle ~= nil)
+	end)
+
+	T.test("deep review: rally needs a whole land under the average (5 seats)", function()
+		local owner = {}
+		for t = 1, N do
+			owner[t] = (t - 1) % 5 + 1
+		end
+		-- 5, 5, 5, 5, 4: the seat with 4 isn't a full land under the average of 4.8.
+		T.eq(Conquest.isRallying(owner, 5), false)
+		T.eq(Conquest.income(owner, 5), 3)
+		local parts = Conquest.incomeParts(owner, 1)
+		T.eq(parts[1].label, "lands")
+	end)
+
+	T.test("deep review: first turns get extra time; the timeout spreads leftovers", function()
+		local s = Conquest.new(4, {}, T.Random.new(3))
+		T.eq(Conquest.getTimer(s).seconds, Conquest.TURN_SECONDS + Conquest.FIRST_TURN_GRACE)
+		s.round = 2
+		T.eq(Conquest.getTimer(s).seconds, Conquest.TURN_SECONDS)
+		s.round = 1
+		s.reinforcements = 9
+		local before = table.clone(s.armies)
+		Conquest.onTimeout(s)
+		local changed = 0
+		for t = 1, N do
+			if s.armies[t] ~= before[t] then
+				changed += 1
+			end
+		end
+		T.ok(changed >= 2, "leftovers went on more than one border")
 	end)
 end

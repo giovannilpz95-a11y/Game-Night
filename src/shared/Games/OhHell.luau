@@ -95,6 +95,7 @@ local function deal(state)
 	state.bids = {}
 	state.trick = {}
 	state.lastTrick = nil
+	state.claim = nil -- { seat, tricks, cards }: someone claimed the rest this round
 	state.tricksPlayed = 0
 	state.turn = state.dealer % state.seatCount + 1
 	state.phase = "bid"
@@ -180,6 +181,17 @@ function OhHell.playable(state, seat: number): { number }
 	return Tricks.followable(hand, state.trick)
 end
 
+-- Claim the rest (Trickster Cards): on your lead with 2+ tricks left, when every card you
+-- hold is sure to win (shared/Cards/Tricks.canClaim), take them all at once.
+function OhHell.canClaim(state, seat: number): boolean
+	return not state.over
+		and state.phase == "play"
+		and seat == state.turn
+		and #state.trick == 0
+		and state.handSize - state.tricksPlayed >= 2
+		and Tricks.canClaim(state.hands, seat, state.trump)
+end
+
 function OhHell.getActiveSeats(state): { number }
 	if state.over or (state.phase ~= "bid" and state.phase ~= "play") then
 		return {}
@@ -202,6 +214,9 @@ function OhHell.getLegalMoves(state, seat: number): { any }
 	elseif state.phase == "play" then
 		for _, id in OhHell.playable(state, seat) do
 			table.insert(moves, { kind = "play", card = id })
+		end
+		if OhHell.canClaim(state, seat) then
+			table.insert(moves, { kind = "claim" })
 		end
 	end
 	return moves
@@ -227,6 +242,11 @@ function OhHell.validateMove(state, seat: number, move: any): (boolean, string?)
 		end
 		if bid == OhHell.forbiddenBid(state, seat) then
 			return false, `The dealer can't bid {bid}: the bids would add up to {state.handSize}`
+		end
+		return true
+	elseif move.kind == "claim" then
+		if not OhHell.canClaim(state, seat) then
+			return false, "You can only claim on your lead when every card you hold is sure to win"
 		end
 		return true
 	elseif move.kind == "play" then
@@ -300,6 +320,23 @@ function OhHell.applyMove(state, seat: number, move: any)
 		else
 			state.turn = seat % n + 1
 		end
+		return
+	end
+	if move.kind == "claim" then
+		-- Every remaining trick goes to the claimer; the cards are shown to everyone.
+		local cards = PlayingCards.sortBySuit(state.hands[seat], power)
+		local left = #cards
+		for s2 = 1, n do
+			for _, id in state.hands[s2] do
+				state.played[id] = true
+			end
+			state.hands[s2] = {}
+		end
+		state.tricks[seat] += left
+		state.tricksPlayed += left
+		state.claim = { seat = seat, tricks = left, cards = cards }
+		state.phase = "trick" -- the usual pause, then the round is scored
+		state.phaseId += 1
 		return
 	end
 	local hand = state.hands[seat]
@@ -382,6 +419,8 @@ function OhHell.getView(state, seat: number?)
 		tricks = table.clone(state.tricks),
 		trick = Tricks.copy(state.trick),
 		lastTrick = GameModule.copy(state.lastTrick),
+		claim = GameModule.copy(state.claim),
+		canClaim = seat ~= nil and OhHell.canClaim(state, seat),
 		scores = table.clone(state.scores),
 		roundSummary = GameModule.copy(state.roundSummary),
 		round = state.round,
@@ -608,6 +647,9 @@ function OhHell.chooseBotMove(state, seat: number, rng: Random): any?
 	if state.phase == "bid" then
 		return { kind = "bid", bid = chooseBid(state, seat, rng) }
 	elseif state.phase == "play" then
+		if OhHell.canClaim(state, seat) then
+			return { kind = "claim" }
+		end
 		return { kind = "play", card = choosePlay(state, seat, rng) }
 	end
 	return nil
