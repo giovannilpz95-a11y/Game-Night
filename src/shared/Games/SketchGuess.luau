@@ -1009,7 +1009,7 @@ function SketchGuess.applyMove(state, seat: number, move: any)
 		addFeed(state, { kind = "system", text = `Skip votes: {votes}/{needed}` })
 		if votes >= needed then
 			local drawer = state.drawer
-			state.lastPoints = {}
+			-- Points already won stay (and show at the reveal); the drawing goes.
 			state.strokes = {}
 			state.strokeRev += 1
 			state.pointCount = 0
