@@ -13,7 +13,15 @@
 -- shuffled together, as the official rules suggest for big tables.
 --
 -- House rule "upDown" (up, down or same): instead of the next rank in order, each play
--- may claim the same rank as the last claim, or one above or below it.
+-- may claim the same rank as the last claim, or one above or below it. The very first play
+-- is still Aces.
+-- House rule "anyRank" (Chinese style): whoever leads names any rank, and everyone follows
+-- it until a doubt; then the next leader names a new one.
+-- House rule "allowPass": pass instead of playing. If everyone passes in a row, the pile is
+-- set aside and the next player leads fresh.
+-- House rule "discardFours": four of a kind in your hand (dealt or picked up) is put aside.
+-- House rule "rounds" (1, 3 or 5): penalty points per round (first out 0, the next fewest
+-- cards 1, the most cards 3, everyone else 2); after the last round fewest points wins.
 --
 -- Moves:
 --   { kind = "play", cards = { id, ... }, claim = rank? }  (your turn: 1-4 cards, claimed
@@ -35,8 +43,39 @@ Cheat.REVEAL_SECONDS = 2.5
 Cheat.PLAY_LIMIT = 300
 Cheat.MAX_CARDS = 4
 Cheat.TWO_DECKS_AT = 6 -- seats; house rule "twoDecksAt" (0 = never)
+Cheat.ROUND_SECONDS = 5 -- the pause between rounds
 
 local rank = PlayingCards.rank
+
+-- Deals a round: the whole deck (or two) out to everyone.
+local function dealRound(state)
+	local deck = PlayingCards.newDeck(state.rng, nil, state.decks)
+	for seat = 1, state.seatCount do
+		state.hands[seat] = {}
+	end
+	local start = (state.round - 1) % state.seatCount
+	for i, id in deck do
+		table.insert(state.hands[(i - 1 + start) % state.seatCount + 1], id)
+	end
+	state.pile = {}
+	state.pileFrom = {}
+	state.called = if state.anyRank then nil else 1
+	state.turn = start + 1
+	state.phase = "play"
+	state.phaseId += 1
+	state.lastPlay = nil
+	state.lastCards = nil
+	state.passed = {}
+	state.reveal = nil
+	state.passes = 0
+	state.plays = 0
+	state.discards = {}
+	if state.discardFours then
+		for seat = 1, state.seatCount do
+			Cheat._discardFours(state, seat)
+		end
+	end
+end
 
 function Cheat.new(seatCount: number, options: any?, rng: Random?)
 	assert(seatCount >= 3 and seatCount <= 8, "I Doubt It needs 3-8 seats")
@@ -44,44 +83,79 @@ function Cheat.new(seatCount: number, options: any?, rng: Random?)
 	local rules = if options and type(options.rules) == "table" then options.rules else {}
 	local at = if type(rules.twoDecksAt) == "number" then rules.twoDecksAt else Cheat.TWO_DECKS_AT
 	local decks = if at > 0 and seatCount >= at then 2 else 1
-	local deck = PlayingCards.newDeck(random, nil, decks)
-	local hands = {}
+	local points = {}
 	for seat = 1, seatCount do
-		hands[seat] = {}
-	end
-	for i, id in deck do
-		table.insert(hands[(i - 1) % seatCount + 1], id)
+		points[seat] = 0
 	end
 	local state = {
 		seatCount = seatCount,
 		decks = decks,
 		rng = random,
-		hands = hands,
+		hands = {},
 		pile = {}, -- face down, newest last
 		pileFrom = {}, -- pileFrom[i] = who put pile[i] down (bots remember their own cards)
-		called = 1, -- the rank the next play must claim (1 = Aces)
+		called = 1, -- the rank the next play must claim (1 = Aces; nil = the leader names it)
 		turn = 1,
-		phase = "play", -- "play" | "doubt" | "reveal"
+		phase = "play", -- "play" | "doubt" | "reveal" | "roundOver"
 		phaseId = 1,
 		lastPlay = nil, -- { seat, count, rank }: public
 		lastCards = nil, -- the real cards of the last play: hidden until doubted
 		passed = {}, -- passed[seat] = true in the doubt phase
 		reveal = nil, -- { seat, doubter, cards, honest, loser, count }
 		plays = 0,
+		passes = 0, -- turns passed in a row (allowPass)
 		winners = nil,
 		reason = nil,
 		upDown = rules.upDown == true,
+		anyRank = rules.anyRank == true,
+		allowPass = rules.allowPass == true,
+		discardFours = rules.discardFours == true,
+		discards = {}, -- ranks put aside as four of a kind: { seat, rank }
+		rounds = if rules.rounds == 3 or rules.rounds == 5 then rules.rounds else 1,
+		round = 1,
+		points = points,
+		roundResult = nil,
 		doubtSeconds = if type(rules.doubtSeconds) == "number" and rules.doubtSeconds > 0 then rules.doubtSeconds else Cheat.DOUBT_SECONDS,
 		botLevel = (options and options.botLevel) or "medium",
 	}
+	dealRound(state)
 	return state
+end
+
+-- Four of a kind is put aside (house rule).
+function Cheat._discardFours(state, seat: number)
+	local counts = PlayingCards.rankCounts(state.hands[seat])
+	for r, n in counts do
+		while n >= 4 do
+			local drop = 4
+			local keep = {}
+			for _, id in state.hands[seat] do
+				if rank(id) == r and drop > 0 then
+					drop -= 1
+				else
+					table.insert(keep, id)
+				end
+			end
+			state.hands[seat] = keep
+			table.insert(state.discards, { seat = seat, rank = r })
+			n -= 4
+		end
+	end
 end
 
 -- Ranks the next play may claim: the called rank, plus one above and one below with the
 -- "up, down or same" house rule (Kings and Aces wrap around).
 function Cheat.claims(state): { number }
 	local c = state.called
-	if not state.upDown then
+	if c == nil then
+		-- The leader names any rank (house rule "anyRank").
+		local all = {}
+		for r = 1, 13 do
+			table.insert(all, r)
+		end
+		return all
+	end
+	if not state.upDown or state.plays == 0 then
 		return { c }
 	end
 	return { (c - 2) % 13 + 1, c, c % 13 + 1 }
@@ -101,23 +175,85 @@ local function fewestCards(state)
 			table.insert(best, seat)
 		end
 	end
-	state.winners = best
-	state.reason = "Fewest cards left"
+	Cheat._endRound(state, best, "Fewest cards left")
+end
+
+-- A round is over: one round ends the game; with "rounds", score penalty points by place
+-- (first out 0, the next fewest cards 1, the most cards 3, everyone else 2).
+function Cheat._endRound(state, first: { number }, reason: string)
+	if state.rounds <= 1 then
+		state.winners = first
+		state.reason = reason
+		return
+	end
+	local order = {}
+	for seat = 1, state.seatCount do
+		table.insert(order, seat)
+	end
+	table.sort(order, function(a, b)
+		local fa, fb = table.find(first, a) ~= nil, table.find(first, b) ~= nil
+		if fa ~= fb then
+			return fa
+		end
+		if #state.hands[a] ~= #state.hands[b] then
+			return #state.hands[a] < #state.hands[b]
+		end
+		return a < b
+	end)
+	local added = {}
+	local most = #state.hands[order[#order]]
+	for i, seat in order do
+		local pts
+		if table.find(first, seat) then
+			pts = 0
+		elseif #state.hands[seat] == most then
+			pts = 3
+		elseif i == #first + 1 then
+			pts = 1
+		else
+			pts = 2
+		end
+		added[seat] = pts
+		state.points[seat] += pts
+	end
+	state.roundResult = { round = state.round, first = table.clone(first), added = added, reason = reason }
+	if state.round >= state.rounds then
+		local best, low = {}, math.huge
+		for seat = 1, state.seatCount do
+			local p = state.points[seat]
+			if p < low then
+				best, low = { seat }, p
+			elseif p == low then
+				table.insert(best, seat)
+			end
+		end
+		state.winners = best
+		state.reason = `Fewest points after {state.rounds} rounds`
+		return
+	end
+	state.phase = "roundOver"
+	state.phaseId += 1
 end
 
 -- Play moves on to the next player, the next rank is called.
 local function advance(state)
 	local player = state.lastPlay.seat
 	if #state.hands[player] == 0 then
-		state.winners = { player }
-		state.reason = "Got rid of every card"
+		Cheat._endRound(state, { player }, "Got rid of every card")
 		return
 	end
 	if state.plays >= Cheat.PLAY_LIMIT then
 		fewestCards(state)
 		return
 	end
-	state.called = if state.upDown then state.lastPlay.rank else state.called % 13 + 1
+	if state.anyRank then
+		-- Follow the named rank until a doubt; after one, the next player leads fresh.
+		state.called = if state.reveal then nil else state.lastPlay.rank
+	elseif state.upDown then
+		state.called = state.lastPlay.rank
+	else
+		state.called = (state.called or state.lastPlay.rank) % 13 + 1
+	end
 	state.turn = nextSeat(state, player)
 	state.phase = "play"
 	state.phaseId += 1
@@ -140,6 +276,10 @@ local function resolveDoubt(state, doubter: number)
 	end
 	state.pile = {}
 	state.pileFrom = {}
+	local before = #state.discards
+	if state.discardFours then
+		Cheat._discardFours(state, loser)
+	end
 	state.reveal = {
 		seat = player,
 		doubter = doubter,
@@ -147,13 +287,13 @@ local function resolveDoubt(state, doubter: number)
 		honest = honest,
 		loser = loser,
 		count = count,
+		discarded = if #state.discards > before then state.discards[#state.discards].rank else nil,
 	}
 	state.phase = "reveal"
 	state.phaseId += 1
 	-- An honest last play wins on the spot.
 	if honest and #state.hands[player] == 0 then
-		state.winners = { player }
-		state.reason = "Got rid of every card"
+		Cheat._endRound(state, { player }, "Got rid of every card")
 	end
 end
 
@@ -186,6 +326,9 @@ function Cheat.getLegalMoves(state, seat: number): { any }
 		return moves
 	end
 	if state.phase == "play" and seat == state.turn then
+		if state.allowPass and state.lastPlay ~= nil and state.called ~= nil then
+			table.insert(moves, { kind = "pass" })
+		end
 		local hand = state.hands[seat]
 		for _, claim in Cheat.claims(state) do
 			local honest = {}
@@ -216,6 +359,21 @@ function Cheat.validateMove(state, seat: number, move: any): (boolean, string?)
 	if type(move) ~= "table" then
 		return false, "Bad move"
 	end
+	if state.phase == "roundOver" then
+		return false, "Next round coming up"
+	end
+	if move.kind == "pass" and state.phase == "play" then
+		if seat ~= state.turn then
+			return false, "It's not your turn"
+		end
+		if not state.allowPass then
+			return false, "You have to play"
+		end
+		if state.lastPlay == nil or state.called == nil then
+			return false, "You're leading: play something"
+		end
+		return true
+	end
 	if move.kind == "play" then
 		if state.phase ~= "play" or seat ~= state.turn then
 			return false, "It's not your turn"
@@ -228,6 +386,9 @@ function Cheat.validateMove(state, seat: number, move: any): (boolean, string?)
 		end
 		if move.claim ~= nil and not table.find(Cheat.claims(state), move.claim) then
 			return false, "You can't claim that rank now"
+		end
+		if move.claim == nil and state.called == nil then
+			return false, "Name a rank"
 		end
 		return true
 	elseif move.kind == "doubt" or move.kind == "pass" then
@@ -243,7 +404,23 @@ function Cheat.validateMove(state, seat: number, move: any): (boolean, string?)
 end
 
 function Cheat.applyMove(state, seat: number, move: any)
+	if move.kind == "pass" and state.phase == "play" then
+		state.passes += 1
+		state.lastPass = seat
+		if state.passes >= state.seatCount then
+			-- Everyone passed: the pile is set aside and the next player leads fresh.
+			state.pile = {}
+			state.pileFrom = {}
+			state.passes = 0
+			state.called = if state.anyRank then nil else (state.called :: number) % 13 + 1
+		end
+		state.turn = nextSeat(state, seat)
+		state.phaseId += 1
+		return
+	end
 	if move.kind == "play" then
+		state.passes = 0
+		state.lastPass = nil
 		PlayingCards.removeCards(state.hands[seat], move.cards)
 		state.pileFrom = state.pileFrom or {}
 		for _, id in move.cards do
@@ -251,7 +428,7 @@ function Cheat.applyMove(state, seat: number, move: any)
 			state.pileFrom[#state.pile] = seat
 		end
 		state.plays += 1
-		state.lastPlay = { seat = seat, count = #move.cards, rank = if move.claim ~= nil then move.claim else state.called }
+		state.lastPlay = { seat = seat, count = #move.cards, rank = if move.claim ~= nil then move.claim else state.called :: number }
 		state.lastCards = table.clone(move.cards)
 		state.reveal = nil
 		state.passed = {}
@@ -275,6 +452,8 @@ function Cheat.getTimer(state): { id: number, seconds: number }?
 		return { id = state.phaseId, seconds = state.doubtSeconds }
 	elseif state.phase == "reveal" then
 		return { id = state.phaseId, seconds = Cheat.REVEAL_SECONDS }
+	elseif state.phase == "roundOver" then
+		return { id = state.phaseId, seconds = Cheat.ROUND_SECONDS }
 	end
 	return nil
 end
@@ -282,6 +461,9 @@ end
 function Cheat.onTimeout(state)
 	if state.phase == "doubt" or state.phase == "reveal" then
 		advance(state)
+	elseif state.phase == "roundOver" and not state.winners then
+		state.round += 1
+		dealRound(state)
 	end
 end
 
@@ -314,7 +496,30 @@ function Cheat.getView(state, seat: number?)
 		passed = passed,
 		doubtSeconds = state.doubtSeconds,
 		decks = state.decks,
+		anyRank = state.anyRank,
+		allowPass = state.allowPass,
+		passes = state.passes,
+		lastPass = state.lastPass,
+		discards = GameModule.copy(state.discards),
+		rounds = state.rounds,
+		round = state.round,
+		points = table.clone(state.points),
+		roundResult = GameModule.copy(state.roundResult),
+		-- Your next ranks in the plain order (every seatCount-th rank), to plan bluffs.
+		yourNext = if seat and not state.anyRank and not state.upDown and state.called then Cheat._nextRanks(state, seat) else nil,
 	}
+end
+
+-- The ranks you'll be asked for on your next turns (plain order only).
+function Cheat._nextRanks(state, seat: number): { number }
+	local out = {}
+	local steps = (seat - state.turn) % state.seatCount
+	local r = ((state.called :: number) - 1 + steps) % 13 + 1
+	for _ = 1, 3 do
+		table.insert(out, r)
+		r = (r - 1 + state.seatCount) % 13 + 1
+	end
+	return out
 end
 
 function Cheat.getSeatInfo(state): { [number]: string }
@@ -322,6 +527,9 @@ function Cheat.getSeatInfo(state): { [number]: string }
 	for seat = 1, state.seatCount do
 		local n = #state.hands[seat]
 		info[seat] = `{n} {if n == 1 then "card" else "cards"}`
+		if state.rounds > 1 then
+			info[seat] = `{state.points[seat]} pts · ` .. info[seat]
+		end
 	end
 	return info
 end
@@ -329,7 +537,7 @@ end
 function Cheat.getScores(state): { [number]: number }
 	local scores = {}
 	for seat = 1, state.seatCount do
-		scores[seat] = -#state.hands[seat]
+		scores[seat] = if state.rounds > 1 then -state.points[seat] else -#state.hands[seat]
 	end
 	return scores
 end
@@ -347,6 +555,9 @@ end
 -- every seatCount plays, so with 5 seats we're asked for every 5th rank, not the next one.
 local function distance(state, r: number): number
 	local wanted = state.called
+	if wanted == nil then
+		return 0
+	end
 	for k = 0, 12 do
 		if wanted == r then
 			return k
@@ -478,8 +689,8 @@ function Cheat.chooseBotMove(state, seat: number, rng: Random): any?
 			return nil
 		end
 		local hand = state.hands[seat]
-		-- Up, down or same: claim whichever allowed rank we hold most of.
-		local claim, most = state.called, -1
+		-- Up, down or same (or leading with any rank): claim the allowed rank we hold most of.
+		local claim, most = state.called or rank(hand[1]), -1
 		for _, r in Cheat.claims(state) do
 			local n = 0
 			for _, id in hand do
@@ -514,6 +725,10 @@ function Cheat.chooseBotMove(state, seat: number, rng: Random): any?
 			end
 			return { kind = "play", cards = cards, claim = claim }
 		end
+		-- No honest card and a big pile: pass if the table allows it.
+		if state.allowPass and state.lastPlay ~= nil and state.called ~= nil and level ~= "easy" and #state.pile >= 4 and rng:NextNumber() < 0.7 then
+			return { kind = "pass" }
+		end
 		local first = chooseBluff(state, hand, rng)
 		local cards = { first }
 		if #hand > 2 and level ~= "easy" and smallPile and rng:NextNumber() < 0.25 then
@@ -521,7 +736,7 @@ function Cheat.chooseBotMove(state, seat: number, rng: Random): any?
 			table.remove(rest, table.find(rest, first) :: number)
 			table.insert(cards, chooseBluff(state, rest, rng))
 		end
-		return { kind = "play", cards = cards }
+		return { kind = "play", cards = cards, claim = claim }
 	end
 	if state.phase == "doubt" then
 		if not table.find(doubters(state), seat) then

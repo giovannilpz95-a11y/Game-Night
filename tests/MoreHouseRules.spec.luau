@@ -209,6 +209,8 @@ return function(T)
 	T.test("i doubt it: up, down or same claims", function()
 		local Cheat = require(Games.Cheat)
 		local s = Cheat.new(3, { rules = { upDown = true } }, T.Random.new(1))
+		T.eq(#Cheat.claims(s), 1, "the first play is Aces only")
+		s.plays = 1
 		s.called = 7
 		local claims = Cheat.claims(s)
 		T.eq(#claims, 3)

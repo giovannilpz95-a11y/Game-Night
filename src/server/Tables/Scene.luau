@@ -250,7 +250,8 @@ end
 -- A wooden holder in front of a seat with the seat's cards standing in it, backs toward
 -- the middle of the table, so everyone can see how many they hold. Big hands show 12 cards
 -- and a number.
-function Scene.hand(parent: Instance, boardCF: CFrame, layout: Layout, seat: number, count: number)
+-- lifted: a card position (1..count) pushed up out of the fan, like bait in Old Maid.
+function Scene.hand(parent: Instance, boardCF: CFrame, layout: Layout, seat: number, count: number, lifted: number?)
 	if count <= 0 then
 		return
 	end
@@ -261,7 +262,8 @@ function Scene.hand(parent: Instance, boardCF: CFrame, layout: Layout, seat: num
 	Models.block(parent, "Holder", Vector3.new(width, 0.14, 0.42), spot * CFrame.new(0, 0.07, 0.05), Models.WOOD, Enum.Material.Wood)
 	for i = 1, shown do
 		local offset = (i - (shown + 1) / 2) * spread
-		local stand = spot * CFrame.new(offset, 0.12 + Scene.CARD_H * 0.42, (i - 1) * 0.008) * CFrame.Angles(0, math.rad(-offset * 6), 0) * CFrame.Angles(math.rad(-65), 0, 0)
+		local up = if lifted and math.min(lifted, shown) == i then 0.35 else 0
+		local stand = spot * CFrame.new(offset, 0.12 + Scene.CARD_H * 0.42 + up, (i - 1) * 0.008) * CFrame.Angles(0, math.rad(-offset * 6), 0) * CFrame.Angles(math.rad(-65), 0, 0)
 		Scene.card(parent, stand, nil)
 	end
 	if count > shown or count >= 6 then
