@@ -132,7 +132,7 @@ function games.FourInARow(move)
 end
 
 local KINDS: { [string]: { [string]: string } } = {
-	ColorClash = { play = "card", draw = "draw", catch = "slap" },
+	ColorClash = { play = "card", draw = "draw", catch = "slap", jump = "slap", call = "point" },
 	TriviaNight = { answer = "buzz" },
 	-- Night picks stay silent and still (a gesture would give a role away).
 	Werewolf = { accuse = "point", claim = "point", vote = "point", pass = "pass" },

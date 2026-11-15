@@ -19,7 +19,7 @@ local COLORS = {
 	Color3.fromRGB(150, 110, 230),
 }
 local WILD = Color3.fromRGB(40, 36, 56)
-local LABELS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "W", wild4 = "+4" }
+local LABELS = { skip = "⊘", reverse = "⇄", draw2 = "+2", wild = "W", wild4 = "+4", wild6 = "+6", skipall = "⊘⊘", discardall = "ALL" }
 
 local function front(id: number, color: number?): any
 	local card = Rules.cards[id]
@@ -152,6 +152,16 @@ function ColorClash.create(boardCF: CFrame, parent: Instance, layout: Scene.Layo
 		for seat, count in view.handCounts or {} do
 			Scene.hand(folder, boardCF, layout, seat, count)
 		end
+		-- Teams: a small A / B tag in front of each seat.
+		if view.teams then
+			for seat in view.handCounts or {} do
+				Scene.floatText(folder, Scene.seatSpot(boardCF, layout, seat, 1.4, 0) * CFrame.new(0, 0.5, 0), 1.6, 0.4, if seat % 2 == 1 then "Team A" else "Team B", {
+					TextColor3 = if seat % 2 == 1 then Color3.fromRGB(255, 200, 120) else Color3.fromRGB(140, 210, 255),
+					TextStrokeColor3 = Color3.fromRGB(20, 18, 30),
+					TextStrokeTransparency = 0.2,
+				})
+			end
+		end
 		Scene.pile(folder, drawSpot(boardCF, layout), view.deckCount or 0, true, true)
 		local middle = Cards.center(boardCF, 0)
 		local shown = (view.color and COLORS[view.color]) or Models.GOLD
@@ -161,7 +171,9 @@ function ColorClash.create(boardCF: CFrame, parent: Instance, layout: Scene.Layo
 		arrowRing(folder, boardCF, layout, view.direction or 1, shown)
 		-- The calls, said out loud at the table.
 		local action = view.lastAction
-		if action and action.called then
+		if action and action.mercy then
+			Cards.speech(folder, boardCF, layout, action.mercy, "25 cards: I'm out!", Color3.fromRGB(255, 200, 200))
+		elseif action and action.called then
 			Cards.speech(folder, boardCF, layout, action.seat, "Last card!", Color3.fromRGB(255, 225, 150))
 		elseif action and action.jumped then
 			Cards.speech(folder, boardCF, layout, action.seat, "Jump in!", Color3.fromRGB(255, 240, 120))
@@ -171,11 +183,19 @@ function ColorClash.create(boardCF: CFrame, parent: Instance, layout: Scene.Layo
 			Cards.speech(folder, boardCF, layout, action.seat, "Swap!", Color3.fromRGB(190, 230, 255))
 		elseif action and action.rotate then
 			Cards.speech(folder, boardCF, layout, action.seat, "Pass them along!", Color3.fromRGB(190, 230, 255))
+		elseif action and action.skipAll then
+			Cards.speech(folder, boardCF, layout, action.seat, "Skip everyone!", Color3.fromRGB(255, 200, 200))
+		elseif action and action.discarded and action.discarded > 0 then
+			Cards.speech(folder, boardCF, layout, action.seat, "Discard all!", Color3.fromRGB(190, 230, 255))
 		end
 		-- The hit lands over whoever it hit.
 		if action and action.victim then
 			local card = Rules.cards[action.card]
-			local hit = if card and card.kind == "draw2" then "+2!" elseif card and card.kind == "wild4" then "+4!" else "Skipped!"
+			local hit = if action.bounced then "Bounced!"
+				elseif card and card.kind == "draw2" then "+2!"
+				elseif card and card.kind == "wild4" then "+4!"
+				elseif card and card.kind == "wild6" then "+6!"
+				else "Skipped!"
 			Cards.speech(folder, boardCF, layout, action.victim, hit, Color3.fromRGB(255, 170, 170))
 		end
 	end)

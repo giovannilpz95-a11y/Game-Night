@@ -385,16 +385,24 @@ rules.ColorClash = {
 		"Can't play? Draw a card. If it fits, you can play it right away.",
 	},
 	sections = {
-		{ title = "Your turn", lines = { "Play one matching card, or a Wild.", "Or draw one. If it can be played, play it or keep it and pass." } },
+		{ title = "Your turn", lines = { "Play one matching card, or a Wild.", "Or draw one. If it can be played, play it or keep it and pass.", "Run out of time and you draw a card and pass." } },
 		{ title = "Action cards", lines = {
 			"Skip: the next player misses a turn.",
 			"Reverse: play changes direction (with 2 players it's a Skip).",
 			"Draw Two: the next player draws 2 and misses their turn.",
 			"Wild Draw Four: pick a color; the next player draws 4 and misses their turn.",
-			"Stacking: answer a Draw card with another one to pass the penalty on.",
-			"Challenge: hit by a Wild Draw Four? Challenge it. If they had a card of the color in play they draw 4; if not, you draw 6.",
+			"Stacking (on by default): answer a draw card with the same card (+2 on +2, +4 on +4) to pass the penalty on. The host can turn it off or allow +4 on +2.",
+			"Challenge: hit by a Wild Draw Four? Challenge it. If they had a card of the color in play they draw 4; if not, you draw 6. You get to see their hand.",
 		} },
-		{ title = "Winning", lines = { "First to empty their hand wins. If a game drags on too long, fewest cards wins." } },
+		{ title = "Last card!", lines = { "Press Last card! as you play your second-to-last card.", "Forget, and anyone can catch you (you draw 2) until the next player moves.", "You can still say it late, before anyone catches you." } },
+		{ title = "Points", lines = { "Going out scores the cards left in the other hands: numbers face value, action cards 20, Wilds 50.", "Going out on a draw card: the next player still draws.", "Play to 250 or 500 (house rule): rounds are dealt until someone's points reach it." } },
+		{ title = "House rules", lines = {
+			"2v2 teams: partners sit across; either one going out wins for both.",
+			"Chaos deck: extra Wild +4s, Wild +6, Skip Everyone (you go again) and Discard All (every card of that color goes down). 25 cards in hand and you're out.",
+			"Reverse bounces: a Reverse in the color in play sends a draw card back.",
+			"No bluffing: a Wild +4 only when you hold nothing of the color in play.",
+		} },
+		{ title = "Winning", lines = { "First to empty their hand wins. If a game drags on too long, fewest cards (then fewest points) wins." } },
 	},
 }
 
